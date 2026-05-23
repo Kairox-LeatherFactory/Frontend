@@ -60,7 +60,7 @@ export const RATES = tempRates;
 export const ORDERS = mockData.clients.flatMap((client) => {
   return client.styles.map((style) => {
     // Generate order ID
-    const orderId = `ORD-2026-${style.id.substring(0, 3).toUpperCase()}`;
+    const orderId = `ORD-2026-${style.id.substring(0, 5).toUpperCase()}`;
     
     // Determine order type based on style details
     let type = 'Bulk Production';
@@ -174,7 +174,7 @@ mockData.production_weeks.forEach((week) => {
   
   // Find order created for this style
   const matchedOrder = ORDERS.find((o) => o.style_id === style.id);
-  const orderId = matchedOrder ? matchedOrder.id : `ORD-2026-${style.id.substring(0, 3).toUpperCase()}`;
+  const orderId = matchedOrder ? matchedOrder.id : `ORD-2026-${style.id.substring(0, 5).toUpperCase()}`;
   
   // Extract period end date
   // e.g. "14/01/2026 TO 22/01/2026" -> split and take the last part
@@ -233,7 +233,7 @@ export const INITIAL_EVENTS = generatedEvents;
 export const TRACE_CARDS = {
   'LTH-BLK-009': {
     garment_id: 'LTH-BLK-009',
-    order_id: ORDERS.find(o => o.style === 'CEYLON-HIRMA')?.id || 'ORD-2026-2FB',
+    order_id: ORDERS.find(o => o.style === 'CEYLON-HIRMA')?.id || 'ORD-2026-2FBCB',
     style: 'CEYLON-HIRMA (Biker Jacket)',
     operations: [
       { stage: 'Stage 5: Raw Material Sorting', operator: 'Ibrahim Sherif (Store Manager)',  status: 'PASS',  note: 'Grade A Sheep Nappa approved',           time: '2026-05-12 10:15' },

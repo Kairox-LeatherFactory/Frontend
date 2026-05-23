@@ -17,7 +17,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={lato.variable}>
+    <html lang="en" className={lato.variable} data-scroll-behavior="smooth">
       <body className="font-sans bg-[#f0f4ff] text-[#0f172a] antialiased">
         <AuthProvider>
           <DataProvider>

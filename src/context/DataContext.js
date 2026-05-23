@@ -15,12 +15,13 @@ export function DataProvider({ children }) {
   // Automatic cache reset check if old mock data is detected in localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedOrders = localStorage.getItem('kairox_orders');
-      if (savedOrders && (savedOrders.includes('Besta Leather') || savedOrders.includes('ORD-2026-001'))) {
+      const version = localStorage.getItem('kairox_cache_version');
+      if (version !== 'v2') {
         localStorage.removeItem('kairox_events');
         localStorage.removeItem('kairox_orders');
         localStorage.removeItem('kairox_wage_runs');
         localStorage.removeItem('kairox_trace_cards');
+        localStorage.setItem('kairox_cache_version', 'v2');
         // Refresh page to apply clean slate
         window.location.reload();
       }
@@ -29,8 +30,8 @@ export function DataProvider({ children }) {
 
   const [events, setEvents] = useState(() => {
     if (typeof window !== 'undefined') {
-      const savedOrders = localStorage.getItem('kairox_orders');
-      if (savedOrders && (savedOrders.includes('Besta Leather') || savedOrders.includes('ORD-2026-001'))) {
+      const version = localStorage.getItem('kairox_cache_version');
+      if (version !== 'v2') {
         return INITIAL_EVENTS;
       }
       const saved = localStorage.getItem('kairox_events');
@@ -41,10 +42,11 @@ export function DataProvider({ children }) {
 
   const [orders, setOrders] = useState(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('kairox_orders');
-      if (saved && (saved.includes('Besta Leather') || saved.includes('ORD-2026-001'))) {
+      const version = localStorage.getItem('kairox_cache_version');
+      if (version !== 'v2') {
         return ORDERS;
       }
+      const saved = localStorage.getItem('kairox_orders');
       return saved ? JSON.parse(saved) : ORDERS;
     }
     return ORDERS;
@@ -52,8 +54,8 @@ export function DataProvider({ children }) {
 
   const [wageRuns, setWageRuns] = useState(() => {
     if (typeof window !== 'undefined') {
-      const savedOrders = localStorage.getItem('kairox_orders');
-      if (savedOrders && (savedOrders.includes('Besta Leather') || savedOrders.includes('ORD-2026-001'))) {
+      const version = localStorage.getItem('kairox_cache_version');
+      if (version !== 'v2') {
         return WAGE_RUNS;
       }
       const saved = localStorage.getItem('kairox_wage_runs');
@@ -64,8 +66,8 @@ export function DataProvider({ children }) {
 
   const [traceCards, setTraceCards] = useState(() => {
     if (typeof window !== 'undefined') {
-      const savedOrders = localStorage.getItem('kairox_orders');
-      if (savedOrders && (savedOrders.includes('Besta Leather') || savedOrders.includes('ORD-2026-001'))) {
+      const version = localStorage.getItem('kairox_cache_version');
+      if (version !== 'v2') {
         return TRACE_CARDS;
       }
       const saved = localStorage.getItem('kairox_trace_cards');
