@@ -2,6 +2,7 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
+import { CheckCircle2, Tag, Lock, Settings, Coins, FolderOpen } from 'lucide-react';
 
 export default function PieceRatesAndWages() {
   const { user } = useAuth();
@@ -93,7 +94,7 @@ export default function PieceRatesAndWages() {
       {/* ─── BANNER ALERTS ─── */}
       {successMsg && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-center gap-2.5">
-          <span>✅</span>
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
           <p>{successMsg}</p>
         </div>
       )}
@@ -103,8 +104,8 @@ export default function PieceRatesAndWages() {
         
         {/* LEFT COLUMN: PIECE-RATE CONSTANTS (All roles can see) */}
         <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-6">
-          <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4">
-            🏷️ CARNABY Style Piece Rates
+          <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
+            <Tag className="w-5 h-5 text-blue-600" /> CARNABY Style Piece Rates
           </h3>
           <p className="text-xs font-semibold text-slate-400">
             Standard contract pieces pay scale allocated per completed operation:
@@ -139,7 +140,7 @@ export default function PieceRatesAndWages() {
           {/* GATED ACCESS ACCORDION IF VIEWER / FLOOR MANAGER */}
           {!isDirectManager ? (
             <div className="card p-8 bg-amber-50/60 border border-amber-200 shadow-lg text-center space-y-4">
-              <div className="text-5xl">🔒</div>
+              <Lock className="w-12 h-12 text-amber-500 mx-auto" />
               <h3 className="text-lg font-black text-amber-900 uppercase tracking-wide">
                 Direct Manager Authorization Required
               </h3>
@@ -151,8 +152,8 @@ export default function PieceRatesAndWages() {
             <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-6">
               
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4 gap-4">
-                <h3 className="text-lg font-extrabold text-slate-900">
-                  ⚙️ Active Computation Engine
+                <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
+                  <Settings className="w-5 h-5 text-blue-600" /> Active Computation Engine
                 </h3>
                 <div className="flex items-center gap-2">
                   <select
@@ -223,15 +224,15 @@ export default function PieceRatesAndWages() {
                     </button>
                     <button
                       onClick={handleFreezeRun}
-                      className="btn-primary h-12 min-h-[48px] px-6 text-xs font-black rounded-lg bg-emerald-600 hover:bg-emerald-700 shadow"
+                      className="btn-primary h-12 min-h-[48px] px-6 text-xs font-black rounded-lg bg-emerald-600 hover:bg-emerald-700 shadow flex items-center gap-2"
                     >
-                      🔒 Freeze &amp; Log Payrun
+                      <Lock className="w-4 h-4" /> Freeze &amp; Log Payrun
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-12 text-slate-400 font-medium">
-                  <span className="text-4xl block mb-2">💰</span>
+                  <Coins className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                   Select pay cycle period above and click "Compute Pay" to parse active floor logs and auto-calculate payroll distributions.
                 </div>
               )}
@@ -242,8 +243,8 @@ export default function PieceRatesAndWages() {
           {/* HISTORICAL WAGE RUNS TABLE */}
           {isDirectManager && (
             <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-6">
-              <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4">
-                📂 Archived Frozen Payroll Runs
+              <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
+                <FolderOpen className="w-5 h-5 text-blue-600" /> Archived Frozen Payroll Runs
               </h3>
 
               <div className="overflow-x-auto">

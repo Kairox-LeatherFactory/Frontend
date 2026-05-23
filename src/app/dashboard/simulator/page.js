@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { SlidersHorizontal, Truck, Zap, UserX, Calculator, AlertTriangle, Ship, BarChart3 } from 'lucide-react';
 
 export default function DelayImpactSimulator() {
   // Slider states
@@ -48,15 +49,15 @@ export default function DelayImpactSimulator() {
         {/* LEFT COLUMN: INTERACTIVE SLIDERS (2 Cols) */}
         <div className="lg:col-span-2 space-y-6">
           <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-8">
-            <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4">
-              🎛️ Operational Parameter Adjustments
+            <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
+              <SlidersHorizontal className="w-5 h-5 text-blue-600" /> Operational Parameter Adjustments
             </h3>
 
             {/* Slider 1: Supplier Delay */}
             <div className="space-y-3">
               <div className="flex items-center justify-between text-sm font-bold text-slate-700">
                 <span className="flex items-center gap-2">
-                  🚚 Supplier Material Delay
+                  <Truck className="w-4 h-4 text-blue-500" /> Supplier Material Delay
                 </span>
                 <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-xl text-xs font-black">
                   {supplierDelay} Days
@@ -81,7 +82,7 @@ export default function DelayImpactSimulator() {
             <div className="space-y-3">
               <div className="flex items-center justify-between text-sm font-bold text-slate-700">
                 <span className="flex items-center gap-2">
-                  ⚡ QC Assembly Defect Rate
+                  <Zap className="w-4 h-4 text-amber-500" /> QC Assembly Defect Rate
                 </span>
                 <span className="bg-amber-100 text-amber-800 px-3 py-1 rounded-xl text-xs font-black">
                   {defectRate}% Defects
@@ -106,7 +107,7 @@ export default function DelayImpactSimulator() {
             <div className="space-y-3">
               <div className="flex items-center justify-between text-sm font-bold text-slate-700">
                 <span className="flex items-center gap-2">
-                  👤 Worker Absenteeism Rate
+                  <UserX className="w-4 h-4 text-purple-500" /> Worker Absenteeism Rate
                 </span>
                 <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-xl text-xs font-black">
                   {absenteeism}% Absent
@@ -129,7 +130,7 @@ export default function DelayImpactSimulator() {
 
             {/* Mathematical Formulas Breakdown */}
             <div className="bg-slate-50 border border-slate-150 p-4 rounded-xl space-y-2 text-[11px] text-slate-500 leading-relaxed font-semibold">
-              <p className="text-slate-800 font-extrabold uppercase text-xs">🧮 Simulator Calculation Models:</p>
+              <p className="text-slate-800 font-extrabold uppercase text-xs flex items-center gap-1.5"><Calculator className="w-3.5 h-3.5" /> Simulator Calculation Models:</p>
               <p>• <strong>Overrun days</strong> = Supplier Days + (QC Defects × 0.4) + (Absenteeism × 0.3)</p>
               <p>• <strong>Air Freight Mode Trigger</strong> = Automatic if Total Overrun Days exceeds 2.0 Days.</p>
               <p>• <strong>Projected Gross Margin</strong> = Base 50% − Air Freight Penalty (35%) − Defect Penalty (Defects × 0.5) − Labor Penalty (Absenteeism × 0.2)</p>
@@ -144,7 +145,7 @@ export default function DelayImpactSimulator() {
           {/* Air freight warning card */}
           {isAirFreightTriggered ? (
             <div className="card p-6 bg-gradient-to-br from-red-600 to-red-500 border-none text-white text-center shadow-xl space-y-3 animate-pulse">
-              <span className="text-4xl block">🚨</span>
+              <AlertTriangle className="w-10 h-10 mx-auto" />
               <h4 className="text-lg font-black uppercase tracking-wider">Air Freight Triggered!</h4>
               <p className="text-xs font-medium text-red-100 leading-relaxed">
                 Projected overrun is <strong>{totalOverrunDays} Days</strong>, which is over the 2-day sea limit. Cargo must ship by Air, shrinking the profit margin by 35%!
@@ -152,7 +153,7 @@ export default function DelayImpactSimulator() {
             </div>
           ) : (
             <div className="card p-6 bg-gradient-to-br from-emerald-600 to-emerald-500 border-none text-white text-center shadow-xl space-y-3">
-              <span className="text-4xl block">🚢</span>
+              <Ship className="w-10 h-10 mx-auto" />
               <h4 className="text-lg font-black uppercase tracking-wider">Sea Freight Safe</h4>
               <p className="text-xs font-medium text-emerald-100 leading-relaxed">
                 Projected overrun is <strong>{totalOverrunDays} Days</strong> (within the 2-day limit). Standard sea cargo mode preserved. No shipping profit penalties.
@@ -162,8 +163,8 @@ export default function DelayImpactSimulator() {
 
           {/* FINANCIAL EQUATION METRIC BOX */}
           <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-6">
-            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
-              📊 Simulated Financial Ledger
+            <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+              <BarChart3 className="w-4 h-4" /> Simulated Financial Ledger
             </h3>
 
             <div className="space-y-4">

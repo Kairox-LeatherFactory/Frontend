@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useData } from '@/context/DataContext';
+import { TreePine, Building2, ClipboardList, Shirt } from 'lucide-react';
 
 export default function OrdersTreeBrowser() {
   const { orders } = useData();
@@ -42,8 +43,8 @@ export default function OrdersTreeBrowser() {
 
       {/* ─── TREE CARD WRAPPER ─── */}
       <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-6">
-        <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4">
-          🌲 Interactive SKU Hierarchy Browser
+        <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
+          <TreePine className="w-5 h-5 text-emerald-600" /> Interactive SKU Hierarchy Browser
         </h3>
 
         <div className="space-y-4 text-sm font-semibold">
@@ -59,7 +60,7 @@ export default function OrdersTreeBrowser() {
                   className="w-full flex items-center justify-between p-4 bg-blue-50/50 hover:bg-blue-100/50 transition-colors text-left font-bold text-slate-800 cursor-pointer min-h-[48px]"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-xl">🏢</span>
+                    <Building2 className="w-5 h-5 text-blue-600" />
                     <div>
                       <span className="text-slate-900 font-extrabold">{clientName}</span>
                       <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
@@ -85,7 +86,7 @@ export default function OrdersTreeBrowser() {
                             className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left cursor-pointer min-h-[48px]"
                           >
                             <div className="flex items-center gap-2">
-                              <span className="text-lg">📋</span>
+                              <ClipboardList className="w-4 h-4 text-blue-500" />
                               <div>
                                 <span className="font-extrabold text-blue-900">{order.id}</span>
                                 <span className="text-[10px] text-slate-400 font-bold ml-2 uppercase">
@@ -105,7 +106,9 @@ export default function OrdersTreeBrowser() {
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                                   <div>
                                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Style SKU</span>
-                                    <span className="text-slate-800 font-extrabold text-base">🧥 Style: {order.style}</span>
+                                    <span className="text-slate-800 font-extrabold text-base flex items-center gap-1.5">
+                                      <Shirt className="w-4 h-4 text-blue-500" /> Style: {order.style}
+                                    </span>
                                   </div>
                                   <div className="flex gap-2">
                                     <span className={`badge ${order.freight_mode.includes('RISK') ? 'badge-danger' : 'badge-info'}`}>

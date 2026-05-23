@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useData } from '@/context/DataContext';
 import TimelineItem from '@/components/TimelineItem';
+import { Search, Tag, AlertTriangle } from 'lucide-react';
 
 export default function GarmentTracer() {
   const { traceCards } = useData();
@@ -45,8 +46,8 @@ export default function GarmentTracer() {
 
       {/* ─── SEARCH INPUT BLOCK (Target 48px) ─── */}
       <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-6">
-        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider">
-          🔍 Barcode / QR Scan Simulation
+        <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+          <Search className="w-4 h-4" /> Barcode / QR Scan Simulation
         </h3>
 
         <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-4 items-stretch">
@@ -58,8 +59,8 @@ export default function GarmentTracer() {
               onChange={(e) => setSearchId(e.target.value)}
               className="input-field h-14 min-h-[48px] pl-12 bg-slate-50 font-black text-lg border-2 border-blue-100"
             />
-            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl pointer-events-none">
-              🏷️
+            <span className="absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none">
+              <Tag className="w-5 h-5 text-slate-400" />
             </span>
           </div>
           <button
@@ -87,7 +88,7 @@ export default function GarmentTracer() {
       {errorMsg && (
         <div className="bg-amber-50 border border-amber-200 text-amber-900 p-6 rounded-2xl shadow-sm space-y-2 animate-fade-in">
           <div className="flex items-center gap-2 font-bold text-sm">
-            <span>⚠</span>
+            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
             <h4>Audit Search Exception</h4>
           </div>
           <p className="text-xs sm:text-sm leading-relaxed">

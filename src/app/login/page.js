@@ -1,6 +1,7 @@
 'use client';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
+import { Building2, Scissors, PenTool, ScanSearch, Factory } from 'lucide-react';
 
 export default function Login() {
   const { login, ROLES, ROLE_OPERATIONS } = useAuth();
@@ -12,10 +13,10 @@ export default function Login() {
   };
 
   const roleIcons = {
-    direct_manager: '🏢',
-    cutting_manager: '✂️',
-    stitching_manager: '🪡',
-    viewer: '🔍',
+    direct_manager: Building2,
+    cutting_manager: Scissors,
+    stitching_manager: PenTool,
+    viewer: ScanSearch,
   };
 
   return (
@@ -25,7 +26,7 @@ export default function Login() {
         {/* Header Block */}
         <div className="space-y-4 animate-fade-in">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-900/40 border border-blue-500/30 text-blue-200 text-sm font-semibold tracking-wide">
-            🏭 Factory Operations Portal
+            <Factory className="w-4 h-4" /> Factory Operations Portal
           </div>
           <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white sm:leading-none">
             KAIROX
@@ -42,6 +43,7 @@ export default function Login() {
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 pt-6">
           {Object.entries(ROLES).map(([key, info], index) => {
             const allowedOps = ROLE_OPERATIONS[key];
+            const IconComp = roleIcons[key] || ScanSearch;
             return (
               <button
                 key={key}
@@ -51,8 +53,8 @@ export default function Login() {
               >
                 {/* Icon & Label */}
                 <div className="w-full flex flex-col items-center space-y-4">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 text-3xl shadow-inner border border-blue-100">
-                    {roleIcons[key]}
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 shadow-inner border border-blue-100">
+                    <IconComp className="w-8 h-8 text-blue-600" />
                   </div>
                   <div>
                     <h3 className="text-lg font-bold text-slate-900 tracking-tight">

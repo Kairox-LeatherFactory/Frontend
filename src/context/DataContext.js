@@ -12,8 +12,27 @@ import {
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
+  // Automatic cache reset check if old mock data is detected in localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedOrders = localStorage.getItem('kairox_orders');
+      if (savedOrders && (savedOrders.includes('Besta Leather') || savedOrders.includes('ORD-2026-001'))) {
+        localStorage.removeItem('kairox_events');
+        localStorage.removeItem('kairox_orders');
+        localStorage.removeItem('kairox_wage_runs');
+        localStorage.removeItem('kairox_trace_cards');
+        // Refresh page to apply clean slate
+        window.location.reload();
+      }
+    }
+  }, []);
+
   const [events, setEvents] = useState(() => {
     if (typeof window !== 'undefined') {
+      const savedOrders = localStorage.getItem('kairox_orders');
+      if (savedOrders && (savedOrders.includes('Besta Leather') || savedOrders.includes('ORD-2026-001'))) {
+        return INITIAL_EVENTS;
+      }
       const saved = localStorage.getItem('kairox_events');
       return saved ? JSON.parse(saved) : INITIAL_EVENTS;
     }
@@ -23,6 +42,9 @@ export function DataProvider({ children }) {
   const [orders, setOrders] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('kairox_orders');
+      if (saved && (saved.includes('Besta Leather') || saved.includes('ORD-2026-001'))) {
+        return ORDERS;
+      }
       return saved ? JSON.parse(saved) : ORDERS;
     }
     return ORDERS;
@@ -30,6 +52,10 @@ export function DataProvider({ children }) {
 
   const [wageRuns, setWageRuns] = useState(() => {
     if (typeof window !== 'undefined') {
+      const savedOrders = localStorage.getItem('kairox_orders');
+      if (savedOrders && (savedOrders.includes('Besta Leather') || savedOrders.includes('ORD-2026-001'))) {
+        return WAGE_RUNS;
+      }
       const saved = localStorage.getItem('kairox_wage_runs');
       return saved ? JSON.parse(saved) : WAGE_RUNS;
     }
@@ -38,6 +64,10 @@ export function DataProvider({ children }) {
 
   const [traceCards, setTraceCards] = useState(() => {
     if (typeof window !== 'undefined') {
+      const savedOrders = localStorage.getItem('kairox_orders');
+      if (savedOrders && (savedOrders.includes('Besta Leather') || savedOrders.includes('ORD-2026-001'))) {
+        return TRACE_CARDS;
+      }
       const saved = localStorage.getItem('kairox_trace_cards');
       return saved ? JSON.parse(saved) : TRACE_CARDS;
     }

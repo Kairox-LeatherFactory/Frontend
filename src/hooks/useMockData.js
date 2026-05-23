@@ -1,4 +1,5 @@
-// Central mock data store — swap fetch calls here when real FastAPI backend is ready
+// Central mock data store — loaded dynamically from the new mock_data.json database
+import mockData from './mock_data.json';
 
 export const STAGES = [
   { id: 1,  name: 'Client Order Initiation',         icon: '📋', risks: ['Incomplete specs', 'Compliance issues'],              output: 'Approved Client Brief' },
@@ -16,82 +17,256 @@ export const STAGES = [
   { id: 13, name: 'Packing & Dispatch',              icon: '🚢', risks: ['Missed sea cutoff → Air Freight', 'Air freight kills margin'], output: 'Cartons Loaded for Export' },
 ];
 
-export const ORDERS = [
-  {
-    id: 'ORD-2026-001', type: 'Sample Order', client: 'Besta Leather Co. (Germany)',
-    quantity: 1, style: 'CARNABY', colorway: 'Black', sizes: ['L'],
-    order_date: '2026-05-10', deadline: '2026-05-30', sea_cutoff: '2026-05-25',
-    current_stage: 12, status: 'In Quality Control', delay_days: 0,
-    freight_mode: 'Sea Freight', progress: 92,
-  },
-  {
-    id: 'ORD-2026-002', type: 'SMS Order', client: 'AeroFashion Retail (USA)',
-    quantity: 35, style: 'CARNABY', colorway: 'Brown', sizes: ['S','M','L','XL'],
-    order_date: '2026-05-02', deadline: '2026-06-05', sea_cutoff: '2026-06-01',
-    current_stage: 10, status: 'Stitching Department', delay_days: 2,
-    freight_mode: 'Sea Freight', progress: 76,
-  },
-  {
-    id: 'ORD-2026-003', type: 'Bulk Production', client: 'Veloce Moto Gear (Italy)',
-    quantity: 500, style: 'CARNABY', colorway: 'Pine Green', sizes: ['S','M','L','XL'],
-    order_date: '2026-04-15', deadline: '2026-06-15', sea_cutoff: '2026-06-05',
-    current_stage: 4, status: 'Supplier Procurement (Delayed)', delay_days: 8,
-    freight_mode: 'Air Freight (RISK)', progress: 30,
-  },
-];
-
-export const WORKERS = [
-  { id: 'W-101', name: 'Rajesh Kumar',   role: 'Cutter',  wage_type: 'Piece-rate',    monthly_salary: null },
-  { id: 'W-102', name: 'Mohamed Yusuf', role: 'Tailor',   wage_type: 'Piece-rate',    monthly_salary: null },
-  { id: 'W-103', name: 'Anitha Selvam', role: 'Tailor',   wage_type: 'Piece-rate',    monthly_salary: null },
-  { id: 'W-104', name: 'Muthu Pandi',   role: 'Fuser',    wage_type: 'Piece-rate',    monthly_salary: null },
-  { id: 'W-105', name: 'Karthik Raja',  role: 'Paster',   wage_type: 'Monthly-salary', monthly_salary: 18000 },
-];
-
-export const RATES = {
-  CARNABY: {
-    'Cutting':       80,
-    'Fusing':        30,
-    'Pasting':       40,
-    'Shell stitch':  400,
-    'Lining attach': 120,
-    'Lining stitch': 70,
-    'Final finish':  50,
-  }
+// Helper to map operation codes to Title-Case display names used in existing components
+export const OP_MAP = {
+  'CUTTING': 'Cutting',
+  'FUSING': 'Fusing',
+  'PASTING': 'Pasting',
+  'SHELL': 'Shell stitch',
+  'L/A': 'Lining attach',
+  'LINING STICH': 'Lining stitch',
+  'FF': 'Final finish',
+  'FF-SAMPLE': 'Final finish',
+  'FF-SMS': 'Final finish'
 };
 
-// Pre-seeded production events (the central event source of truth)
-export const INITIAL_EVENTS = [
-  { id: 1,  order_id: 'ORD-2026-003', style: 'CARNABY', colorway: 'Pine Green', size: 'M', worker_id: 'W-101', operation: 'Cutting',       qty: 152, date: '2026-05-12' },
-  { id: 2,  order_id: 'ORD-2026-003', style: 'CARNABY', colorway: 'Pine Green', size: 'M', worker_id: 'W-104', operation: 'Fusing',        qty: 152, date: '2026-05-13' },
-  { id: 3,  order_id: 'ORD-2026-003', style: 'CARNABY', colorway: 'Pine Green', size: 'M', worker_id: 'W-105', operation: 'Pasting',       qty: 155, date: '2026-05-14' },
-  { id: 4,  order_id: 'ORD-2026-003', style: 'CARNABY', colorway: 'Pine Green', size: 'M', worker_id: 'W-103', operation: 'Shell stitch',  qty: 120, date: '2026-05-16' },
-  { id: 5,  order_id: 'ORD-2026-003', style: 'CARNABY', colorway: 'Pine Green', size: 'M', worker_id: 'W-102', operation: 'Lining attach', qty: 85,  date: '2026-05-18' },
-  { id: 6,  order_id: 'ORD-2026-002', style: 'CARNABY', colorway: 'Brown',      size: 'L', worker_id: 'W-101', operation: 'Cutting',       qty: 35,  date: '2026-05-10' },
-  { id: 7,  order_id: 'ORD-2026-002', style: 'CARNABY', colorway: 'Brown',      size: 'L', worker_id: 'W-104', operation: 'Fusing',        qty: 35,  date: '2026-05-11' },
-  { id: 8,  order_id: 'ORD-2026-002', style: 'CARNABY', colorway: 'Brown',      size: 'L', worker_id: 'W-105', operation: 'Pasting',       qty: 35,  date: '2026-05-12' },
-  { id: 9,  order_id: 'ORD-2026-002', style: 'CARNABY', colorway: 'Brown',      size: 'L', worker_id: 'W-103', operation: 'Shell stitch',  qty: 35,  date: '2026-05-14' },
-  { id: 10, order_id: 'ORD-2026-002', style: 'CARNABY', colorway: 'Brown',      size: 'L', worker_id: 'W-102', operation: 'Lining attach', qty: 35,  date: '2026-05-15' },
-  { id: 11, order_id: 'ORD-2026-002', style: 'CARNABY', colorway: 'Brown',      size: 'L', worker_id: 'W-103', operation: 'Lining stitch', qty: 32,  date: '2026-05-17' },
-  { id: 12, order_id: 'ORD-2026-002', style: 'CARNABY', colorway: 'Brown',      size: 'L', worker_id: 'W-102', operation: 'Final finish',  qty: 30,  date: '2026-05-19' },
-];
+// 1. Map Employees to WORKERS
+export const WORKERS = mockData.employees.map((emp) => ({
+  id: emp.id,
+  name: emp.name,
+  role: emp.designation,
+  wage_type: emp.wage_type === 'piece_rate' ? 'Piece-rate' : 'Monthly-salary',
+  monthly_salary: emp.monthly_salary
+}));
 
+// 2. Map Rates to RATES object
+// e.g. RATES[styleName][opTitleName] = rateVal
+const tempRates = {};
+mockData.rates.forEach((r) => {
+  // Find style name corresponding to style_id
+  const style = mockData.clients.flatMap((c) => c.styles).find((s) => s.id === r.style_id);
+  const styleName = style ? style.name : r.style_id;
+  const opName = OP_MAP[r.operation] || r.operation;
+  
+  if (!tempRates[styleName]) {
+    tempRates[styleName] = {};
+  }
+  tempRates[styleName][opName] = r.rate;
+});
+export const RATES = tempRates;
+
+// 3. Map styles to ORDERS
+// We map all styles that are ordered as active orders
+export const ORDERS = mockData.clients.flatMap((client) => {
+  return client.styles.map((style) => {
+    // Generate order ID
+    const orderId = `ORD-2026-${style.id.substring(0, 3).toUpperCase()}`;
+    
+    // Determine order type based on style details
+    let type = 'Bulk Production';
+    if (style.name.toLowerCase().includes('sample') || style.total <= 5) {
+      type = 'Sample Order';
+    } else if (style.name.toLowerCase().includes('sms') || style.total < 100) {
+      type = 'SMS Order';
+    }
+    
+    // Default dates
+    const orderDate = '2026-05-10';
+    const deadline = '2026-06-15';
+    const seaCutoff = '2026-06-05';
+    
+    // Extract unique sizes from SKUs
+    const sizes = Array.from(new Set(style.skus.map((sk) => sk.size)));
+    
+    // Parse progress and status from production object if active
+    let progress = 0;
+    let status = 'Supplier Procurement';
+    let currentStage = 4;
+    let delayDays = 0;
+    let freightMode = 'Sea Freight';
+    
+    if (style.production) {
+      const prod = style.production;
+      const ordered = style.total;
+      
+      // Furthest operation index with qty > 0
+      const opsSequence = ['CUTTING', 'FUSING', 'PASTING', 'SHELL', 'L/A', 'LINING STICH', 'FF'];
+      let maxSeqIndex = -1;
+      
+      opsSequence.forEach((opCode, index) => {
+        if (prod.qty[opCode] > 0) {
+          maxSeqIndex = index;
+        }
+      });
+      
+      if (maxSeqIndex >= 0) {
+        const furthestOp = opsSequence[maxSeqIndex];
+        const qtyCompleted = prod.qty[furthestOp] || 0;
+        
+        // Progress percentage based on furthest operation completeness
+        progress = Math.min(99, Math.round((qtyCompleted / ordered) * 100));
+        
+        // Map current stage & status
+        if (furthestOp === 'CUTTING') {
+          currentStage = 6;
+          status = 'Cutting Department';
+        } else if (furthestOp === 'FUSING') {
+          currentStage = 7;
+          status = 'Fusing Process';
+        } else if (furthestOp === 'PASTING') {
+          currentStage = 8;
+          status = 'Pasting Process';
+        } else if (['SHELL', 'L/A', 'LINING STICH'].includes(furthestOp)) {
+          currentStage = 10;
+          status = 'Stitching Department';
+        } else if (furthestOp === 'FF') {
+          currentStage = 12;
+          status = 'In Quality Control';
+          progress = Math.min(100, Math.round((qtyCompleted / ordered) * 100));
+        }
+      }
+      
+      // Delay days assignments for realistic view based on client/style metadata
+      if (style.name === 'RICANO-1') {
+        delayDays = 8;
+      } else if (style.name === 'CEYLON-HIRMA') {
+        delayDays = 2;
+      } else if (style.name === 'PL00032UR') {
+        delayDays = 4;
+      }
+      
+      if (delayDays > 2 && progress < 80) {
+        freightMode = 'Air Freight (RISK)';
+      }
+    }
+    
+    return {
+      id: orderId,
+      style_id: style.id, // Keep a reference to style.id
+      type,
+      client: client.name,
+      quantity: style.total,
+      style: style.name,
+      colorway: style.colors.join(', '),
+      sizes,
+      order_date: orderDate,
+      deadline,
+      sea_cutoff: seaCutoff,
+      current_stage: currentStage,
+      status,
+      delay_days: delayDays,
+      freight_mode: freightMode,
+      progress,
+    };
+  });
+});
+
+// 4. Map Weekly counts to INITIAL_EVENTS
+// We will generate event entries from production weeks
+const generatedEvents = [];
+let eventId = 1;
+
+mockData.production_weeks.forEach((week) => {
+  // Find style and client details
+  const style = mockData.clients.flatMap((c) => c.styles).find((s) => s.id === week.style_id);
+  
+  if (!style) return;
+  
+  // Find order created for this style
+  const matchedOrder = ORDERS.find((o) => o.style_id === style.id);
+  const orderId = matchedOrder ? matchedOrder.id : `ORD-2026-${style.id.substring(0, 3).toUpperCase()}`;
+  
+  // Extract period end date
+  // e.g. "14/01/2026 TO 22/01/2026" -> split and take the last part
+  let eventDate = '2026-05-15';
+  try {
+    const parts = week.period.split(' TO ');
+    const endPart = parts[parts.length - 1];
+    if (endPart) {
+      const [d, m, y] = endPart.replace(/[()]/g, '').split('/');
+      if (d && m && y) {
+        eventDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      }
+    }
+  } catch (err) {
+    // default date
+  }
+
+  // Map each operation count
+  Object.entries(week.counts).forEach(([opCode, qty]) => {
+    if (qty <= 0) return;
+    
+    const opTitle = OP_MAP[opCode] || opCode;
+    
+    // Assign a suitable worker based on designation match
+    let matchedWorker = WORKERS.find((w) => {
+      if (opCode === 'CUTTING') return w.role.toLowerCase().includes('cutter');
+      if (opCode === 'FUSING') return w.role.toLowerCase().includes('fuser') || w.role.toLowerCase().includes('multi');
+      if (opCode === 'PASTING') return w.role.toLowerCase().includes('paster') || w.role.toLowerCase().includes('multi');
+      if (['SHELL', 'L/A', 'LINING STICH'].includes(opCode)) return w.role.toLowerCase().includes('tailor') || w.role.toLowerCase().includes('stitch');
+      if (opCode.startsWith('FF')) return w.role.toLowerCase().includes('finisher') || w.role.toLowerCase().includes('tailor');
+      return false;
+    });
+    
+    if (!matchedWorker) {
+      matchedWorker = WORKERS[0]; // fallback
+    }
+
+    generatedEvents.push({
+      id: eventId++,
+      order_id: orderId,
+      style: style.name,
+      colorway: style.colors[0] || 'Black',
+      size: style.skus[0]?.size || 'L',
+      worker_id: matchedWorker.id,
+      operation: opTitle,
+      qty,
+      date: eventDate
+    });
+  });
+});
+
+export const INITIAL_EVENTS = generatedEvents;
+
+// 5. Generate TRACE_CARDS
+// We will generate the timeline tracing card for active garments dynamically
 export const TRACE_CARDS = {
   'LTH-BLK-009': {
-    garment_id: 'LTH-BLK-009', order_id: 'ORD-2026-002', style: 'Classic Black Biker Jacket',
+    garment_id: 'LTH-BLK-009',
+    order_id: ORDERS.find(o => o.style === 'CEYLON-HIRMA')?.id || 'ORD-2026-2FB',
+    style: 'CEYLON-HIRMA (Biker Jacket)',
     operations: [
-      { stage: 'Stage 5: Raw Material Sorting', operator: 'Ganesan (Store Manager)',  status: 'PASS',  note: 'Grade A Sheep Nappa approved',           time: '2026-05-12 10:15' },
-      { stage: 'Stage 6: Cutting',              operator: 'Murugan (Master Cutter)',  status: 'PASS',  note: '100% leather yield efficiency achieved', time: '2026-05-13 14:30' },
-      { stage: 'Stage 7: Fusing',               operator: 'Ramu (Fusing Helper)',     status: 'PASS',  note: 'Collar & pocket flaps fused correctly',  time: '2026-05-14 09:45' },
-      { stage: 'Stage 8: Pasting',              operator: 'Ramesh (Paster)',           status: 'PASS',  note: 'Temporary latex adhesive applied evenly', time: '2026-05-14 15:20' },
-      { stage: 'Stage 9: Lining Cut',           operator: 'Senthil (Lining Cutter)',  status: 'PASS',  note: 'Satin Black lining matched and aligned',  time: '2026-05-15 11:10' },
+      { stage: 'Stage 5: Raw Material Sorting', operator: 'Ibrahim Sherif (Store Manager)',  status: 'PASS',  note: 'Grade A Sheep Nappa approved',           time: '2026-05-12 10:15' },
+      { stage: 'Stage 6: Cutting',              operator: 'Ibrahim Sherif (Master Cutter)',  status: 'PASS',  note: '100% leather yield efficiency achieved', time: '2026-05-13 14:30' },
+      { stage: 'Stage 7: Fusing',               operator: 'Maharani (Fusing Helper)',     status: 'PASS',  note: 'Collar & pocket flaps fused correctly',  time: '2026-05-14 09:45' },
+      { stage: 'Stage 8: Pasting',              operator: 'Karthik Raja (Paster)',           status: 'PASS',  note: 'Temporary latex adhesive applied evenly', time: '2026-05-14 15:20' },
+      { stage: 'Stage 9: Lining Cut',           operator: 'Ibrahim Sherif (Lining Cutter)',  status: 'PASS',  note: 'Satin Black lining matched and aligned',  time: '2026-05-15 11:10' },
       { stage: 'Stage 10: Shell Stitch',        operator: 'Anitha Selvam (Tailor)',   status: 'PASS',  note: 'Main shell stitch completed cleanly',    time: '2026-05-18 16:30' },
       { stage: 'Stage 10: Zipper Fitting',      operator: 'Mohamed Yusuf (Tailor)',   status: 'PASS',  note: 'YKK main zipper fitted without puckering', time: '2026-05-19 12:15' },
-      { stage: 'Stage 12: QC Inspection',       operator: 'Deva (QC Lead)',           status: 'REWORK', note: 'Loose thread at left sleeve cuff. Rework completed.', time: '2026-05-20 10:40' },
+      { stage: 'Stage 12: QC Inspection',       operator: 'MD Afzal (QC Lead)',           status: 'REWORK', note: 'Loose thread at left sleeve cuff. Rework completed.', time: '2026-05-20 10:40' },
     ]
   }
 };
 
-export const WAGE_RUNS = [
-  { id: 'WR-001', period: 'May 01–15, 2026', employee_count: 5, total_amount: 43250, status: 'Frozen', created_at: '2026-05-16' },
-];
+// 6. Map Wage runs to WAGE_RUNS
+export const WAGE_RUNS = mockData.wage_runs.map((wr) => {
+  const totalAmount = wr.lines.reduce((sum, line) => sum + line.amount, 0);
+  const employeeCount = wr.lines.length;
+  
+  let periodStr = `${wr.period_start} to ${wr.period_end}`;
+  try {
+    const startObj = new Date(wr.period_start);
+    const endObj = new Date(wr.period_end);
+    const month = startObj.toLocaleString('en-US', { month: 'short' });
+    periodStr = `${month} ${startObj.getDate().toString().padStart(2, '0')}–${endObj.getDate().toString().padStart(2, '0')}, ${startObj.getFullYear()}`;
+  } catch (err) {}
+
+  return {
+    id: `WR-${wr.id.substring(0, 3).toUpperCase()}`,
+    period: periodStr,
+    employee_count: employeeCount,
+    total_amount: totalAmount,
+    status: wr.status === 'closed' ? 'Frozen' : 'Active',
+    created_at: wr.period_end
+  };
+});

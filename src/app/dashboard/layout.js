@@ -4,6 +4,30 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
+import {
+  Factory,
+  LayoutDashboard,
+  ClipboardPen,
+  BarChart3,
+  TreePine,
+  Wallet,
+  Gamepad2,
+  ScanSearch,
+  X,
+  Menu,
+  LogOut,
+  TriangleAlert,
+} from 'lucide-react';
+
+const NAV_ICONS = {
+  '/dashboard': LayoutDashboard,
+  '/dashboard/entry': ClipboardPen,
+  '/dashboard/progress': BarChart3,
+  '/dashboard/orders': TreePine,
+  '/dashboard/wages': Wallet,
+  '/dashboard/simulator': Gamepad2,
+  '/dashboard/tracer': ScanSearch,
+};
 
 export default function DashboardLayout({ children }) {
   const { user, logout, ROLES } = useAuth();
@@ -36,13 +60,13 @@ export default function DashboardLayout({ children }) {
   const airRiskOrders = orders.filter((o) => o.freight_mode && o.freight_mode.includes('RISK'));
 
   const navLinks = [
-    { name: 'Dashboard Home', href: '/dashboard', icon: '📊' },
-    { name: 'Production Logger', href: '/dashboard/entry', icon: '📝' },
-    { name: 'Stage-Spread Progress', href: '/dashboard/progress', icon: '📈' },
-    { name: 'Client SKU Tree', href: '/dashboard/orders', icon: '🌲' },
-    { name: 'Payroll & Rates', href: '/dashboard/wages', icon: '💰' },
-    { name: 'Delay Impact Simulator', href: '/dashboard/simulator', icon: '🎮' },
-    { name: 'Garment QC Tracer', href: '/dashboard/tracer', icon: '🔍' },
+    { name: 'Dashboard Home', href: '/dashboard' },
+    { name: 'Production Logger', href: '/dashboard/entry' },
+    { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
+    { name: 'Client SKU Tree', href: '/dashboard/orders' },
+    { name: 'Payroll & Rates', href: '/dashboard/wages' },
+    { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
+    { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
   ];
 
   return (
@@ -54,7 +78,7 @@ export default function DashboardLayout({ children }) {
         {/* Sidebar Brand Logo */}
         <div className="h-20 flex items-center justify-between px-6 border-b border-blue-800">
           <div className="flex items-center gap-2">
-            <span className="text-2xl">🏭</span>
+            <Factory className="w-7 h-7 text-blue-200" />
             <div>
               <span className="text-xl font-black tracking-widest text-white">KAIROX</span>
               <p className="text-[10px] text-blue-200 font-bold tracking-wider uppercase">Leather Intelligence</p>
@@ -62,7 +86,7 @@ export default function DashboardLayout({ children }) {
           </div>
           {/* Mobile close button */}
           <button onClick={() => setMobileMenuOpen(false)} className="md:hidden text-white p-2 focus:outline-none">
-            ✕
+            <X className="w-5 h-5" />
           </button>
         </div>
 
@@ -70,6 +94,7 @@ export default function DashboardLayout({ children }) {
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
           {navLinks.map((link) => {
             const isActive = pathname === link.href;
+            const IconComp = NAV_ICONS[link.href] || LayoutDashboard;
             return (
               <Link
                 key={link.href}
@@ -77,7 +102,7 @@ export default function DashboardLayout({ children }) {
                 onClick={() => setMobileMenuOpen(false)}
                 className={`nav-item ${isActive ? 'active' : ''}`}
               >
-                <span className="text-lg">{link.icon}</span>
+                <IconComp className="w-[18px] h-[18px]" />
                 <span>{link.name}</span>
               </Link>
             );
@@ -104,7 +129,7 @@ export default function DashboardLayout({ children }) {
           <div className="flex items-center gap-4">
             {/* Mobile hamburger menu toggle */}
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-blue-800 text-2xl p-2 hover:bg-blue-50 rounded-lg">
-              ☰
+              <Menu className="w-6 h-6" />
             </button>
             <div className="hidden sm:block">
               <h2 className="text-xl font-bold text-slate-800">Shop Floor Command</h2>
@@ -127,7 +152,7 @@ export default function DashboardLayout({ children }) {
               className="btn-secondary h-12 py-0 px-4 min-h-[48px] border border-red-200 hover:border-red-500 hover:bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm"
               title="Logout session"
             >
-              🚪 <span className="hidden md:inline">Sign Out</span>
+              <LogOut className="w-4 h-4" /> <span className="hidden md:inline">Sign Out</span>
             </button>
           </div>
         </header>
@@ -136,7 +161,7 @@ export default function DashboardLayout({ children }) {
         {airRiskOrders.length > 0 && (
           <div className="bg-gradient-to-r from-red-600 to-amber-600 text-white p-4 font-bold text-sm shadow-md animate-fade-in flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-red-700">
             <div className="flex items-center gap-3">
-              <span className="text-2xl animate-pulse">⚠️</span>
+              <TriangleAlert className="w-6 h-6 animate-pulse flex-shrink-0" />
               <div>
                 <p className="text-sm font-black tracking-wide">
                   AIR FREIGHT PENALTY WARNING DETECTED!

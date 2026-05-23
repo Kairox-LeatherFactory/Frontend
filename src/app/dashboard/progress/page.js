@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useData } from '@/context/DataContext';
+import { Lightbulb, TrendingUp } from 'lucide-react';
 
 export default function StyleStageProgress() {
   const { orders, events } = useData();
@@ -70,7 +71,7 @@ export default function StyleStageProgress() {
       {/* ─── PIECE CONSERVATION INFORMATION BANNER ─── */}
       <div className="bg-blue-50 border border-blue-200 text-blue-900 p-6 rounded-2xl shadow-sm space-y-3">
         <div className="flex items-center gap-2">
-          <span className="text-xl">💡</span>
+          <Lightbulb className="w-5 h-5 text-blue-600 flex-shrink-0" />
           <h4 className="font-extrabold text-blue-950 uppercase tracking-wider text-xs sm:text-sm">
             Shop Floor Quantities &amp; Discrepancy Signal Logic
           </h4>
@@ -104,8 +105,8 @@ export default function StyleStageProgress() {
 
       {/* ─── FLOW GRAPH & STAGE SPREAD TABLE ─── */}
       <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-6">
-        <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4">
-          📈 Operations Stage Spread Ledger
+        <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
+          <TrendingUp className="w-5 h-5 text-blue-600" /> Operations Stage Spread Ledger
         </h3>
 
         <div className="overflow-x-auto">

@@ -4,6 +4,18 @@ import { useData } from '@/context/DataContext';
 import MetricCard from '@/components/MetricCard';
 import OrderProgressBar from '@/components/OrderProgressBar';
 import Link from 'next/link';
+import {
+  Plus,
+  ClipboardList,
+  Clock,
+  Plane,
+  AlertCircle,
+  Package,
+  Settings,
+  BarChart3,
+  Zap,
+  FilePen,
+} from 'lucide-react';
 
 export default function DashboardHome() {
   const { user } = useAuth();
@@ -39,7 +51,7 @@ export default function DashboardHome() {
           <p className="text-slate-500 font-medium">Real-time status of shop floor stages, air freight triggers, and operator metrics.</p>
         </div>
         <Link href="/dashboard/entry" className="btn-primary flex items-center gap-2">
-          ➕ Log Shop Floor Event
+          <Plus className="w-4 h-4" /> Log Shop Floor Event
         </Link>
       </div>
 
@@ -48,7 +60,7 @@ export default function DashboardHome() {
         <MetricCard
           title="Active Client Orders"
           value={totalOrders}
-          icon="📋"
+          icon={<ClipboardList className="w-6 h-6 text-blue-600" />}
           trend={`${averageProgress}% avg progress`}
           description="Orders actively tracked in system"
           trendColor="text-blue-600"
@@ -56,7 +68,7 @@ export default function DashboardHome() {
         <MetricCard
           title="Delayed Production Runs"
           value={delayedOrders}
-          icon="⏳"
+          icon={<Clock className="w-6 h-6 text-amber-600" />}
           trend={delayedOrders > 0 ? `${delayedOrders} runs lagging` : 'Perfect Timing'}
           description="Delayed past internal sea-cutoff"
           trendColor={delayedOrders > 0 ? 'text-amber-600' : 'text-green-600'}
@@ -64,8 +76,8 @@ export default function DashboardHome() {
         <MetricCard
           title="Air Freight Risk Alerts"
           value={airRiskOrders}
-          icon="✈️"
-          trend={airRiskOrders > 0 ? '🚨 HIGH COST RISK' : 'Safe by Sea'}
+          icon={<Plane className="w-6 h-6 text-red-500" />}
+          trend={airRiskOrders > 0 ? <span className="flex items-center gap-1"><AlertCircle className="w-3 h-3" /> HIGH COST RISK</span> : 'Safe by Sea'}
           description="Over 2-day delay past deadline"
           trendColor={airRiskOrders > 0 ? 'text-red-600' : 'text-green-600'}
         />
@@ -78,7 +90,7 @@ export default function DashboardHome() {
         <div className="lg:col-span-2 space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-              📦 Order Batch Statuses
+              <Package className="w-5 h-5 text-blue-600" /> Order Batch Statuses
             </h2>
             <span className="text-xs font-bold text-blue-600 hover:underline">
               <Link href="/dashboard/orders">View SKU Tree →</Link>
@@ -134,16 +146,16 @@ export default function DashboardHome() {
                     <div className="text-left md:text-right">
                       <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">Active Stage</span>
                       <p className="text-sm font-extrabold text-blue-700 mt-1 flex items-center gap-1.5 justify-start md:justify-end">
-                        ⚙️ {order.status}
+                        <Settings className="w-3.5 h-3.5" /> {order.status}
                       </p>
                     </div>
 
                     <div className="mt-4 md:mt-0">
                       <Link
                         href={`/dashboard/progress?order=${order.id}`}
-                        className="w-full text-center block btn-secondary h-11 py-2 px-4 text-xs font-bold rounded-lg"
+                        className="w-full text-center block btn-secondary h-11 py-2 px-4 text-xs font-bold rounded-lg flex items-center justify-center gap-1.5"
                       >
-                        📊 View Flow Card
+                        <BarChart3 className="w-3.5 h-3.5" /> View Flow Card
                       </Link>
                     </div>
                   </div>
@@ -158,7 +170,7 @@ export default function DashboardHome() {
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-              ⚡ Shop Floor Stream
+              <Zap className="w-5 h-5 text-blue-600" /> Shop Floor Stream
             </h2>
             <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black uppercase animate-pulse">
               Live
@@ -197,9 +209,9 @@ export default function DashboardHome() {
             <div className="pt-4 border-t border-slate-100">
               <Link
                 href="/dashboard/entry"
-                className="w-full text-center block btn-primary h-12 py-3 text-sm font-bold rounded-xl"
+                className="w-full text-center block btn-primary h-12 py-3 text-sm font-bold rounded-xl flex items-center justify-center gap-2"
               >
-                📝 Log New Event
+                <FilePen className="w-4 h-4" /> Log New Event
               </Link>
             </div>
 

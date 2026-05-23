@@ -1,4 +1,5 @@
 'use client';
+import { Check, AlertTriangle, Settings } from 'lucide-react';
 
 export default function TimelineItem({ stage, operator, status, note, time, isLast }) {
   const isPass = status === 'PASS';
@@ -6,9 +7,9 @@ export default function TimelineItem({ stage, operator, status, note, time, isLa
 
   let statusBadge = <span className="badge badge-info">{status}</span>;
   if (isPass) {
-    statusBadge = <span className="badge badge-success">✓ PASS</span>;
+    statusBadge = <span className="badge badge-success flex items-center gap-1"><Check className="w-3 h-3" /> PASS</span>;
   } else if (isRework) {
-    statusBadge = <span className="badge badge-danger">⚠ REWORK</span>;
+    statusBadge = <span className="badge badge-danger flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> REWORK</span>;
   }
 
   return (
@@ -21,7 +22,7 @@ export default function TimelineItem({ stage, operator, status, note, time, isLa
           isRework ? 'bg-red-50 border-red-200 text-red-600' : 
           'bg-blue-50 border-blue-200 text-blue-600'
         }`}>
-          {isPass ? '✓' : isRework ? '⚠' : '⚙'}
+          {isPass ? <Check className="w-4 h-4" /> : isRework ? <AlertTriangle className="w-4 h-4" /> : <Settings className="w-4 h-4" />}
         </div>
         {!isLast && <div className="w-0.5 flex-1 bg-slate-200 my-2" />}
       </div>

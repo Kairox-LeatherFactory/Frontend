@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
+import { Lock, CheckCircle2, XCircle, Rocket } from 'lucide-react';
 
 export default function ProductionLogEntry() {
   const { user, ROLE_OPERATIONS } = useAuth();
@@ -74,7 +75,7 @@ export default function ProductionLogEntry() {
     return (
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pt-12 text-center">
         <div className="card p-8 bg-white border border-red-100 shadow-xl space-y-4">
-          <div className="text-6xl">🔒</div>
+          <Lock className="w-14 h-14 text-red-400 mx-auto" />
           <h1 className="text-2xl font-black text-slate-800">Access Restricted</h1>
           <p className="text-slate-500 font-medium">
             Your active persona (<strong className="text-slate-700">Auditor / Viewer</strong>) does not have write access to the shop floor ledger.
@@ -99,7 +100,7 @@ export default function ProductionLogEntry() {
       {/* ─── ALERT BANNERS ─── */}
       {successMsg && (
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-start gap-2.5">
-          <span className="text-lg">✅</span>
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-extrabold">Shop Floor Transaction Confirmed</p>
             <p className="text-xs text-emerald-600 mt-0.5">{successMsg}</p>
@@ -109,7 +110,7 @@ export default function ProductionLogEntry() {
 
       {errorMsg && (
         <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-start gap-2.5">
-          <span className="text-lg">❌</span>
+          <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-extrabold">Operation Log Refused</p>
             <p className="text-xs text-red-600 mt-0.5">{errorMsg}</p>
@@ -170,7 +171,7 @@ export default function ProductionLogEntry() {
               >
                 {allowedOperations.map((op) => (
                   <option key={op} value={op}>
-                    ⚙️ {op}
+                    {op}
                   </option>
                 ))}
               </select>
@@ -284,9 +285,9 @@ export default function ProductionLogEntry() {
             </button>
             <button
               type="submit"
-              className="btn-primary h-14 min-h-[48px] font-black rounded-xl text-base px-8 bg-gradient-brand shadow-lg"
+              className="btn-primary h-14 min-h-[48px] font-black rounded-xl text-base px-8 bg-gradient-brand shadow-lg flex items-center justify-center gap-2"
             >
-              🚀 Submit Production Event
+              <Rocket className="w-5 h-5" /> Submit Production Event
             </button>
           </div>
 
