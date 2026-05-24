@@ -1,15 +1,51 @@
 'use client';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { Building2, Scissors, PenTool, ScanSearch, Factory } from 'lucide-react';
+import { apiLogin } from '@/lib/api';
+import { Building2, Scissors, PenTool, ScanSearch, Factory, X, LogIn, Loader2 } from 'lucide-react';
 
 export default function Login() {
   const { login, ROLES, ROLE_OPERATIONS } = useAuth();
   const router = useRouter();
 
+  // Login form modal state (for direct_manager)
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+
   const handleSelectRole = (roleKey) => {
+    if (roleKey === 'direct_manager') {
+      // Show login form for Direct Manager
+      setShowLoginModal(true);
+      setLoginError('');
+      return;
+    }
+    // Other roles: direct local login (no backend auth)
     login(roleKey);
     router.push('/dashboard');
+  };
+
+  const handleBackendLogin = async (e) => {
+    e.preventDefault();
+    if (!username.trim() || !password.trim()) return;
+
+    setLoginLoading(true);
+    setLoginError('');
+
+    try {
+      const data = await apiLogin(username.trim(), password.trim());
+      // Store token and role
+      login(data.role || 'direct_manager', data.access_token);
+      setShowLoginModal(false);
+      router.push('/dashboard');
+    } catch (err) {
+      setLoginError('Invalid credentials. Please try again.');
+    } finally {
+      setLoginLoading(false);
+    }
   };
 
   const roleIcons = {
@@ -105,6 +141,108 @@ export default function Login() {
           Kairox Traceability Platform v1.2 • English Only Operations • Touch Optimized
         </div>
       </div>
+
+      {/* ─── DIRECT MANAGER LOGIN MODAL ─── */}
+      {showLoginModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-sm w-full p-6 sm:p-8 space-y-6 mx-4 relative animate-scale-up">
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+              <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
+                <LogIn className="w-5 h-5 text-blue-600" />
+                Manager Login
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowLoginModal(false);
+                  setUsername('');
+                  setPassword('');
+                  setLoginError('');
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 font-medium">
+              Enter your Direct Manager credentials to access the platform.
+            </p>
+
+            {/* Error Message */}
+            {loginError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
+                {loginError}
+              </div>
+            )}
+
+            {/* Login Form */}
+            <form onSubmit={handleBackendLogin} className="space-y-4 text-left">
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">
+                  Username <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Enter username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  disabled={loginLoading}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-800 disabled:opacity-50"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">
+                  Password <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={loginLoading}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-800 disabled:opacity-50"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowLoginModal(false);
+                    setUsername('');
+                    setPassword('');
+                    setLoginError('');
+                  }}
+                  disabled={loginLoading}
+                  className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loginLoading || !username.trim() || !password.trim()}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {loginLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Signing In...
+                    </>
+                  ) : (
+                    'Sign In'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

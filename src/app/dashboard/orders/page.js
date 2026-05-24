@@ -2,20 +2,22 @@
 import { useState, useEffect } from 'react';
 import { useData } from '@/context/DataContext';
 import { useAuth } from '@/context/AuthContext';
-import { TreePine, Building2, ClipboardList, Shirt, Plus, X } from 'lucide-react';
+import { TreePine, Building2, ClipboardList, Shirt, Plus, X, Loader2 } from 'lucide-react';
 
 export default function OrdersTreeBrowser() {
-  const { orders, clients = [] } = useData();
+  const { orders, clients = [], createClient, apiLoading } = useData();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('tree'); // 'tree' or 'list'
 
-  // Local state for dynamically created clients (UI-only)
+  // Local state for dynamically created clients (fallback if no API)
   const [localClients, setLocalClients] = useState([]);
 
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [newCompanyCode, setNewCompanyCode] = useState('');
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   // Safeguard: if user is not direct_manager, force activeTab to 'tree'
   useEffect(() => {
@@ -90,7 +92,11 @@ export default function OrdersTreeBrowser() {
         )}
       </div>
 
-      {activeTab === 'tree' ? (
+      {apiLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+        </div>
+      ) : activeTab === 'tree' ? (
         /* ─── TREE CARD WRAPPER ─── */
         <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-6">
           <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
@@ -234,7 +240,10 @@ export default function OrdersTreeBrowser() {
               <Building2 className="w-5 h-5 text-blue-600" /> Active Client Directory
             </h3>
             <button
-              onClick={() => setShowCreateModal(true)}
+              onClick={() => {
+                setShowCreateModal(true);
+                setCreateError('');
+              }}
               className="py-2 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95 min-h-[40px]"
             >
               <Plus className="w-4 h-4" />
@@ -302,30 +311,52 @@ export default function OrdersTreeBrowser() {
                   setShowCreateModal(false);
                   setNewClientName('');
                   setNewCompanyCode('');
+                  setCreateError('');
                 }}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                disabled={isCreating}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-50"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
+            {createError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
+                {createError}
+              </div>
+            )}
+
             {/* Modal Form */}
             <form 
-              onSubmit={(e) => {
+              onSubmit={async (e) => {
                 e.preventDefault();
                 if (!newClientName.trim() || !newCompanyCode.trim()) return;
                 
-                const newClient = {
-                  id: 'cli_' + Math.random().toString(36).substring(2, 10),
-                  name: newClientName.trim(),
-                  key: newCompanyCode.trim().toUpperCase(),
-                  country: '—'
-                };
-                
-                setLocalClients(prev => [...prev, newClient]);
-                setShowCreateModal(false);
-                setNewClientName('');
-                setNewCompanyCode('');
+                setIsCreating(true);
+                setCreateError('');
+
+                try {
+                  if (createClient) {
+                    await createClient(newClientName.trim(), newCompanyCode.trim());
+                  } else {
+                    // Fallback to local state if not logged in via API
+                    const newClient = {
+                      id: 'cli_' + Math.random().toString(36).substring(2, 10),
+                      name: newClientName.trim(),
+                      key: newCompanyCode.trim().toUpperCase(),
+                      country: '—'
+                    };
+                    setLocalClients(prev => [...prev, newClient]);
+                  }
+                  
+                  setShowCreateModal(false);
+                  setNewClientName('');
+                  setNewCompanyCode('');
+                } catch (err) {
+                  setCreateError('Failed to create client. Please try again.');
+                } finally {
+                  setIsCreating(false);
+                }
               }}
               className="space-y-4 text-left"
             >
@@ -339,7 +370,8 @@ export default function OrdersTreeBrowser() {
                   placeholder="e.g. RICANO LEATHER Co."
                   value={newClientName}
                   onChange={(e) => setNewClientName(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-800"
+                  disabled={isCreating}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-800 disabled:opacity-50"
                 />
               </div>
 
@@ -353,7 +385,8 @@ export default function OrdersTreeBrowser() {
                   placeholder="e.g. RICANO LEATHER"
                   value={newCompanyCode}
                   onChange={(e) => setNewCompanyCode(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-800"
+                  disabled={isCreating}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-800 disabled:opacity-50"
                 />
               </div>
 
@@ -365,17 +398,26 @@ export default function OrdersTreeBrowser() {
                     setShowCreateModal(false);
                     setNewClientName('');
                     setNewCompanyCode('');
+                    setCreateError('');
                   }}
-                  className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center"
+                  disabled={isCreating}
+                  className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={!newClientName.trim() || !newCompanyCode.trim()}
-                  className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isCreating || !newClientName.trim() || !newCompanyCode.trim()}
+                  className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Create Client
+                  {isCreating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    'Create Client'
+                  )}
                 </button>
               </div>
             </form>

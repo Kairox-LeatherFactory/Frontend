@@ -20,12 +20,22 @@ export const ROLE_OPERATIONS = {
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // null = logged out
+  const [token, setToken] = useState(null); // JWT access token from backend
 
-  const login  = (role) => setUser(role);
-  const logout = () => setUser(null);
+  const login  = (role, accessToken = null) => {
+    setUser(role);
+    if (accessToken) {
+      setToken(accessToken);
+    }
+  };
+
+  const logout = () => {
+    setUser(null);
+    setToken(null);
+  };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, ROLES, ROLE_OPERATIONS }}>
+    <AuthContext.Provider value={{ user, token, login, logout, ROLES, ROLE_OPERATIONS }}>
       {children}
     </AuthContext.Provider>
   );
