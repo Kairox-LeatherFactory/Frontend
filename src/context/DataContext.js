@@ -7,6 +7,7 @@ import {
   RATES,
   TRACE_CARDS,
   WAGE_RUNS,
+  CLIENTS,
 } from '@/hooks/useMockData';
 
 const DataContext = createContext(null);
@@ -202,6 +203,7 @@ export function DataProvider({ children }) {
         orders,
         workers: WORKERS,
         rates: RATES,
+        clients: CLIENTS,
         wageRuns,
         traceCards,
         addEvent,

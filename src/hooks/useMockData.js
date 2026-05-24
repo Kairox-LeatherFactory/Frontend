@@ -1,6 +1,13 @@
 // Central mock data store — loaded dynamically from the new mock_data.json database
 import mockData from './mock_data.json';
 
+export const CLIENTS = mockData.clients.map((c) => ({
+  id: c.id,
+  key: c.key,
+  name: c.name,
+  country: c.country
+}));
+
 export const STAGES = [
   { id: 1,  name: 'Client Order Initiation',         icon: '📋', risks: ['Incomplete specs', 'Compliance issues'],              output: 'Approved Client Brief' },
   { id: 2,  name: 'Internal Management Review',       icon: '🏢', risks: ['Overcommitting deadlines', 'Underestimating cost'],   output: 'MD-Approved Budget Plan' },
