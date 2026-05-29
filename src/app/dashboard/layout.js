@@ -12,7 +12,7 @@ import {
   TreePine,
   Wallet,
   Gamepad2,
-  ScanSearch,
+  ScanSearch, 
   X,
   Menu,
   LogOut,

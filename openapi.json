@@ -1,0 +1,1505 @@
+﻿{
+    "openapi":  "3.1.0",
+    "info":  {
+                 "title":  "Leather Factory Intelligence Platform",
+                 "description":  "Real-time leather manufacturing intelligence \u0026 traceability backend",
+                 "version":  "1.0.0"
+             },
+    "paths":  {
+                  "/api/v1/auth/login":  {
+                                             "post":  {
+                                                          "tags":  [
+                                                                       "Authentication"
+                                                                   ],
+                                                          "summary":  "Login",
+                                                          "operationId":  "login_api_v1_auth_login_post",
+                                                          "requestBody":  {
+                                                                              "content":  {
+                                                                                              "application/json":  "@{schema=}"
+                                                                                          },
+                                                                              "required":  true
+                                                                          },
+                                                          "responses":  {
+                                                                            "200":  {
+                                                                                        "description":  "Successful Response",
+                                                                                        "content":  "@{application/json=}"
+                                                                                    },
+                                                                            "422":  {
+                                                                                        "description":  "Validation Error",
+                                                                                        "content":  "@{application/json=}"
+                                                                                    }
+                                                                        }
+                                                      }
+                                         },
+                  "/api/v1/auth/me":  {
+                                          "get":  {
+                                                      "tags":  [
+                                                                   "Authentication"
+                                                               ],
+                                                      "summary":  "Me",
+                                                      "operationId":  "me_api_v1_auth_me_get",
+                                                      "responses":  {
+                                                                        "200":  {
+                                                                                    "description":  "Successful Response",
+                                                                                    "content":  "@{application/json=}"
+                                                                                }
+                                                                    },
+                                                      "security":  [
+                                                                       {
+                                                                           "OAuth2PasswordBearer":  ""
+                                                                       }
+                                                                   ]
+                                                  }
+                                      },
+                  "/api/v1/auth/change-password":  {
+                                                       "post":  {
+                                                                    "tags":  [
+                                                                                 "Authentication"
+                                                                             ],
+                                                                    "summary":  "Change Password",
+                                                                    "operationId":  "change_password_api_v1_auth_change_password_post",
+                                                                    "requestBody":  {
+                                                                                        "content":  {
+                                                                                                        "application/json":  "@{schema=}"
+                                                                                                    },
+                                                                                        "required":  true
+                                                                                    },
+                                                                    "responses":  {
+                                                                                      "204":  {
+                                                                                                  "description":  "Successful Response"
+                                                                                              },
+                                                                                      "422":  {
+                                                                                                  "description":  "Validation Error",
+                                                                                                  "content":  "@{application/json=}"
+                                                                                              }
+                                                                                  },
+                                                                    "security":  [
+                                                                                     {
+                                                                                         "OAuth2PasswordBearer":  ""
+                                                                                     }
+                                                                                 ]
+                                                                }
+                                                   },
+                  "/api/v1/users":  {
+                                        "get":  {
+                                                    "tags":  [
+                                                                 "Users"
+                                                             ],
+                                                    "summary":  "List Users",
+                                                    "operationId":  "list_users_api_v1_users_get",
+                                                    "security":  [
+                                                                     {
+                                                                         "OAuth2PasswordBearer":  ""
+                                                                     }
+                                                                 ],
+                                                    "parameters":  [
+                                                                       {
+                                                                           "name":  "active_only",
+                                                                           "in":  "query",
+                                                                           "required":  false,
+                                                                           "schema":  "@{type=boolean; default=True; title=Active Only}"
+                                                                       }
+                                                                   ],
+                                                    "responses":  {
+                                                                      "200":  {
+                                                                                  "description":  "Successful Response",
+                                                                                  "content":  "@{application/json=}"
+                                                                              },
+                                                                      "422":  {
+                                                                                  "description":  "Validation Error",
+                                                                                  "content":  "@{application/json=}"
+                                                                              }
+                                                                  }
+                                                },
+                                        "post":  {
+                                                     "tags":  [
+                                                                  "Users"
+                                                              ],
+                                                     "summary":  "Create User",
+                                                     "operationId":  "create_user_api_v1_users_post",
+                                                     "security":  [
+                                                                      {
+                                                                          "OAuth2PasswordBearer":  ""
+                                                                      }
+                                                                  ],
+                                                     "requestBody":  {
+                                                                         "required":  true,
+                                                                         "content":  {
+                                                                                         "application/json":  "@{schema=}"
+                                                                                     }
+                                                                     },
+                                                     "responses":  {
+                                                                       "201":  {
+                                                                                   "description":  "Successful Response",
+                                                                                   "content":  "@{application/json=}"
+                                                                               },
+                                                                       "422":  {
+                                                                                   "description":  "Validation Error",
+                                                                                   "content":  "@{application/json=}"
+                                                                               }
+                                                                   }
+                                                 }
+                                    },
+                  "/api/v1/users/clients":  {
+                                                "post":  {
+                                                             "tags":  [
+                                                                          "Users"
+                                                                      ],
+                                                             "summary":  "Create Client User",
+                                                             "description":  "Direct manager provisions a client\u0027s login so they can track their orders.",
+                                                             "operationId":  "create_client_user_api_v1_users_clients_post",
+                                                             "requestBody":  {
+                                                                                 "content":  {
+                                                                                                 "application/json":  "@{schema=}"
+                                                                                             },
+                                                                                 "required":  true
+                                                                             },
+                                                             "responses":  {
+                                                                               "201":  {
+                                                                                           "description":  "Successful Response",
+                                                                                           "content":  "@{application/json=}"
+                                                                                       },
+                                                                               "422":  {
+                                                                                           "description":  "Validation Error",
+                                                                                           "content":  "@{application/json=}"
+                                                                                       }
+                                                                           },
+                                                             "security":  [
+                                                                              {
+                                                                                  "OAuth2PasswordBearer":  ""
+                                                                              }
+                                                                          ]
+                                                         }
+                                            },
+                  "/api/v1/clients":  {
+                                          "get":  {
+                                                      "tags":  [
+                                                                   "Clients"
+                                                               ],
+                                                      "summary":  "List Clients",
+                                                      "operationId":  "list_clients_api_v1_clients_get",
+                                                      "responses":  {
+                                                                        "200":  {
+                                                                                    "description":  "Successful Response",
+                                                                                    "content":  "@{application/json=}"
+                                                                                }
+                                                                    },
+                                                      "security":  [
+                                                                       {
+                                                                           "OAuth2PasswordBearer":  ""
+                                                                       }
+                                                                   ]
+                                                  },
+                                          "post":  {
+                                                       "tags":  [
+                                                                    "Clients"
+                                                                ],
+                                                       "summary":  "Create Client",
+                                                       "operationId":  "create_client_api_v1_clients_post",
+                                                       "requestBody":  {
+                                                                           "content":  {
+                                                                                           "application/json":  "@{schema=}"
+                                                                                       },
+                                                                           "required":  true
+                                                                       },
+                                                       "responses":  {
+                                                                         "201":  {
+                                                                                     "description":  "Successful Response",
+                                                                                     "content":  "@{application/json=}"
+                                                                                 },
+                                                                         "422":  {
+                                                                                     "description":  "Validation Error",
+                                                                                     "content":  "@{application/json=}"
+                                                                                 }
+                                                                     },
+                                                       "security":  [
+                                                                        {
+                                                                            "OAuth2PasswordBearer":  ""
+                                                                        }
+                                                                    ]
+                                                   }
+                                      },
+                  "/api/v1/clients/{client_id}/orders":  {
+                                                             "get":  {
+                                                                         "tags":  [
+                                                                                      "Clients"
+                                                                                  ],
+                                                                         "summary":  "Client Orders",
+                                                                         "operationId":  "client_orders_api_v1_clients__client_id__orders_get",
+                                                                         "security":  [
+                                                                                          {
+                                                                                              "OAuth2PasswordBearer":  ""
+                                                                                          }
+                                                                                      ],
+                                                                         "parameters":  [
+                                                                                            {
+                                                                                                "name":  "client_id",
+                                                                                                "in":  "path",
+                                                                                                "required":  true,
+                                                                                                "schema":  "@{type=string; format=uuid; title=Client Id}"
+                                                                                            }
+                                                                                        ],
+                                                                         "responses":  {
+                                                                                           "200":  {
+                                                                                                       "description":  "Successful Response",
+                                                                                                       "content":  "@{application/json=}"
+                                                                                                   },
+                                                                                           "422":  {
+                                                                                                       "description":  "Validation Error",
+                                                                                                       "content":  "@{application/json=}"
+                                                                                                   }
+                                                                                       }
+                                                                     }
+                                                         },
+                  "/api/v1/employees":  {
+                                            "get":  {
+                                                        "tags":  [
+                                                                     "Employees"
+                                                                 ],
+                                                        "summary":  "List Employees",
+                                                        "operationId":  "list_employees_api_v1_employees_get",
+                                                        "security":  [
+                                                                         {
+                                                                             "OAuth2PasswordBearer":  ""
+                                                                         }
+                                                                     ],
+                                                        "parameters":  [
+                                                                           {
+                                                                               "name":  "active_only",
+                                                                               "in":  "query",
+                                                                               "required":  false,
+                                                                               "schema":  "@{type=boolean; default=True; title=Active Only}"
+                                                                           }
+                                                                       ],
+                                                        "responses":  {
+                                                                          "200":  {
+                                                                                      "description":  "Successful Response",
+                                                                                      "content":  "@{application/json=}"
+                                                                                  },
+                                                                          "422":  {
+                                                                                      "description":  "Validation Error",
+                                                                                      "content":  "@{application/json=}"
+                                                                                  }
+                                                                      }
+                                                    },
+                                            "post":  {
+                                                         "tags":  [
+                                                                      "Employees"
+                                                                  ],
+                                                         "summary":  "Create Employee",
+                                                         "operationId":  "create_employee_api_v1_employees_post",
+                                                         "security":  [
+                                                                          {
+                                                                              "OAuth2PasswordBearer":  ""
+                                                                          }
+                                                                      ],
+                                                         "requestBody":  {
+                                                                             "required":  true,
+                                                                             "content":  {
+                                                                                             "application/json":  "@{schema=}"
+                                                                                         }
+                                                                         },
+                                                         "responses":  {
+                                                                           "201":  {
+                                                                                       "description":  "Successful Response",
+                                                                                       "content":  "@{application/json=}"
+                                                                                   },
+                                                                           "422":  {
+                                                                                       "description":  "Validation Error",
+                                                                                       "content":  "@{application/json=}"
+                                                                                   }
+                                                                       }
+                                                     }
+                                        },
+                  "/api/v1/production/operations":  {
+                                                        "get":  {
+                                                                    "tags":  [
+                                                                                 "Production"
+                                                                             ],
+                                                                    "summary":  "List Operations",
+                                                                    "operationId":  "list_operations_api_v1_production_operations_get",
+                                                                    "responses":  {
+                                                                                      "200":  {
+                                                                                                  "description":  "Successful Response",
+                                                                                                  "content":  "@{application/json=}"
+                                                                                              }
+                                                                                  },
+                                                                    "security":  [
+                                                                                     {
+                                                                                         "OAuth2PasswordBearer":  ""
+                                                                                     }
+                                                                                 ]
+                                                                }
+                                                    },
+                  "/api/v1/production/events":  {
+                                                    "post":  {
+                                                                 "tags":  [
+                                                                              "Production"
+                                                                          ],
+                                                                 "summary":  "Log Event",
+                                                                 "operationId":  "log_event_api_v1_production_events_post",
+                                                                 "security":  [
+                                                                                  {
+                                                                                      "OAuth2PasswordBearer":  ""
+                                                                                  }
+                                                                              ],
+                                                                 "requestBody":  {
+                                                                                     "required":  true,
+                                                                                     "content":  {
+                                                                                                     "application/json":  "@{schema=}"
+                                                                                                 }
+                                                                                 },
+                                                                 "responses":  {
+                                                                                   "201":  {
+                                                                                               "description":  "Successful Response",
+                                                                                               "content":  "@{application/json=}"
+                                                                                           },
+                                                                                   "422":  {
+                                                                                               "description":  "Validation Error",
+                                                                                               "content":  "@{application/json=}"
+                                                                                           }
+                                                                               }
+                                                             },
+                                                    "get":  {
+                                                                "tags":  [
+                                                                             "Production"
+                                                                         ],
+                                                                "summary":  "List Events",
+                                                                "operationId":  "list_events_api_v1_production_events_get",
+                                                                "security":  [
+                                                                                 {
+                                                                                     "OAuth2PasswordBearer":  ""
+                                                                                 }
+                                                                             ],
+                                                                "parameters":  [
+                                                                                   {
+                                                                                       "name":  "sku_id",
+                                                                                       "in":  "query",
+                                                                                       "required":  false,
+                                                                                       "schema":  "@{anyOf=System.Object[]; title=Sku Id}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "employee_id",
+                                                                                       "in":  "query",
+                                                                                       "required":  false,
+                                                                                       "schema":  "@{anyOf=System.Object[]; title=Employee Id}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "start",
+                                                                                       "in":  "query",
+                                                                                       "required":  false,
+                                                                                       "schema":  "@{anyOf=System.Object[]; title=Start}"
+                                                                                   },
+                                                                                   {
+                                                                                       "name":  "end",
+                                                                                       "in":  "query",
+                                                                                       "required":  false,
+                                                                                       "schema":  "@{anyOf=System.Object[]; title=End}"
+                                                                                   }
+                                                                               ],
+                                                                "responses":  {
+                                                                                  "200":  {
+                                                                                              "description":  "Successful Response",
+                                                                                              "content":  "@{application/json=}"
+                                                                                          },
+                                                                                  "422":  {
+                                                                                              "description":  "Validation Error",
+                                                                                              "content":  "@{application/json=}"
+                                                                                          }
+                                                                              }
+                                                            }
+                                                },
+                  "/api/v1/production/styles/{style_id}/progress":  {
+                                                                        "get":  {
+                                                                                    "tags":  [
+                                                                                                 "Production"
+                                                                                             ],
+                                                                                    "summary":  "Style Progress",
+                                                                                    "operationId":  "style_progress_api_v1_production_styles__style_id__progress_get",
+                                                                                    "security":  [
+                                                                                                     {
+                                                                                                         "OAuth2PasswordBearer":  ""
+                                                                                                     }
+                                                                                                 ],
+                                                                                    "parameters":  [
+                                                                                                       {
+                                                                                                           "name":  "style_id",
+                                                                                                           "in":  "path",
+                                                                                                           "required":  true,
+                                                                                                           "schema":  "@{type=string; format=uuid; title=Style Id}"
+                                                                                                       }
+                                                                                                   ],
+                                                                                    "responses":  {
+                                                                                                      "200":  {
+                                                                                                                  "description":  "Successful Response",
+                                                                                                                  "content":  "@{application/json=}"
+                                                                                                              },
+                                                                                                      "422":  {
+                                                                                                                  "description":  "Validation Error",
+                                                                                                                  "content":  "@{application/json=}"
+                                                                                                              }
+                                                                                                  }
+                                                                                }
+                                                                    },
+                  "/api/v1/wages/rates":  {
+                                              "post":  {
+                                                           "tags":  [
+                                                                        "Wages"
+                                                                    ],
+                                                           "summary":  "Set Rate",
+                                                           "operationId":  "set_rate_api_v1_wages_rates_post",
+                                                           "requestBody":  {
+                                                                               "content":  {
+                                                                                               "application/json":  "@{schema=}"
+                                                                                           },
+                                                                               "required":  true
+                                                                           },
+                                                           "responses":  {
+                                                                             "200":  {
+                                                                                         "description":  "Successful Response",
+                                                                                         "content":  "@{application/json=}"
+                                                                                     },
+                                                                             "422":  {
+                                                                                         "description":  "Validation Error",
+                                                                                         "content":  "@{application/json=}"
+                                                                                     }
+                                                                         },
+                                                           "security":  [
+                                                                            {
+                                                                                "OAuth2PasswordBearer":  ""
+                                                                            }
+                                                                        ]
+                                                       }
+                                          },
+                  "/api/v1/wages/runs":  {
+                                             "post":  {
+                                                          "tags":  [
+                                                                       "Wages"
+                                                                   ],
+                                                          "summary":  "Compute Run",
+                                                          "operationId":  "compute_run_api_v1_wages_runs_post",
+                                                          "requestBody":  {
+                                                                              "content":  {
+                                                                                              "application/json":  "@{schema=}"
+                                                                                          },
+                                                                              "required":  true
+                                                                          },
+                                                          "responses":  {
+                                                                            "200":  {
+                                                                                        "description":  "Successful Response",
+                                                                                        "content":  "@{application/json=}"
+                                                                                    },
+                                                                            "422":  {
+                                                                                        "description":  "Validation Error",
+                                                                                        "content":  "@{application/json=}"
+                                                                                    }
+                                                                        },
+                                                          "security":  [
+                                                                           {
+                                                                               "OAuth2PasswordBearer":  ""
+                                                                           }
+                                                                       ]
+                                                      }
+                                         },
+                  "/api/v1/wages/runs/{run_id}":  {
+                                                      "get":  {
+                                                                  "tags":  [
+                                                                               "Wages"
+                                                                           ],
+                                                                  "summary":  "Get Run",
+                                                                  "operationId":  "get_run_api_v1_wages_runs__run_id__get",
+                                                                  "security":  [
+                                                                                   {
+                                                                                       "OAuth2PasswordBearer":  ""
+                                                                                   }
+                                                                               ],
+                                                                  "parameters":  [
+                                                                                     {
+                                                                                         "name":  "run_id",
+                                                                                         "in":  "path",
+                                                                                         "required":  true,
+                                                                                         "schema":  "@{type=string; format=uuid; title=Run Id}"
+                                                                                     }
+                                                                                 ],
+                                                                  "responses":  {
+                                                                                    "200":  {
+                                                                                                "description":  "Successful Response",
+                                                                                                "content":  "@{application/json=}"
+                                                                                            },
+                                                                                    "422":  {
+                                                                                                "description":  "Validation Error",
+                                                                                                "content":  "@{application/json=}"
+                                                                                            }
+                                                                                }
+                                                              }
+                                                  },
+                  "/api/v1/analytics/overview":  {
+                                                     "get":  {
+                                                                 "tags":  [
+                                                                              "Analytics"
+                                                                          ],
+                                                                 "summary":  "Overview",
+                                                                 "operationId":  "overview_api_v1_analytics_overview_get",
+                                                                 "responses":  {
+                                                                                   "200":  {
+                                                                                               "description":  "Successful Response",
+                                                                                               "content":  "@{application/json=}"
+                                                                                           }
+                                                                               },
+                                                                 "security":  [
+                                                                                  {
+                                                                                      "OAuth2PasswordBearer":  ""
+                                                                                  }
+                                                                              ]
+                                                             }
+                                                 },
+                  "/api/v1/analytics/alerts/stage-spread":  {
+                                                                "get":  {
+                                                                            "tags":  [
+                                                                                         "Analytics"
+                                                                                     ],
+                                                                            "summary":  "Stage Spread",
+                                                                            "operationId":  "stage_spread_api_v1_analytics_alerts_stage_spread_get",
+                                                                            "responses":  {
+                                                                                              "200":  {
+                                                                                                          "description":  "Successful Response",
+                                                                                                          "content":  "@{application/json=}"
+                                                                                                      }
+                                                                                          },
+                                                                            "security":  [
+                                                                                             {
+                                                                                                 "OAuth2PasswordBearer":  ""
+                                                                                             }
+                                                                                         ]
+                                                                        }
+                                                            },
+                  "/api/v1/analytics/alerts/freight-risk":  {
+                                                                "get":  {
+                                                                            "tags":  [
+                                                                                         "Analytics"
+                                                                                     ],
+                                                                            "summary":  "Freight Risk",
+                                                                            "operationId":  "freight_risk_api_v1_analytics_alerts_freight_risk_get",
+                                                                            "security":  [
+                                                                                             {
+                                                                                                 "OAuth2PasswordBearer":  ""
+                                                                                             }
+                                                                                         ],
+                                                                            "parameters":  [
+                                                                                               {
+                                                                                                   "name":  "today",
+                                                                                                   "in":  "query",
+                                                                                                   "required":  false,
+                                                                                                   "schema":  "@{anyOf=System.Object[]; title=Today}"
+                                                                                               }
+                                                                                           ],
+                                                                            "responses":  {
+                                                                                              "200":  {
+                                                                                                          "description":  "Successful Response",
+                                                                                                          "content":  "@{application/json=}"
+                                                                                                      },
+                                                                                              "422":  {
+                                                                                                          "description":  "Validation Error",
+                                                                                                          "content":  "@{application/json=}"
+                                                                                                      }
+                                                                                          }
+                                                                        }
+                                                            },
+                  "/api/v1/imports/preview":  {
+                                                  "post":  {
+                                                               "tags":  [
+                                                                            "Imports"
+                                                                        ],
+                                                               "summary":  "Preview Import",
+                                                               "description":  "Dry-run: parse the workbook and return a structured preview (no writes).",
+                                                               "operationId":  "preview_import_api_v1_imports_preview_post",
+                                                               "requestBody":  {
+                                                                                   "content":  {
+                                                                                                   "multipart/form-data":  "@{schema=}"
+                                                                                               },
+                                                                                   "required":  true
+                                                                               },
+                                                               "responses":  {
+                                                                                 "200":  {
+                                                                                             "description":  "Successful Response",
+                                                                                             "content":  "@{application/json=}"
+                                                                                         },
+                                                                                 "422":  {
+                                                                                             "description":  "Validation Error",
+                                                                                             "content":  "@{application/json=}"
+                                                                                         }
+                                                                             },
+                                                               "security":  [
+                                                                                {
+                                                                                    "OAuth2PasswordBearer":  ""
+                                                                                }
+                                                                            ]
+                                                           }
+                                              },
+                  "/api/v1/imports/commit":  {
+                                                 "post":  {
+                                                              "tags":  [
+                                                                           "Imports"
+                                                                       ],
+                                                              "summary":  "Commit Import",
+                                                              "description":  "Parse, validate, and write the workbook to the database (idempotent).",
+                                                              "operationId":  "commit_import_api_v1_imports_commit_post",
+                                                              "requestBody":  {
+                                                                                  "content":  {
+                                                                                                  "multipart/form-data":  "@{schema=}"
+                                                                                              },
+                                                                                  "required":  true
+                                                                              },
+                                                              "responses":  {
+                                                                                "200":  {
+                                                                                            "description":  "Successful Response",
+                                                                                            "content":  "@{application/json=}"
+                                                                                        },
+                                                                                "422":  {
+                                                                                            "description":  "Validation Error",
+                                                                                            "content":  "@{application/json=}"
+                                                                                        }
+                                                                            },
+                                                              "security":  [
+                                                                               {
+                                                                                   "OAuth2PasswordBearer":  ""
+                                                                               }
+                                                                           ]
+                                                          }
+                                             },
+                  "/health":  {
+                                  "get":  {
+                                              "tags":  [
+                                                           "Health"
+                                                       ],
+                                              "summary":  "Health Check",
+                                              "operationId":  "health_check_health_get",
+                                              "responses":  {
+                                                                "200":  {
+                                                                            "description":  "Successful Response",
+                                                                            "content":  "@{application/json=}"
+                                                                        }
+                                                            }
+                                          }
+                              },
+                  "/":  {
+                            "get":  {
+                                        "tags":  [
+                                                     "Root"
+                                                 ],
+                                        "summary":  "Root",
+                                        "operationId":  "root__get",
+                                        "responses":  {
+                                                          "200":  {
+                                                                      "description":  "Successful Response",
+                                                                      "content":  "@{application/json=}"
+                                                                  }
+                                                      }
+                                    }
+                        }
+              },
+    "components":  {
+                       "schemas":  {
+                                       "Body_commit_import_api_v1_imports_commit_post":  {
+                                                                                             "properties":  {
+                                                                                                                "file":  {
+                                                                                                                             "type":  "string",
+                                                                                                                             "format":  "binary",
+                                                                                                                             "title":  "File"
+                                                                                                                         }
+                                                                                                            },
+                                                                                             "type":  "object",
+                                                                                             "required":  [
+                                                                                                              "file"
+                                                                                                          ],
+                                                                                             "title":  "Body_commit_import_api_v1_imports_commit_post"
+                                                                                         },
+                                       "Body_preview_import_api_v1_imports_preview_post":  {
+                                                                                               "properties":  {
+                                                                                                                  "file":  {
+                                                                                                                               "type":  "string",
+                                                                                                                               "format":  "binary",
+                                                                                                                               "title":  "File"
+                                                                                                                           }
+                                                                                                              },
+                                                                                               "type":  "object",
+                                                                                               "required":  [
+                                                                                                                "file"
+                                                                                                            ],
+                                                                                               "title":  "Body_preview_import_api_v1_imports_preview_post"
+                                                                                           },
+                                       "ClientCreate":  {
+                                                            "properties":  {
+                                                                               "name":  {
+                                                                                            "type":  "string",
+                                                                                            "title":  "Name"
+                                                                                        },
+                                                                               "country":  {
+                                                                                               "anyOf":  " ",
+                                                                                               "title":  "Country"
+                                                                                           }
+                                                                           },
+                                                            "type":  "object",
+                                                            "required":  [
+                                                                             "name"
+                                                                         ],
+                                                            "title":  "ClientCreate"
+                                                        },
+                                       "ClientRead":  {
+                                                          "properties":  {
+                                                                             "id":  {
+                                                                                        "type":  "string",
+                                                                                        "format":  "uuid",
+                                                                                        "title":  "Id"
+                                                                                    },
+                                                                             "name":  {
+                                                                                          "type":  "string",
+                                                                                          "title":  "Name"
+                                                                                      },
+                                                                             "country":  {
+                                                                                             "anyOf":  " ",
+                                                                                             "title":  "Country"
+                                                                                         }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "id",
+                                                                           "name",
+                                                                           "country"
+                                                                       ],
+                                                          "title":  "ClientRead"
+                                                      },
+                                       "ClientUserCreate":  {
+                                                                "properties":  {
+                                                                                   "name":  {
+                                                                                                "type":  "string",
+                                                                                                "title":  "Name"
+                                                                                            },
+                                                                                   "phone":  {
+                                                                                                 "type":  "string",
+                                                                                                 "title":  "Phone"
+                                                                                             },
+                                                                                   "email":  {
+                                                                                                 "anyOf":  " ",
+                                                                                                 "title":  "Email"
+                                                                                             },
+                                                                                   "client_id":  {
+                                                                                                     "type":  "string",
+                                                                                                     "format":  "uuid",
+                                                                                                     "title":  "Client Id"
+                                                                                                 },
+                                                                                   "password":  {
+                                                                                                    "anyOf":  " ",
+                                                                                                    "title":  "Password"
+                                                                                                }
+                                                                               },
+                                                                "type":  "object",
+                                                                "required":  [
+                                                                                 "name",
+                                                                                 "phone",
+                                                                                 "client_id"
+                                                                             ],
+                                                                "title":  "ClientUserCreate",
+                                                                "description":  "Direct manager provisions a CLIENT login bound to an existing client."
+                                                            },
+                                       "EmployeeCreate":  {
+                                                              "properties":  {
+                                                                                 "name":  {
+                                                                                              "type":  "string",
+                                                                                              "title":  "Name"
+                                                                                          },
+                                                                                 "designation":  {
+                                                                                                     "anyOf":  " ",
+                                                                                                     "title":  "Designation"
+                                                                                                 },
+                                                                                 "wage_type":  {
+                                                                                                   "$ref":  "#/components/schemas/WageType",
+                                                                                                   "default":  "piece_rate"
+                                                                                               },
+                                                                                 "monthly_salary":  {
+                                                                                                        "anyOf":  " ",
+                                                                                                        "title":  "Monthly Salary"
+                                                                                                    },
+                                                                                 "phone":  {
+                                                                                               "anyOf":  " ",
+                                                                                               "title":  "Phone"
+                                                                                           },
+                                                                                 "email":  {
+                                                                                               "anyOf":  " ",
+                                                                                               "title":  "Email"
+                                                                                           }
+                                                                             },
+                                                              "type":  "object",
+                                                              "required":  [
+                                                                               "name"
+                                                                           ],
+                                                              "title":  "EmployeeCreate"
+                                                          },
+                                       "EmployeeRead":  {
+                                                            "properties":  {
+                                                                               "id":  {
+                                                                                          "type":  "string",
+                                                                                          "format":  "uuid",
+                                                                                          "title":  "Id"
+                                                                                      },
+                                                                               "name":  {
+                                                                                            "type":  "string",
+                                                                                            "title":  "Name"
+                                                                                        },
+                                                                               "designation":  {
+                                                                                                   "anyOf":  " ",
+                                                                                                   "title":  "Designation"
+                                                                                               },
+                                                                               "wage_type":  {
+                                                                                                 "$ref":  "#/components/schemas/WageType"
+                                                                                             },
+                                                                               "monthly_salary":  {
+                                                                                                      "anyOf":  " ",
+                                                                                                      "title":  "Monthly Salary"
+                                                                                                  },
+                                                                               "is_active":  {
+                                                                                                 "type":  "boolean",
+                                                                                                 "title":  "Is Active"
+                                                                                             },
+                                                                               "phone":  {
+                                                                                             "anyOf":  " ",
+                                                                                             "title":  "Phone"
+                                                                                         },
+                                                                               "email":  {
+                                                                                             "anyOf":  " ",
+                                                                                             "title":  "Email"
+                                                                                         }
+                                                                           },
+                                                            "type":  "object",
+                                                            "required":  [
+                                                                             "id",
+                                                                             "name",
+                                                                             "designation",
+                                                                             "wage_type",
+                                                                             "monthly_salary",
+                                                                             "is_active"
+                                                                         ],
+                                                            "title":  "EmployeeRead"
+                                                        },
+                                       "HTTPValidationError":  {
+                                                                   "properties":  {
+                                                                                      "detail":  {
+                                                                                                     "items":  "@{$ref=#/components/schemas/ValidationError}",
+                                                                                                     "type":  "array",
+                                                                                                     "title":  "Detail"
+                                                                                                 }
+                                                                                  },
+                                                                   "type":  "object",
+                                                                   "title":  "HTTPValidationError"
+                                                               },
+                                       "LoginRequest":  {
+                                                            "properties":  {
+                                                                               "username":  {
+                                                                                                "type":  "string",
+                                                                                                "title":  "Username"
+                                                                                            },
+                                                                               "password":  {
+                                                                                                "type":  "string",
+                                                                                                "title":  "Password"
+                                                                                            }
+                                                                           },
+                                                            "type":  "object",
+                                                            "required":  [
+                                                                             "username",
+                                                                             "password"
+                                                                         ],
+                                                            "title":  "LoginRequest",
+                                                            "description":  "JSON login (phone + password). The form-based OAuth2 flow is also\nsupported on the same endpoint for Swagger\u0027s Authorize button."
+                                                        },
+                                       "OperationRead":  {
+                                                             "properties":  {
+                                                                                "id":  {
+                                                                                           "type":  "string",
+                                                                                           "format":  "uuid",
+                                                                                           "title":  "Id"
+                                                                                       },
+                                                                                "code":  {
+                                                                                             "type":  "string",
+                                                                                             "title":  "Code"
+                                                                                         },
+                                                                                "label":  {
+                                                                                              "type":  "string",
+                                                                                              "title":  "Label"
+                                                                                          },
+                                                                                "sequence":  {
+                                                                                                 "type":  "integer",
+                                                                                                 "title":  "Sequence"
+                                                                                             }
+                                                                            },
+                                                             "type":  "object",
+                                                             "required":  [
+                                                                              "id",
+                                                                              "code",
+                                                                              "label",
+                                                                              "sequence"
+                                                                          ],
+                                                             "title":  "OperationRead"
+                                                         },
+                                       "PasswordChange":  {
+                                                              "properties":  {
+                                                                                 "current_password":  {
+                                                                                                          "type":  "string",
+                                                                                                          "title":  "Current Password"
+                                                                                                      },
+                                                                                 "new_password":  {
+                                                                                                      "type":  "string",
+                                                                                                      "title":  "New Password"
+                                                                                                  }
+                                                                             },
+                                                              "type":  "object",
+                                                              "required":  [
+                                                                               "current_password",
+                                                                               "new_password"
+                                                                           ],
+                                                              "title":  "PasswordChange"
+                                                          },
+                                       "ProductionEventCreate":  {
+                                                                     "properties":  {
+                                                                                        "sku_id":  {
+                                                                                                       "type":  "string",
+                                                                                                       "format":  "uuid",
+                                                                                                       "title":  "Sku Id"
+                                                                                                   },
+                                                                                        "operation_id":  {
+                                                                                                             "type":  "string",
+                                                                                                             "format":  "uuid",
+                                                                                                             "title":  "Operation Id"
+                                                                                                         },
+                                                                                        "employee_id":  {
+                                                                                                            "type":  "string",
+                                                                                                            "format":  "uuid",
+                                                                                                            "title":  "Employee Id"
+                                                                                                        },
+                                                                                        "work_date":  {
+                                                                                                          "type":  "string",
+                                                                                                          "format":  "date",
+                                                                                                          "title":  "Work Date"
+                                                                                                      },
+                                                                                        "qty":  {
+                                                                                                    "type":  "integer",
+                                                                                                    "exclusiveMinimum":  0.0,
+                                                                                                    "title":  "Qty"
+                                                                                                },
+                                                                                        "bundle_ref":  {
+                                                                                                           "anyOf":  " ",
+                                                                                                           "title":  "Bundle Ref"
+                                                                                                       }
+                                                                                    },
+                                                                     "type":  "object",
+                                                                     "required":  [
+                                                                                      "sku_id",
+                                                                                      "operation_id",
+                                                                                      "employee_id",
+                                                                                      "work_date",
+                                                                                      "qty"
+                                                                                  ],
+                                                                     "title":  "ProductionEventCreate"
+                                                                 },
+                                       "ProductionEventRead":  {
+                                                                   "properties":  {
+                                                                                      "id":  {
+                                                                                                 "type":  "string",
+                                                                                                 "format":  "uuid",
+                                                                                                 "title":  "Id"
+                                                                                             },
+                                                                                      "sku_id":  {
+                                                                                                     "type":  "string",
+                                                                                                     "format":  "uuid",
+                                                                                                     "title":  "Sku Id"
+                                                                                                 },
+                                                                                      "operation_id":  {
+                                                                                                           "type":  "string",
+                                                                                                           "format":  "uuid",
+                                                                                                           "title":  "Operation Id"
+                                                                                                       },
+                                                                                      "employee_id":  {
+                                                                                                          "type":  "string",
+                                                                                                          "format":  "uuid",
+                                                                                                          "title":  "Employee Id"
+                                                                                                      },
+                                                                                      "work_date":  {
+                                                                                                        "type":  "string",
+                                                                                                        "format":  "date",
+                                                                                                        "title":  "Work Date"
+                                                                                                    },
+                                                                                      "qty":  {
+                                                                                                  "type":  "integer",
+                                                                                                  "title":  "Qty"
+                                                                                              },
+                                                                                      "entered_by":  {
+                                                                                                         "anyOf":  " ",
+                                                                                                         "title":  "Entered By"
+                                                                                                     },
+                                                                                      "bundle_ref":  {
+                                                                                                         "anyOf":  " ",
+                                                                                                         "title":  "Bundle Ref"
+                                                                                                     }
+                                                                                  },
+                                                                   "type":  "object",
+                                                                   "required":  [
+                                                                                    "id",
+                                                                                    "sku_id",
+                                                                                    "operation_id",
+                                                                                    "employee_id",
+                                                                                    "work_date",
+                                                                                    "qty",
+                                                                                    "entered_by",
+                                                                                    "bundle_ref"
+                                                                                ],
+                                                                   "title":  "ProductionEventRead"
+                                                               },
+                                       "PurchaseOrderRead":  {
+                                                                 "properties":  {
+                                                                                    "id":  {
+                                                                                               "type":  "string",
+                                                                                               "format":  "uuid",
+                                                                                               "title":  "Id"
+                                                                                           },
+                                                                                    "po_number":  {
+                                                                                                      "type":  "string",
+                                                                                                      "title":  "Po Number"
+                                                                                                  },
+                                                                                    "order_date":  {
+                                                                                                       "anyOf":  " ",
+                                                                                                       "title":  "Order Date"
+                                                                                                   },
+                                                                                    "delivery_deadline":  {
+                                                                                                              "anyOf":  " ",
+                                                                                                              "title":  "Delivery Deadline"
+                                                                                                          },
+                                                                                    "sea_cutoff_date":  {
+                                                                                                            "anyOf":  " ",
+                                                                                                            "title":  "Sea Cutoff Date"
+                                                                                                        },
+                                                                                    "ship_mode":  {
+                                                                                                      "type":  "string",
+                                                                                                      "title":  "Ship Mode"
+                                                                                                  },
+                                                                                    "styles":  {
+                                                                                                   "items":  "@{$ref=#/components/schemas/StyleRead}",
+                                                                                                   "type":  "array",
+                                                                                                   "title":  "Styles",
+                                                                                                   "default":  ""
+                                                                                               }
+                                                                                },
+                                                                 "type":  "object",
+                                                                 "required":  [
+                                                                                  "id",
+                                                                                  "po_number",
+                                                                                  "order_date",
+                                                                                  "delivery_deadline",
+                                                                                  "sea_cutoff_date",
+                                                                                  "ship_mode"
+                                                                              ],
+                                                                 "title":  "PurchaseOrderRead"
+                                                             },
+                                       "RateSet":  {
+                                                       "properties":  {
+                                                                          "style_id":  {
+                                                                                           "type":  "string",
+                                                                                           "format":  "uuid",
+                                                                                           "title":  "Style Id"
+                                                                                       },
+                                                                          "operation_id":  {
+                                                                                               "type":  "string",
+                                                                                               "format":  "uuid",
+                                                                                               "title":  "Operation Id"
+                                                                                           },
+                                                                          "rate":  {
+                                                                                       "type":  "number",
+                                                                                       "title":  "Rate"
+                                                                                   },
+                                                                          "effective_from":  {
+                                                                                                 "type":  "string",
+                                                                                                 "format":  "date",
+                                                                                                 "title":  "Effective From"
+                                                                                             }
+                                                                      },
+                                                       "type":  "object",
+                                                       "required":  [
+                                                                        "style_id",
+                                                                        "operation_id",
+                                                                        "rate",
+                                                                        "effective_from"
+                                                                    ],
+                                                       "title":  "RateSet"
+                                                   },
+                                       "RunRequest":  {
+                                                          "properties":  {
+                                                                             "period_start":  {
+                                                                                                  "type":  "string",
+                                                                                                  "format":  "date",
+                                                                                                  "title":  "Period Start"
+                                                                                              },
+                                                                             "period_end":  {
+                                                                                                "type":  "string",
+                                                                                                "format":  "date",
+                                                                                                "title":  "Period End"
+                                                                                            }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "period_start",
+                                                                           "period_end"
+                                                                       ],
+                                                          "title":  "RunRequest"
+                                                      },
+                                       "SKURead":  {
+                                                       "properties":  {
+                                                                          "id":  {
+                                                                                     "type":  "string",
+                                                                                     "format":  "uuid",
+                                                                                     "title":  "Id"
+                                                                                 },
+                                                                          "color_code":  {
+                                                                                             "type":  "string",
+                                                                                             "title":  "Color Code"
+                                                                                         },
+                                                                          "color_name":  {
+                                                                                             "anyOf":  " ",
+                                                                                             "title":  "Color Name"
+                                                                                         },
+                                                                          "size":  {
+                                                                                       "type":  "string",
+                                                                                       "title":  "Size"
+                                                                                   },
+                                                                          "qty_ordered":  {
+                                                                                              "type":  "integer",
+                                                                                              "title":  "Qty Ordered"
+                                                                                          }
+                                                                      },
+                                                       "type":  "object",
+                                                       "required":  [
+                                                                        "id",
+                                                                        "color_code",
+                                                                        "color_name",
+                                                                        "size",
+                                                                        "qty_ordered"
+                                                                    ],
+                                                       "title":  "SKURead"
+                                                   },
+                                       "StyleRead":  {
+                                                         "properties":  {
+                                                                            "id":  {
+                                                                                       "type":  "string",
+                                                                                       "format":  "uuid",
+                                                                                       "title":  "Id"
+                                                                                   },
+                                                                            "name":  {
+                                                                                         "type":  "string",
+                                                                                         "title":  "Name"
+                                                                                     },
+                                                                            "gender":  {
+                                                                                           "anyOf":  " ",
+                                                                                           "title":  "Gender"
+                                                                                       },
+                                                                            "label":  {
+                                                                                          "anyOf":  " ",
+                                                                                          "title":  "Label"
+                                                                                      },
+                                                                            "article":  {
+                                                                                            "anyOf":  " ",
+                                                                                            "title":  "Article"
+                                                                                        },
+                                                                            "thickness":  {
+                                                                                              "anyOf":  " ",
+                                                                                              "title":  "Thickness"
+                                                                                          },
+                                                                            "skus":  {
+                                                                                         "items":  "@{$ref=#/components/schemas/SKURead}",
+                                                                                         "type":  "array",
+                                                                                         "title":  "Skus",
+                                                                                         "default":  ""
+                                                                                     }
+                                                                        },
+                                                         "type":  "object",
+                                                         "required":  [
+                                                                          "id",
+                                                                          "name",
+                                                                          "gender",
+                                                                          "label",
+                                                                          "article",
+                                                                          "thickness"
+                                                                      ],
+                                                         "title":  "StyleRead"
+                                                     },
+                                       "StyleStageProgress":  {
+                                                                  "properties":  {
+                                                                                     "style_id":  {
+                                                                                                      "type":  "string",
+                                                                                                      "format":  "uuid",
+                                                                                                      "title":  "Style Id"
+                                                                                                  },
+                                                                                     "style_name":  {
+                                                                                                        "type":  "string",
+                                                                                                        "title":  "Style Name"
+                                                                                                    },
+                                                                                     "qty_ordered":  {
+                                                                                                         "type":  "integer",
+                                                                                                         "title":  "Qty Ordered"
+                                                                                                     },
+                                                                                     "stages":  {
+                                                                                                    "additionalProperties":  "@{type=integer}",
+                                                                                                    "type":  "object",
+                                                                                                    "title":  "Stages"
+                                                                                                }
+                                                                                 },
+                                                                  "type":  "object",
+                                                                  "required":  [
+                                                                                   "style_id",
+                                                                                   "style_name",
+                                                                                   "qty_ordered",
+                                                                                   "stages"
+                                                                               ],
+                                                                  "title":  "StyleStageProgress",
+                                                                  "description":  "The live status of one style across all its operations."
+                                                              },
+                                       "Token":  {
+                                                     "properties":  {
+                                                                        "access_token":  {
+                                                                                             "type":  "string",
+                                                                                             "title":  "Access Token"
+                                                                                         },
+                                                                        "token_type":  {
+                                                                                           "type":  "string",
+                                                                                           "title":  "Token Type",
+                                                                                           "default":  "bearer"
+                                                                                       },
+                                                                        "role":  {
+                                                                                     "$ref":  "#/components/schemas/UserRole"
+                                                                                 },
+                                                                        "name":  {
+                                                                                     "type":  "string",
+                                                                                     "title":  "Name"
+                                                                                 },
+                                                                        "user_id":  {
+                                                                                        "type":  "string",
+                                                                                        "format":  "uuid",
+                                                                                        "title":  "User Id"
+                                                                                    },
+                                                                        "must_change_password":  {
+                                                                                                     "type":  "boolean",
+                                                                                                     "title":  "Must Change Password",
+                                                                                                     "default":  false
+                                                                                                 }
+                                                                    },
+                                                     "type":  "object",
+                                                     "required":  [
+                                                                      "access_token",
+                                                                      "role",
+                                                                      "name",
+                                                                      "user_id"
+                                                                  ],
+                                                     "title":  "Token"
+                                                 },
+                                       "UserCreate":  {
+                                                          "properties":  {
+                                                                             "name":  {
+                                                                                          "type":  "string",
+                                                                                          "title":  "Name"
+                                                                                      },
+                                                                             "phone":  {
+                                                                                           "type":  "string",
+                                                                                           "title":  "Phone"
+                                                                                       },
+                                                                             "email":  {
+                                                                                           "anyOf":  " ",
+                                                                                           "title":  "Email"
+                                                                                       },
+                                                                             "role":  {
+                                                                                          "$ref":  "#/components/schemas/UserRole",
+                                                                                          "default":  "viewer"
+                                                                                      },
+                                                                             "password":  {
+                                                                                              "anyOf":  " ",
+                                                                                              "title":  "Password"
+                                                                                          },
+                                                                             "employee_id":  {
+                                                                                                 "anyOf":  " ",
+                                                                                                 "title":  "Employee Id"
+                                                                                             }
+                                                                         },
+                                                          "type":  "object",
+                                                          "required":  [
+                                                                           "name",
+                                                                           "phone"
+                                                                       ],
+                                                          "title":  "UserCreate",
+                                                          "description":  "Direct manager creates a staff/manager/viewer login."
+                                                      },
+                                       "UserRead":  {
+                                                        "properties":  {
+                                                                           "id":  {
+                                                                                      "type":  "string",
+                                                                                      "format":  "uuid",
+                                                                                      "title":  "Id"
+                                                                                  },
+                                                                           "name":  {
+                                                                                        "type":  "string",
+                                                                                        "title":  "Name"
+                                                                                    },
+                                                                           "phone":  {
+                                                                                         "type":  "string",
+                                                                                         "title":  "Phone"
+                                                                                     },
+                                                                           "email":  {
+                                                                                         "anyOf":  " ",
+                                                                                         "title":  "Email"
+                                                                                     },
+                                                                           "role":  {
+                                                                                        "$ref":  "#/components/schemas/UserRole"
+                                                                                    },
+                                                                           "is_active":  {
+                                                                                             "type":  "boolean",
+                                                                                             "title":  "Is Active"
+                                                                                         },
+                                                                           "employee_id":  {
+                                                                                               "anyOf":  " ",
+                                                                                               "title":  "Employee Id"
+                                                                                           },
+                                                                           "client_id":  {
+                                                                                             "anyOf":  " ",
+                                                                                             "title":  "Client Id"
+                                                                                         }
+                                                                       },
+                                                        "type":  "object",
+                                                        "required":  [
+                                                                         "id",
+                                                                         "name",
+                                                                         "phone",
+                                                                         "email",
+                                                                         "role",
+                                                                         "is_active"
+                                                                     ],
+                                                        "title":  "UserRead"
+                                                    },
+                                       "UserRole":  {
+                                                        "type":  "string",
+                                                        "enum":  [
+                                                                     "direct_manager",
+                                                                     "cutting_manager",
+                                                                     "stitching_manager",
+                                                                     "employee",
+                                                                     "client",
+                                                                     "viewer"
+                                                                 ],
+                                                        "title":  "UserRole"
+                                                    },
+                                       "ValidationError":  {
+                                                               "properties":  {
+                                                                                  "loc":  {
+                                                                                              "items":  "@{anyOf=System.Object[]}",
+                                                                                              "type":  "array",
+                                                                                              "title":  "Location"
+                                                                                          },
+                                                                                  "msg":  {
+                                                                                              "type":  "string",
+                                                                                              "title":  "Message"
+                                                                                          },
+                                                                                  "type":  {
+                                                                                               "type":  "string",
+                                                                                               "title":  "Error Type"
+                                                                                           }
+                                                                              },
+                                                               "type":  "object",
+                                                               "required":  [
+                                                                                "loc",
+                                                                                "msg",
+                                                                                "type"
+                                                                            ],
+                                                               "title":  "ValidationError"
+                                                           },
+                                       "WageLineRead":  {
+                                                            "properties":  {
+                                                                               "employee_id":  {
+                                                                                                   "type":  "string",
+                                                                                                   "format":  "uuid",
+                                                                                                   "title":  "Employee Id"
+                                                                                               },
+                                                                               "wage_type":  {
+                                                                                                 "type":  "string",
+                                                                                                 "title":  "Wage Type"
+                                                                                             },
+                                                                               "pieces":  {
+                                                                                              "type":  "integer",
+                                                                                              "title":  "Pieces"
+                                                                                          },
+                                                                               "amount":  {
+                                                                                              "type":  "number",
+                                                                                              "title":  "Amount"
+                                                                                          }
+                                                                           },
+                                                            "type":  "object",
+                                                            "required":  [
+                                                                             "employee_id",
+                                                                             "wage_type",
+                                                                             "pieces",
+                                                                             "amount"
+                                                                         ],
+                                                            "title":  "WageLineRead"
+                                                        },
+                                       "WageRunRead":  {
+                                                           "properties":  {
+                                                                              "id":  {
+                                                                                         "type":  "string",
+                                                                                         "format":  "uuid",
+                                                                                         "title":  "Id"
+                                                                                     },
+                                                                              "period_start":  {
+                                                                                                   "type":  "string",
+                                                                                                   "format":  "date",
+                                                                                                   "title":  "Period Start"
+                                                                                               },
+                                                                              "period_end":  {
+                                                                                                 "type":  "string",
+                                                                                                 "format":  "date",
+                                                                                                 "title":  "Period End"
+                                                                                             },
+                                                                              "status":  {
+                                                                                             "type":  "string",
+                                                                                             "title":  "Status"
+                                                                                         },
+                                                                              "lines":  {
+                                                                                            "items":  "@{$ref=#/components/schemas/WageLineRead}",
+                                                                                            "type":  "array",
+                                                                                            "title":  "Lines",
+                                                                                            "default":  ""
+                                                                                        }
+                                                                          },
+                                                           "type":  "object",
+                                                           "required":  [
+                                                                            "id",
+                                                                            "period_start",
+                                                                            "period_end",
+                                                                            "status"
+                                                                        ],
+                                                           "title":  "WageRunRead"
+                                                       },
+                                       "WageType":  {
+                                                        "type":  "string",
+                                                        "enum":  [
+                                                                     "monthly",
+                                                                     "piece_rate"
+                                                                 ],
+                                                        "title":  "WageType",
+                                                        "description":  "How an employee is paid. A property of the PERSON, set explicitly â\nNOT inferred from designation (TAILOR/CUTTER appear in both pay schemes)."
+                                                    }
+                                   },
+                       "securitySchemes":  {
+                                               "OAuth2PasswordBearer":  {
+                                                                            "type":  "oauth2",
+                                                                            "flows":  {
+                                                                                          "password":  {
+                                                                                                           "scopes":  "",
+                                                                                                           "tokenUrl":  "/api/v1/auth/login"
+                                                                                                       }
+                                                                                      }
+                                                                        }
+                                           }
+                   }
+}

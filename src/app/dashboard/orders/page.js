@@ -1,8 +1,9 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import { useData } from '@/context/DataContext';
 import { useAuth } from '@/context/AuthContext';
-import { TreePine, Building2, ClipboardList, Shirt, Plus, X, Loader2 } from 'lucide-react';
+import { TreePine, Building2, ClipboardList, Shirt, Plus, X, Loader2, FileSpreadsheet } from 'lucide-react';
 
 export default function OrdersTreeBrowser() {
   const { orders, clients = [], createClient, apiLoading } = useData();
@@ -18,6 +19,36 @@ export default function OrdersTreeBrowser() {
   const [newCompanyCode, setNewCompanyCode] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+
+  // Excel Upload States
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [excelData, setExcelData] = useState([]);
+  const [fileName, setFileName] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFileName(file.name);
+    
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        setExcelData(data);
+        setShowPreviewModal(true);
+      } catch (err) {
+        console.error("Error parsing Excel:", err);
+        alert("Failed to parse the Excel file.");
+      }
+    };
+    reader.readAsBinaryString(file);
+    e.target.value = null;
+  };
 
   // Safeguard: if user is not direct_manager, force activeTab to 'tree'
   useEffect(() => {
@@ -239,16 +270,36 @@ export default function OrdersTreeBrowser() {
             <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
               <Building2 className="w-5 h-5 text-blue-600" /> Active Client Directory
             </h3>
-            <button
-              onClick={() => {
-                setShowCreateModal(true);
-                setCreateError('');
-              }}
-              className="py-2 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95 min-h-[40px]"
-            >
-              <Plus className="w-4 h-4" />
-              Create Client
-            </button>
+            <div className="flex gap-2">
+              {user === 'direct_manager' && (
+                <>
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="py-2 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer border border-emerald-200 shadow-sm min-h-[40px]"
+                  >
+                    <FileSpreadsheet className="w-4 h-4" />
+                    Upload File
+                  </button>
+                </>
+              )}
+              <button
+                onClick={() => {
+                  setShowCreateModal(true);
+                  setCreateError('');
+                }}
+                className="py-2 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95 min-h-[40px]"
+              >
+                <Plus className="w-4 h-4" />
+                Create Client
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -421,6 +472,78 @@ export default function OrdersTreeBrowser() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── EXCEL PREVIEW MODAL ─── */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col animate-scale-up">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                  Excel Data Preview
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  File: {fileName} ({excelData.length} rows)
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowPreviewModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-auto bg-slate-50 flex-1">
+              {excelData.length > 0 ? (
+                <table className="w-full text-left text-sm whitespace-nowrap bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                  <thead className="bg-slate-100 text-slate-600 font-extrabold text-xs uppercase tracking-wider">
+                    <tr>
+                      {Object.keys(excelData[0]).map((key, idx) => (
+                        <th key={idx} className="px-4 py-3 border-b border-slate-200">{key}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {excelData.slice(0, 50).map((row, rowIndex) => (
+                      <tr key={rowIndex} className="hover:bg-slate-50 transition-colors">
+                        {Object.values(row).map((val, colIndex) => (
+                          <td key={colIndex} className="px-4 py-3 text-slate-700 font-medium">
+                            {typeof val === 'object' ? JSON.stringify(val) : String(val)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="text-center py-12 text-slate-500 font-bold">No data found in the Excel file.</div>
+              )}
+              {excelData.length > 50 && (
+                <div className="text-center py-3 text-xs font-bold text-slate-400">
+                  Showing first 50 rows...
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Close Preview
+              </button>
+              <button
+                disabled
+                className="py-3 px-6 bg-emerald-600 opacity-50 cursor-not-allowed text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2"
+              >
+                Upload to Backend (Coming Soon)
+              </button>
+            </div>
           </div>
         </div>
       )}
