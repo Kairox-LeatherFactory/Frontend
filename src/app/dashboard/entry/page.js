@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { Lock, CheckCircle2, XCircle, Rocket } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users } from 'lucide-react';
 
 export default function ProductionLogEntry() {
   const { user, ROLE_OPERATIONS } = useAuth();
@@ -134,160 +134,211 @@ export default function ProductionLogEntry() {
           )}
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <form onSubmit={handleSubmit} className="space-y-8">
+          
+          {/* STEP 1: Core Selection */}
+          <div className="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest border-b border-slate-200 pb-3 flex items-center gap-2">
+              <span className="bg-blue-100 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span> 
+              Order & Worker Selection
+            </h3>
             
-            {/* Order Selection (Target 48px) */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="order-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                1. Select Client Order / PO *
-              </label>
-              <select
-                id="order-select"
-                value={orderId}
-                onChange={(e) => setOrderId(e.target.value)}
-                className="input-field h-12 py-0 min-h-[48px] bg-slate-50 font-bold border-2 border-blue-100 cursor-pointer"
-                required
-              >
-                {orders.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.id} — {o.client} ({o.style})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Stage Operation selection (Target 48px) - Role gated */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="operation-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                2. Operation Stage * <span className="text-[10px] text-blue-600">(Role-Gated)</span>
-              </label>
-              <select
-                id="operation-select"
-                value={operation}
-                onChange={(e) => setOperation(e.target.value)}
-                className="input-field h-12 py-0 min-h-[48px] bg-slate-50 font-bold border-2 border-blue-100 cursor-pointer"
-                required
-              >
-                {allowedOperations.map((op) => (
-                  <option key={op} value={op}>
-                    {op}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Worker Selection */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="worker-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                3. Assigned Worker / Operator *
-              </label>
-              <select
-                id="worker-select"
-                value={workerId}
-                onChange={(e) => setWorkerId(e.target.value)}
-                className="input-field h-12 py-0 min-h-[48px] bg-slate-50 font-bold border-2 border-blue-100 cursor-pointer"
-                required
-              >
-                {workers.map((w) => (
-                  <option key={w.id} value={w.id}>
-                    {w.name} ({w.id} — {w.role})
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Size & Date Selector Row */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+              {/* Order Selection */}
               <div className="flex flex-col gap-2">
-                <label htmlFor="size-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  4. Size *
+                <label htmlFor="order-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileBox className="w-4 h-4 text-blue-500" /> Select Client Order / PO *
                 </label>
                 <select
-                  id="size-select"
-                  value={size}
-                  onChange={(e) => setSize(e.target.value)}
-                  className="input-field h-12 py-0 min-h-[48px] bg-slate-50 font-bold border-2 border-blue-100 cursor-pointer"
+                  id="order-select"
+                  value={orderId}
+                  onChange={(e) => setOrderId(e.target.value)}
+                  className="input-field h-14 bg-white font-bold border-2 border-slate-200 focus:border-blue-500 cursor-pointer shadow-sm text-sm transition-all"
                   required
                 >
-                  <option value="S">S</option>
-                  <option value="M">M</option>
-                  <option value="L">L</option>
-                  <option value="XL">XL</option>
+                  {orders.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.id} — {o.client} ({o.style})
+                    </option>
+                  ))}
                 </select>
               </div>
 
+              {/* Worker Selection */}
               <div className="flex flex-col gap-2">
-                <label htmlFor="date-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  5. Transaction Date *
+                <label htmlFor="worker-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Users className="w-4 h-4 text-blue-500" /> Assigned Worker / Operator *
+                </label>
+                <select
+                  id="worker-select"
+                  value={workerId}
+                  onChange={(e) => setWorkerId(e.target.value)}
+                  className="input-field h-14 bg-white font-bold border-2 border-slate-200 focus:border-blue-500 cursor-pointer shadow-sm text-sm transition-all"
+                  required
+                >
+                  {workers.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name} ({w.id} — {w.role})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* STEP 2: Operation & Size (Visual Cards) */}
+          <div className="space-y-6 bg-blue-50/40 p-6 rounded-2xl border border-blue-100 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest border-b border-blue-200 pb-3 flex items-center gap-2">
+              <span className="bg-indigo-100 text-indigo-700 w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span> 
+              Garment Details
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
+              
+              {/* Size Pill Buttons */}
+              <div className="flex flex-col gap-3">
+                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Ruler className="w-4 h-4 text-indigo-500" /> Garment Size *
+                </label>
+                <div className="flex gap-2 h-14">
+                  {['S', 'M', 'L', 'XL'].map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setSize(s)}
+                      className={`flex-1 text-base font-black rounded-xl border-2 transition-all cursor-pointer ${size === s ? 'bg-indigo-600 border-indigo-600 text-white shadow-md scale-105' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 shadow-sm'}`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Operation Pill Buttons */}
+              <div className="flex flex-col gap-3">
+                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Scissors className="w-4 h-4 text-indigo-500" /> Operation Stage *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 min-h-[56px]">
+                  {allowedOperations.map((op) => (
+                    <button
+                      key={op}
+                      type="button"
+                      onClick={() => setOperation(op)}
+                      className={`py-3 px-2 text-xs font-black rounded-xl border-2 transition-all cursor-pointer ${operation === op ? 'bg-indigo-600 border-indigo-600 text-white shadow-md scale-105' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 shadow-sm'}`}
+                    >
+                      {op}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          {/* STEP 3: Quantity & Logging */}
+          <div className="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
+            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest border-b border-slate-200 pb-3 flex items-center gap-2">
+              <span className="bg-emerald-100 text-emerald-700 w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span> 
+              Quantities & Submission
+            </h3>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+              
+              {/* Quantity Input with Quick Add Buttons */}
+              <div className="flex flex-col gap-3 md:col-span-2">
+                <label htmlFor="qty-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Plus className="w-4 h-4 text-emerald-500" /> Quantity Completed (Pieces) *
+                </label>
+                <div className="flex flex-col sm:flex-row items-stretch gap-4">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      id="qty-input"
+                      placeholder="0"
+                      value={qty}
+                      onChange={(e) => {
+                        const val = e.target.value.replace(/[^0-9]/g, '');
+                        setQty(val);
+                      }}
+                      className="input-field w-full h-14 pl-12 bg-white font-black text-2xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all"
+                      required
+                    />
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-xl">
+                      
+                    </span>
+                  </div>
+                  <div className="flex gap-2 w-1/4">
+                    <button
+                        type="button"
+                        onClick={() => setQty('')}
+                        className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                      >
+                        Clear
+                      </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Date Selector Row */}
+              <div className="flex flex-col gap-2">
+                <label htmlFor="date-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4 text-emerald-500" /> Transaction Date *
                 </label>
                 <input
                   type="date"
                   id="date-input"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  className="input-field h-12 min-h-[48px] bg-slate-50 font-bold border-2 border-blue-100"
+                  className="input-field h-14 bg-white font-bold border-2 border-slate-200 shadow-sm"
                   required
                 />
               </div>
-            </div>
 
-            {/* Quantity Input (Large tactile 48px picker) */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="qty-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                6. Quantity Completed (Pieces) *
-              </label>
-              <div className="relative flex items-stretch">
-                <input
-                  type="number"
-                  id="qty-input"
-                  placeholder="e.g. 150"
-                  min="1"
-                  value={qty}
-                  onChange={(e) => setQty(e.target.value)}
-                  className="input-field h-12 min-h-[48px] pl-12 bg-slate-50 font-black text-lg border-2 border-blue-100"
-                  required
-                />
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">
-                  #
-                </span>
+              {/* Optional Garment Tracing barcode */}
+              <div className="flex flex-col gap-2">
+                <label htmlFor="garment-id-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <ScanBarcode className="w-4 h-4 text-emerald-500" /> Garment ID / Barcode
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="garment-id-input"
+                    placeholder="Scan or type (Optional)"
+                    value={garmentId}
+                    onChange={(e) => setGarmentId(e.target.value)}
+                    className="input-field w-full h-14 pl-12 bg-white font-semibold border-2 border-slate-200 shadow-sm focus:border-emerald-500"
+                  />
+                  <ScanBarcode className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                </div>
               </div>
-            </div>
 
-            {/* Optional Garment Tracing barcode (for Timeline validation) */}
-            <div className="flex flex-col gap-2">
-              <label htmlFor="garment-id-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                7. Garment ID / QR Code <span className="text-[10px] text-slate-400 font-medium">(Optional for QC timelines)</span>
-              </label>
-              <input
-                type="text"
-                id="garment-id-input"
-                placeholder="e.g. LTH-BLK-009"
-                value={garmentId}
-                onChange={(e) => setGarmentId(e.target.value)}
-                className="input-field h-12 min-h-[48px] bg-slate-50 font-semibold border-2 border-blue-100"
-              />
             </div>
-
           </div>
 
-          {/* Form Actions with massive touch targets */}
-          <div className="pt-6 border-t border-slate-100 flex flex-col sm:flex-row gap-4 justify-end">
+          {/* Form Actions */}
+          <div className="pt-4 flex flex-col sm:flex-row gap-4 justify-end">
             <button
               type="button"
               onClick={() => {
                 setQty('');
                 setGarmentId('');
+                setSize('M');
               }}
-              className="btn-secondary h-14 min-h-[48px] font-bold rounded-xl text-base"
+              className="btn-secondary h-14 font-bold rounded-xl text-base px-8"
             >
-              Reset Form
+              Reset All
             </button>
             <button
               type="submit"
-              className="btn-primary h-14 min-h-[48px] font-black rounded-xl text-base px-8 bg-gradient-brand shadow-lg flex items-center justify-center gap-2"
+              className="btn-primary h-14 font-black rounded-xl text-base px-10 bg-gradient-brand shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
             >
-              <Rocket className="w-5 h-5" /> Submit Production Event
+              <Rocket className="w-5 h-5" /> Submit Event
             </button>
           </div>
 
