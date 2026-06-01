@@ -1,45 +1,41 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { apiLogin } from '@/lib/api';
-import { Building2, Scissors, PenTool, ScanSearch, Factory, X, LogIn, Loader2 } from 'lucide-react';
+import { Loader2, ArrowRight, Factory } from 'lucide-react';
+
+const PARTICLES = Array.from({ length: 20 }, (_, i) => ({
+  id: i,
+  left: Math.round(Math.random() * 100),
+  duration: Math.round(8 + Math.random() * 14),
+  delay: Math.round(Math.random() * 10),
+  size: Math.round(1 + Math.random() * 3),
+}));
 
 export default function Login() {
-  const { login, ROLES, ROLE_OPERATIONS } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
 
-  // Login form modal state (for direct_manager)
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [focused, setFocused] = useState('');
+  const [mounted, setMounted] = useState(false);
 
-  const handleSelectRole = (roleKey) => {
-    if (roleKey === 'direct_manager') {
-      // Show login form for Direct Manager
-      setShowLoginModal(true);
-      setLoginError('');
-      return;
-    }
-    // Other roles: direct local login (no backend auth)
-    login(roleKey);
-    router.push('/dashboard');
-  };
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleBackendLogin = async (e) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) return;
-
     setLoginLoading(true);
     setLoginError('');
-
     try {
       const data = await apiLogin(username.trim(), password.trim());
-      // Store token and role
       login(data.role || 'direct_manager', data.access_token);
-      setShowLoginModal(false);
       router.push('/dashboard');
     } catch (err) {
       setLoginError('Invalid credentials. Please try again.');
@@ -48,201 +44,235 @@ export default function Login() {
     }
   };
 
-  const roleIcons = {
-    direct_manager: Building2,
-    cutting_manager: Scissors,
-    stitching_manager: PenTool,
-    viewer: ScanSearch,
-  };
-
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-brand px-4 py-12 sm:px-6 lg:px-8">
-      <div className="w-full max-w-4xl space-y-8 text-center">
+    <div className="flex min-h-screen bg-white">
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes kenBurns {
+          0%   { transform: scale(1.0) translate(0px, 0px); }
+          50%  { transform: scale(1.12) translate(-15px, -8px); }
+          100% { transform: scale(1.0) translate(0px, 0px); }
+        }
+        @keyframes orbDrift1 {
+          0%   { transform: translate(0px, 0px) scale(1); opacity: 0.15; }
+          33%  { transform: translate(5vw, -5vh) scale(1.2); opacity: 0.3; }
+          66%  { transform: translate(-3vw, 4vh) scale(0.85); opacity: 0.1; }
+          100% { transform: translate(0px, 0px) scale(1); opacity: 0.15; }
+        }
+        @keyframes orbDrift2 {
+          0%   { transform: translate(0px, 0px) scale(1); opacity: 0.1; }
+          50%  { transform: translate(-4vw, -6vh) scale(1.3); opacity: 0.25; }
+          100% { transform: translate(0px, 0px) scale(1); opacity: 0.1; }
+        }
+        @keyframes dustRise {
+          0%   { transform: translateY(0px); opacity: 0; }
+          10%  { opacity: 1; }
+          90%  { opacity: 0.6; }
+          100% { transform: translateY(-100vh); opacity: 0; }
+        }
+        @keyframes slideUp {
+          0%   { opacity: 0; transform: translateY(24px); }
+          100% { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+          0%   { opacity: 0; }
+          100% { opacity: 1; }
+        }
+        @keyframes lineGrow {
+          0%   { width: 0; }
+          100% { width: 3rem; }
+        }
+        @keyframes floatAurora {
+          0% { transform: translate(0, 0) scale(1); opacity: 0.7; }
+          33% { transform: translate(4vw, -6vh) scale(1.1); opacity: 1; }
+          66% { transform: translate(-3vw, 4vh) scale(0.9); opacity: 0.6; }
+          100% { transform: translate(0, 0) scale(1); opacity: 0.7; }
+        }
+        @keyframes floatAurora2 {
+          0% { transform: translate(0, 0) scale(1); opacity: 0.6; }
+          50% { transform: translate(-5vw, 5vh) scale(1.2); opacity: 0.9; }
+          100% { transform: translate(0, 0) scale(1); opacity: 0.6; }
+        }
+        @keyframes dotPan {
+          0% { background-position: 0px 0px; }
+          100% { background-position: 24px 24px; }
+        }
+        .react-bits-dots {
+          background-color: #ffffff;
+          background-image: radial-gradient(#e5e7eb 1.5px, transparent 1.5px);
+          background-size: 24px 24px;
+          animation: dotPan 10s linear infinite;
+        }
+        .leather-bg {
+          background-image: url('https://images.unsplash.com/photo-1533621412959-15994f1fc4d2?q=80&w=2070&auto=format&fit=crop');
+          background-size: cover;
+          background-position: center;
+          animation: kenBurns 28s ease-in-out infinite;
+        }
+        .slide-up { animation: slideUp 0.7s ease forwards; }
+        .slide-up-2 { animation: slideUp 0.7s ease 0.15s forwards; opacity: 0; }
+        .slide-up-3 { animation: slideUp 0.7s ease 0.3s forwards; opacity: 0; }
+        .slide-up-4 { animation: slideUp 0.7s ease 0.45s forwards; opacity: 0; }
+        .fade-in    { animation: fadeIn 0.5s ease forwards; }
+        .line-grow  { animation: lineGrow 0.8s ease 0.5s forwards; width: 0; display: block; }
+      `}} />
+
+      {/* ─── LEFT PANEL — Leather Showcase ─── */}
+      <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden flex-col justify-between p-14">
+        {/* Background image */}
+        <div className="absolute inset-0 leather-bg" />
         
-        {/* Header Block */}
-        <div className="space-y-4 animate-fade-in">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-blue-900/40 border border-blue-500/30 text-blue-200 text-sm font-semibold tracking-wide">
-            <Factory className="w-4 h-4" /> Factory Operations Portal
+        {/* Animated Glow Orbs (Factory Warm Lights) */}
+        <div
+          className="absolute z-[1] w-[45vw] h-[45vw] top-[5%] left-[-10%] rounded-full bg-amber-600/30 blur-[100px] pointer-events-none mix-blend-screen"
+          style={{ animation: 'orbDrift1 18s ease-in-out infinite' }}
+        />
+        <div
+          className="absolute z-[1] w-[50vw] h-[50vw] bottom-[-10%] right-[-10%] rounded-full bg-orange-700/25 blur-[120px] pointer-events-none mix-blend-screen"
+          style={{ animation: 'orbDrift2 24s ease-in-out infinite reverse' }}
+        />
+        <div
+          className="absolute z-[1] w-[30vw] h-[30vw] top-[30%] left-[20%] rounded-full bg-yellow-500/20 blur-[90px] pointer-events-none mix-blend-screen"
+          style={{ animation: 'orbDrift1 20s ease-in-out infinite 6s' }}
+        />
+
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 z-[2] bg-gradient-to-br from-black/85 via-black/60 to-black/80" />
+
+        {/* Floating dust particles */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none z-[3]">
+          {mounted && PARTICLES.map((p) => (
+            <div key={p.id} style={{
+              position: 'absolute',
+              left: p.left + '%',
+              bottom: '-5%',
+              width: p.size + 'px',
+              height: p.size + 'px',
+              borderRadius: '50%',
+              background: 'rgba(251, 191, 36, 0.5)',
+              filter: 'blur(0.5px)',
+              animation: `dustRise ${p.duration}s linear ${p.delay}s infinite`,
+            }} />
+          ))}
+        </div>
+
+        {/* Top branding */}
+        <div className="relative z-10 slide-up">
+          <div className="flex items-center gap-2.5 mb-2">
+            <Factory className="w-4 h-4 text-amber-400" />
+            <span className="text-amber-400 text-xs font-bold tracking-[0.25em] uppercase">Leather Operations</span>
           </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white sm:leading-none">
+          <h1 className="text-5xl xl:text-6xl font-black text-white tracking-tight leading-none" style={{ fontFamily: 'Georgia, serif' }}>
             KAIROX
           </h1>
-          <p className="text-xl sm:text-2xl font-bold text-blue-100">
-            Leather Intelligence &amp; Traceability Platform
-          </p>
-          <p className="mx-auto max-w-xl text-base text-blue-200">
-            Select your operational role profile card to access the real-time shop floor logging system, pieces calculation, and freight dashboards.
+          <div className="h-px bg-amber-500 line-grow mt-4 mb-4" />
+          <p className="text-stone-300 text-sm font-medium tracking-wide max-w-xs leading-relaxed">
+            Real-time intelligence platform for leather manufacturing operations.
           </p>
         </div>
 
-        {/* Roles Grid */}
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 pt-6">
-          {Object.entries(ROLES).map(([key, info], index) => {
-            const allowedOps = ROLE_OPERATIONS[key];
-            const IconComp = roleIcons[key] || ScanSearch;
-            return (
-              <button
-                key={key}
-                onClick={() => handleSelectRole(key)}
-                style={{ animationDelay: `${index * 75}ms` }}
-                className="card flex flex-col justify-between items-center text-center p-6 bg-white hover:border-blue-500 focus:outline-none focus:ring-4 focus:ring-blue-500/40 text-slate-800 transition-all cursor-pointer min-h-[300px] border border-blue-100 shadow-xl select-none animate-fade-in hover:-translate-y-2"
-              >
-                {/* Icon & Label */}
-                <div className="w-full flex flex-col items-center space-y-4">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-blue-50 shadow-inner border border-blue-100">
-                    <IconComp className="w-8 h-8 text-blue-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-slate-900 tracking-tight">
-                      {info.label}
-                    </h3>
-                    <span className={`badge mt-2 ${info.color}`}>
-                      {key === 'direct_manager' ? 'Admin Access' : key === 'viewer' ? 'Read-only' : 'Floor Logger'}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Operations Gated Text */}
-                <div className="w-full mt-6 pt-4 border-t border-slate-100 text-left">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    Access Scope
-                  </p>
-                  {allowedOps.length > 0 ? (
-                    <div className="flex flex-wrap gap-1">
-                      {allowedOps.map((op) => (
-                        <span
-                          key={op}
-                          className="px-2 py-0.5 rounded bg-blue-50 border border-blue-100 text-blue-700 text-[10px] font-semibold"
-                        >
-                          {op}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs italic text-slate-500">
-                      Audit viewer only. No shop floor logging allowed.
-                    </p>
-                  )}
-                </div>
-
-                {/* Enter Button Simulation */}
-                <div className="w-full mt-6">
-                  <span className="w-full flex items-center justify-center bg-blue-600 text-white rounded-lg text-sm font-bold min-h-[48px] hover:bg-blue-700 active:scale-95 transition-all">
-                    Sign In as {key === 'direct_manager' ? 'MD' : key === 'viewer' ? 'Auditor' : 'Manager'}
-                  </span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Footer info banner */}
-        <div className="pt-8 text-xs text-blue-300 font-medium">
-          Kairox Traceability Platform v1.2 • English Only Operations • Touch Optimized
+        {/* Bottom stats */}
+        <div className="relative z-10 grid grid-cols-3 gap-6 slide-up-2">
+          {[
+            { label: 'Operations', value: '360°' },
+            { label: 'Traceability', value: '100%' },
+            { label: 'Real-time', value: '24/7' },
+          ].map((stat) => (
+            <div key={stat.label}>
+              <div className="text-2xl font-black text-white mb-1">{stat.value}</div>
+              <div className="text-stone-400 text-xs font-semibold tracking-widest uppercase">{stat.label}</div>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* ─── DIRECT MANAGER LOGIN MODAL ─── */}
-      {showLoginModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-sm w-full p-6 sm:p-8 space-y-6 mx-4 relative animate-scale-up">
-            
-            {/* Modal Header */}
-            <div className="flex justify-between items-center pb-2 border-b border-slate-100">
-              <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
-                <LogIn className="w-5 h-5 text-blue-600" />
-                Manager Login
-              </h3>
-              <button 
-                onClick={() => {
-                  setShowLoginModal(false);
-                  setUsername('');
-                  setPassword('');
-                  setLoginError('');
-                }}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+      {/* ─── RIGHT PANEL — Login Form ─── */}
+      <div className="flex-1 flex flex-col items-center justify-center px-8 sm:px-16 relative overflow-hidden react-bits-dots">
+        
+        {/* React Bits inspired Soft Aurora / Blob Shapes (Increased Opacity) */}
+        <div 
+          className="absolute top-[0%] right-[-5%] w-[45vw] h-[45vw] rounded-full bg-amber-400/40 blur-[80px] pointer-events-none mix-blend-multiply" 
+          style={{ animation: 'floatAurora 12s ease-in-out infinite' }} 
+        />
+        <div 
+          className="absolute bottom-[-5%] left-[-10%] w-[55vw] h-[55vw] rounded-full bg-orange-400/30 blur-[90px] pointer-events-none mix-blend-multiply" 
+          style={{ animation: 'floatAurora2 18s ease-in-out infinite' }} 
+        />
+
+        <div className="w-full max-w-sm relative z-10">
+
+          {/* Mobile logo */}
+          <div className="lg:hidden mb-10 text-center">
+            <h1 className="text-3xl font-black text-gray-900 tracking-widest" style={{ fontFamily: 'Georgia, serif' }}>KAIROX</h1>
+            <p className="text-xs text-gray-500 tracking-widest uppercase mt-1 font-semibold">Operations Portal</p>
+          </div>
+
+          {/* Heading */}
+          <div className="mb-10 slide-up">
+            <h2 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Welcome back</h2>
+            <p className="text-sm text-gray-500 font-medium">Sign in to access your dashboard</p>
+          </div>
+
+          {/* Error */}
+          {loginError && (
+            <div className="mb-6 py-3 px-4 bg-red-50 border border-red-100 rounded-xl text-red-600 text-xs font-semibold fade-in">
+              {loginError}
+            </div>
+          )}
+
+          {/* Form */}
+          <form onSubmit={handleBackendLogin} className="space-y-6 slide-up-3">
+            <div className="space-y-2">
+              <label htmlFor="username" className="text-[10px] font-bold text-gray-400 tracking-[0.15em] uppercase block ml-1">Username</label>
+              <input
+                type="text"
+                required
+                placeholder="Enter username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                disabled={loginLoading}
+                className="w-full px-5 py-4 bg-white/60 backdrop-blur-md border border-gray-200 hover:border-gray-300 focus:border-amber-500 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-amber-500 transition-all font-medium disabled:opacity-50 text-sm shadow-sm"
+                id="username"
+              />
             </div>
 
-            <p className="text-xs text-slate-500 font-medium">
-              Enter your Direct Manager credentials to access the platform.
-            </p>
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-[10px] font-bold text-gray-400 tracking-[0.15em] uppercase block ml-1">Password</label>
+              <input
+                type="password"
+                required
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={loginLoading}
+                className="w-full px-5 py-4 bg-white/60 backdrop-blur-md border border-gray-200 hover:border-gray-300 focus:border-amber-500 rounded-xl text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-amber-500 transition-all font-medium disabled:opacity-50 text-sm tracking-widest shadow-sm"
+                id="password"
+              />
+            </div>
 
-            {/* Error Message */}
-            {loginError && (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
-                {loginError}
-              </div>
-            )}
+            <button
+              type="submit"
+              disabled={loginLoading || !username.trim() || !password.trim()}
+              className="w-full py-4 bg-gray-900 hover:bg-gray-800 text-white font-bold text-xs uppercase tracking-[0.2em] rounded-xl transition-all active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3 mt-4 shadow-lg shadow-gray-200"
+            >
+              {loginLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                <>
+                  Sign In
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </button>
+          </form>
 
-            {/* Login Form */}
-            <form onSubmit={handleBackendLogin} className="space-y-4 text-left">
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">
-                  Username <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Enter username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  disabled={loginLoading}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-800 disabled:opacity-50"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">
-                  Password <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="password"
-                  required
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  disabled={loginLoading}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm font-semibold text-slate-800 disabled:opacity-50"
-                />
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-4 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowLoginModal(false);
-                    setUsername('');
-                    setPassword('');
-                    setLoginError('');
-                  }}
-                  disabled={loginLoading}
-                  className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loginLoading || !username.trim() || !password.trim()}
-                  className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {loginLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Signing In...
-                    </>
-                  ) : (
-                    'Sign In'
-                  )}
-                </button>
-              </div>
-            </form>
-          </div>
+          <p className="mt-10 text-center text-[10px] text-gray-400 font-bold tracking-[0.2em] uppercase slide-up-4">
+            Kairox Traceability &copy; {new Date().getFullYear()}
+          </p>
         </div>
-      )}
+      </div>
     </div>
   );
 }
