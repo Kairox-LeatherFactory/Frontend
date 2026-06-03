@@ -17,6 +17,7 @@ import {
   Menu,
   LogOut,
   TriangleAlert,
+  BotMessageSquare,
 } from 'lucide-react';
 
 const NAV_ICONS = {
@@ -27,6 +28,7 @@ const NAV_ICONS = {
   '/dashboard/wages': Wallet,
   '/dashboard/simulator': Gamepad2,
   '/dashboard/tracer': ScanSearch,
+  '/dashboard/chat': BotMessageSquare,
 };
 
 export default function DashboardLayout({ children }) {
@@ -73,6 +75,7 @@ export default function DashboardLayout({ children }) {
       { name: 'Payroll & Rates', href: '/dashboard/wages' },
       { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
       { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
+      { name: 'AI Assistant', href: '/dashboard/chat' },
     ],
     [] // No dependencies — content is static
   );
