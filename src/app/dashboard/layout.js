@@ -27,6 +27,7 @@ const NAV_ICONS = {
   '/dashboard/wages': Wallet,
   '/dashboard/simulator': Gamepad2,
   '/dashboard/tracer': ScanSearch,
+  
 };
 
 export default function DashboardLayout({ children }) {
@@ -65,6 +66,7 @@ export default function DashboardLayout({ children }) {
     { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
     { name: 'Client SKU Tree', href: '/dashboard/orders' },
     { name: 'Payroll & Rates', href: '/dashboard/wages' },
+    { name: 'Attendance',             href: '/dashboard/attendance' }, // added by nihal
     { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
     { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
   ];
