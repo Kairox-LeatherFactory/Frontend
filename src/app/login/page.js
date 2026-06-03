@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { apiLogin } from '@/lib/api';
@@ -28,7 +28,10 @@ export default function Login() {
     setMounted(true);
   }, []);
 
-  const handleBackendLogin = async (e) => {
+  // useCallback: stabilizes the function reference across renders.
+  // Without this, every username/password keystroke creates a brand-new function object,
+  // causing React to see onSubmit as "changed" and trigger unnecessary reconciliation.
+  const handleBackendLogin = useCallback(async (e) => {
     e.preventDefault();
     if (!username.trim() || !password.trim()) return;
     setLoginLoading(true);
@@ -43,7 +46,7 @@ export default function Login() {
     } finally {
       setLoginLoading(false);
     }
-  };
+  }, [username, password, login, router]);
 
   return (
     <div className="flex min-h-screen bg-white">

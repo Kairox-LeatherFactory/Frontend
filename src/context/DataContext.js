@@ -1,48 +1,50 @@
 'use client';
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { apiGetClients, apiCreateClient, apiGetClientOrders } from '@/lib/api';
+import { 
+  apiGetClients, 
+  apiCreateClient, 
+  apiGetClientOrders,
+  apiGetEmployees,
+  apiGetOperations,
+  apiGetEvents,
+  apiLogEvent,
+  apiGetWageRuns,
+  apiComputeWageRun,
+} from '@/lib/api';
 import {
-  INITIAL_EVENTS,
-  ORDERS,
-  WORKERS,
   RATES,
   TRACE_CARDS,
-  WAGE_RUNS,
-  CLIENTS,
 } from '@/hooks/useMockData';
 
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
-  const { token, user } = useAuth();
+  const { token } = useAuth();
 
-  // Automatic cache reset check if old mock data is detected in localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const version = localStorage.getItem('kairox_cache_version');
-      if (version !== 'v2') {
-        localStorage.removeItem('kairox_events');
-        localStorage.removeItem('kairox_orders');
-        localStorage.removeItem('kairox_wage_runs');
-        localStorage.removeItem('kairox_trace_cards');
-        localStorage.setItem('kairox_cache_version', 'v2');
-        // Refresh page to apply clean slate
-        window.location.reload();
-      }
-    }
-  }, []);
-
-  // ─── API-backed clients state ───
-  const [apiClients, setApiClients] = useState([]);
-  const [apiClientOrders, setApiClientOrders] = useState([]);
+  // ─── Backend API State ───
+  const [clients, setClients] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [workers, setWorkers] = useState([]);
+  const [operations, setOperations] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [wageRuns, setWageRuns] = useState([]);
   const [apiLoading, setApiLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
 
-  // Fetch clients & orders from backend API when token is available
+  // ─── TraceCards (no backend API yet — kept in memory) ───
+  const [traceCards, setTraceCards] = useState({});
+
+  // Fetch all data from backend when user logs in
   useEffect(() => {
     if (!token) {
-      setApiClients([]);
-      setApiClientOrders([]);
+      setClients([]);
+      setOrders([]);
+      setWorkers([]);
+      setOperations([]);
+      setEvents([]);
+      setWageRuns([]);
+      setApiError(null);
       return;
     }
 
@@ -50,19 +52,53 @@ export function DataProvider({ children }) {
 
     async function fetchFromApi() {
       setApiLoading(true);
+      setApiError(null);
       try {
-        // 1. Fetch all clients
-        const clientsData = await apiGetClients(token);
-        if (cancelled) return;
-        setApiClients(clientsData);
+        // Fetch all metadata in parallel
+        const [clientsData, empData, opsData, evtsData, wageRunsData] = await Promise.all([
+          apiGetClients(token).catch(() => []),
+          apiGetEmployees(token).catch(() => []),
+          apiGetOperations(token).catch(() => []),
+          apiGetEvents(token).catch(() => []),
+          apiGetWageRuns(token).catch(() => []),
+        ]);
 
-        // 2. Fetch orders for each client
+        if (cancelled) return;
+
+        // Map clients
+        setClients(clientsData.map((c) => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—' })));
+
+        // Map workers
+        setWorkers(empData.map((e) => ({ id: e.id, name: e.name, role: e.designation, wage_type: e.wage_type, monthly_salary: e.monthly_salary })));
+
+        // Set operations
+        setOperations(opsData);
+
+        // Set wage runs
+        setWageRuns(wageRunsData);
+
+        // Map events (UUID → readable names)
+        const mappedEvents = evtsData.map((apiE) => {
+          const op = opsData.find((o) => o.id === apiE.operation_id);
+          return {
+            id: apiE.id,
+            sku_id: apiE.sku_id,
+            operation_id: apiE.operation_id,
+            operation: op ? op.label : 'Unknown',
+            worker_id: apiE.employee_id,
+            qty: apiE.qty,
+            date: apiE.work_date,
+            garment_id: apiE.bundle_ref,
+          };
+        });
+        setEvents(mappedEvents);
+
+        // Fetch orders for each client
         const allOrders = [];
         for (const client of clientsData) {
           try {
             const ordersData = await apiGetClientOrders(token, client.id);
             if (cancelled) return;
-            // Map backend order structure to our frontend format
             if (Array.isArray(ordersData)) {
               ordersData.forEach((order) => {
                 if (order.styles && Array.isArray(order.styles)) {
@@ -80,6 +116,7 @@ export function DataProvider({ children }) {
                       style: style.name,
                       colorway: colors.join(', '),
                       sizes,
+                      skus: style.skus || [],
                       order_date: order.order_date || '—',
                       deadline: order.delivery_deadline || '—',
                       sea_cutoff: order.sea_cutoff_date || '—',
@@ -97,11 +134,33 @@ export function DataProvider({ children }) {
             console.warn(`Failed to fetch orders for client ${client.name}:`, orderErr);
           }
         }
+
+        // Now that orders are loaded, enrich events with order/sku info
         if (!cancelled) {
-          setApiClientOrders(allOrders);
+          setOrders(allOrders);
+          setEvents((prev) =>
+            prev.map((evt) => {
+              let foundOrder = null;
+              let foundSku = null;
+              for (const ord of allOrders) {
+                const sk = ord.skus?.find((s) => s.id === evt.sku_id);
+                if (sk) { foundOrder = ord; foundSku = sk; break; }
+              }
+              return {
+                ...evt,
+                order_id: foundOrder ? foundOrder.id : 'Unknown',
+                style: foundOrder ? foundOrder.style : 'Unknown',
+                colorway: foundSku ? foundSku.color_name : 'Unknown',
+                size: foundSku ? foundSku.size : 'Unknown',
+              };
+            })
+          );
         }
       } catch (err) {
-        console.error('Failed to fetch from API:', err);
+        if (!cancelled) {
+          console.error('Failed to fetch from API:', err);
+          setApiError('Could not connect to backend. Please check the server.');
+        }
       } finally {
         if (!cancelled) setApiLoading(false);
       }
@@ -114,196 +173,96 @@ export function DataProvider({ children }) {
     };
   }, [token]);
 
-  // Create a new client via backend API
+  // ─── Create a new client ───
   const createClient = useCallback(async (name, companyName) => {
     if (!token) throw new Error('Not authenticated');
     const newClient = await apiCreateClient(token, name, companyName);
-    setApiClients((prev) => [...prev, newClient]);
+    setClients((prev) => [...prev, { id: newClient.id, key: newClient.name, name: newClient.name, country: newClient.country || '—' }]);
     return newClient;
   }, [token]);
 
-  // ─── Existing mock-based state (for non-API features) ───
-  const [events, setEvents] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const version = localStorage.getItem('kairox_cache_version');
-      if (version !== 'v2') {
-        return INITIAL_EVENTS;
-      }
-      const saved = localStorage.getItem('kairox_events');
-      return saved ? JSON.parse(saved) : INITIAL_EVENTS;
+  // ─── Log a production event ───
+  const addEvent = async (event) => {
+    if (!token) throw new Error('Not authenticated. Please log in.');
+
+    const order = orders.find((o) => o.id === event.order_id);
+    const sku = order?.skus?.find((s) => s.size === event.size);
+    const sku_id = sku?.id;
+
+    const operationObj = operations.find((o) => o.label === event.operation);
+    const operation_id = operationObj?.id;
+
+    if (!sku_id || !operation_id) {
+      throw new Error('Could not map size or operation to backend IDs. Please ensure backend data is loaded.');
     }
-    return INITIAL_EVENTS;
-  });
 
-  const [orders, setOrders] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const version = localStorage.getItem('kairox_cache_version');
-      if (version !== 'v2') {
-        return ORDERS;
-      }
-      const saved = localStorage.getItem('kairox_orders');
-      return saved ? JSON.parse(saved) : ORDERS;
-    }
-    return ORDERS;
-  });
+    const payload = {
+      sku_id,
+      operation_id,
+      employee_id: event.worker_id,
+      work_date: event.date,
+      qty: event.qty,
+      bundle_ref: event.garment_id || null,
+    };
 
-  const [wageRuns, setWageRuns] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const version = localStorage.getItem('kairox_cache_version');
-      if (version !== 'v2') {
-        return WAGE_RUNS;
-      }
-      const saved = localStorage.getItem('kairox_wage_runs');
-      return saved ? JSON.parse(saved) : WAGE_RUNS;
-    }
-    return WAGE_RUNS;
-  });
+    const newApiEvent = await apiLogEvent(token, payload);
 
-  const [traceCards, setTraceCards] = useState(() => {
-    if (typeof window !== 'undefined') {
-      const version = localStorage.getItem('kairox_cache_version');
-      if (version !== 'v2') {
-        return TRACE_CARDS;
-      }
-      const saved = localStorage.getItem('kairox_trace_cards');
-      return saved ? JSON.parse(saved) : TRACE_CARDS;
-    }
-    return TRACE_CARDS;
-  });
+    // Add to local events state immediately (optimistic update)
+    const op = operations.find((o) => o.id === newApiEvent.operation_id);
+    setEvents((prev) => [...prev, {
+      id: newApiEvent.id,
+      sku_id: newApiEvent.sku_id,
+      operation_id: newApiEvent.operation_id,
+      operation: op ? op.label : event.operation,
+      worker_id: newApiEvent.employee_id,
+      qty: newApiEvent.qty,
+      date: newApiEvent.work_date,
+      garment_id: newApiEvent.bundle_ref,
+      order_id: event.order_id,
+      style: event.style,
+      size: event.size,
+    }]);
 
-  // Save to local storage on changes
-  useEffect(() => {
-    localStorage.setItem('kairox_events', JSON.stringify(events));
-  }, [events]);
-
-  useEffect(() => {
-    localStorage.setItem('kairox_orders', JSON.stringify(orders));
-  }, [orders]);
-
-  useEffect(() => {
-    localStorage.setItem('kairox_wage_runs', JSON.stringify(wageRuns));
-  }, [wageRuns]);
-
-  useEffect(() => {
-    localStorage.setItem('kairox_trace_cards', JSON.stringify(traceCards));
-  }, [traceCards]);
-
-  // Recalculates order progress and air risk whenever events change
-  useEffect(() => {
-    setOrders((prevOrders) =>
-      prevOrders.map((order) => {
-        const orderEvents = events.filter((e) => e.order_id === order.id);
-        if (orderEvents.length === 0) return order;
-
-        const ops = ['Cutting', 'Fusing', 'Pasting', 'Shell stitch', 'Lining attach', 'Lining stitch', 'Final finish'];
-        let maxStageIndex = 0;
-        let finalFinishQty = 0;
-
-        orderEvents.forEach((e) => {
-          const idx = ops.indexOf(e.operation);
-          if (idx > maxStageIndex) {
-            maxStageIndex = idx;
-          }
-          if (e.operation === 'Final finish') {
-            finalFinishQty += e.qty;
-          }
-        });
-
-        const target = order.quantity;
-        const progressPercent = Math.min(
-          99,
-          Math.max(
-            order.progress,
-            Math.round(((maxStageIndex + 1) / ops.length) * 80 + (finalFinishQty / target) * 20)
-          )
-        );
-
-        let freightMode = order.freight_mode;
-        if (order.delay_days > 2 && progressPercent < 80) {
-          freightMode = 'Air Freight (RISK)';
-        } else if (progressPercent >= 100) {
-          freightMode = 'Delivered';
-        }
-
-        return {
-          ...order,
-          progress: progressPercent >= 100 ? 100 : progressPercent,
-          freight_mode: freightMode,
-        };
-      })
-    );
-  }, [events]);
-
-  const addEvent = (event) => {
-    setEvents((prev) => [
-      ...prev,
-      {
-        id: prev.length + 1,
-        ...event,
-      },
-    ]);
-
+    // Update trace card
     if (event.garment_id) {
       setTraceCards((prev) => {
-        const card = prev[event.garment_id] || {
-          garment_id: event.garment_id,
-          order_id: event.order_id,
-          style: event.style || 'CARNABY Biker Jacket',
-          operations: [],
-        };
+        const card = prev[event.garment_id] || { garment_id: event.garment_id, order_id: event.order_id, style: event.style || '', operations: [] };
         const newOp = {
-          stage: `Stage 10: ${event.operation}`,
-          operator: WORKERS.find((w) => w.id === event.worker_id)?.name || 'Unknown Operator',
+          stage: `Stage: ${event.operation}`,
+          operator: workers.find((w) => w.id === event.worker_id)?.name || 'Unknown',
           status: 'PASS',
-          note: `Logged ${event.qty} pcs at factory floor`,
+          note: `Logged ${event.qty} pcs`,
           time: new Date().toISOString().replace('T', ' ').slice(0, 16),
         };
-        return {
-          ...prev,
-          [event.garment_id]: {
-            ...card,
-            operations: [...card.operations, newOp],
-          },
-        };
+        return { ...prev, [event.garment_id]: { ...card, operations: [...card.operations, newOp] } };
       });
     }
   };
 
-  const addWageRun = (wageRun) => {
-    setWageRuns((prev) => [
-      {
-        id: `WR-${String(prev.length + 1).padStart(3, '0')}`,
-        created_at: new Date().toISOString().slice(0, 10),
-        ...wageRun,
-      },
-      ...prev,
-    ]);
+  // ─── Freeze a wage run ───
+  const addWageRun = async (period) => {
+    if (!token) throw new Error('Not authenticated. Please log in.');
+    const newRun = await apiComputeWageRun(token, period);
+    setWageRuns((prev) => [newRun, ...prev]);
+    return newRun;
   };
-
-  // ─── Merge: If token is available, use API clients. Otherwise fallback to mock. ───
-  const mergedClients = token && apiClients.length > 0
-    ? apiClients.map((c) => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—' }))
-    : CLIENTS;
-
-  // Merge orders: if API orders exist for the logged-in user, use them. Otherwise mock.
-  const mergedOrders = token && apiClientOrders.length > 0
-    ? apiClientOrders
-    : orders;
 
   return (
     <DataContext.Provider
       value={{
         events,
-        orders: mergedOrders,
-        workers: WORKERS,
+        orders,
+        workers,
+        operations,
         rates: RATES,
-        clients: mergedClients,
+        clients,
         wageRuns,
         traceCards,
         addEvent,
         addWageRun,
         createClient,
         apiLoading,
+        apiError,
       }}
     >
       {children}

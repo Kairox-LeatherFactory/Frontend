@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users } from 'lucide-react';
@@ -8,9 +8,12 @@ export default function ProductionLogEntry() {
   const { user, ROLE_OPERATIONS } = useAuth();
   const { orders, workers, addEvent } = useData();
 
-  // Role operational permissions
-  const allowedOperations = ROLE_OPERATIONS[user] || [];
-  const isReadOnly = allowedOperations.length === 0;
+  // Role operational permissions — memoized: only recomputes when user role changes
+  const allowedOperations = useMemo(
+    () => ROLE_OPERATIONS[user] || [],
+    [user, ROLE_OPERATIONS]
+  );
+  const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
 
   // Form State
   const [orderId, setOrderId] = useState(orders[0]?.id || '');
@@ -25,8 +28,11 @@ export default function ProductionLogEntry() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Handle selected order details
-  const selectedOrder = orders.find((o) => o.id === orderId);
+  // Handle selected order details — memoized: .find() only reruns when orderId or orders change
+  // Without this, every qty keystroke triggers a full orders array scan unnecessarily
+  const selectedOrder = useMemo(() => {
+    return orders.find((o) => o.id === orderId);
+  }, [orders, orderId]);
 
   const handleSubmit = (e) => {
     e.preventDefault();

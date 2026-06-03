@@ -60,3 +60,105 @@ export async function apiGetClientOrders(token, clientId) {
   if (!res.ok) throw new Error(`Failed to fetch orders for client ${clientId} (${res.status})`);
   return res.json();
 }
+
+/**
+ * Fetch all active employees
+ * @returns {Array<{ id, name, designation, wage_type, monthly_salary, is_active }>}
+ */
+export async function apiGetEmployees(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/employees?active_only=true`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch employees (${res.status})`);
+  return res.json();
+}
+
+/**
+ * Fetch production operations
+ * @returns {Array<{ id, code, label, sequence }>}
+ */
+export async function apiGetOperations(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/operations`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch operations (${res.status})`);
+  return res.json();
+}
+
+/**
+ * Fetch recent production events
+ * @returns {Array<{ id, sku_id, operation_id, employee_id, work_date, qty, bundle_ref }>}
+ */
+export async function apiGetEvents(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/events`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch events (${res.status})`);
+  return res.json();
+}
+
+/**
+ * Log a new production event
+ */
+export async function apiLogEvent(token, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/events`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to log event');
+    throw new Error(errText || `Failed to log event (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Fetch all wage runs (frozen payrolls)
+ */
+export async function apiGetWageRuns(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage runs (${res.status})`);
+  return res.json();
+}
+
+/**
+ * Compute and freeze a wage run for a period
+ */
+export async function apiComputeWageRun(token, period) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ period }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to compute wage run');
+    throw new Error(errText || `Failed to compute wage run (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Get stage-by-stage progress for a specific style
+ */
+export async function apiGetStyleProgress(token, styleId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/styles/${styleId}/progress`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch style progress (${res.status})`);
+  return res.json();
+}
+
