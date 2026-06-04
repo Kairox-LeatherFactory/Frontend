@@ -341,22 +341,22 @@ function MyAttendanceView({ token }) {
           <h3 className="text-sm font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
             <Zap className="w-4 h-4 text-blue-600" /> Action Terminal
           </h3>
-          <div className="flex flex-col sm:flex-row gap-4">
-            <button onClick={handleCheckIn}
-              disabled={checkedIn || gpsBlocked || busy}
-              className="flex-1 flex items-center justify-center gap-3 h-16 rounded-xl font-black text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-blue-200">
-              {busy && !checkedIn
-                ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
-                : <><LogIn className="w-5 h-5" /> Check In</>}
-            </button>
-            <button onClick={handleCheckOut}
-              disabled={!checkedIn || checkedOut || gpsBlocked || busy}
-              className="flex-1 flex items-center justify-center gap-3 h-16 rounded-xl font-black text-sm border-2 border-slate-200 text-slate-700 hover:border-blue-300 hover:text-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all">
-              {busy && checkedIn && !checkedOut
-                ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
-                : <><LogOut className="w-5 h-5" /> Check Out</>}
-            </button>
-          </div>
+          <div className="flex flex-col gap-3">
+  <button onClick={handleCheckIn}
+    disabled={checkedIn || gpsBlocked || busy}
+    className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm bg-green-600 text-white hover:bg-green-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-200 touch-manipulation">
+    {busy && !checkedIn
+      ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
+      : <><LogIn className="w-5 h-5" /> Check In</>}
+  </button>
+  <button onClick={handleCheckOut}
+    disabled={!checkedIn || checkedOut || gpsBlocked || busy}
+    className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm border-2 border-slate-200 text-slate-700 bg-red-600 text-white hover:bg-red-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all touch-manipulation">
+    {busy && checkedIn && !checkedOut
+      ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
+      : <><LogOut className="w-5 h-5" /> Check Out</>}
+  </button>
+</div>
           <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-400">
             {gps.lat
               ? <><MapPin className="w-3.5 h-3.5 text-emerald-500" /> GPS active — {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</>
@@ -379,15 +379,15 @@ function MyAttendanceView({ token }) {
           <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
             <CalendarDays className="w-5 h-5 text-blue-600" /> Attendance History
           </h3>
-          <div className="flex items-center gap-2">
-            <input type="date" value={startDate}
-              onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-              className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer" />
-            <span className="text-slate-400 font-bold text-xs">to</span>
-            <input type="date" value={endDate}
-              onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-              className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer" />
-          </div>
+          <div className="flex flex-wrap items-center gap-2">
+  <input type="date" value={startDate}
+    onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+    className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer flex-1 min-w-[130px]" />
+  <span className="text-slate-400 font-bold text-xs">to</span>
+  <input type="date" value={endDate}
+    onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+    className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer flex-1 min-w-[130px]" />
+</div>
         </div>
 
         {histLoading ? (
@@ -401,43 +401,83 @@ function MyAttendanceView({ token }) {
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-slate-100">
-              <table className="w-full text-left text-xs font-semibold">
-                <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
-                    <th className="p-3">Date</th>
-                    <th className="p-3">Check In</th>
-                    <th className="p-3">Check Out</th>
-                    <th className="p-3">Distance</th>
-                    <th className="p-3">Source</th>
-                    <th className="p-3">Flags</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-50 text-slate-700">
-                  {paginated.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/60">
-                      <td className="p-3 font-black text-slate-800">{fmtDate(row.work_date)}</td>
-                      <td className="p-3">{fmtTime(row.check_in_at)}</td>
-                      <td className="p-3">
-                        {row.check_out_at
-                          ? fmtTime(row.check_out_at)
-                          : <span className="text-emerald-600 font-black">Active</span>}
-                      </td>
-                      <td className="p-3 text-slate-400">{fmtDist(row.distance_m)}</td>
-                      <td className="p-3"><Badge label={row.source} type={row.source} /></td>
-                      <td className="p-3">
-                        <div className="flex flex-wrap gap-1">
-                          {row.is_late     && <Badge label="Late"  type="late"     />}
-                          {row.is_short    && <Badge label="Short" type="short"    />}
-                          {row.is_overtime && <Badge label="OT"    type="overtime" />}
-                          {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            {/* Desktop table — hidden on mobile */}
+<div className="hidden sm:block overflow-x-auto rounded-xl border border-slate-100">
+  <table className="w-full text-left text-xs font-semibold">
+    <thead>
+      <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
+        <th className="p-3">Date</th>
+        <th className="p-3">Check In</th>
+        <th className="p-3">Check Out</th>
+        <th className="p-3">Distance</th>
+        <th className="p-3">Source</th>
+        <th className="p-3">Flags</th>
+      </tr>
+    </thead>
+    <tbody className="divide-y divide-slate-50 text-slate-700">
+      {paginated.map((row) => (
+        <tr key={row.id} className="hover:bg-slate-50/60">
+          <td className="p-3 font-black text-slate-800">{fmtDate(row.work_date)}</td>
+          <td className="p-3">{fmtTime(row.check_in_at)}</td>
+          <td className="p-3">
+            {row.check_out_at
+              ? fmtTime(row.check_out_at)
+              : <span className="text-emerald-600 font-black">Active</span>}
+          </td>
+          <td className="p-3 text-slate-400">{fmtDist(row.distance_m)}</td>
+          <td className="p-3"><Badge label={row.source} type={row.source} /></td>
+          <td className="p-3">
+            <div className="flex flex-wrap gap-1">
+              {row.is_late     && <Badge label="Late"  type="late"     />}
+              {row.is_short    && <Badge label="Short" type="short"    />}
+              {row.is_overtime && <Badge label="OT"    type="overtime" />}
+              {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
             </div>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+
+{/* Mobile cards — shown only on mobile */}
+<div className="sm:hidden space-y-3">
+  {paginated.map((row) => (
+    <div key={row.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="font-black text-slate-900 text-sm">{fmtDate(row.work_date)}</span>
+        <Badge label={row.source} type={row.source} />
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div>
+          <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Check In</p>
+          <p className="font-black text-slate-800">{fmtTime(row.check_in_at)}</p>
+        </div>
+        <div>
+          <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Check Out</p>
+          <p className="font-black text-slate-800">
+            {row.check_out_at
+              ? fmtTime(row.check_out_at)
+              : <span className="text-emerald-600">Active</span>}
+          </p>
+        </div>
+        <div>
+          <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Distance</p>
+          <p className="font-semibold text-slate-600">{fmtDist(row.distance_m)}</p>
+        </div>
+        <div>
+          <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Flags</p>
+          <div className="flex flex-wrap gap-1">
+            {row.is_late     && <Badge label="Late"  type="late"     />}
+            {row.is_short    && <Badge label="Short" type="short"    />}
+            {row.is_overtime && <Badge label="OT"    type="overtime" />}
+            {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
+          </div>
+        </div>
+      </div>
+    </div>
+  ))}
+</div>
             <Paginator page={page} totalPages={totalPages} setPage={setPage} total={history.length} perPage={PER_PAGE} />
           </>
         )}
@@ -453,21 +493,20 @@ function MyAttendanceView({ token }) {
 function FloorCommandView({ workers = [], token }) {
   const gps = useGps();
 
-  const [search, setSearch]             = useState('');
-  const [selected, setSelected]         = useState(new Set());
+  const [search, setSearch]               = useState('');
+  const [selected, setSelected]           = useState(new Set());
   const [actionLoading, setActionLoading] = useState(false);
-  const [alert, setAlert]               = useState(null);
-  const [diffModal, setDiffModal]       = useState(null);
-  const [addModal, setAddModal]         = useState(false);
-  const [addForm, setAddForm]           = useState({ name: '', phone: '', designation: '', daily_rate: '' });
-  const [addLoading, setAddLoading]     = useState(false);
+  const [alert, setAlert]                 = useState(null);
+  const [diffModal, setDiffModal]         = useState(null);
+  const [addModal, setAddModal]           = useState(false);
+  const [addForm, setAddForm]             = useState({ name: '', phone: '', designations: [], daily_rate: '' });
+  const [addLoading, setAddLoading]       = useState(false);
 
   const showAlert = (type, message) => {
     setAlert({ type, message });
     if (type === 'success') setTimeout(() => setAlert(null), 6000);
   };
 
-  // Strictly filter to DAILY_WAGE only — backend rejects any other wage type with 400
   const dailyWorkers = useMemo(
     () => workers.filter((w) => (w.wage_type || '').toUpperCase() === 'DAILY_WAGE'),
     [workers]
@@ -491,7 +530,6 @@ function FloorCommandView({ workers = [], token }) {
   const toggleAll = () =>
     setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((w) => w.id)));
 
-  // Batch proxy action with silent error diffing
   const batchAction = async (type) => {
     if (selected.size === 0) return;
     setActionLoading(true);
@@ -499,7 +537,6 @@ function FloorCommandView({ workers = [], token }) {
       const coords = await gps.getPosition();
       const requestedIds = [...selected];
       const endpoint = type === 'check-in' ? `${API}/proxy/check-in` : `${API}/proxy/check-out`;
-      // ProxyMarkRequest: { employee_ids[], lat, lon }
       const result = await apiFetch(endpoint, {
         method: 'POST',
         body: JSON.stringify({ employee_ids: requestedIds, lat: coords.lat, lon: coords.lon }),
@@ -517,27 +554,26 @@ function FloorCommandView({ workers = [], token }) {
     }
   };
 
-  // Flow C — add daily worker, GPS pre-verified before POST
   const handleAddWorker = async () => {
-    if (!addForm.name.trim() || !addForm.phone.trim() || !addForm.designation.trim()) {
-      showAlert('warning', 'Name, phone, and designation are required.');
+    if (!addForm.name.trim() || !addForm.phone.trim() || addForm.designations.length === 0) {
+      showAlert('warning', 'Name, phone, and at least one designation are required.');
       return;
     }
     setAddLoading(true);
     try {
-      await gps.getPosition(); // geofence check before onboarding
+      await gps.getPosition();
       await apiFetch(`${API}/daily-workers`, {
         method: 'POST',
         body: JSON.stringify({
           name:        addForm.name,
           phone:       addForm.phone,
-          designation: addForm.designation,
+          designation: addForm.designations.join(', '),
           daily_rate:  addForm.daily_rate ? parseFloat(addForm.daily_rate) : null,
         }),
       }, token);
       showAlert('success', `Worker "${addForm.name}" onboarded to floor roster.`);
       setAddModal(false);
-      setAddForm({ name: '', phone: '', designation: '', daily_rate: '' });
+      setAddForm({ name: '', phone: '', designations: [], daily_rate: '' });
     } catch (e) {
       if (e.status === 403) showAlert('error', `Geofence check failed: ${e.message}`);
       else showAlert('error', typeof e === 'string' ? e : e.message || 'Failed to add worker.');
@@ -571,11 +607,15 @@ function FloorCommandView({ workers = [], token }) {
               {dailyWorkers.length} workers
             </span>
           </h3>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input type="text" placeholder="Search workers…" value={search}
+          <div className="relative flex items-center">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
+            <input
+              type="text"
+              placeholder="Search workers…"
+              value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="input-field h-9 pl-9 pr-3 text-xs font-semibold w-52" />
+              className="h-9 w-52 rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 transition-colors"
+            />
           </div>
         </div>
 
@@ -697,21 +737,58 @@ function FloorCommandView({ workers = [], token }) {
               GPS location will be verified before submission — floor-only onboarding rule.
             </p>
             <div className="space-y-3">
-              {[
-                { key: 'name',        label: 'Full Name',      placeholder: 'e.g. Ramesh Kumar',   required: true  },
-                { key: 'phone',       label: 'Phone Number',   placeholder: 'e.g. 9876543210',     required: true  },
-                { key: 'designation', label: 'Designation',    placeholder: 'e.g. Cutter, Tailor', required: true  },
-                { key: 'daily_rate',  label: 'Daily Rate (₹)', placeholder: 'Optional',            type: 'number'  },
-              ].map(({ key, label, placeholder, required, type }) => (
-                <div key={key}>
-                  <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                    {label}{required && ' *'}
-                  </label>
-                  <input type={type || 'text'} value={addForm[key]} placeholder={placeholder}
-                    onChange={(e) => setAddForm((f) => ({ ...f, [key]: e.target.value }))}
-                    className="input-field w-full h-10 text-sm font-semibold" />
-                </div>
-              ))}
+              <div>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Full Name *</label>
+                <input type="text" value={addForm.name} placeholder="e.g. Ramesh Kumar"
+                  onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
+                  className="input-field w-full h-10 text-sm font-semibold" />
+              </div>
+              <div>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Phone Number *</label>
+                <input type="text" value={addForm.phone} placeholder="e.g. 9876543210"
+                  onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value }))}
+                  className="input-field w-full h-10 text-sm font-semibold" />
+              </div>
+              <div>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+                  Designation * <span className="normal-case text-slate-400 font-semibold">(hold Ctrl / Cmd for multiple)</span>
+                </label>
+                <select multiple value={addForm.designations}
+                  onChange={(e) => {
+                    const sel = Array.from(e.target.selectedOptions).map((o) => o.value);
+                    setAddForm((f) => ({ ...f, designations: sel }));
+                  }}
+                  className="input-field w-full text-sm font-semibold rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 min-h-[120px] p-1">
+                  {['Cutter', 'Fusing Operator', 'Pasting Operator', 'Shell Stitcher',
+                    'Lining Attacher', 'Lining Stitcher',
+                    'Helper', 'Packer'].map((role) => (
+                    <option key={role} value={role}
+                      className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${
+                        addForm.designations.includes(role) ? 'bg-blue-600 text-white' : 'text-slate-700'
+                      }`}>
+                      {role}
+                    </option>
+                  ))}
+                </select>
+                {addForm.designations.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {addForm.designations.map((d) => (
+                      <span key={d} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 border border-blue-200 rounded-full text-[10px] font-black">
+                        {d}
+                        <button type="button" onClick={() => setAddForm((f) => ({ ...f, designations: f.designations.filter((x) => x !== d) }))}>
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Daily Rate (₹)</label>
+                <input type="number" value={addForm.daily_rate} placeholder="Optional"
+                  onChange={(e) => setAddForm((f) => ({ ...f, daily_rate: e.target.value }))}
+                  className="input-field w-full h-10 text-sm font-semibold" />
+              </div>
             </div>
             <div className="flex gap-3 pt-1">
               <button onClick={() => setAddModal(false)} className="btn-secondary flex-1 h-10 text-xs font-bold">Cancel</button>
@@ -743,12 +820,21 @@ function OperationsHRView({ token }) {
   const [alert, setAlert]                 = useState(null);
   const [page, setPage]                   = useState(1);
   const [filter, setFilter]               = useState('all');
+  const [filterOpen, setFilterOpen]       = useState(false);
   const PER_PAGE = 10;
 
   const showAlert = (type, message) => {
     setAlert({ type, message });
     if (type === 'success') setTimeout(() => setAlert(null), 5000);
   };
+
+  // Click-outside close for filter dropdown
+  useEffect(() => {
+    if (!filterOpen) return;
+    const close = (e) => { if (!e.target.closest('.filter-dropdown')) setFilterOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [filterOpen]);
 
   // GET /today
   const fetchRoster = useCallback(async () => {
@@ -768,8 +854,7 @@ function OperationsHRView({ token }) {
     setConfigLoading(true);
     try {
       const data = await apiFetch(`${API}/config`, {}, token);
-      setConfig(data);
-      // Intentionally exclude `timezone` — must never be sent in PATCH per spec
+      setConfig(data); 
       setConfigForm({
         shift_start:        data.shift_start,
         shift_length_hours: data.shift_length_hours,
@@ -787,7 +872,7 @@ function OperationsHRView({ token }) {
 
   useEffect(() => { fetchRoster(); fetchConfig(); }, [fetchRoster, fetchConfig]);
 
-  // PATCH /config — HH:MM validated client-side before submit
+  // PATCH /config
   const handleSaveConfig = async () => {
     const timeRegex = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
     if (!timeRegex.test(configForm.shift_start || '')) {
@@ -796,7 +881,6 @@ function OperationsHRView({ token }) {
     }
     setConfigSaving(true);
     try {
-      // `timezone` key deliberately omitted — backend owns it
       const payload = {
         shift_start:        configForm.shift_start,
         shift_length_hours: parseFloat(configForm.shift_length_hours),
@@ -844,17 +928,39 @@ function OperationsHRView({ token }) {
             </span>
           </h3>
           <div className="flex items-center gap-2">
-            <Filter className="w-4 h-4 text-slate-400" />
-            {['all', 'active', 'late'].map((f) => (
-              <button key={f} onClick={() => { setFilter(f); setPage(1); }}
-                className={`h-8 px-3 rounded-lg text-xs font-black transition-colors ${filter === f ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+
+            {/* Filter dropdown */}
+            <div className="relative filter-dropdown">
+              <button onClick={() => setFilterOpen((o) => !o)}
+                className={`flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-black transition-colors border ${
+                  filter !== 'all'
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                }`}>
+                <Filter className="w-3.5 h-3.5" />
+                {filter.charAt(0).toUpperCase() + filter.slice(1)}
               </button>
-            ))}
+              {filterOpen && (
+                <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden">
+                  {['all', 'active', 'late'].map((f) => (
+                    <button key={f} onClick={() => { setFilter(f); setPage(1); setFilterOpen(false); }}
+                      className={`w-full text-left px-4 py-2.5 text-xs font-black transition-colors flex items-center justify-between ${
+                        filter === f ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+                      }`}>
+                      {f.charAt(0).toUpperCase() + f.slice(1)}
+                      {filter === f && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Refresh button */}
             <button onClick={fetchRoster} title="Refresh roster"
-              className="btn-secondary h-8 w-8 p-0 flex items-center justify-center ml-1">
-              <RefreshCw className="w-3.5 h-3.5" />
+              className="h-8 w-8 p-0 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:rotate-180 transition-transform">
+              <RefreshCw className="w-4 h-4 text-blue-600" />
             </button>
+
           </div>
         </div>
 
@@ -990,7 +1096,6 @@ function OperationsHRView({ token }) {
                   onChange={(e) => setConfigForm((f) => ({ ...f, radius_m: e.target.value }))}
                   className="input-field w-full h-10 text-sm font-semibold" />
               </div>
-              {/* Leaflet mount point — wire up L.map() + L.circle() here */}
               <div className="rounded-xl border border-slate-100 overflow-hidden bg-slate-50 h-40 flex items-center justify-center">
                 {configForm.factory_lat && configForm.factory_lon ? (
                   <div className="text-center text-slate-400">
