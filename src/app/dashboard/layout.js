@@ -46,17 +46,6 @@ export default function DashboardLayout({ children }) {
     }
   }, [user, router]);
 
-  if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-brand">
-        <div className="text-center text-white">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="font-semibold">Securing Session...</p>
-        </div>
-      </div>
-    );
-  }
-
   const roleInfo = ROLES[user] || { label: 'Viewer', color: 'bg-slate-100 text-slate-700' };
 
   // Calculate if there are any air freight risk orders — memoized to avoid filter on every render
@@ -81,6 +70,17 @@ export default function DashboardLayout({ children }) {
     ],
     [] // No dependencies — content is static
   );
+
+  if (!user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-brand">
+        <div className="text-center text-white">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+          <p className="font-semibold">Securing Session...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#f0f4ff]">
