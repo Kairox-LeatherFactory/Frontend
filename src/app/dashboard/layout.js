@@ -29,6 +29,7 @@ const NAV_ICONS = {
   '/dashboard/simulator': Gamepad2,
   '/dashboard/tracer': ScanSearch,
   '/dashboard/chat': BotMessageSquare,
+  '/dashboard/attendance': ClipboardPen, // Or whatever icon they meant to use, fallback is LayoutDashboard
 };
 
 export default function DashboardLayout({ children }) {
@@ -73,6 +74,7 @@ export default function DashboardLayout({ children }) {
       { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
       { name: 'Client SKU Tree', href: '/dashboard/orders' },
       { name: 'Payroll & Rates', href: '/dashboard/wages' },
+      { name: 'Attendance', href: '/dashboard/attendance' }, // added by nihal
       { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
       { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
       { name: 'AI Assistant', href: '/dashboard/chat' },
