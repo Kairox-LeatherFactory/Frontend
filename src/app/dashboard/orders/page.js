@@ -279,24 +279,6 @@ export default function OrdersTreeBrowser() {
               <Building2 className="w-5 h-5 text-blue-600" /> Active Client Directory
             </h3>
             <div className="flex gap-2">
-              {user === 'direct_manager' && (
-                <>
-                  <input
-                    type="file"
-                    accept=".xlsx, .xls"
-                    ref={fileInputRef}
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="py-2 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer border border-emerald-200 shadow-sm min-h-[40px]"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    Upload File
-                  </button>
-                </>
-              )}
               <button
                 onClick={() => {
                   setShowCreateModal(true);

@@ -162,3 +162,38 @@ export async function apiGetStyleProgress(token, styleId) {
   return res.json();
 }
 
+/**
+ * Preview an Excel import (dry-run, no DB writes)
+ */
+export async function apiImportPreview(token, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/preview`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to preview import');
+    throw new Error(errText || `Failed to preview import (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Commit an Excel import (writes to DB, idempotent)
+ */
+export async function apiImportCommit(token, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/commit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to commit import');
+    throw new Error(errText || `Failed to commit import (${res.status})`);
+  }
+  return res.json();
+}

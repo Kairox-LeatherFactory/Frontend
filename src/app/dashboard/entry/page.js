@@ -1,11 +1,12 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users } from 'lucide-react';
+import { apiImportPreview, apiImportCommit } from '@/lib/api';
+import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2 } from 'lucide-react';
 
 export default function ProductionLogEntry() {
-  const { user, ROLE_OPERATIONS } = useAuth();
+  const { user, token, ROLE_OPERATIONS } = useAuth();
   const { orders, workers, addEvent } = useData();
 
   // Role operational permissions — memoized: only recomputes when user role changes
@@ -28,8 +29,54 @@ export default function ProductionLogEntry() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // ─── Excel Upload States ───
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [commitLoading, setCommitLoading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [commitSuccess, setCommitSuccess] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFileName(file.name);
+    setSelectedFile(file);
+    setUploadError('');
+    setCommitSuccess('');
+    setUploadLoading(true);
+
+    try {
+      const data = await apiImportPreview(token, file);
+      setPreviewData(data);
+      setShowPreviewModal(true);
+    } catch (err) {
+      setUploadError(`Preview failed: ${err.message}`);
+    } finally {
+      setUploadLoading(false);
+      e.target.value = null;
+    }
+  };
+
+  const handleCommit = async () => {
+    if (!selectedFile) return;
+    setCommitLoading(true);
+    setUploadError('');
+    try {
+      await apiImportCommit(token, selectedFile);
+      setCommitSuccess('Import committed successfully! Data has been saved to the database.');
+      setShowPreviewModal(false);
+    } catch (err) {
+      setUploadError(`Commit failed: ${err.message}`);
+    } finally {
+      setCommitLoading(false);
+    }
+  };
+
   // Handle selected order details — memoized: .find() only reruns when orderId or orders change
-  // Without this, every qty keystroke triggers a full orders array scan unnecessarily
   const selectedOrder = useMemo(() => {
     return orders.find((o) => o.id === orderId);
   }, [orders, orderId]);
@@ -98,9 +145,34 @@ export default function ProductionLogEntry() {
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
       
       {/* ─── TITLE SECTION ─── */}
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Shop Floor Production Logger</h1>
-        <p className="text-slate-500 font-medium">Record work bundles completed by operators. Touch-friendly screens optimized for fast, accurate floor entry.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Shop Floor Production Logger</h1>
+          <p className="text-slate-500 font-medium">Record work bundles completed by operators. Touch-friendly screens optimized for fast, accurate floor entry.</p>
+        </div>
+        {/* ─── UPLOAD FILE BUTTON ─── */}
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleFileUpload}
+            className="hidden"
+            id="entry-file-upload"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadLoading}
+            className="btn-secondary h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl border border-emerald-200 hover:border-emerald-500 hover:bg-emerald-50 text-emerald-700 transition-all active:scale-95 disabled:opacity-50"
+          >
+            {uploadLoading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Previewing...</>
+            ) : (
+              <><FileSpreadsheet className="w-4 h-4" /> Upload File</>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* ─── ALERT BANNERS ─── */}
@@ -114,12 +186,22 @@ export default function ProductionLogEntry() {
         </div>
       )}
 
-      {errorMsg && (
+      {commitSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-start gap-2.5">
+          <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-extrabold">Excel Import Successful</p>
+            <p className="text-xs text-emerald-600 mt-0.5">{commitSuccess}</p>
+          </div>
+        </div>
+      )}
+
+      {(errorMsg || uploadError) && (
         <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-start gap-2.5">
           <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
           <div>
             <p className="font-extrabold">Operation Log Refused</p>
-            <p className="text-xs text-red-600 mt-0.5">{errorMsg}</p>
+            <p className="text-xs text-red-600 mt-0.5">{errorMsg || uploadError}</p>
           </div>
         </div>
       )}
@@ -351,6 +433,66 @@ export default function ProductionLogEntry() {
         </form>
 
       </div>
+
+      {/* ─── EXCEL PREVIEW MODAL ─── */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                  Excel Import Preview
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  File: {fileName} — Review before importing to database
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowPreviewModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
+              {previewData ? (
+                <pre className="text-xs text-slate-700 bg-white p-4 rounded-xl border border-slate-200 overflow-auto max-h-[50vh] font-mono whitespace-pre-wrap">
+                  {JSON.stringify(previewData, null, 2)}
+                </pre>
+              ) : (
+                <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
+              )}
+              {uploadError && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl">
+                  {uploadError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCommit}
+                disabled={commitLoading}
+                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+              >
+                {commitLoading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
+                ) : (
+                  <><Upload className="w-4 h-4" /> Confirm & Import to Database</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
