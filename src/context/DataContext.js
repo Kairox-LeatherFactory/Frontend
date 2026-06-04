@@ -9,7 +9,6 @@ import {
   apiGetOperations,
   apiGetEvents,
   apiLogEvent,
-  apiGetWageRuns,
   apiComputeWageRun,
 } from '@/lib/api';
 import {
@@ -55,12 +54,12 @@ export function DataProvider({ children }) {
       setApiError(null);
       try {
         // Fetch all metadata in parallel
-        const [clientsData, empData, opsData, evtsData, wageRunsData] = await Promise.all([
+        // NOTE: /api/v1/wages/runs has no GET endpoint — wage runs start empty
+        const [clientsData, empData, opsData, evtsData] = await Promise.all([
           apiGetClients(token).catch(() => []),
           apiGetEmployees(token).catch(() => []),
           apiGetOperations(token).catch(() => []),
           apiGetEvents(token).catch(() => []),
-          apiGetWageRuns(token).catch(() => []),
         ]);
 
         if (cancelled) return;
@@ -74,8 +73,8 @@ export function DataProvider({ children }) {
         // Set operations
         setOperations(opsData);
 
-        // Set wage runs
-        setWageRuns(wageRunsData);
+        // Wage runs: not fetchable as a list from backend — stays empty until computed
+        setWageRuns([]);
 
         // Map events (UUID → readable names)
         const mappedEvents = evtsData.map((apiE) => {
@@ -108,7 +107,7 @@ export function DataProvider({ children }) {
                     const totalQty = (style.skus || []).reduce((sum, sk) => sum + (sk.qty_ordered || 0), 0);
 
                     allOrders.push({
-                      id: `ORD-${order.po_number || order.id.substring(0, 8).toUpperCase()}`,
+                      id: `ORD-${(order.po_number || order.id.substring(0, 8)).toUpperCase()}-${style.id.substring(0, 4)}`,
                       style_id: style.id,
                       type: totalQty <= 5 ? 'Sample Order' : totalQty < 100 ? 'SMS Order' : 'Bulk Production',
                       client: client.name,
@@ -189,11 +188,28 @@ export function DataProvider({ children }) {
     const sku = order?.skus?.find((s) => s.size === event.size);
     const sku_id = sku?.id;
 
-    const operationObj = operations.find((o) => o.label === event.operation);
+    const operationObj = operations.find((o) => 
+      o.label.toLowerCase() === event.operation.toLowerCase() || 
+      o.label.toLowerCase().includes(event.operation.toLowerCase()) ||
+      event.operation.toLowerCase().includes(o.label.toLowerCase())
+    );
     const operation_id = operationObj?.id;
 
+    // Debug info — remove once working
+    console.log('[addEvent] order_id:', event.order_id);
+    console.log('[addEvent] order found:', order ? order.style : 'NOT FOUND');
+    console.log('[addEvent] skus available:', order?.skus?.map(s => `${s.size}(${s.id})`));
+    console.log('[addEvent] size requested:', event.size, '→ sku_id:', sku_id);
+    console.log('[addEvent] operation requested:', event.operation, '→ operation_id:', operation_id);
+    console.log('[addEvent] all operations:', operations.map(o => o.label));
+
     if (!sku_id || !operation_id) {
-      throw new Error('Could not map size or operation to backend IDs. Please ensure backend data is loaded.');
+      throw new Error(
+        `Could not map to backend IDs.\n` +
+        `Order: ${order ? order.style : 'NOT FOUND (id=' + event.order_id + ')'}\n` +
+        `Size "${event.size}" → SKU: ${sku_id || 'NOT FOUND'}\n` +
+        `Operation "${event.operation}" → ID: ${operation_id || 'NOT FOUND'}`
+      );
     }
 
     const payload = {

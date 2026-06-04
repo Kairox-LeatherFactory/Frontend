@@ -104,6 +104,7 @@ export async function apiGetEvents(token) {
  * Log a new production event
  */
 export async function apiLogEvent(token, payload) {
+  console.log('[apiLogEvent] payload:', JSON.stringify(payload));
   const res = await fetch(`${API_BASE_URL}/api/v1/production/events`, {
     method: 'POST',
     headers: {
@@ -114,20 +115,23 @@ export async function apiLogEvent(token, payload) {
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to log event');
+    console.log('[apiLogEvent] error response:', errText);
     throw new Error(errText || `Failed to log event (${res.status})`);
   }
   return res.json();
 }
 
 /**
- * Fetch all wage runs (frozen payrolls)
+ * Fetch a specific wage run by ID
+ * NOTE: /api/v1/wages/runs has no GET (list) endpoint — only POST (create).
+ * Use this to fetch a single run by ID after creation.
  */
-export async function apiGetWageRuns(token) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
+export async function apiGetWageRun(token, runId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${runId}`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`Failed to fetch wage runs (${res.status})`);
+  if (!res.ok) throw new Error(`Failed to fetch wage run (${res.status})`);
   return res.json();
 }
 

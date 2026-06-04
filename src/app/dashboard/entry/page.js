@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiImportPreview, apiImportCommit } from '@/lib/api';
@@ -17,13 +17,22 @@ export default function ProductionLogEntry() {
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
 
   // Form State
-  const [orderId, setOrderId] = useState(orders[0]?.id || '');
+  const [orderId, setOrderId] = useState('');
   const [operation, setOperation] = useState(allowedOperations[0] || '');
-  const [workerId, setWorkerId] = useState(workers[0]?.id || '');
+  const [workerId, setWorkerId] = useState('');
   const [size, setSize] = useState('M');
   const [qty, setQty] = useState('');
   const [garmentId, setGarmentId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+
+  // Auto-select first order and worker once backend data loads
+  useEffect(() => {
+    if (!orderId && orders.length > 0) setOrderId(orders[0].id);
+  }, [orders, orderId]);
+
+  useEffect(() => {
+    if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
+  }, [workers, workerId]);
 
   // Alert Success banner state
   const [successMsg, setSuccessMsg] = useState('');
@@ -81,7 +90,14 @@ export default function ProductionLogEntry() {
     return orders.find((o) => o.id === orderId);
   }, [orders, orderId]);
 
-  const handleSubmit = (e) => {
+  // Update default size when order changes
+  useEffect(() => {
+    if (selectedOrder?.sizes?.length && !selectedOrder.sizes.includes(size)) {
+      setSize(selectedOrder.sizes[0]);
+    }
+  }, [selectedOrder, size]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg('');
     setErrorMsg('');
@@ -115,12 +131,16 @@ export default function ProductionLogEntry() {
       garment_id: garmentId.trim() || null,
     };
 
-    addEvent(newEvent);
+    try {
+      await addEvent(newEvent);
 
-    // Reset quantity and garment ID, show success
-    setQty('');
-    setGarmentId('');
-    setSuccessMsg(`Successfully registered ${parsedQty} pieces for ${operation} (Order ${orderId})! All dashboards have been recomputed dynamically.`);
+      // Reset quantity and garment ID, show success
+      setQty('');
+      setGarmentId('');
+      setSuccessMsg(`Successfully registered ${parsedQty} pieces for ${operation} (Order ${orderId})! All dashboards have been recomputed dynamically.`);
+    } catch (err) {
+      setErrorMsg(`Failed to submit event: ${err.message}`);
+    }
   };
 
   // If the user has a viewer role, display permission error
@@ -245,6 +265,7 @@ export default function ProductionLogEntry() {
                   className="input-field h-14 bg-white font-bold border-2 border-slate-200 focus:border-blue-500 cursor-pointer shadow-sm text-sm transition-all"
                   required
                 >
+                  <option value="" disabled>-- Select Order --</option>
                   {orders.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.id} — {o.client} ({o.style})
@@ -265,6 +286,7 @@ export default function ProductionLogEntry() {
                   className="input-field h-14 bg-white font-bold border-2 border-slate-200 focus:border-blue-500 cursor-pointer shadow-sm text-sm transition-all"
                   required
                 >
+                  <option value="" disabled>-- Select Worker --</option>
                   {workers.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name} ({w.id} — {w.role})
@@ -290,13 +312,13 @@ export default function ProductionLogEntry() {
                 <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                   <Ruler className="w-4 h-4 text-indigo-500" /> Garment Size *
                 </label>
-                <div className="flex gap-2 h-14">
-                  {['S', 'M', 'L', 'XL'].map((s) => (
+                <div className="flex flex-wrap gap-2">
+                  {(selectedOrder?.sizes?.length ? selectedOrder.sizes : ['S', 'M', 'L', 'XL']).map((s) => (
                     <button
                       key={s}
                       type="button"
-                      onClick={() => setSize(s)}
-                      className={`flex-1 text-base font-black rounded-xl border-2 transition-all cursor-pointer ${size === s ? 'bg-indigo-600 border-indigo-600 text-white shadow-md scale-105' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 shadow-sm'}`}
+                      onClick={() => setSize(String(s))}
+                      className={`min-w-[3rem] h-11 px-3 text-sm font-black rounded-xl border-2 transition-all cursor-pointer ${String(size) === String(s) ? 'bg-indigo-600 border-indigo-600 text-white shadow-md scale-105' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 shadow-sm'}`}
                     >
                       {s}
                     </button>
