@@ -52,7 +52,7 @@ async function apiFetch(url, options = {}, token = null) {
     try {
       const body = await res.json();
       errMsg = body.detail || errMsg;
-    } catch {}
+    } catch { }
     const err = new Error(errMsg);
     err.status = res.status;
     throw err;
@@ -95,13 +95,13 @@ function useGps() {
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
 function Badge({ label, type }) {
   const map = {
-    late:     'bg-red-100 text-red-700 border-red-200',
-    short:    'bg-orange-100 text-orange-700 border-orange-200',
+    late: 'bg-red-100 text-red-700 border-red-200',
+    short: 'bg-orange-100 text-orange-700 border-orange-200',
     overtime: 'bg-purple-100 text-purple-700 border-purple-200',
-    self:     'bg-blue-100 text-blue-700 border-blue-200',
-    proxy:    'bg-amber-100 text-amber-700 border-amber-200',
-    active:   'bg-emerald-100 text-emerald-700 border-emerald-200',
-    frozen:   'bg-slate-100 text-slate-600 border-slate-200',
+    self: 'bg-blue-100 text-blue-700 border-blue-200',
+    proxy: 'bg-amber-100 text-amber-700 border-amber-200',
+    active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+    frozen: 'bg-slate-100 text-slate-600 border-slate-200',
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${map[type] || map.frozen}`}>
@@ -114,9 +114,9 @@ function AlertBanner({ type, message, onClose }) {
   if (!message) return null;
   const styles = {
     success: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-    error:   'bg-red-50 border-red-200 text-red-800',
+    error: 'bg-red-50 border-red-200 text-red-800',
     warning: 'bg-amber-50 border-amber-200 text-amber-800',
-    info:    'bg-blue-50 border-blue-200 text-blue-800',
+    info: 'bg-blue-50 border-blue-200 text-blue-800',
   };
   const icons = { success: CheckCircle2, error: AlertCircle, warning: AlertTriangle, info: Activity };
   const Icon = icons[type] || AlertCircle;
@@ -187,22 +187,22 @@ function LockedView({ title, description }) {
 function MyAttendanceView({ token }) {
   const gps = useGps();
 
-  const [status, setStatus]               = useState(null);
+  const [status, setStatus] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
-  const [countdown, setCountdown]         = useState(null);
+  const [countdown, setCountdown] = useState(null);
   const intervalRef = useRef(null);
 
-  const [history, setHistory]         = useState([]);
+  const [history, setHistory] = useState([]);
   const [histLoading, setHistLoading] = useState(true);
-  const [startDate, setStartDate]     = useState(() => {
+  const [startDate, setStartDate] = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [page, setPage]       = useState(1);
+  const [page, setPage] = useState(1);
   const PER_PAGE = 8;
 
   const [actionLoading, setActionLoading] = useState(false);
-  const [alert, setAlert]                 = useState(null);
+  const [alert, setAlert] = useState(null);
 
   const showAlert = (type, message) => {
     setAlert({ type, message });
@@ -303,12 +303,12 @@ function MyAttendanceView({ token }) {
     }
   };
 
-  const paginated  = useMemo(() => history.slice((page - 1) * PER_PAGE, page * PER_PAGE), [history, page]);
+  const paginated = useMemo(() => history.slice((page - 1) * PER_PAGE, page * PER_PAGE), [history, page]);
   const totalPages = Math.ceil(history.length / PER_PAGE);
-  const checkedIn  = status?.checked_in  ?? false;
+  const checkedIn = status?.checked_in ?? false;
   const checkedOut = status?.checked_out ?? false;
   const gpsBlocked = !!gps.error;
-  const busy       = actionLoading || gps.loading;
+  const busy = actionLoading || gps.loading;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -359,21 +359,21 @@ function MyAttendanceView({ token }) {
             <Zap className="w-4 h-4 text-blue-600" /> Action Terminal
           </h3>
           <div className="flex flex-col gap-3">
-  <button onClick={handleCheckIn}
-    disabled={checkedIn || gpsBlocked || busy}
-    className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm bg-green-600 text-white hover:bg-green-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-200 touch-manipulation">
-    {busy && !checkedIn
-      ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
-      : <><LogIn className="w-5 h-5" /> Check In</>}
-  </button>
-  <button onClick={handleCheckOut}
-    disabled={!checkedIn || checkedOut || gpsBlocked || busy}
-    className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm border-2 border-slate-200 text-slate-700 bg-red-600 text-white hover:bg-red-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all touch-manipulation">
-    {busy && checkedIn && !checkedOut
-      ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
-      : <><LogOut className="w-5 h-5" /> Check Out</>}
-  </button>
-</div>
+            <button onClick={handleCheckIn}
+              disabled={checkedIn || gpsBlocked || busy}
+              className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm bg-green-600 text-white hover:bg-green-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-200 touch-manipulation">
+              {busy && !checkedIn
+                ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
+                : <><LogIn className="w-5 h-5" /> Check In</>}
+            </button>
+            <button onClick={handleCheckOut}
+              disabled={!checkedIn || checkedOut || gpsBlocked || busy}
+              className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm border-2 border-slate-200 text-slate-700 bg-red-600 text-white hover:bg-red-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all touch-manipulation">
+              {busy && checkedIn && !checkedOut
+                ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
+                : <><LogOut className="w-5 h-5" /> Check Out</>}
+            </button>
+          </div>
           <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-400">
             {gps.lat
               ? <><MapPin className="w-3.5 h-3.5 text-emerald-500" /> GPS active — {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</>
@@ -381,10 +381,10 @@ function MyAttendanceView({ token }) {
           </div>
           {checkedIn && (
             <div className="flex flex-wrap gap-2 border-t border-slate-50 pt-4">
-              {status?.is_late     && <Badge label="Late"        type="late"     />}
-              {status?.is_short    && <Badge label="Short Shift" type="short"    />}
-              {status?.is_overtime && <Badge label="Overtime"    type="overtime" />}
-              {!status?.is_late    && <Badge label="On Time"     type="active"   />}
+              {status?.is_late && <Badge label="Late" type="late" />}
+              {status?.is_short && <Badge label="Short Shift" type="short" />}
+              {status?.is_overtime && <Badge label="Overtime" type="overtime" />}
+              {!status?.is_late && <Badge label="On Time" type="active" />}
             </div>
           )}
         </div>
@@ -397,14 +397,14 @@ function MyAttendanceView({ token }) {
             <CalendarDays className="w-5 h-5 text-blue-600" /> Attendance History
           </h3>
           <div className="flex flex-wrap items-center gap-2">
-  <input type="date" value={startDate}
-    onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-    className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer flex-1 min-w-[130px]" />
-  <span className="text-slate-400 font-bold text-xs">to</span>
-  <input type="date" value={endDate}
-    onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-    className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer flex-1 min-w-[130px]" />
-</div>
+            <input type="date" value={startDate}
+              onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+              className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer flex-1 min-w-[130px]" />
+            <span className="text-slate-400 font-bold text-xs">to</span>
+            <input type="date" value={endDate}
+              onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+              className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer flex-1 min-w-[130px]" />
+          </div>
         </div>
 
         {histLoading ? (
@@ -419,82 +419,82 @@ function MyAttendanceView({ token }) {
         ) : (
           <>
             {/* Desktop table — hidden on mobile */}
-<div className="hidden sm:block overflow-x-auto rounded-xl border border-slate-100">
-  <table className="w-full text-left text-xs font-semibold">
-    <thead>
-      <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
-        <th className="p-3">Date</th>
-        <th className="p-3">Check In</th>
-        <th className="p-3">Check Out</th>
-        <th className="p-3">Distance</th>
-        <th className="p-3">Source</th>
-        <th className="p-3">Flags</th>
-      </tr>
-    </thead>
-    <tbody className="divide-y divide-slate-50 text-slate-700">
-      {paginated.map((row) => (
-        <tr key={row.id} className="hover:bg-slate-50/60">
-          <td className="p-3 font-black text-slate-800">{fmtDate(row.work_date)}</td>
-          <td className="p-3">{fmtTime(row.check_in_at)}</td>
-          <td className="p-3">
-            {row.check_out_at
-              ? fmtTime(row.check_out_at)
-              : <span className="text-emerald-600 font-black">Active</span>}
-          </td>
-          <td className="p-3 text-slate-400">{fmtDist(row.distance_m)}</td>
-          <td className="p-3"><Badge label={row.source} type={row.source} /></td>
-          <td className="p-3">
-            <div className="flex flex-wrap gap-1">
-              {row.is_late     && <Badge label="Late"  type="late"     />}
-              {row.is_short    && <Badge label="Short" type="short"    />}
-              {row.is_overtime && <Badge label="OT"    type="overtime" />}
-              {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
+            <div className="hidden sm:block overflow-x-auto rounded-xl border border-slate-100">
+              <table className="w-full text-left text-xs font-semibold">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
+                    <th className="p-3">Date</th>
+                    <th className="p-3">Check In</th>
+                    <th className="p-3">Check Out</th>
+                    <th className="p-3">Distance</th>
+                    <th className="p-3">Source</th>
+                    <th className="p-3">Flags</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 text-slate-700">
+                  {paginated.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50/60">
+                      <td className="p-3 font-black text-slate-800">{fmtDate(row.work_date)}</td>
+                      <td className="p-3">{fmtTime(row.check_in_at)}</td>
+                      <td className="p-3">
+                        {row.check_out_at
+                          ? fmtTime(row.check_out_at)
+                          : <span className="text-emerald-600 font-black">Active</span>}
+                      </td>
+                      <td className="p-3 text-slate-400">{fmtDist(row.distance_m)}</td>
+                      <td className="p-3"><Badge label={row.source} type={row.source} /></td>
+                      <td className="p-3">
+                        <div className="flex flex-wrap gap-1">
+                          {row.is_late && <Badge label="Late" type="late" />}
+                          {row.is_short && <Badge label="Short" type="short" />}
+                          {row.is_overtime && <Badge label="OT" type="overtime" />}
+                          {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-</div>
 
-{/* Mobile cards — shown only on mobile */}
-<div className="sm:hidden space-y-3">
-  {paginated.map((row) => (
-    <div key={row.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <span className="font-black text-slate-900 text-sm">{fmtDate(row.work_date)}</span>
-        <Badge label={row.source} type={row.source} />
-      </div>
-      <div className="grid grid-cols-2 gap-2 text-xs">
-        <div>
-          <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Check In</p>
-          <p className="font-black text-slate-800">{fmtTime(row.check_in_at)}</p>
-        </div>
-        <div>
-          <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Check Out</p>
-          <p className="font-black text-slate-800">
-            {row.check_out_at
-              ? fmtTime(row.check_out_at)
-              : <span className="text-emerald-600">Active</span>}
-          </p>
-        </div>
-        <div>
-          <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Distance</p>
-          <p className="font-semibold text-slate-600">{fmtDist(row.distance_m)}</p>
-        </div>
-        <div>
-          <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Flags</p>
-          <div className="flex flex-wrap gap-1">
-            {row.is_late     && <Badge label="Late"  type="late"     />}
-            {row.is_short    && <Badge label="Short" type="short"    />}
-            {row.is_overtime && <Badge label="OT"    type="overtime" />}
-            {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
-          </div>
-        </div>
-      </div>
-    </div>
-  ))}
-</div>
+            {/* Mobile cards — shown only on mobile */}
+            <div className="sm:hidden space-y-3">
+              {paginated.map((row) => (
+                <div key={row.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-black text-slate-900 text-sm">{fmtDate(row.work_date)}</span>
+                    <Badge label={row.source} type={row.source} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Check In</p>
+                      <p className="font-black text-slate-800">{fmtTime(row.check_in_at)}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Check Out</p>
+                      <p className="font-black text-slate-800">
+                        {row.check_out_at
+                          ? fmtTime(row.check_out_at)
+                          : <span className="text-emerald-600">Active</span>}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Distance</p>
+                      <p className="font-semibold text-slate-600">{fmtDist(row.distance_m)}</p>
+                    </div>
+                    <div>
+                      <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Flags</p>
+                      <div className="flex flex-wrap gap-1">
+                        {row.is_late && <Badge label="Late" type="late" />}
+                        {row.is_short && <Badge label="Short" type="short" />}
+                        {row.is_overtime && <Badge label="OT" type="overtime" />}
+                        {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
             <Paginator page={page} totalPages={totalPages} setPage={setPage} total={history.length} perPage={PER_PAGE} />
           </>
         )}
@@ -510,14 +510,14 @@ function MyAttendanceView({ token }) {
 function FloorCommandView({ workers = [], token }) {
   const gps = useGps();
 
-  const [search, setSearch]               = useState('');
-  const [selected, setSelected]           = useState(new Set());
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState(new Set());
   const [actionLoading, setActionLoading] = useState(false);
-  const [alert, setAlert]                 = useState(null);
-  const [diffModal, setDiffModal]         = useState(null);
-  const [addModal, setAddModal]           = useState(false);
-  const [addForm, setAddForm]             = useState({ name: '', phone: '', designations: [], daily_rate: '' });
-  const [addLoading, setAddLoading]       = useState(false);
+  const [alert, setAlert] = useState(null);
+  const [diffModal, setDiffModal] = useState(null);
+  const [addModal, setAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({ name: '', phone: '', designations: [], daily_rate: '' });
+  const [addLoading, setAddLoading] = useState(false);
 
   const showAlert = (type, message) => {
     setAlert({ type, message });
@@ -525,12 +525,12 @@ function FloorCommandView({ workers = [], token }) {
   };
 
   const dailyWorkers = useMemo(
-  () => workers.filter((w) => {
-    const wt = (w.wage_type || '').toUpperCase();
-    return wt === 'DAILY_WAGE' || wt === 'PIECE_RATE';
-  }),
-  [workers]
-);
+    () => workers.filter((w) => {
+      const wt = (w.wage_type || '').toUpperCase();
+      return wt === 'DAILY_WAGE' || wt === 'PIECE_RATE';
+    }),
+    [workers]
+  );
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -564,9 +564,9 @@ function FloorCommandView({ workers = [], token }) {
       const succeededIds = new Set(result.map((r) => String(r.employee_id)));
       const normalizedRequested = requestedIds.map((id) => String(id));
       const succeeded = normalizedRequested.filter((id) => succeededIds.has(id));
-      const failed    = normalizedRequested.filter((id) => !succeededIds.has(id));
+      const failed = normalizedRequested.filter((id) => !succeededIds.has(id));
       setSelected(new Set());
-// Defer modal open to next tick so cleared selection doesn't race with render
+      // Defer modal open to next tick so cleared selection doesn't race with render
       setTimeout(() => setDiffModal({ type, succeeded, failed }), 0);
     } catch (e) {
       if (e.status === 403) showAlert('error', `Geofence: ${e.message}`);
@@ -587,13 +587,13 @@ function FloorCommandView({ workers = [], token }) {
       await apiFetch(`${API}/daily-workers`, {
         method: 'POST',
         body: JSON.stringify({
-          name:        addForm.name,
-          phone:       addForm.phone,
+          name: addForm.name,
+          phone: addForm.phone,
           designation: addForm.designations.join(', '),
-          daily_rate:  addForm.daily_rate ? parseFloat(addForm.daily_rate) : null,
-          wage_type:   'PIECE_RATE',
+          daily_rate: addForm.daily_rate ? parseFloat(addForm.daily_rate) : null,
+          wage_type: 'PIECE_RATE',
         }),
-      }, token);  
+      }, token);
 
       showAlert('success', `Worker "${addForm.name}" onboarded to floor roster.`);
       setAddModal(false);
@@ -786,13 +786,12 @@ function FloorCommandView({ workers = [], token }) {
                   {['Cutter', 'Fusing Operator', 'Pasting Operator', 'Shell Stitcher',
                     'Lining Attacher', 'Lining Stitcher',
                     'Helper', 'Packer'].map((role) => (
-                    <option key={role} value={role}
-                      className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${
-                        addForm.designations.includes(role) ? 'bg-blue-600 text-white' : 'text-slate-700'
-                      }`}>
-                      {role}
-                    </option>
-                  ))}
+                      <option key={role} value={role}
+                        className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${addForm.designations.includes(role) ? 'bg-blue-600 text-white' : 'text-slate-700'
+                          }`}>
+                        {role}
+                      </option>
+                    ))}
                 </select>
                 {addForm.designations.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
@@ -835,16 +834,16 @@ function FloorCommandView({ workers = [], token }) {
 // Endpoints: GET /today · GET /config · PATCH /config
 // ═══════════════════════════════════════════════════════════════════════════════
 function OperationsHRView({ token }) {
-  const [roster, setRoster]               = useState([]);
+  const [roster, setRoster] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(true);
-  const [config, setConfig]               = useState(null);
+  const [config, setConfig] = useState(null);
   const [configLoading, setConfigLoading] = useState(true);
-  const [configForm, setConfigForm]       = useState({});
-  const [configSaving, setConfigSaving]   = useState(false);
-  const [alert, setAlert]                 = useState(null);
-  const [page, setPage]                   = useState(1);
-  const [filter, setFilter]               = useState('all');
-  const [filterOpen, setFilterOpen]       = useState(false);
+  const [configForm, setConfigForm] = useState({});
+  const [configSaving, setConfigSaving] = useState(false);
+  const [alert, setAlert] = useState(null);
+  const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState('all');
+  const [filterOpen, setFilterOpen] = useState(false);
   const PER_PAGE = 10;
 
   const showAlert = (type, message) => {
@@ -878,14 +877,14 @@ function OperationsHRView({ token }) {
     setConfigLoading(true);
     try {
       const data = await apiFetch(`${API}/config`, {}, token);
-      setConfig(data); 
+      setConfig(data);
       setConfigForm({
-        shift_start:        data.shift_start,
+        shift_start: data.shift_start,
         shift_length_hours: data.shift_length_hours,
         late_grace_minutes: data.late_grace_minutes,
-        factory_lat:        data.factory_lat,
-        factory_lon:        data.factory_lon,
-        radius_m:           data.radius_m,
+        factory_lat: data.factory_lat,
+        factory_lon: data.factory_lon,
+        radius_m: data.radius_m,
       });
     } catch {
       showAlert('error', 'Failed to load shift configuration.');
@@ -906,12 +905,12 @@ function OperationsHRView({ token }) {
     setConfigSaving(true);
     try {
       const payload = {
-        shift_start:        configForm.shift_start,
+        shift_start: configForm.shift_start,
         shift_length_hours: parseFloat(configForm.shift_length_hours),
         late_grace_minutes: parseInt(configForm.late_grace_minutes, 10),
-        factory_lat:        parseFloat(configForm.factory_lat),
-        factory_lon:        parseFloat(configForm.factory_lon),
-        radius_m:           parseInt(configForm.radius_m, 10),
+        factory_lat: parseFloat(configForm.factory_lat),
+        factory_lon: parseFloat(configForm.factory_lon),
+        radius_m: parseInt(configForm.radius_m, 10),
       };
       const updated = await apiFetch(`${API}/config`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
       setConfig(updated);
@@ -926,11 +925,11 @@ function OperationsHRView({ token }) {
   const filteredRoster = useMemo(() => {
     let rows = [...roster];
     if (filter === 'active') rows = rows.filter((r) => !r.check_out_at);
-    if (filter === 'late')   rows = rows.filter((r) => r.is_late);
+    if (filter === 'late') rows = rows.filter((r) => r.is_late);
     return rows;
   }, [roster, filter]);
 
-  const paginated  = useMemo(() => filteredRoster.slice((page - 1) * PER_PAGE, page * PER_PAGE), [filteredRoster, page]);
+  const paginated = useMemo(() => filteredRoster.slice((page - 1) * PER_PAGE, page * PER_PAGE), [filteredRoster, page]);
   const totalPages = Math.ceil(filteredRoster.length / PER_PAGE);
 
   return (
@@ -956,11 +955,10 @@ function OperationsHRView({ token }) {
             {/* Filter dropdown */}
             <div className="relative filter-dropdown">
               <button onClick={() => setFilterOpen((o) => !o)}
-                className={`flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-black transition-colors border ${
-                  filter !== 'all'
+                className={`flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-black transition-colors border ${filter !== 'all'
                     ? 'bg-blue-600 text-white border-blue-600'
                     : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                }`}>
+                  }`}>
                 <Filter className="w-3.5 h-3.5" />
                 {filter.charAt(0).toUpperCase() + filter.slice(1)}
               </button>
@@ -968,9 +966,8 @@ function OperationsHRView({ token }) {
                 <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden">
                   {['all', 'active', 'late'].map((f) => (
                     <button key={f} onClick={() => { setFilter(f); setPage(1); setFilterOpen(false); }}
-                      className={`w-full text-left px-4 py-2.5 text-xs font-black transition-colors flex items-center justify-between ${
-                        filter === f ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
-                      }`}>
+                      className={`w-full text-left px-4 py-2.5 text-xs font-black transition-colors flex items-center justify-between ${filter === f ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
+                        }`}>
                       {f.charAt(0).toUpperCase() + f.slice(1)}
                       {filter === f && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
                     </button>
@@ -1029,9 +1026,9 @@ function OperationsHRView({ token }) {
                       <td className="p-3"><Badge label={row.source} type={row.source} /></td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-1">
-                          {row.is_late     && <Badge label="Late"  type="late"     />}
-                          {row.is_short    && <Badge label="Short" type="short"    />}
-                          {row.is_overtime && <Badge label="OT"    type="overtime" />}
+                          {row.is_late && <Badge label="Late" type="late" />}
+                          {row.is_short && <Badge label="Short" type="short" />}
+                          {row.is_overtime && <Badge label="OT" type="overtime" />}
                           {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
                         </div>
                       </td>
@@ -1162,24 +1159,24 @@ export default function AttendancePage() {
   const { user, token } = useAuth();  // token from React state, not localStorage
 
   // Role strings match AuthContext exactly: lowercase with underscores
-  const isManager    = user === 'direct_manager';
+  const isManager = user === 'direct_manager';
   const isSupervisor = user === 'cutting_manager' || user === 'stitching_manager' || isManager;
 
   const tabs = [
-    { key: 'me',    label: 'My Attendance',   icon: Clock,     show: true         },
-    { key: 'proxy', label: 'Floor Command',   icon: Users,     show: isSupervisor },
-    { key: 'admin', label: 'Operations & HR', icon: Building2, show: isManager    },
+    { key: 'me', label: 'My Attendance', icon: Clock, show: true },
+    { key: 'proxy', label: 'Floor Command', icon: Users, show: isSupervisor },
+    { key: 'admin', label: 'Operations & HR', icon: Building2, show: isManager },
   ].filter((t) => t.show);
 
   const [activeTab, setActiveTab] = useState('me');
-  const [workers, setWorkers]     = useState([]);
+  const [workers, setWorkers] = useState([]);
 
   // Load daily-wage workers lazily when Floor Command tab is first opened
   useEffect(() => {
     if (activeTab === 'proxy' && workers.length === 0) {
       apiFetch('/api/v1/employees?wage_type=PIECE_RATE', {}, token)
         .then(setWorkers)
-        .catch(() => {});
+        .catch(() => { });
     }
   }, [activeTab, workers.length, token]);
 
@@ -1189,11 +1186,10 @@ export default function AttendancePage() {
       <div className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto">
         {tabs.map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setActiveTab(key)}
-            className={`flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap border-b-2 transition-colors ${
-              activeTab === key
+            className={`flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap border-b-2 transition-colors ${activeTab === key
                 ? 'border-blue-600 text-blue-700'
                 : 'border-transparent text-slate-500 hover:text-slate-800'
-            }`}>
+              }`}>
             <Icon className="w-4 h-4" />
             {label}
           </button>
@@ -1207,16 +1203,16 @@ export default function AttendancePage() {
         isSupervisor
           ? <FloorCommandView workers={workers} token={token} />
           : <LockedView
-              title="Supervisor Authorization Required"
-              description="Floor Command is restricted to Supervisors and Direct Managers." />
+            title="Supervisor Authorization Required"
+            description="Floor Command is restricted to Supervisors and Direct Managers." />
       )}
 
       {activeTab === 'admin' && (
         isManager
           ? <OperationsHRView token={token} />
           : <LockedView
-              title="Direct Manager Authorization Required"
-              description="Operations & HR is restricted to Direct Managers only." />
+            title="Direct Manager Authorization Required"
+            description="Operations & HR is restricted to Direct Managers only." />
       )}
     </div>
   );
