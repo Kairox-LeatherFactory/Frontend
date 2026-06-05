@@ -16,17 +16,14 @@ export default function StyleStageProgress() {
   const [apiProgress, setApiProgress] = useState(null);
   const [progressLoading, setProgressLoading] = useState(false);
 
-  // Set default selected order when orders data loads from context
-  useEffect(() => {
-    if (!selectedOrderId && orders.length > 0) {
-      setSelectedOrderId(orderParam || orders[2]?.id || orders[0]?.id);
-    }
-  }, [orders, selectedOrderId, orderParam]);
+  // Derive the effective order ID — use selectedOrderId if set by user,
+  // otherwise fall back to the first available order from context (no useEffect needed)
+  const effectiveOrderId = selectedOrderId || orderParam || orders[2]?.id || orders[0]?.id || '';
 
   // Active selected order details
-  const activeOrder = orders.find((o) => o.id === selectedOrderId);
+  const activeOrder = orders.find((o) => o.id === effectiveOrderId);
 
-  // Fetch real stage progress from backend when order changes
+  // Fetch real stage progress from backend when effective order changes
   useEffect(() => {
     if (!token || !activeOrder?.style_id) {
       setApiProgress(null);
@@ -34,16 +31,10 @@ export default function StyleStageProgress() {
     }
     setProgressLoading(true);
     apiGetStyleProgress(token, activeOrder.style_id)
-      .then((data) => {
-        setApiProgress(data);
-      })
-      .catch(() => {
-        setApiProgress(null);
-      })
-      .finally(() => {
-        setProgressLoading(false);
-      });
-  }, [token, selectedOrderId, activeOrder?.style_id]);
+      .then((data) => { setApiProgress(data); })
+      .catch(() => { setApiProgress(null); })
+      .finally(() => { setProgressLoading(false); });
+  }, [token, effectiveOrderId, activeOrder?.style_id]);
 
   // Define operational stages
   const operations = [
@@ -89,7 +80,7 @@ export default function StyleStageProgress() {
           </label>
           <select
             id="order-selector"
-            value={selectedOrderId}
+            value={effectiveOrderId}
             onChange={(e) => setSelectedOrderId(e.target.value)}
             className="input-field h-12 py-0 min-h-[48px] bg-white font-bold border-2 border-blue-100 cursor-pointer w-48 shadow-sm"
           >
