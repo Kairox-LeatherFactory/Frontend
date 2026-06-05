@@ -14,7 +14,9 @@ export default function PieceRatesAndWages() {
   // State for active pay computation run
   const [payPeriod, setPayPeriod] = useState('May 16–31, 2026');
   const [isCalculated, setIsCalculated] = useState(false);
+  const [isFreezing, setIsFreezing] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   // ─── 1. PIECE-RATES DATA BINDING ───
   const activeRates = rates.CARNABY || {};
@@ -64,22 +66,21 @@ export default function PieceRatesAndWages() {
   }, [calculatedPayroll]);
 
   // Save the compiled run
-  const handleFreezeRun = () => {
+  const handleFreezeRun = async () => {
     if (!isDirectManager) return;
-    
-    const newRun = {
-      period: payPeriod,
-      employee_count: workers.length,
-      total_amount: totalPayrollAmount,
-      status: 'Frozen',
-    };
-
-    addWageRun(newRun);
-    setIsCalculated(false);
-    setSuccessMsg(`Payroll Period "${payPeriod}" frozen successfully. Total distribution of ₹${totalPayrollAmount.toLocaleString()} logged in Ledger.`);
-    
-    // Auto clear alert
-    setTimeout(() => setSuccessMsg(''), 5000);
+    setIsFreezing(true);
+    setErrorMsg('');
+    try {
+      await addWageRun(payPeriod);
+      setIsCalculated(false);
+      setSuccessMsg(`Payroll Period "${payPeriod}" frozen successfully. Total distribution of ₹${totalPayrollAmount.toLocaleString()} logged in Ledger.`);
+      setTimeout(() => setSuccessMsg(''), 5000);
+    } catch (err) {
+      setErrorMsg(`Failed to freeze payroll: ${err.message}`);
+      setTimeout(() => setErrorMsg(''), 6000);
+    } finally {
+      setIsFreezing(false);
+    }
   };
 
   return (
@@ -96,6 +97,11 @@ export default function PieceRatesAndWages() {
         <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-center gap-2.5">
           <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
           <p>{successMsg}</p>
+        </div>
+      )}
+      {errorMsg && (
+        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-center gap-2.5">
+          <p>{errorMsg}</p>
         </div>
       )}
 
@@ -226,7 +232,7 @@ export default function PieceRatesAndWages() {
                       onClick={handleFreezeRun}
                       className="btn-primary h-12 min-h-[48px] px-6 text-xs font-black rounded-lg bg-emerald-600 hover:bg-emerald-700 shadow flex items-center gap-2"
                     >
-                      <Lock className="w-4 h-4" /> Freeze &amp; Log Payrun
+                      <Lock className="w-4 h-4" /> {isFreezing ? 'Freezing…' : 'Freeze & Log Payrun'}
                     </button>
                   </div>
                 </div>

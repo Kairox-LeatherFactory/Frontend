@@ -1,5 +1,5 @@
 'use client';
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
 
@@ -21,18 +21,41 @@ export const ROLE_OPERATIONS = {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // null = logged out
   const [token, setToken] = useState(null); // JWT access token from backend
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  // Load persisted auth state on client-side mount
+  useEffect(() => {
+    const storedUser = localStorage.getItem('kairox_user');
+    const storedToken = localStorage.getItem('kairox_token');
+    
+    if (storedUser && storedToken) {
+      setUser(storedUser);
+      setToken(storedToken);
+    }
+    setIsLoaded(true);
+  }, []);
 
   const login  = (role, accessToken = null) => {
     setUser(role);
+    localStorage.setItem('kairox_user', role);
+    
     if (accessToken) {
       setToken(accessToken);
+      localStorage.setItem('kairox_token', accessToken);
     }
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
+    localStorage.removeItem('kairox_user');
+    localStorage.removeItem('kairox_token');
   };
+
+  // Prevent rendering until we've checked localStorage to avoid hydration mismatch
+  if (!isLoaded) {
+    return null; 
+  }
 
   return (
     <AuthContext.Provider value={{ user, token, login, logout, ROLES, ROLE_OPERATIONS }}>

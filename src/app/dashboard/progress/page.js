@@ -1,41 +1,65 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { Lightbulb, TrendingUp } from 'lucide-react';
+import { apiGetStyleProgress } from '@/lib/api';
+import { Lightbulb, TrendingUp, Loader2 } from 'lucide-react';
 
 export default function StyleStageProgress() {
+  const { token } = useAuth();
   const { orders, events } = useData();
   const searchParams = useSearchParams();
   const orderParam = searchParams.get('order');
 
-  // Select which order to view progress for
   const [selectedOrderId, setSelectedOrderId] = useState(orderParam || orders[2]?.id || orders[0]?.id || '');
+  const [apiProgress, setApiProgress] = useState(null);
+  const [progressLoading, setProgressLoading] = useState(false);
 
   // Active selected order details
   const activeOrder = orders.find((o) => o.id === selectedOrderId);
 
+  // Fetch real stage progress from backend when order changes
+  useEffect(() => {
+    if (!token || !activeOrder?.style_id) {
+      setApiProgress(null);
+      return;
+    }
+    let cancelled = false;
+    setProgressLoading(true);
+    apiGetStyleProgress(token, activeOrder.style_id)
+      .then((data) => { if (!cancelled) setApiProgress(data); })
+      .catch(() => { if (!cancelled) setApiProgress(null); })
+      .finally(() => { if (!cancelled) setProgressLoading(false); });
+    return () => { cancelled = true; };
+  }, [token, selectedOrderId, activeOrder?.style_id]);
+
   // Define operational stages
   const operations = [
-    { name: 'Cutting',       desc: 'Raw leather hides die-cut into design panels', rateKey: 'Cutting' },
-    { name: 'Fusing',        desc: 'Heat-bonding structural interlining to panels', rateKey: 'Fusing' },
-    { name: 'Pasting',       desc: 'Adhering seams and align components temporarily', rateKey: 'Pasting' },
-    { name: 'Shell stitch',  desc: 'Primary leather exterior structure stitch', rateKey: 'Shell stitch' },
-    { name: 'Lining attach', desc: 'Inner satin lining matched and sewn to leather shell', rateKey: 'Lining attach' },
-    { name: 'Lining stitch', desc: 'Closing inner seams and pocket bag fittings', rateKey: 'Lining stitch' },
-    { name: 'Final finish',  desc: 'Final visual inspection, edge coat, and label tag', rateKey: 'Final finish' },
+    { name: 'Cutting',       desc: 'Raw leather hides die-cut into design panels' },
+    { name: 'Fusing',        desc: 'Heat-bonding structural interlining to panels' },
+    { name: 'Pasting',       desc: 'Adhering seams and align components temporarily' },
+    { name: 'Shell stitch',  desc: 'Primary leather exterior structure stitch' },
+    { name: 'Lining attach', desc: 'Inner satin lining matched and sewn to leather shell' },
+    { name: 'Lining stitch', desc: 'Closing inner seams and pocket bag fittings' },
+    { name: 'Final finish',  desc: 'Final visual inspection, edge coat, and label tag' },
   ];
 
-  // Calculate quantities at each stage for activeOrder from events
+  // Calculate quantities at each stage — use backend data if available, else compute locally from events
   const stageQuantities = operations.map((op) => {
+    if (apiProgress) {
+      // Backend returns something like: { operation_label: qty } or array of { label, qty }
+      const backendQty = Array.isArray(apiProgress)
+        ? (apiProgress.find((s) => s.label === op.name || s.operation === op.name)?.qty ?? 0)
+        : (apiProgress[op.name] ?? 0);
+      return { ...op, qtyLogged: backendQty };
+    }
+    // Local fallback
     const stageEvents = events.filter(
       (e) => e.order_id === selectedOrderId && e.operation === op.name
     );
     const sum = stageEvents.reduce((acc, curr) => acc + curr.qty, 0);
-    return {
-      ...op,
-      qtyLogged: sum,
-    };
+    return { ...op, qtyLogged: sum };
   });
 
   return (
@@ -65,6 +89,7 @@ export default function StyleStageProgress() {
               </option>
             ))}
           </select>
+          {progressLoading && <Loader2 className="w-5 h-5 text-blue-500 animate-spin" />}
         </div>
       </div>
 

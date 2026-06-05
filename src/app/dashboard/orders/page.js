@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { useData } from '@/context/DataContext';
 import { useAuth } from '@/context/AuthContext';
@@ -74,17 +74,25 @@ export default function OrdersTreeBrowser() {
     setOpenedStyles((prev) => ({ ...prev, [styleKey]: !prev[styleKey] }));
   };
 
-  // Group orders by Client Name
-  const clientsMap = {};
-  orders.forEach((o) => {
-    if (!clientsMap[o.client]) {
-      clientsMap[o.client] = [];
-    }
-    clientsMap[o.client].push(o);
-  });
+  // Group orders by Client Name — memoized: this forEach loop only reruns when orders change.
+  // Without memo, this rebuilds the entire map on every modal open/close, tab switch, or tree toggle.
+  const clientsMap = useMemo(() => {
+    const map = {};
+    orders.forEach((o) => {
+      if (!map[o.client]) {
+        map[o.client] = [];
+      }
+      map[o.client].push(o);
+    });
+    return map;
+  }, [orders]);
 
-  // Combine default clients with dynamically created ones
-  const allClients = [...clients, ...localClients];
+  // Combine default clients with dynamically created ones — memoized so the merged array
+  // reference stays stable and avoids unnecessary re-renders in the client grid
+  const allClients = useMemo(
+    () => [...clients, ...localClients],
+    [clients, localClients]
+  );
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -271,24 +279,6 @@ export default function OrdersTreeBrowser() {
               <Building2 className="w-5 h-5 text-blue-600" /> Active Client Directory
             </h3>
             <div className="flex gap-2">
-              {user === 'direct_manager' && (
-                <>
-                  <input
-                    type="file"
-                    accept=".xlsx, .xls"
-                    ref={fileInputRef}
-                    onChange={handleFileUpload}
-                    className="hidden"
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="py-2 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer border border-emerald-200 shadow-sm min-h-[40px]"
-                  >
-                    <FileSpreadsheet className="w-4 h-4" />
-                    Upload File
-                  </button>
-                </>
-              )}
               <button
                 onClick={() => {
                   setShowCreateModal(true);

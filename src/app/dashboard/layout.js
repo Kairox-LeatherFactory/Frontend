@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -17,6 +17,7 @@ import {
   Menu,
   LogOut,
   TriangleAlert,
+  BotMessageSquare,
 } from 'lucide-react';
 
 const NAV_ICONS = {
@@ -27,6 +28,8 @@ const NAV_ICONS = {
   '/dashboard/wages': Wallet,
   '/dashboard/simulator': Gamepad2,
   '/dashboard/tracer': ScanSearch,
+  '/dashboard/chat': BotMessageSquare,
+  '/dashboard/attendance': ClipboardPen, // Or whatever icon they meant to use, fallback is LayoutDashboard
 };
 
 export default function DashboardLayout({ children }) {
@@ -43,6 +46,31 @@ export default function DashboardLayout({ children }) {
     }
   }, [user, router]);
 
+  const roleInfo = ROLES[user] || { label: 'Viewer', color: 'bg-slate-100 text-slate-700' };
+
+  // Calculate if there are any air freight risk orders — memoized to avoid filter on every render
+  const airRiskOrders = useMemo(
+    () => orders.filter((o) => o.freight_mode && o.freight_mode.includes('RISK')),
+    [orders]
+  );
+
+  // Static shape but kept inside component for ROLES/user access — memoized so the array
+  // reference stays stable and avoids re-rendering nav items unnecessarily
+  const navLinks = useMemo(
+    () => [
+      { name: 'Dashboard Home', href: '/dashboard' },
+      { name: 'Production Logger', href: '/dashboard/entry' },
+      { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
+      { name: 'Client SKU Tree', href: '/dashboard/orders' },
+      { name: 'Payroll & Rates', href: '/dashboard/wages' },
+      { name: 'Attendance', href: '/dashboard/attendance' }, // added by nihal
+      { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
+      { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
+      { name: 'AI Assistant', href: '/dashboard/chat' },
+    ],
+    [] // No dependencies — content is static
+  );
+
   if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-brand">
@@ -53,21 +81,6 @@ export default function DashboardLayout({ children }) {
       </div>
     );
   }
-
-  const roleInfo = ROLES[user] || { label: 'Viewer', color: 'bg-slate-100 text-slate-700' };
-
-  // Calculate if there are any air freight risk orders
-  const airRiskOrders = orders.filter((o) => o.freight_mode && o.freight_mode.includes('RISK'));
-
-  const navLinks = [
-    { name: 'Dashboard Home', href: '/dashboard' },
-    { name: 'Production Logger', href: '/dashboard/entry' },
-    { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
-    { name: 'Client SKU Tree', href: '/dashboard/orders' },
-    { name: 'Payroll & Rates', href: '/dashboard/wages' },
-    { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
-    { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
-  ];
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row bg-[#f0f4ff]">
