@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
@@ -12,9 +12,16 @@ export default function StyleStageProgress() {
   const searchParams = useSearchParams();
   const orderParam = searchParams.get('order');
 
-  const [selectedOrderId, setSelectedOrderId] = useState(orderParam || orders[2]?.id || orders[0]?.id || '');
+  const [selectedOrderId, setSelectedOrderId] = useState(orderParam || '');
   const [apiProgress, setApiProgress] = useState(null);
   const [progressLoading, setProgressLoading] = useState(false);
+
+  // Set default selected order when orders data loads from context
+  useEffect(() => {
+    if (!selectedOrderId && orders.length > 0) {
+      setSelectedOrderId(orderParam || orders[2]?.id || orders[0]?.id);
+    }
+  }, [orders, selectedOrderId, orderParam]);
 
   // Active selected order details
   const activeOrder = orders.find((o) => o.id === selectedOrderId);
@@ -25,13 +32,17 @@ export default function StyleStageProgress() {
       setApiProgress(null);
       return;
     }
-    let cancelled = false;
     setProgressLoading(true);
     apiGetStyleProgress(token, activeOrder.style_id)
-      .then((data) => { if (!cancelled) setApiProgress(data); })
-      .catch(() => { if (!cancelled) setApiProgress(null); })
-      .finally(() => { if (!cancelled) setProgressLoading(false); });
-    return () => { cancelled = true; };
+      .then((data) => {
+        setApiProgress(data);
+      })
+      .catch(() => {
+        setApiProgress(null);
+      })
+      .finally(() => {
+        setProgressLoading(false);
+      });
   }, [token, selectedOrderId, activeOrder?.style_id]);
 
   // Define operational stages
@@ -47,11 +58,10 @@ export default function StyleStageProgress() {
 
   // Calculate quantities at each stage — use backend data if available, else compute locally from events
   const stageQuantities = operations.map((op) => {
-    if (apiProgress) {
-      // Backend returns something like: { operation_label: qty } or array of { label, qty }
-      const backendQty = Array.isArray(apiProgress)
-        ? (apiProgress.find((s) => s.label === op.name || s.operation === op.name)?.qty ?? 0)
-        : (apiProgress[op.name] ?? 0);
+    if (apiProgress && apiProgress.stages) {
+      // Backend returns { stages: { CUTTING: 40, FUSING: 10, ... } }
+      const upName = op.name.toUpperCase();
+      const backendQty = apiProgress.stages[upName] ?? apiProgress.stages[upName.replace(/ /g, '_')] ?? 0;
       return { ...op, qtyLogged: backendQty };
     }
     // Local fallback
