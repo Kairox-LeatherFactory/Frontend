@@ -74,8 +74,7 @@ export default function OrdersTreeBrowser() {
     setOpenedStyles((prev) => ({ ...prev, [styleKey]: !prev[styleKey] }));
   };
 
-  // Group orders by Client Name — memoized: this forEach loop only reruns when orders change.
-  // Without memo, this rebuilds the entire map on every modal open/close, tab switch, or tree toggle.
+  // Group orders by Client Name — memoized
   const clientsMap = useMemo(() => {
     const map = {};
     orders.forEach((o) => {
@@ -87,12 +86,21 @@ export default function OrdersTreeBrowser() {
     return map;
   }, [orders]);
 
-  // Combine default clients with dynamically created ones — memoized so the merged array
-  // reference stays stable and avoids unnecessary re-renders in the client grid
+  // Combine default clients with dynamically created ones
   const allClients = useMemo(
     () => [...clients, ...localClients],
     [clients, localClients]
   );
+
+  // All clients to show in the SKU tree — include clients with no orders too
+  const treeClients = useMemo(() => {
+    const inMap = new Set(Object.keys(clientsMap));
+    const noOrderClients = allClients
+      .filter((c) => !inMap.has(c.name))
+      .map((c) => ({ name: c.name, orders: [] }));
+    const withOrders = Object.entries(clientsMap).map(([name, ords]) => ({ name, orders: ords }));
+    return [...withOrders, ...noOrderClients];
+  }, [clientsMap, allClients]);
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -143,7 +151,7 @@ export default function OrdersTreeBrowser() {
           </h3>
 
           <div className="space-y-4 text-sm font-semibold">
-            {Object.entries(clientsMap).map(([clientName, clientOrders]) => {
+            {treeClients.map(({ name: clientName, orders: clientOrders }) => {
               const isClientOpen = !!openedClients[clientName];
 
               return (
@@ -169,7 +177,12 @@ export default function OrdersTreeBrowser() {
                   {/* CLIENT CONTENT */}
                   {isClientOpen && (
                     <div className="p-4 bg-white border-t border-slate-100 space-y-3 pl-8">
-                      {clientOrders.map((order) => {
+                      {clientOrders.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400">
+                          <ClipboardList className="w-8 h-8 mx-auto mb-2 text-slate-200" />
+                          <p className="font-semibold text-xs">No purchase orders yet for this client.</p>
+                        </div>
+                      ) : clientOrders.map((order) => {
                         const isOrderOpen = !!openedOrders[order.id];
 
                         return (
