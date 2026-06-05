@@ -60,11 +60,10 @@ export default function StyleStageProgress() {
 
   // Calculate quantities at each stage — use backend data if available, else compute locally from events
   const stageQuantities = operations.map((op) => {
-    if (apiProgress) {
-      // Backend returns something like: { operation_label: qty } or array of { label, qty }
-      const backendQty = Array.isArray(apiProgress)
-        ? (apiProgress.find((s) => s.label === op.name || s.operation === op.name)?.qty ?? 0)
-        : (apiProgress[op.name] ?? 0);
+    if (apiProgress && apiProgress.stages) {
+      // Backend returns { stages: { CUTTING: 40, FUSING: 10, ... } }
+      const upName = op.name.toUpperCase();
+      const backendQty = apiProgress.stages[upName] ?? apiProgress.stages[upName.replace(/ /g, '_')] ?? 0;
       return { ...op, qtyLogged: backendQty };
     }
     // Local fallback
