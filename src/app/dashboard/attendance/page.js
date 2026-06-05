@@ -233,7 +233,7 @@ function MyAttendanceView({ token }) {
       }
       setCountdown(null);
     } catch (e) {
-      console.error('Status fetch fallback failed:', e.message);
+      console.error('Status fetch failed:', e.message);
     } finally {
       setStatusLoading(false);
     }
