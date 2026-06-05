@@ -209,35 +209,45 @@ function MyAttendanceView({ token }) {
     if (type === 'success') setTimeout(() => setAlert(null), 5000);
   };
 
-  // GET /me/status doesn't exist on backend, so we mock it using the History endpoint
+  // GET /me/status — server-anchored shift data (backend confirmed working)
   const fetchStatus = useCallback(async () => {
     try {
-      // Instead of failing on /me/status, fetch today's history
-      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-      const data = await apiFetch(`${API}/me?start=${todayStr}&end=${todayStr}`, {}, token);
-      const todayRec = data.find(r => r.work_date === todayStr);
-      
-      if (todayRec) {
-        setStatus({
-          checked_in: true,
-          checked_out: !!todayRec.check_out_at,
-          check_in_at: todayRec.check_in_at,
-          is_late: todayRec.is_late,
-          is_short: todayRec.is_short,
-          is_overtime: todayRec.is_overtime,
-          shift_end_at: null, // Unavailable without status API
-          remaining_seconds: null // Unavailable without status API
-        });
+      const data = await apiFetch(`${API}/me/status`, {}, token);
+      // Backend response: { checked_in, checked_out, check_in_at, shift_end_at, remaining_seconds, ... }
+      setStatus(data);
+      if (data.remaining_seconds != null && data.checked_in && !data.checked_out) {
+        setCountdown(data.remaining_seconds);
       } else {
-        setStatus(null);
+        setCountdown(null);
       }
-      setCountdown(null);
     } catch (e) {
-      console.error('Status fetch fallback failed:', e.message);
+      console.error('Status fetch failed:', e.message);
+      // Fallback: try reading today's history if /me/status fails
+      try {
+        const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+        const histData = await apiFetch(`${API}/me?start=${todayStr}&end=${todayStr}`, {}, token);
+        const todayRec = histData.find(r => r.work_date === todayStr);
+        if (todayRec) {
+          setStatus({
+            checked_in: true,
+            checked_out: !!todayRec.check_out_at,
+            check_in_at: todayRec.check_in_at,
+            is_late: todayRec.is_late,
+            is_short: todayRec.is_short,
+            is_overtime: todayRec.is_overtime,
+            shift_end_at: null,
+            remaining_seconds: null,
+          });
+        } else {
+          setStatus(null);
+        }
+        setCountdown(null);
+      } catch {}
     } finally {
       setStatusLoading(false);
     }
   }, [token]);
+
 
   // GET /me?start=&end=
   const fetchHistory = useCallback(async () => {
