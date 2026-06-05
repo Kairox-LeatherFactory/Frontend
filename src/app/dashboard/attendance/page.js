@@ -209,14 +209,31 @@ function MyAttendanceView({ token }) {
     if (type === 'success') setTimeout(() => setAlert(null), 5000);
   };
 
-  // GET /me/status — server-anchored shift data
+  // GET /me/status doesn't exist on backend, so we mock it using the History endpoint
   const fetchStatus = useCallback(async () => {
     try {
-      const data = await apiFetch(`${API}/me/status`, {}, token);
-      setStatus(data);
-      if (data.remaining_seconds != null) setCountdown(data.remaining_seconds);
+      // Instead of failing on /me/status, fetch today's history
+      const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+      const data = await apiFetch(`${API}/me?start=${todayStr}&end=${todayStr}`, {}, token);
+      const todayRec = data.find(r => r.work_date === todayStr);
+      
+      if (todayRec) {
+        setStatus({
+          checked_in: true,
+          checked_out: !!todayRec.check_out_at,
+          check_in_at: todayRec.check_in_at,
+          is_late: todayRec.is_late,
+          is_short: todayRec.is_short,
+          is_overtime: todayRec.is_overtime,
+          shift_end_at: null, // Unavailable without status API
+          remaining_seconds: null // Unavailable without status API
+        });
+      } else {
+        setStatus(null);
+      }
+      setCountdown(null);
     } catch (e) {
-      console.error('Status fetch failed:', e.message);
+      console.error('Status fetch fallback failed:', e.message);
     } finally {
       setStatusLoading(false);
     }
@@ -508,7 +525,7 @@ function FloorCommandView({ workers = [], token }) {
   };
 
   const dailyWorkers = useMemo(
-    () => workers.filter((w) => (w.wage_type || '').toUpperCase() === 'DAILY_WAGE'),
+    () => workers, // Showing all workers instead of just DAILY_WAGE for proxy check-in
     [workers]
   );
 
@@ -1150,10 +1167,10 @@ export default function AttendancePage() {
   const [activeTab, setActiveTab] = useState('me');
   const [workers, setWorkers]     = useState([]);
 
-  // Load daily-wage workers lazily when Floor Command tab is first opened
+  // Load workers lazily when Floor Command tab is first opened
   useEffect(() => {
     if (activeTab === 'proxy' && workers.length === 0) {
-      apiFetch('/api/v1/employees?wage_type=DAILY_WAGE', {}, token)
+      apiFetch('/api/v1/employees', {}, token)
         .then(setWorkers)
         .catch(() => {});
     }
