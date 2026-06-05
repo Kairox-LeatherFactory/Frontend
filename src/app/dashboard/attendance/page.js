@@ -508,9 +508,12 @@ function FloorCommandView({ workers = [], token }) {
   };
 
   const dailyWorkers = useMemo(
-    () => workers.filter((w) => (w.wage_type || '').toUpperCase() === 'DAILY_WAGE'),
-    [workers]
-  );
+  () => workers.filter((w) => {
+    const wt = (w.wage_type || '').toUpperCase();
+    return wt === 'DAILY_WAGE' || wt === 'PIECE_RATE';
+  }),
+  [workers]
+);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -541,11 +544,13 @@ function FloorCommandView({ workers = [], token }) {
         method: 'POST',
         body: JSON.stringify({ employee_ids: requestedIds, lat: coords.lat, lon: coords.lon }),
       }, token);
-      const succeededIds = new Set(result.map((r) => r.employee_id));
-      const succeeded    = requestedIds.filter((id) => succeededIds.has(id));
-      const failed       = requestedIds.filter((id) => !succeededIds.has(id));
-      setDiffModal({ type, succeeded, failed });
+      const succeededIds = new Set(result.map((r) => String(r.employee_id)));
+      const normalizedRequested = requestedIds.map((id) => String(id));
+      const succeeded = normalizedRequested.filter((id) => succeededIds.has(id));
+      const failed    = normalizedRequested.filter((id) => !succeededIds.has(id));
       setSelected(new Set());
+// Defer modal open to next tick so cleared selection doesn't race with render
+      setTimeout(() => setDiffModal({ type, succeeded, failed }), 0);
     } catch (e) {
       if (e.status === 403) showAlert('error', `Geofence: ${e.message}`);
       else showAlert('error', typeof e === 'string' ? e : e.message || 'Batch action failed.');
@@ -569,8 +574,10 @@ function FloorCommandView({ workers = [], token }) {
           phone:       addForm.phone,
           designation: addForm.designations.join(', '),
           daily_rate:  addForm.daily_rate ? parseFloat(addForm.daily_rate) : null,
+          wage_type:   'PIECE_RATE',
         }),
-      }, token);
+      }, token);  
+
       showAlert('success', `Worker "${addForm.name}" onboarded to floor roster.`);
       setAddModal(false);
       setAddForm({ name: '', phone: '', designations: [], daily_rate: '' });
@@ -599,7 +606,7 @@ function FloorCommandView({ workers = [], token }) {
       <GpsWarning error={gps.error} />
 
       {/* Roster table */}
-      <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-4">
+      <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-4 relative overflow-hidden">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 border-b border-slate-100 pb-4">
           <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2 flex-1">
             <Users className="w-5 h-5 text-blue-600" /> Daily Wage Roster
@@ -666,7 +673,7 @@ function FloorCommandView({ workers = [], token }) {
 
       {/* Floating batch action bar */}
       {selected.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl animate-fade-in">
+        <div className="absolute bottom-4 left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-40 flex flex-wrap sm:flex-nowrap items-center justify-center gap-2 sm:gap-3 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl animate-fade-in border border-slate-700">
           <span className="text-xs font-black text-slate-300">{selected.size} selected</span>
           <div className="w-px h-5 bg-slate-700" />
           <button onClick={() => batchAction('check-in')} disabled={actionLoading || !!gps.error}
@@ -687,8 +694,8 @@ function FloorCommandView({ workers = [], token }) {
 
       {/* Diff result modal */}
       {diffModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-fade-in">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[999] flex items-start justify-center pt-16 px-4 pb-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-fade-in my-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-black text-slate-900 text-lg">
                 {diffModal.type === 'check-in' ? 'Check-In' : 'Check-Out'} Results
@@ -725,8 +732,8 @@ function FloorCommandView({ workers = [], token }) {
 
       {/* Add floor worker modal */}
       {addModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-fade-in">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[999] flex items-start justify-center pt-16 px-4 pb-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-fade-in my-auto">
             <div className="flex items-center justify-between">
               <h3 className="font-black text-slate-900 text-lg flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" /> Add Floor Worker
@@ -1153,7 +1160,7 @@ export default function AttendancePage() {
   // Load daily-wage workers lazily when Floor Command tab is first opened
   useEffect(() => {
     if (activeTab === 'proxy' && workers.length === 0) {
-      apiFetch('/api/v1/employees?wage_type=DAILY_WAGE', {}, token)
+      apiFetch('/api/v1/employees?wage_type=PIECE_RATE', {}, token)
         .then(setWorkers)
         .catch(() => {});
     }
