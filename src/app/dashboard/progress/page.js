@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
@@ -32,19 +32,17 @@ export default function StyleStageProgress() {
       setApiProgress(null);
       return;
     }
-    let cancelled = false;
     setProgressLoading(true);
     apiGetStyleProgress(token, activeOrder.style_id)
-      .then((data) => { 
-        console.log('Stage Progress API Response:', data);
-        if (!cancelled) setApiProgress(data); 
+      .then((data) => {
+        setApiProgress(data);
       })
-      .catch((err) => { 
-        console.error('Stage Progress API Error:', err);
-        if (!cancelled) setApiProgress(null); 
+      .catch(() => {
+        setApiProgress(null);
       })
-      .finally(() => { if (!cancelled) setProgressLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => {
+        setProgressLoading(false);
+      });
   }, [token, selectedOrderId, activeOrder?.style_id]);
 
   // Define operational stages
