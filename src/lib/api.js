@@ -104,7 +104,7 @@ export async function apiGetEvents(token) {
  * Log a new production event
  */
 export async function apiLogEvent(token, payload) {
-  console.log('[apiLogEvent] payload:', JSON.stringify(payload));
+  console.warn('[apiLogEvent] payload:', JSON.stringify(payload));
   const res = await fetch(`${API_BASE_URL}/api/v1/production/events`, {
     method: 'POST',
     headers: {
@@ -115,7 +115,7 @@ export async function apiLogEvent(token, payload) {
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to log event');
-    console.log('[apiLogEvent] error response:', errText);
+    console.warn('[apiLogEvent] error response:', errText);
     throw new Error(errText || `Failed to log event (${res.status})`);
   }
   return res.json();

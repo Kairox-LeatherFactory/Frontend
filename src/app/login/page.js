@@ -40,7 +40,6 @@ export default function Login() {
       const data = await apiLogin(username.trim(), password.trim());
       login(data.role || 'direct_manager', data.access_token);
       router.push('/dashboard');
-      console.log("data ",data);
     } catch (err) {
       setLoginError('Invalid credentials. Please try again.');
     } finally {

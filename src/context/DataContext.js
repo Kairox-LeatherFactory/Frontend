@@ -195,14 +195,6 @@ export function DataProvider({ children }) {
     );
     const operation_id = operationObj?.id;
 
-    // Debug info — remove once working
-    console.log('[addEvent] order_id:', event.order_id);
-    console.log('[addEvent] order found:', order ? order.style : 'NOT FOUND');
-    console.log('[addEvent] skus available:', order?.skus?.map(s => `${s.size}(${s.id})`));
-    console.log('[addEvent] size requested:', event.size, '→ sku_id:', sku_id);
-    console.log('[addEvent] operation requested:', event.operation, '→ operation_id:', operation_id);
-    console.log('[addEvent] all operations:', operations.map(o => o.label));
-
     if (!sku_id || !operation_id) {
       throw new Error(
         `Could not map to backend IDs.\n` +
