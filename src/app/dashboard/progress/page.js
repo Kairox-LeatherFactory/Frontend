@@ -12,9 +12,16 @@ export default function StyleStageProgress() {
   const searchParams = useSearchParams();
   const orderParam = searchParams.get('order');
 
-  const [selectedOrderId, setSelectedOrderId] = useState(orderParam || orders[2]?.id || orders[0]?.id || '');
+  const [selectedOrderId, setSelectedOrderId] = useState(orderParam || '');
   const [apiProgress, setApiProgress] = useState(null);
   const [progressLoading, setProgressLoading] = useState(false);
+
+  // Set default selected order when orders data loads from context
+  useEffect(() => {
+    if (!selectedOrderId && orders.length > 0) {
+      setSelectedOrderId(orderParam || orders[2]?.id || orders[0]?.id);
+    }
+  }, [orders, selectedOrderId, orderParam]);
 
   // Active selected order details
   const activeOrder = orders.find((o) => o.id === selectedOrderId);
@@ -28,8 +35,14 @@ export default function StyleStageProgress() {
     let cancelled = false;
     setProgressLoading(true);
     apiGetStyleProgress(token, activeOrder.style_id)
-      .then((data) => { if (!cancelled) setApiProgress(data); })
-      .catch(() => { if (!cancelled) setApiProgress(null); })
+      .then((data) => { 
+        console.log('Stage Progress API Response:', data);
+        if (!cancelled) setApiProgress(data); 
+      })
+      .catch((err) => { 
+        console.error('Stage Progress API Error:', err);
+        if (!cancelled) setApiProgress(null); 
+      })
       .finally(() => { if (!cancelled) setProgressLoading(false); });
     return () => { cancelled = true; };
   }, [token, selectedOrderId, activeOrder?.style_id]);
