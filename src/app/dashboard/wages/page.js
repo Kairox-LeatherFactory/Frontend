@@ -1,82 +1,95 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { CheckCircle2, Tag, Lock, Settings, Coins, FolderOpen } from 'lucide-react';
+import { apiSetWageRate, apiComputeWageRun } from '@/lib/api';
+import { CheckCircle2, Tag, Lock, Settings, Coins, FolderOpen, Loader2 } from 'lucide-react';
 
 export default function PieceRatesAndWages() {
-  const { user } = useAuth();
-  const { workers, rates, events, wageRuns, addWageRun } = useData();
+  const { user, token } = useAuth();
+  const { orders, operations } = useData();
 
   // Role Gate check
   const isDirectManager = user === 'direct_manager';
 
   // State for active pay computation run
-  const [payPeriod, setPayPeriod] = useState('May 16–31, 2026');
+  const [payPeriod, setPayPeriod] = useState('May 16-31, 2026');
   const [isCalculated, setIsCalculated] = useState(false);
   const [isFreezing, setIsFreezing] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  
+  const [calculatedPayroll, setCalculatedPayroll] = useState([]);
+  const [totalPayrollAmount, setTotalPayrollAmount] = useState(0);
 
-  // ─── 1. PIECE-RATES DATA BINDING ───
-  const activeRates = rates.CARNABY || {};
+  // Set Wage Rate Form State
+  const [styleId, setStyleId] = useState('');
+  const [operation, setOperation] = useState('CUTTING');
+  const [pieceRate, setPieceRate] = useState('');
+  const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
+  const [isSettingRate, setIsSettingRate] = useState(false);
 
-  // ─── 2. LIVE WAGE COMPUTATION ENGINE ───
-  const calculatedPayroll = useMemo(() => {
-    return workers.map((worker) => {
-      if (worker.wage_type === 'Monthly-salary') {
-        // Monthly worker gets flat salary rate (assume half month for semi-monthly payroll)
-        const payAmount = Math.round(worker.monthly_salary / 2);
-        return {
-          ...worker,
-          piecesLogged: 0,
-          details: 'Flat Monthly Salary (Pro-rated 15 days)',
-          amount: payAmount,
-        };
+  // Auto-select first order for the style dropdown
+  useEffect(() => {
+    if (!styleId && orders && orders.length > 0) {
+      setStyleId(orders[0].style); // using style name as ID for now based on context
+    }
+  }, [orders, styleId]);
+
+  const handleSetRate = async (e) => {
+    e.preventDefault();
+    if (!isDirectManager) return;
+    setIsSettingRate(true);
+    setErrorMsg('');
+    try {
+      // Find UUIDs
+      const orderMatch = orders.find(o => o.style === styleId);
+      const opMatch = operations.find(o => o.label.toLowerCase() === operation.toLowerCase());
+      
+      if (!orderMatch || !opMatch) {
+        throw new Error("Could not find matching Style ID or Operation ID in database.");
       }
 
-      // Piece-rate worker: Qty × Rate for specific operations
-      // Filter events by worker
-      const workerEvents = events.filter((e) => e.worker_id === worker.id);
-      let totalPieces = 0;
-      let totalPay = 0;
-      const breakdowns = [];
-
-      workerEvents.forEach((evt) => {
-        const rate = activeRates[evt.operation] || 0;
-        const linePay = evt.qty * rate;
-        totalPieces += evt.qty;
-        totalPay += linePay;
-        if (evt.qty > 0) {
-          breakdowns.push(`${evt.qty} pcs @ ₹${rate} (${evt.operation})`);
-        }
+      await apiSetWageRate(token, {
+        style_id: orderMatch.style_id,
+        operation_id: opMatch.id,
+        rate: parseFloat(pieceRate),
+        effective_from: effectiveDate
       });
+      setSuccessMsg(`Piece rate for ${operation} on ${styleId} set successfully.`);
+      setTimeout(() => setSuccessMsg(''), 5000);
+      setPieceRate('');
+    } catch (err) {
+      setErrorMsg(err.message);
+      setTimeout(() => setErrorMsg(''), 5000);
+    } finally {
+      setIsSettingRate(false);
+    }
+  };
 
-      return {
-        ...worker,
-        piecesLogged: totalPieces,
-        details: breakdowns.join(' + ') || 'No shop floor logs recorded',
-        amount: totalPay,
-      };
-    });
-  }, [workers, events, activeRates]);
-
-  const totalPayrollAmount = useMemo(() => {
-    return calculatedPayroll.reduce((acc, curr) => acc + curr.amount, 0);
-  }, [calculatedPayroll]);
-
-  // Save the compiled run
-  const handleFreezeRun = async () => {
+  const handleComputeRun = async () => {
     if (!isDirectManager) return;
     setIsFreezing(true);
     setErrorMsg('');
     try {
-      await addWageRun(payPeriod);
-      setIsCalculated(false);
-      setSuccessMsg(`Payroll Period "${payPeriod}" frozen successfully. Total distribution of ₹${totalPayrollAmount.toLocaleString()} logged in Ledger.`);
+      // Parse the period dropdown (e.g. "May 16-31, 2026") into YYYY-MM-DD
+      let start_date = '2026-05-16';
+      let end_date = '2026-05-31';
+      if (payPeriod.includes('June')) {
+        start_date = '2026-06-01';
+        end_date = '2026-06-15';
+      }
+
+      const runData = await apiComputeWageRun(token, start_date, end_date);
+      // Backend returns run with lines
+      const lines = runData.lines || [];
+      setCalculatedPayroll(lines);
+      setTotalPayrollAmount(runData.total_amount || lines.reduce((acc, l) => acc + (l.amount_calculated || 0), 0));
+      setIsCalculated(true);
+      setSuccessMsg(`Payroll Period "${payPeriod}" computed & frozen successfully!`);
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch (err) {
-      setErrorMsg(`Failed to freeze payroll: ${err.message}`);
+      setErrorMsg(`Failed to compute payroll: ${err.message}`);
       setTimeout(() => setErrorMsg(''), 6000);
     } finally {
       setIsFreezing(false);
@@ -84,7 +97,7 @@ export default function PieceRatesAndWages() {
   };
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in pb-12">
       
       {/* ─── TITLE SECTION ─── */}
       <div>
@@ -108,42 +121,84 @@ export default function PieceRatesAndWages() {
       {/* ─── DOUBLE BLOCK ROW: RATES & STATUS ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* LEFT COLUMN: PIECE-RATE CONSTANTS (All roles can see) */}
+        {/* LEFT COLUMN: SET PIECE RATE */}
         <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-6">
           <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
-            <Tag className="w-5 h-5 text-blue-600" /> CARNABY Style Piece Rates
+            <Tag className="w-5 h-5 text-blue-600" /> Set Piece Rate
           </h3>
           <p className="text-xs font-semibold text-slate-400">
-            Standard contract pieces pay scale allocated per completed operation:
+            Define contract piece pay scale for specific styles and operations.
           </p>
 
-          <div className="overflow-hidden rounded-xl border border-slate-100">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="bg-blue-50 border-b border-slate-150 text-blue-900 font-bold uppercase tracking-wider">
-                  <th className="p-3">Operation Station</th>
-                  <th className="p-3 text-right">Rate / Piece</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-bold text-slate-700">
-                {Object.entries(activeRates).map(([opName, rateVal]) => (
-                  <tr key={opName} className="hover:bg-slate-50/50">
-                    <td className="p-3 text-slate-800">{opName}</td>
-                    <td className="p-3 text-right text-blue-700 font-black">₹{rateVal}.00</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-[10px] text-slate-400 font-semibold leading-relaxed">
-            Note: Standard Cutter rate is validated at ₹80 per piece. (e.g. 152 pcs logged equals ₹12,160 pay scale).
-          </div>
+          {!isDirectManager ? (
+            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-xs font-bold text-amber-800 flex items-center gap-2">
+              <Lock className="w-4 h-4" /> Manager Access Required
+            </div>
+          ) : (
+            <form onSubmit={handleSetRate} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-slate-600 uppercase">Style</label>
+                <select 
+                  className="input-field mt-1" 
+                  value={styleId} 
+                  onChange={(e) => setStyleId(e.target.value)}
+                  required
+                >
+                  {orders.map(o => (
+                    <option key={o.id} value={o.style}>{o.style}</option>
+                  ))}
+                  <option value="CARNABY">CARNABY</option>
+                  <option value="REGAL">REGAL</option>
+                </select>
+              </div>
+              
+              <div>
+                <label className="text-xs font-bold text-slate-600 uppercase">Operation</label>
+                <select 
+                  className="input-field mt-1" 
+                  value={operation} 
+                  onChange={(e) => setOperation(e.target.value)}
+                  required
+                >
+                  <option value="CUTTING">Cutting</option>
+                  <option value="FUSING">Fusing</option>
+                  <option value="PASTING">Pasting</option>
+                  <option value="FF">FF</option>
+                  <option value="SHELL STITCH">Shell Stitch</option>
+                  <option value="LINING STITCH">Lining Stitch</option>
+                  <option value="LA">L/A</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-600 uppercase">Rate per Piece (₹)</label>
+                <input 
+                  type="number" 
+                  step="0.01" 
+                  min="0"
+                  className="input-field mt-1" 
+                  value={pieceRate} 
+                  onChange={(e) => setPieceRate(e.target.value)}
+                  placeholder="e.g. 80.00"
+                  required
+                />
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={isSettingRate}
+                className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 flex justify-center items-center gap-2"
+              >
+                {isSettingRate ? <Loader2 className="w-4 h-4 animate-spin" /> : <Tag className="w-4 h-4" />}
+                Save Piece Rate
+              </button>
+            </form>
+          )}
         </div>
 
-        {/* RIGHT COLUMN: PAYROLL OPERATIONS ENGINE (Gated) */}
+        {/* RIGHT COLUMN: PAYROLL OPERATIONS ENGINE */}
         <div className="lg:col-span-2 space-y-6">
           
-          {/* GATED ACCESS ACCORDION IF VIEWER / FLOOR MANAGER */}
           {!isDirectManager ? (
             <div className="card p-8 bg-amber-50/60 border border-amber-200 shadow-lg text-center space-y-4">
               <Lock className="w-12 h-12 text-amber-500 mx-auto" />
@@ -167,21 +222,23 @@ export default function PieceRatesAndWages() {
                     onChange={(e) => setPayPeriod(e.target.value)}
                     className="input-field h-10 py-0 min-h-[40px] font-extrabold text-xs bg-slate-50 cursor-pointer w-44"
                   >
-                    <option value="May 16–31, 2026">May 16–31, 2026</option>
-                    <option value="June 01–15, 2026">June 01–15, 2026</option>
+                    <option value="May 16-31, 2026">May 16-31, 2026</option>
+                    <option value="June 01-15, 2026">June 01-15, 2026</option>
                   </select>
                   <button
-                    onClick={() => setIsCalculated(true)}
-                    className="btn-primary h-10 min-h-[40px] py-0 text-xs font-black px-4 bg-gradient-brand shadow"
+                    onClick={handleComputeRun}
+                    disabled={isFreezing}
+                    className="btn-primary h-10 min-h-[40px] py-0 text-xs font-black px-4 bg-gradient-brand shadow flex items-center gap-2"
                   >
-                    Compute Pay
+                    {isFreezing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    Compute & Freeze Pay
                   </button>
                 </div>
               </div>
 
               {/* Computations Grid Panel */}
               {isCalculated ? (
-                <div className="space-y-6">
+                <div className="space-y-6 animate-fade-in">
                   <div className="flex items-center justify-between bg-blue-50 border border-blue-100 p-4 rounded-xl text-blue-900">
                     <span className="text-xs font-black uppercase">Distribution Period: {payPeriod}</span>
                     <span className="text-sm font-black">
@@ -193,28 +250,22 @@ export default function PieceRatesAndWages() {
                     <table className="w-full text-left text-xs font-semibold">
                       <thead>
                         <tr className="bg-slate-50 border-b border-slate-150 text-slate-400 font-bold uppercase tracking-wider">
-                          <th className="p-3">Worker ID</th>
-                          <th className="p-3">Worker Name</th>
-                          <th className="p-3">Wage Category</th>
-                          <th className="p-3">Total Qty Done</th>
+                          <th className="p-3">Worker / Type</th>
+                          <th className="p-3 text-center">Total Qty Done</th>
                           <th className="p-3 text-right">Wage Amount</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 text-slate-700">
-                        {calculatedPayroll.map((pay) => (
-                          <tr key={pay.id} className="hover:bg-slate-50/50">
-                            <td className="p-3 font-bold text-slate-400">{pay.id}</td>
+                        {calculatedPayroll.map((pay, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/50">
                             <td className="p-3 text-slate-900">
-                              <span className="block font-black">{pay.name}</span>
-                              <span className="block text-[9px] text-slate-400 font-bold max-w-xs truncate">{pay.details}</span>
-                            </td>
-                            <td className="p-3">
-                              <span className={`badge ${pay.wage_type === 'Piece-rate' ? 'badge-info' : 'badge-warning'}`}>
-                                {pay.wage_type}
+                              <span className="block font-black">{pay.employee_name || 'Unknown Worker'}</span>
+                              <span className="block text-[10px] text-slate-400 font-bold mt-1 uppercase">
+                                {pay.wage_type || 'Unknown'}
                               </span>
                             </td>
-                            <td className="p-3 font-black">{pay.piecesLogged} pcs</td>
-                            <td className="p-3 text-right text-slate-900 font-black">₹{pay.amount.toLocaleString()}</td>
+                            <td className="p-3 font-black text-center">{pay.total_pieces || 0} pcs</td>
+                            <td className="p-3 text-right text-slate-900 font-black">₹{(pay.amount_calculated || 0).toLocaleString()}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -226,66 +277,21 @@ export default function PieceRatesAndWages() {
                       onClick={() => setIsCalculated(false)}
                       className="btn-secondary h-12 min-h-[48px] px-6 text-xs font-bold rounded-lg"
                     >
-                      Reset Computation
-                    </button>
-                    <button
-                      onClick={handleFreezeRun}
-                      className="btn-primary h-12 min-h-[48px] px-6 text-xs font-black rounded-lg bg-emerald-600 hover:bg-emerald-700 shadow flex items-center gap-2"
-                    >
-                      <Lock className="w-4 h-4" /> {isFreezing ? 'Freezing…' : 'Freeze & Log Payrun'}
+                      Clear View
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-12 text-slate-400 font-medium">
                   <Coins className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                  Select pay cycle period above and click "Compute Pay" to parse active floor logs and auto-calculate payroll distributions.
+                  Select pay cycle period above and click "Compute & Freeze Pay" to parse active floor logs and auto-calculate payroll distributions.
                 </div>
               )}
 
             </div>
           )}
-
-          {/* HISTORICAL WAGE RUNS TABLE */}
-          {isDirectManager && (
-            <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-6">
-              <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
-                <FolderOpen className="w-5 h-5 text-blue-600" /> Archived Frozen Payroll Runs
-              </h3>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs sm:text-sm font-semibold">
-                  <thead>
-                    <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider">
-                      <th className="py-3 px-2">Run ID</th>
-                      <th className="py-3 px-4">Period</th>
-                      <th className="py-3 px-4">Worker Count</th>
-                      <th className="py-3 px-4 text-right">Total Payout</th>
-                      <th className="py-3 px-4 text-center">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-slate-700">
-                    {wageRuns.map((run) => (
-                      <tr key={run.id} className="hover:bg-slate-50/50">
-                        <td className="py-3 px-2 font-black text-slate-400">{run.id}</td>
-                        <td className="py-3 px-4 text-slate-900 font-extrabold">{run.period}</td>
-                        <td className="py-3 px-4">{run.employee_count} active</td>
-                        <td className="py-3 px-4 text-right font-black text-slate-900">₹{run.total_amount.toLocaleString()}</td>
-                        <td className="py-3 px-4 text-center">
-                          <span className="badge badge-success">FROZEN LEDGER</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
         </div>
-
       </div>
-
     </div>
   );
 }

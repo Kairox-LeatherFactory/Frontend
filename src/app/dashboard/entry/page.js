@@ -3,7 +3,66 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiImportPreview, apiImportCommit } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2 } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info } from 'lucide-react';
+
+function DynamicDataViewer({ data }) {
+  if (!data) return null;
+
+  if (Array.isArray(data)) {
+    if (data.length === 0) return <div className="text-slate-400 italic">Empty list</div>;
+    // Check if it's an array of objects to render as a table
+    if (typeof data[0] === 'object' && data[0] !== null) {
+      const keys = Array.from(new Set(data.flatMap(Object.keys)));
+      return (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="min-w-full text-left text-sm whitespace-nowrap bg-white">
+            <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider">
+              <tr>
+                {keys.map(k => <th key={k} className="px-4 py-3 border-b border-slate-200">{k.replace(/_/g, ' ')}</th>)}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.map((row, i) => (
+                <tr key={i} className="hover:bg-slate-50">
+                  {keys.map(k => (
+                    <td key={k} className="px-4 py-2 text-slate-700">
+                      {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    // Simple array
+    return (
+      <ul className="list-disc pl-5 space-y-1 text-slate-700">
+        {data.map((item, i) => <li key={i}>{String(item)}</li>)}
+      </ul>
+    );
+  }
+
+  if (typeof data === 'object' && data !== null) {
+    return (
+      <div className="space-y-6">
+        {Object.entries(data).map(([key, val]) => (
+          <div key={key} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <h4 className="text-md font-black text-slate-800 mb-3 capitalize flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+              {key.replace(/_/g, ' ')}
+            </h4>
+            <DynamicDataViewer data={val} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <span className="text-slate-700 font-medium">{String(data)}</span>;
+}
+
 
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
@@ -480,9 +539,7 @@ export default function ProductionLogEntry() {
             
             <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
               {previewData ? (
-                <pre className="text-xs text-slate-700 bg-white p-4 rounded-xl border border-slate-200 overflow-auto max-h-[50vh] font-mono whitespace-pre-wrap">
-                  {JSON.stringify(previewData, null, 2)}
-                </pre>
+                <DynamicDataViewer data={previewData} />
               ) : (
                 <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
               )}

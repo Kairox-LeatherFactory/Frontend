@@ -136,16 +136,35 @@ export async function apiGetWageRun(token, runId) {
 }
 
 /**
+ * Set a wage rate for a style and operation
+ */
+export async function apiSetWageRate(token, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/rates`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to set wage rate');
+    throw new Error(errText || `Failed to set wage rate (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
  * Compute and freeze a wage run for a period
  */
-export async function apiComputeWageRun(token, period) {
+export async function apiComputeWageRun(token, period_start, period_end) {
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ period }),
+    body: JSON.stringify({ period_start, period_end }),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to compute wage run');
@@ -179,6 +198,7 @@ export async function apiImportPreview(token, file) {
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to preview import');
+    console.error('[API] /imports/preview failed:', res.status, errText);
     throw new Error(errText || `Failed to preview import (${res.status})`);
   }
   return res.json();
@@ -197,7 +217,113 @@ export async function apiImportCommit(token, file) {
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to commit import');
+    console.error('[API] /imports/commit failed:', res.status, errText);
     throw new Error(errText || `Failed to commit import (${res.status})`);
   }
   return res.json();
+}
+
+// ─── ANALYTICS ───
+
+export async function apiGetAnalyticsOverview(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/overview`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch analytics overview');
+  return res.json();
+}
+
+export async function apiGetStageSpreadAlerts(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/alerts/stage-spread`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch stage spread alerts');
+  return res.json();
+}
+
+export async function apiGetFreightRiskAlerts(token, todayDate = null) {
+  const url = todayDate 
+    ? `${API_BASE_URL}/api/v1/analytics/alerts/freight-risk?today=${todayDate}`
+    : `${API_BASE_URL}/api/v1/analytics/alerts/freight-risk`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch freight risk alerts');
+  return res.json();
+}
+
+/**
+ * Fetch all users
+ */
+export async function apiGetUsers(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/users`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch users (${res.status})`);
+  return res.json();
+}
+
+/**
+ * Create a new client user
+ */
+export async function apiCreateClientUser(token, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/users/clients`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to create client user');
+    throw new Error(errText || `Failed to create client user (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Create a new employee
+ */
+export async function apiCreateEmployee(token, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/employees`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to create employee');
+    throw new Error(errText || `Failed to create employee (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Change password
+ */
+export async function apiChangePassword(token, current_password, new_password) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/auth/change-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ current_password, new_password }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to change password');
+    throw new Error(errText || `Failed to change password (${res.status})`);
+  }
+  
+  if (res.status === 204) {
+    return true;
+  }
+  
+  // Just in case it returns JSON sometimes
+  const text = await res.text();
+  return text ? JSON.parse(text) : true;
 }

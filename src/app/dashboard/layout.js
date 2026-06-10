@@ -18,10 +18,13 @@ import {
   LogOut,
   TriangleAlert,
   BotMessageSquare,
+  ShieldCheck,
+  Settings,
 } from 'lucide-react';
 
 const NAV_ICONS = {
   '/dashboard': LayoutDashboard,
+  '/dashboard/analytics': BarChart3,
   '/dashboard/entry': ClipboardPen,
   '/dashboard/progress': BarChart3,
   '/dashboard/orders': TreePine,
@@ -29,7 +32,9 @@ const NAV_ICONS = {
   '/dashboard/simulator': Gamepad2,
   '/dashboard/tracer': ScanSearch,
   '/dashboard/chat': BotMessageSquare,
-  '/dashboard/attendance': ClipboardPen, // Or whatever icon they meant to use, fallback is LayoutDashboard
+  '/dashboard/attendance': ClipboardPen,
+  '/dashboard/admin': ShieldCheck,
+  '/dashboard/settings': Settings,
 };
 
 export default function DashboardLayout({ children }) {
@@ -59,6 +64,7 @@ export default function DashboardLayout({ children }) {
   const navLinks = useMemo(
     () => [
       { name: 'Dashboard Home', href: '/dashboard' },
+      { name: 'Analytics & Alerts', href: '/dashboard/analytics' },
       { name: 'Production Logger', href: '/dashboard/entry' },
       { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
       { name: 'Client SKU Tree', href: '/dashboard/orders' },
@@ -67,6 +73,8 @@ export default function DashboardLayout({ children }) {
       { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
       { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
       { name: 'AI Assistant', href: '/dashboard/chat' },
+      { name: 'Admin & Users', href: '/dashboard/admin' },
+      { name: 'Security Settings', href: '/dashboard/settings' },
     ],
     [] // No dependencies — content is static
   );
