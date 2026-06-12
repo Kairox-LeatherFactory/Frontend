@@ -47,7 +47,7 @@ export default function DashboardLayout({ children }) {
   // Session gate
   useEffect(() => {
     if (!user) {
-      router.replace('/login');
+      router.replace('/');
     }
   }, [user, router]);
 
