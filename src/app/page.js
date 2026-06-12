@@ -102,9 +102,8 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   const [loadingComplete, setLoadingComplete] = useState(false);
   
-  // State for the accordion and transition
   const [activePanel, setActivePanel] = useState(null);
-  const [transitionState, setTransitionState] = useState('idle'); // 'idle' | 'sweeping' | 'login'
+  const [showLogin, setShowLogin] = useState(false);
   
   // Login Form States
   const [username, setUsername] = useState('');
@@ -116,30 +115,13 @@ export default function Home() {
   useEffect(() => { setMounted(true); }, []);
   if (!mounted) return null;
 
-  // Handle hover and click
-  const handleMouseEnter = (panel) => {
-    if (transitionState === 'idle') {
-      setActivePanel(panel);
-    }
+  const handlePanelClick = (panel) => {
+    setActivePanel(panel);
   };
 
-  const handleMouseLeave = () => {
-    if (transitionState === 'idle') {
-      setActivePanel(null);
-    }
-  };
-
-  const startTransition = () => {
-    if (transitionState !== 'idle' || !activePanel) return;
-    setTransitionState('sweeping');
-    setTimeout(() => {
-      setTransitionState('login');
-    }, 600); // 600ms for the lightning sweep
-  };
-
-  const resetToHome = () => {
-    setTransitionState('idle');
+  const handleClosePanel = () => {
     setActivePanel(null);
+    setShowLogin(false);
     setUsername('');
     setPassword('');
     setLoginError('');
@@ -178,26 +160,13 @@ export default function Home() {
         {!loadingComplete && <Preloader onComplete={() => setLoadingComplete(true)} />}
       </AnimatePresence>
 
-      <div className="min-h-screen bg-[#050505] text-white overflow-hidden relative selection:bg-[#c8b09b]/30 flex flex-col">
+      <div className="min-h-screen bg-[#050505] text-white overflow-x-hidden overflow-y-auto relative selection:bg-[#c8b09b]/30">
         
-        {/* Lightning Sweep Animation (Upward) */}
-        <AnimatePresence>
-          {transitionState === 'sweeping' && (
-            <motion.div
-              initial={{ top: '100%', opacity: 1 }}
-              animate={{ top: '-10%', opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
-              className="fixed left-0 right-0 h-[2px] bg-white z-[200] shadow-[0_0_30px_5px_rgba(255,255,255,0.6)]"
-            />
-          )}
-        </AnimatePresence>
-
         {/* KAIROX wordmark top-left */}
         <motion.div
           className="absolute top-6 left-6 md:top-10 md:left-12 z-40"
           initial={{ opacity: 0 }}
-          animate={loadingComplete && transitionState === 'idle' ? { opacity: 1 } : { opacity: 0 }}
+          animate={loadingComplete && !activePanel ? { opacity: 1 } : { opacity: 0 }}
           transition={{ duration: 1 }}
         >
           <span className="font-serif text-xl tracking-[0.3em] text-white/90">KAIROX</span>
@@ -211,7 +180,7 @@ export default function Home() {
           <motion.div
             className="absolute top-6 right-6 md:top-10 md:right-12 z-40"
             initial={{ opacity: 0 }}
-            animate={loadingComplete && transitionState === 'idle' ? { opacity: 1 } : { opacity: 0 }}
+            animate={loadingComplete && !activePanel ? { opacity: 1 } : { opacity: 0 }}
             transition={{ duration: 1 }}
           >
             <button
@@ -225,117 +194,185 @@ export default function Home() {
 
         {/* Center Text */}
         <motion.div 
-          className="absolute top-24 md:top-28 left-0 w-full text-center z-30 pointer-events-none px-4"
+          className="absolute top-28 md:top-32 left-0 w-full text-center z-30 pointer-events-none px-4"
           initial={{ opacity: 0, y: 20 }}
-          animate={loadingComplete && transitionState === 'idle' ? { opacity: 1, y: 0 } : { opacity: 0, y: -20 }}
+          animate={loadingComplete && !activePanel ? { opacity: 1, y: 0 } : { opacity: 0, y: -20 }}
           transition={{ duration: 1, delay: 0.2 }}
         >
           <p className="text-[#666] font-mono text-[10px] tracking-[0.4em] uppercase mb-4">Select Workspace</p>
           <h2 className="text-3xl md:text-5xl font-serif text-white/90 tracking-wide">Select your role</h2>
         </motion.div>
 
-        {/* ─── Expanding Flex Accordion Container ─── */}
-        <motion.div 
-          className="relative z-20 w-full flex flex-col md:flex-row items-stretch md:items-center justify-center pt-[200px] md:pt-[220px] pb-20 px-6 md:px-12 gap-3 md:gap-4 max-w-[1200px] mx-auto md:min-h-screen"
-          animate={{ opacity: transitionState === 'idle' ? 1 : 0 }}
-          transition={{ duration: 0.4 }}
-          style={{ pointerEvents: transitionState === 'idle' ? 'auto' : 'none' }}
-        >
-            {PANELS.map((panel, i) => {
-              const Icon = panel.icon;
-              const isActive = activePanel?.role === panel.role;
-              const isAnyActive = activePanel !== null;
-
-              return (
-                <motion.div
-                  key={panel.role}
-                  layout
-                  onMouseEnter={() => handleMouseEnter(panel)}
-                  onMouseLeave={handleMouseLeave}
-                  onClick={startTransition}
-                  initial={{ opacity: 0, y: 50 }}
-                  animate={{ 
-                    opacity: 1, 
-                    y: 0,
-                    flex: isActive ? 4 : (isAnyActive ? 1 : 2) // Expanded gets 4, others shrink to 1. Default all are 2.
-                  }}
-                  transition={{ 
-                    opacity: { duration: 0.8, delay: loadingComplete ? 0.4 + (i * 0.1) : 0 },
-                    y: { duration: 0.8, delay: loadingComplete ? 0.4 + (i * 0.1) : 0, ease: [0.16, 1, 0.3, 1] },
-                    flex: { duration: 0.8, ease: [0.16, 1, 0.3, 1] }
-                  }}
-                  className={`group relative rounded-2xl overflow-hidden cursor-pointer ${isActive ? 'h-[400px] md:h-[500px]' : 'h-[80px] md:h-[500px]'}`}
-                >
-                  {/* Background Image */}
-                  <div
-                    className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 ease-out group-hover:scale-105"
-                    style={{ backgroundImage: `url(${panel.img})` }}
-                  />
-                  
-                  {/* Dark Overlay */}
-                  <motion.div 
-                    className="absolute inset-0 bg-black/60 transition-colors duration-700 group-hover:bg-black/40"
-                    animate={{ backgroundColor: isActive ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.7)' }}
-                  />
-                  
-                  {/* Gradient for Text */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-80" />
-                  
-                  {/* Top Accent Line */}
-                  <motion.div 
-                    className="absolute top-0 left-0 w-full h-1 origin-left" 
-                    style={{ backgroundColor: panel.accent }}
-                    initial={{ scaleX: 0 }}
-                    animate={{ scaleX: isActive ? 1 : 0 }}
-                    transition={{ duration: 0.5 }}
-                  />
-
-                  {/* Content */}
-                  <motion.div layout className="absolute bottom-0 left-0 w-full p-6 md:p-8 flex flex-col justify-end h-full">
-                    <motion.div layout className="flex flex-col h-full justify-end">
-                      <Icon 
-                        className={`mb-4 transition-all duration-500 ${isActive ? 'w-10 h-10' : 'w-6 h-6'}`} 
-                        style={{ color: panel.accent }} 
-                        strokeWidth={1.5} 
+        {/* ─── Aperture Style Landing Layout ─── */}
+        <div className="relative z-20 w-full flex-1 flex items-center justify-center min-h-screen overflow-hidden">
+          
+          {/* State 1: All panels as vertical slices in the center */}
+          <AnimatePresence>
+            {!activePanel && (
+              <motion.div 
+                className="flex items-center justify-center gap-2 md:gap-6 mt-32 md:mt-48 z-30"
+                initial={{ opacity: 0 }}
+                animate={loadingComplete ? { opacity: 1 } : { opacity: 0 }}
+                exit={{ opacity: 0 }}
+              >
+                {PANELS.map((panel, i) => {
+                  return (
+                    <motion.div
+                      key={panel.role}
+                      layoutId={`panel-bg-${panel.role}`}
+                      onClick={() => handlePanelClick(panel)}
+                      className="relative w-[60px] md:w-[120px] h-[300px] md:h-[450px] cursor-pointer overflow-hidden grayscale hover:grayscale-0 transition-all duration-500 border border-white/10 hover:border-white/30"
+                    >
+                      <motion.div
+                        className="absolute inset-0 bg-cover bg-center"
+                        style={{ backgroundImage: `url(${panel.img})` }}
                       />
-                      <motion.h3 
-                        layout="position"
-                        className={`font-serif text-white leading-tight whitespace-pre-line transition-all duration-500 ${isActive ? 'text-4xl md:text-5xl mb-4' : 'text-xl'}`}
-                      >
-                        {panel.title.replace('\n', isActive ? ' ' : '\n')}
-                      </motion.h3>
-                      
-                      <AnimatePresence>
-                        {isActive && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.4 }}
-                            className="overflow-hidden"
-                          >
-                            <p className="text-sm md:text-base font-light text-white/80 max-w-md mb-2">
-                              {panel.subtitle}
-                            </p>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      <div className="absolute inset-0 bg-black/40 hover:bg-transparent transition-colors duration-500 pointer-events-none" />
                     </motion.div>
-                  </motion.div>
-                </motion.div>
-              );
-            })}
-        </motion.div>
+                  );
+                })}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-        {/* ─── Fullscreen Login Form Revealed After Wipe ─── */}
+          {/* State 2: Active panel expanded, others on the right */}
+          <AnimatePresence>
+            {activePanel && !showLogin && (
+              <>
+                {/* Center Expanded Active Panel */}
+                <motion.div
+                  key={activePanel.role}
+                  layoutId={`panel-bg-${activePanel.role}`}
+                  onClick={() => setShowLogin(true)}
+                  className="group absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[90vw] md:w-[80vw] max-w-[1000px] h-[60vh] md:h-[70vh] z-30 overflow-hidden shadow-2xl border border-white/10 cursor-pointer bg-black"
+                >
+                  <div
+                    className="absolute inset-0 bg-cover bg-center transition-transform duration-1000 group-hover:scale-105"
+                    style={{ backgroundImage: `url(${activePanel.img})` }}
+                  />
+                  <div className="absolute inset-0 bg-black/40 transition-colors duration-500 group-hover:bg-black/50" />
+                  
+                  {/* Title centered inside */}
+                  <motion.div 
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.3, duration: 0.6 }}
+                    className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4"
+                  >
+                    <activePanel.icon className="w-12 h-12 mb-6" style={{ color: activePanel.accent }} strokeWidth={1} />
+                    <h2 className="text-4xl md:text-7xl font-serif uppercase tracking-[0.2em] text-center" style={{ color: activePanel.accent }}>
+                      {activePanel.title.split('\n').join(' ')}
+                    </h2>
+                  </motion.div>
+
+                  {/* Corner Accents (Aperture style) */}
+                  <div className="absolute top-6 left-6 w-8 h-8 border-t-[1px] border-l-[1px]" style={{ borderColor: activePanel.accent }} />
+                  <div className="absolute top-6 right-6 w-8 h-8 border-t-[1px] border-r-[1px]" style={{ borderColor: activePanel.accent }} />
+                  <div className="absolute bottom-6 left-6 w-8 h-8 border-b-[1px] border-l-[1px]" style={{ borderColor: activePanel.accent }} />
+                  <div className="absolute bottom-6 right-6 w-8 h-8 border-b-[1px] border-r-[1px]" style={{ borderColor: activePanel.accent }} />
+
+                  {/* Hover Arrow Icon (Up Right) */}
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="w-16 h-16 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300">
+                      <ArrowUpRight className="w-6 h-6" style={{ color: activePanel.accent }} />
+                    </div>
+                  </div>
+                </motion.div>
+
+                {/* Actions below the expanded panel */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4, duration: 0.4 }}
+                  className="absolute top-[calc(50%+35vh+30px)] left-1/2 -translate-x-1/2 z-40 flex items-center gap-6"
+                >
+                  <button 
+                    onClick={() => setActivePanel(null)}
+                    className="w-10 h-10 flex items-center justify-center rounded-full border border-white/20 text-white/60 hover:text-white hover:border-white/50 transition-colors bg-black/40 backdrop-blur-md"
+                  >
+                    ✕
+                  </button>
+                  <button
+                    onClick={() => setShowLogin(true)}
+                    className="px-8 py-3 rounded-full border bg-black/40 backdrop-blur-md hover:bg-white/10 tracking-[0.2em] uppercase text-xs font-bold transition-colors"
+                    style={{ borderColor: activePanel.accent, color: activePanel.accent }}
+                  >
+                    Sign In
+                  </button>
+                </motion.div>
+
+                {/* Navigation Panels (Left and Right) */}
+                {(() => {
+                  const currentIndex = PANELS.findIndex(p => p.role === activePanel.role);
+                  const prevPanels = PANELS.slice(0, currentIndex);
+                  const nextPanels = PANELS.slice(currentIndex + 1);
+
+                  return (
+                    <>
+                      {/* Previous Panels (Left Side) */}
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 pl-2 md:pl-8 flex gap-2 md:gap-4 z-40">
+                        {prevPanels.map(panel => (
+                          <motion.div
+                            key={panel.role}
+                            layoutId={`panel-bg-${panel.role}`}
+                            onClick={() => handlePanelClick(panel)}
+                            className="group w-[40px] md:w-[100px] h-[30vh] md:h-[50vh] cursor-pointer overflow-hidden grayscale hover:grayscale-0 transition-all duration-500 opacity-60 hover:opacity-100 border border-white/10 relative shadow-xl"
+                          >
+                            <div
+                              className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
+                              style={{ backgroundImage: `url(${panel.img})` }}
+                            />
+                            <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors duration-500" />
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300">
+                                <ArrowRight className="w-4 h-4 text-white rotate-180" />
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+
+                      {/* Next Panels (Right Side) */}
+                      <div className="absolute right-0 top-1/2 -translate-y-1/2 pr-2 md:pr-8 flex gap-2 md:gap-4 z-40">
+                        {nextPanels.map(panel => (
+                          <motion.div
+                            key={panel.role}
+                            layoutId={`panel-bg-${panel.role}`}
+                            onClick={() => handlePanelClick(panel)}
+                            className="group w-[40px] md:w-[100px] h-[30vh] md:h-[50vh] cursor-pointer overflow-hidden grayscale hover:grayscale-0 transition-all duration-500 opacity-60 hover:opacity-100 border border-white/10 relative shadow-xl"
+                          >
+                            <div
+                              className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
+                              style={{ backgroundImage: `url(${panel.img})` }}
+                            />
+                            <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors duration-500" />
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300">
+                                <ArrowRight className="w-4 h-4 text-white" />
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
+              </>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* ─── Fullscreen Login Form ─── */}
         <AnimatePresence>
-          {transitionState === 'login' && activePanel && (
+          {showLogin && activePanel && (
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
               transition={{ duration: 0.6 }}
-              className="absolute inset-0 z-[150] flex items-center justify-center bg-[#050505]"
+              className="fixed inset-0 z-[150] flex items-center justify-center bg-[#050505]"
             >
+              {/* Fullscreen background image from the active panel */}
               <div 
                 className="absolute inset-0 bg-cover bg-center opacity-20"
                 style={{ backgroundImage: `url(${activePanel.img})` }}
@@ -346,7 +383,7 @@ export default function Home() {
                 initial={{ opacity: 0, y: 30 }}
                 animate={isSuccess ? { opacity: 0, scale: 0.95 } : { opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                className="relative z-10 w-full max-w-md bg-[#0a0a0a] overflow-hidden shadow-2xl border border-[#222]"
+                className="relative z-10 w-full max-w-md bg-[#0a0a0a] overflow-hidden shadow-2xl border border-[#222] rounded-2xl"
               >
                 {/* Top Accent Line */}
                 <div 
@@ -356,7 +393,7 @@ export default function Home() {
                 
                 {/* Close Button */}
                 <button 
-                  onClick={resetToHome}
+                  onClick={handleClosePanel}
                   className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-white/50 hover:text-white rounded-full transition-colors z-20"
                 >
                   ✕
