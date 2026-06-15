@@ -20,6 +20,9 @@ import {
   BotMessageSquare,
   ShieldCheck,
   Settings,
+  ShoppingCart,
+  UploadCloud,
+  Layers,
 } from 'lucide-react';
 
 const NAV_ICONS = {
@@ -35,6 +38,8 @@ const NAV_ICONS = {
   '/dashboard/attendance': ClipboardPen,
   '/dashboard/admin': ShieldCheck,
   '/dashboard/settings': Settings,
+  '/dashboard/procurement': ShoppingCart,
+  '/dashboard/procurement/intake': UploadCloud,
 };
 
 export default function DashboardLayout({ children }) {
@@ -69,14 +74,18 @@ export default function DashboardLayout({ children }) {
       { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
       { name: 'Client SKU Tree', href: '/dashboard/orders' },
       { name: 'Payroll & Rates', href: '/dashboard/wages' },
-      { name: 'Attendance', href: '/dashboard/attendance' }, // added by nihal
+      { name: 'Attendance', href: '/dashboard/attendance' },
       { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
       { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
       { name: 'AI Assistant', href: '/dashboard/chat' },
-      { name: 'Admin & Users', href: '/dashboard/admin' },
+      // ── Procurement Suite ──
+      { name: 'Procurement', href: '/dashboard/procurement', divider: true },
+      { name: 'New Intake', href: '/dashboard/procurement/intake' },
+      // ──────────────────────
+      { name: 'Admin & Users', href: '/dashboard/admin', divider: true },
       { name: 'Security Settings', href: '/dashboard/settings' },
     ],
-    [] // No dependencies — content is static
+    []
   );
 
   if (!user) {
@@ -91,47 +100,53 @@ export default function DashboardLayout({ children }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#f0f4ff]">
+    <div className="min-h-screen flex flex-col md:flex-row" style={{ background: '#f2ece4' }}>
       
       {/* ─── SIDEBAR (Desktop & Mobile) ─── */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:inset-auto md:z-auto transition-transform duration-300 ease-in-out bg-gradient-sidebar text-white flex flex-col shadow-2xl`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:inset-auto md:z-auto transition-transform duration-300 ease-in-out flex flex-col shadow-2xl`} style={{ background: 'linear-gradient(180deg, #2a1b10 0%, #140d08 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
         
         {/* Sidebar Brand Logo */}
-        <div className="h-20 flex items-center justify-between px-6 border-b border-blue-800">
+        <div className="h-20 flex items-center justify-between px-6 border-b" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
           <div className="flex items-center gap-2">
-            <Factory className="w-7 h-7 text-blue-200" />
+            <Factory className="w-7 h-7" style={{ color: '#c8834a' }} />
             <div>
               <span className="text-xl font-black tracking-widest text-white">KAIROX</span>
-              <p className="text-[10px] text-blue-200 font-bold tracking-wider uppercase">Leather Intelligence</p>
+              <p className="text-[10px] font-bold tracking-wider uppercase" style={{ color: '#c8834a' }}>Leather Intelligence</p>
             </div>
           </div>
           {/* Mobile close button */}
-          <button onClick={() => setMobileMenuOpen(false)} className="md:hidden text-white p-2 focus:outline-none">
+          <button onClick={() => setMobileMenuOpen(false)} className="md:hidden p-2 focus:outline-none" style={{ color: '#ffffff' }}>
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Sidebar Navigation */}
-        <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+        <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
           {navLinks.map((link) => {
-            const isActive = pathname === link.href;
+            const isActive = pathname === link.href || (link.href !== '/dashboard' && pathname.startsWith(link.href + '/'));
             const IconComp = NAV_ICONS[link.href] || LayoutDashboard;
             return (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setMobileMenuOpen(false)}
-                className={`nav-item ${isActive ? 'active' : ''}`}
-              >
-                <IconComp className="w-[18px] h-[18px]" />
-                <span>{link.name}</span>
-              </Link>
+              <div key={link.href}>
+                {link.divider && (
+                  <div className="pt-4 pb-2 px-2">
+                    <div className="h-px" style={{ background: 'rgba(200,131,74,0.15)' }} />
+                  </div>
+                )}
+                <Link
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={`nav-item ${isActive ? 'active' : ''}`}
+                >
+                  <IconComp className="w-[18px] h-[18px]" />
+                  <span>{link.name}</span>
+                </Link>
+              </div>
             );
           })}
         </nav>
 
         {/* Sidebar Footer Info */}
-        <div className="p-6 border-t border-blue-800 bg-blue-950/30 text-xs text-blue-200 text-center">
+        <div className="p-6 border-t text-xs text-center" style={{ borderColor: 'rgba(200,131,74,0.15)', color: '#a88a6a' }}>
           <p className="font-bold">Kairox Leather Platform</p>
           <p className="mt-1 opacity-70">Touch-Optimized Operations</p>
         </div>
@@ -146,22 +161,22 @@ export default function DashboardLayout({ children }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         
         {/* ─── TOP BAR HEADER ─── */}
-        <header className="bg-white h-20 shadow-sm border-b border-blue-100 flex items-center justify-between px-6 sticky top-0 z-30">
+        <header className="h-20 flex items-center justify-between px-6 sticky top-0 z-30" style={{ background: '#f2ece4', borderBottom: '1px solid rgba(200,131,74,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.02)' }}>
           <div className="flex items-center gap-4">
             {/* Mobile hamburger menu toggle */}
-            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-blue-800 text-2xl p-2 hover:bg-blue-50 rounded-lg">
+            <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-2xl p-2 rounded-lg" style={{ color: '#2d1f0e', background: 'rgba(200,131,74,0.1)' }}>
               <Menu className="w-6 h-6" />
             </button>
             <div className="hidden sm:block">
-              <h2 className="text-xl font-bold text-slate-800">Shop Floor Command</h2>
-              <p className="text-xs text-slate-400">Production, wages, and compliance tracking</p>
+              <h2 className="text-xl font-bold" style={{ color: '#3d2b1a' }}>Shop Floor Command</h2>
+              <p className="text-xs" style={{ color: '#9a8a7a' }}>Production, wages, and compliance tracking</p>
             </div>
           </div>
 
           {/* User Section */}
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
-              <p className="text-xs font-bold text-slate-400 tracking-wide uppercase">Active Persona</p>
+              <p className="text-xs font-bold tracking-wide uppercase" style={{ color: '#9a8a7a' }}>Active Persona</p>
               <div className="flex items-center gap-1.5 mt-0.5 justify-end">
                 <span className={`badge ${roleInfo.color}`}>{roleInfo.label}</span>
               </div>
@@ -170,7 +185,8 @@ export default function DashboardLayout({ children }) {
             {/* Logout button (at least 48px high/wide click targets) */}
             <button
               onClick={() => logout()}
-              className="btn-secondary h-12 py-0 px-4 min-h-[48px] border border-red-200 hover:border-red-500 hover:bg-red-50 text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm"
+              className="h-12 py-0 px-4 min-h-[48px] rounded-xl text-sm font-bold flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-sm"
+              style={{ border: '1px solid rgba(200,131,74,0.4)', color: '#a86022', background: 'transparent' }}
               title="Logout session"
             >
               <LogOut className="w-4 h-4" /> <span className="hidden md:inline">Sign Out</span>
@@ -199,7 +215,7 @@ export default function DashboardLayout({ children }) {
         )}
 
         {/* ─── PAGE ROUTER CONTENT ─── */}
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-8 overflow-y-auto">
+        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-8 overflow-y-auto" style={{ background: '#f2ece4' }}>
           {children}
         </main>
       </div>

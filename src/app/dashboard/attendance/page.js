@@ -8,6 +8,7 @@ import {
   Timer, CalendarDays, Shield, Zap, Filter,
   UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff,
 } from 'lucide-react';
+import SpotlightCard from '@/components/SpotlightCard';
 
 // ─── API BASE ────────────────────────────────────────────────────────────────
 const API = '/api/v1/attendance';
@@ -172,11 +173,11 @@ function Paginator({ page, totalPages, setPage, total, perPage }) {
 
 function LockedView({ title, description }) {
   return (
-    <div className="card p-12 bg-amber-50/60 border border-amber-200 shadow text-center space-y-3">
-      <Lock className="w-12 h-12 text-amber-500 mx-auto" />
-      <h3 className="font-black text-amber-900 uppercase tracking-wide">{title}</h3>
-      <p className="text-xs text-amber-700 font-semibold max-w-md mx-auto">{description}</p>
-    </div>
+    <SpotlightCard className="p-12 shadow text-center space-y-3 rounded-3xl" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)' }} spotlightColor="rgba(200,131,74,0.1)">
+      <Lock className="w-12 h-12 mx-auto" style={{ color: '#c8834a' }} />
+      <h3 className="font-black uppercase tracking-wide" style={{ color: '#9c4221' }}>{title}</h3>
+      <p className="text-xs font-semibold max-w-md mx-auto" style={{ color: '#a86022' }}>{description}</p>
+    </SpotlightCard>
   );
 }
 
@@ -323,8 +324,8 @@ function MyAttendanceView({ token }) {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">My Attendance</h1>
-        <p className="text-slate-500 font-medium">Track your shift status and review personal attendance history.</p>
+        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>My Attendance</h1>
+        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Track your shift status and review personal attendance history.</p>
       </div>
 
       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
@@ -334,105 +335,107 @@ function MyAttendanceView({ token }) {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* Shift Timer */}
-        <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-4">
-          <h3 className="text-sm font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-            <Timer className="w-4 h-4 text-blue-600" /> Shift Timer
+        <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
+            <Timer className="w-4 h-4" style={{ color: '#c8834a' }} /> Shift Timer
           </h3>
           {statusLoading ? (
             <div className="flex items-center justify-center h-24">
-              <Loader2 className="w-8 h-8 text-blue-300 animate-spin" />
+              <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
             </div>
           ) : (
             <>
-              <div className={`text-5xl font-black tabular-nums tracking-tight ${checkedIn && !checkedOut ? 'text-blue-700' : 'text-slate-300'}`}>
+              <div className={`text-5xl font-black tabular-nums tracking-tight`} style={{ color: checkedIn && !checkedOut ? '#c8834a' : '#d1d5db' }}>
                 {checkedIn && !checkedOut ? padTime(countdown) : '—:—:—'}
               </div>
-              <div className="text-xs font-bold text-slate-400">
+              <div className="text-xs font-bold" style={{ color: '#9a7a5a' }}>
                 {!checkedIn && 'Not checked in today'}
                 {checkedIn && !checkedOut && status?.shift_end_at && (
-                  <span>Ends at <strong className="text-slate-700">{fmtTime(status.shift_end_at)}</strong></span>
+                  <span>Ends at <strong style={{ color: '#2d1f0e' }}>{fmtTime(status.shift_end_at)}</strong></span>
                 )}
-                {checkedOut && <span className="text-emerald-600 font-black">✓ Shift complete</span>}
+                {checkedOut && <span className="font-black" style={{ color: '#38a169' }}>✓ Shift complete</span>}
               </div>
               {status?.check_in_at && (
-                <div className="text-[11px] text-slate-400 font-semibold border-t border-slate-50 pt-3">
-                  Clocked in: <strong className="text-slate-600">{fmtTime(status.check_in_at)}</strong>
+                <div className="text-[11px] font-semibold pt-3" style={{ borderTop: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
+                  Clocked in: <strong style={{ color: '#2d1f0e' }}>{fmtTime(status.check_in_at)}</strong>
                 </div>
               )}
             </>
           )}
-        </div>
+        </SpotlightCard>
 
         {/* Action Terminal */}
-        <div className="lg:col-span-2 card p-6 bg-white border border-blue-100 shadow-xl space-y-5">
-          <h3 className="text-sm font-extrabold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-            <Zap className="w-4 h-4 text-blue-600" /> Action Terminal
+        <SpotlightCard className="lg:col-span-2 p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
+            <Zap className="w-4 h-4" style={{ color: '#c8834a' }} /> Action Terminal
           </h3>
           <div className="flex flex-col gap-3">
             <button onClick={handleCheckIn}
               disabled={checkedIn || gpsBlocked || busy}
-              className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm bg-green-600 text-white hover:bg-green-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-lg shadow-green-200 touch-manipulation">
+              className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm text-white transition-all shadow-lg shadow-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation hover:-translate-y-0.5 active:translate-y-0"
+              style={{ background: 'linear-gradient(135deg, #38a169, #48bb78)' }}>
               {busy && !checkedIn
                 ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
                 : <><LogIn className="w-5 h-5" /> Check In</>}
             </button>
             <button onClick={handleCheckOut}
               disabled={!checkedIn || checkedOut || gpsBlocked || busy}
-              className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm border-2 border-slate-200 text-slate-700 bg-red-600 text-white hover:bg-red-700 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed transition-all touch-manipulation">
+              className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm text-white transition-all shadow-lg shadow-red-200 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation hover:-translate-y-0.5 active:translate-y-0"
+              style={{ background: 'linear-gradient(135deg, #e53e3e, #f56565)' }}>
               {busy && checkedIn && !checkedOut
                 ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
                 : <><LogOut className="w-5 h-5" /> Check Out</>}
             </button>
           </div>
-          <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-400">
+          <div className="flex items-center gap-2 text-[11px] font-semibold" style={{ color: '#9a7a5a' }}>
             {gps.lat
-              ? <><MapPin className="w-3.5 h-3.5 text-emerald-500" /> GPS active — {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</>
-              : <><MapPin className="w-3.5 h-3.5 text-slate-300" /> GPS coordinates resolved on action</>}
+              ? <><MapPin className="w-3.5 h-3.5" style={{ color: '#38a169' }} /> GPS active — {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</>
+              : <><MapPin className="w-3.5 h-3.5" style={{ color: '#d1d5db' }} /> GPS coordinates resolved on action</>}
           </div>
           {checkedIn && (
-            <div className="flex flex-wrap gap-2 border-t border-slate-50 pt-4">
+            <div className="flex flex-wrap gap-2 pt-4" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
               {status?.is_late && <Badge label="Late" type="late" />}
               {status?.is_short && <Badge label="Short Shift" type="short" />}
               {status?.is_overtime && <Badge label="Overtime" type="overtime" />}
               {!status?.is_late && <Badge label="On Time" type="active" />}
             </div>
           )}
-        </div>
+        </SpotlightCard>
       </div>
 
       {/* Personal History */}
-      <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
-          <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-blue-600" /> Attendance History
+      <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+          <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+            <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Attendance History
           </h3>
           <div className="flex flex-wrap items-center gap-2">
             <input type="date" value={startDate}
               onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-              className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer flex-1 min-w-[130px]" />
-            <span className="text-slate-400 font-bold text-xs">to</span>
+              className="px-3 py-2 text-xs font-bold rounded-xl cursor-pointer flex-1 min-w-[130px] focus:outline-none transition-all" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
+            <span className="font-bold text-xs" style={{ color: '#9a7a5a' }}>to</span>
             <input type="date" value={endDate}
               onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-              className="input-field h-9 py-0 text-xs font-bold bg-slate-50 cursor-pointer flex-1 min-w-[130px]" />
+              className="px-3 py-2 text-xs font-bold rounded-xl cursor-pointer flex-1 min-w-[130px] focus:outline-none transition-all" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
           </div>
         </div>
 
         {histLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 text-blue-300 animate-spin" />
+            <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
           </div>
         ) : history.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            <CalendarDays className="w-10 h-10 mx-auto mb-2 text-slate-200" />
+          <div className="text-center py-12" style={{ color: '#9a7a5a' }}>
+            <CalendarDays className="w-10 h-10 mx-auto mb-2 opacity-50" />
             <p className="font-semibold text-sm">No attendance records found for this period.</p>
           </div>
         ) : (
           <>
             {/* Desktop table — hidden on mobile */}
-            <div className="hidden sm:block overflow-x-auto rounded-xl border border-slate-100">
+            <div className="hidden sm:block overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }}>
               <table className="w-full text-left text-xs font-semibold">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
+                  <tr className="font-bold uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', color: '#9a7a5a' }}>
                     <th className="p-3">Date</th>
                     <th className="p-3">Check In</th>
                     <th className="p-3">Check Out</th>
@@ -441,17 +444,17 @@ function MyAttendanceView({ token }) {
                     <th className="p-3">Flags</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50 text-slate-700">
+                <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
                   {paginated.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/60">
-                      <td className="p-3 font-black text-slate-800">{fmtDate(row.work_date)}</td>
+                    <tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
+                      <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</td>
                       <td className="p-3">{fmtTime(row.check_in_at)}</td>
                       <td className="p-3">
                         {row.check_out_at
                           ? fmtTime(row.check_out_at)
-                          : <span className="text-emerald-600 font-black">Active</span>}
+                          : <span className="font-black" style={{ color: '#38a169' }}>Active</span>}
                       </td>
-                      <td className="p-3 text-slate-400">{fmtDist(row.distance_m)}</td>
+                      <td className="p-3" style={{ color: '#9a7a5a' }}>{fmtDist(row.distance_m)}</td>
                       <td className="p-3"><Badge label={row.source} type={row.source} /></td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-1">
@@ -470,30 +473,30 @@ function MyAttendanceView({ token }) {
             {/* Mobile cards — shown only on mobile */}
             <div className="sm:hidden space-y-3">
               {paginated.map((row) => (
-                <div key={row.id} className="rounded-xl border border-slate-100 bg-slate-50/50 p-4 space-y-3">
+                <div key={row.id} className="rounded-xl p-4 space-y-3" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.1)' }}>
                   <div className="flex items-center justify-between">
-                    <span className="font-black text-slate-900 text-sm">{fmtDate(row.work_date)}</span>
+                    <span className="font-black text-sm" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</span>
                     <Badge label={row.source} type={row.source} />
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs">
                     <div>
-                      <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Check In</p>
-                      <p className="font-black text-slate-800">{fmtTime(row.check_in_at)}</p>
+                      <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Check In</p>
+                      <p className="font-black" style={{ color: '#2d1f0e' }}>{fmtTime(row.check_in_at)}</p>
                     </div>
                     <div>
-                      <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Check Out</p>
-                      <p className="font-black text-slate-800">
+                      <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Check Out</p>
+                      <p className="font-black" style={{ color: '#2d1f0e' }}>
                         {row.check_out_at
                           ? fmtTime(row.check_out_at)
-                          : <span className="text-emerald-600">Active</span>}
+                          : <span style={{ color: '#38a169' }}>Active</span>}
                       </p>
                     </div>
                     <div>
-                      <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Distance</p>
-                      <p className="font-semibold text-slate-600">{fmtDist(row.distance_m)}</p>
+                      <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Distance</p>
+                      <p className="font-semibold" style={{ color: '#a86022' }}>{fmtDist(row.distance_m)}</p>
                     </div>
                     <div>
-                      <p className="text-slate-400 font-bold uppercase tracking-wider text-[10px] mb-0.5">Flags</p>
+                      <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Flags</p>
                       <div className="flex flex-wrap gap-1">
                         {row.is_late && <Badge label="Late" type="late" />}
                         {row.is_short && <Badge label="Short" type="short" />}
@@ -508,7 +511,7 @@ function MyAttendanceView({ token }) {
             <Paginator page={page} totalPages={totalPages} setPage={setPage} total={history.length} perPage={PER_PAGE} />
           </>
         )}
-      </div>
+      </SpotlightCard>
     </div>
   );
 }
@@ -620,11 +623,12 @@ function FloorCommandView({ workers = [], token }) {
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Floor Command</h1>
-          <p className="text-slate-500 font-medium">Proxy check-in / check-out for daily-wage floor workers.</p>
+          <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Floor Command</h1>
+          <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Proxy check-in / check-out for daily-wage floor workers.</p>
         </div>
         <button onClick={() => setAddModal(true)}
-          className="btn-primary h-10 px-4 text-xs font-black flex items-center gap-2 self-start sm:self-auto">
+          className="h-10 px-4 text-xs font-black flex items-center gap-2 self-start sm:self-auto rounded-xl text-white shadow-md active:scale-95 transition-all hover:shadow-lg hover:-translate-y-0.5"
+          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
           <UserPlus className="w-4 h-4" /> Add Floor Worker
         </button>
       </div>
@@ -633,41 +637,42 @@ function FloorCommandView({ workers = [], token }) {
       <GpsWarning error={gps.error} />
 
       {/* Roster table */}
-      <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-4 relative overflow-hidden">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 border-b border-slate-100 pb-4">
-          <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2 flex-1">
-            <Users className="w-5 h-5 text-blue-600" /> Daily Wage Roster
-            <span className="ml-2 text-xs font-black bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full">
+      <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 relative overflow-hidden rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+          <h3 className="text-lg font-extrabold flex items-center gap-2 flex-1" style={{ color: '#2d1f0e' }}>
+            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Daily Wage Roster
+            <span className="ml-2 text-xs font-black px-2 py-0.5 rounded-full" style={{ background: '#faf6f0', color: '#a86022', border: '1px solid rgba(200,131,74,0.2)' }}>
               {dailyWorkers.length} workers
             </span>
           </h3>
           <div className="relative flex items-center">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none z-10" />
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" style={{ color: '#9a7a5a' }} />
             <input
               type="text"
               placeholder="Search workers…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-52 rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-blue-300 transition-colors"
+              className="h-9 w-52 rounded-lg pl-9 pr-3 text-xs font-semibold focus:outline-none transition-colors"
+              style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
             />
           </div>
         </div>
 
         {filtered.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            <Users className="w-10 h-10 mx-auto mb-2 text-slate-200" />
+          <div className="text-center py-12" style={{ color: '#9a7a5a' }}>
+            <Users className="w-10 h-10 mx-auto mb-2 opacity-50" />
             <p className="font-semibold text-sm">No daily-wage workers found.</p>
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-slate-100">
+          <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }}>
             <table className="w-full text-left text-xs font-semibold">
               <thead>
-                <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
+                <tr className="font-bold uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', color: '#9a7a5a' }}>
                   <th className="p-3 w-10">
-                    <button onClick={toggleAll} className="text-slate-400 hover:text-blue-600">
+                    <button onClick={toggleAll} className="hover:opacity-80 transition-opacity">
                       {selected.size === filtered.length && filtered.length > 0
-                        ? <CheckSquare className="w-4 h-4 text-blue-600" />
-                        : <Square className="w-4 h-4" />}
+                        ? <CheckSquare className="w-4 h-4" style={{ color: '#c8834a' }} />
+                        : <Square className="w-4 h-4" style={{ color: '#9a7a5a' }} />}
                     </button>
                   </th>
                   <th className="p-3">Worker</th>
@@ -675,20 +680,20 @@ function FloorCommandView({ workers = [], token }) {
                   <th className="p-3">Type</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
                 {filtered.map((w) => (
                   <tr key={w.id} onClick={() => toggleSelect(w.id)}
-                    className={`cursor-pointer transition-colors hover:bg-blue-50/40 ${selected.has(w.id) ? 'bg-blue-50/60' : ''}`}>
+                    className="cursor-pointer transition-colors" style={{ background: selected.has(w.id) ? '#fff9f0' : 'transparent' }}>
                     <td className="p-3">
                       {selected.has(w.id)
-                        ? <CheckSquare className="w-4 h-4 text-blue-600" />
-                        : <Square className="w-4 h-4 text-slate-300" />}
+                        ? <CheckSquare className="w-4 h-4" style={{ color: '#c8834a' }} />
+                        : <Square className="w-4 h-4" style={{ color: '#d1d5db' }} />}
                     </td>
                     <td className="p-3">
-                      <span className="block font-black text-slate-900">{w.name}</span>
-                      <span className="block text-[10px] text-slate-400 font-mono">{String(w.id).slice(0, 8)}…</span>
+                      <span className="block font-black" style={{ color: '#2d1f0e' }}>{w.name}</span>
+                      <span className="block text-[10px] font-mono" style={{ color: '#9a7a5a' }}>{String(w.id).slice(0, 8)}…</span>
                     </td>
-                    <td className="p-3 text-slate-600">{w.designation || '—'}</td>
+                    <td className="p-3 font-semibold" style={{ color: '#a86022' }}>{w.designation || '—'}</td>
                     <td className="p-3"><Badge label="Daily Wage" type="proxy" /></td>
                   </tr>
                 ))}
@@ -696,7 +701,7 @@ function FloorCommandView({ workers = [], token }) {
             </table>
           </div>
         )}
-      </div>
+      </SpotlightCard>
 
       {/* Floating batch action bar */}
       {selected.size > 0 && (
@@ -945,18 +950,18 @@ function OperationsHRView({ token }) {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Operations &amp; HR</h1>
-        <p className="text-slate-500 font-medium">Live roster audit and shift policy configuration.</p>
+        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Operations &amp; HR</h1>
+        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Live roster audit and shift policy configuration.</p>
       </div>
 
       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
 
       {/* Live Daily Roster */}
-      <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
-          <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-            <Activity className="w-5 h-5 text-blue-600" /> Today's Roster
-            <span className="text-xs font-black bg-blue-50 text-blue-700 border border-blue-100 px-2 py-0.5 rounded-full ml-1">
+      <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+          <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+            <Activity className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster
+            <span className="text-xs font-black px-2 py-0.5 rounded-full ml-1" style={{ background: '#faf6f0', color: '#a86022', border: '1px solid rgba(200,131,74,0.2)' }}>
               {roster.length}
             </span>
           </h3>
@@ -965,21 +970,26 @@ function OperationsHRView({ token }) {
             {/* Filter dropdown */}
             <div className="relative filter-dropdown">
               <button onClick={() => setFilterOpen((o) => !o)}
-                className={`flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-black transition-colors border ${filter !== 'all'
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                  }`}>
+                className="flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-black transition-colors border"
+                style={{
+                  background: filter !== 'all' ? '#c8834a' : '#faf6f0',
+                  color: filter !== 'all' ? 'white' : '#9a7a5a',
+                  borderColor: filter !== 'all' ? '#c8834a' : 'rgba(200,131,74,0.2)'
+                }}>
                 <Filter className="w-3.5 h-3.5" />
                 {filter.charAt(0).toUpperCase() + filter.slice(1)}
               </button>
               {filterOpen && (
-                <div className="absolute right-0 mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-20 overflow-hidden">
+                <div className="absolute right-0 mt-1 w-36 bg-white rounded-xl shadow-lg z-20 overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
                   {['all', 'active', 'late'].map((f) => (
                     <button key={f} onClick={() => { setFilter(f); setPage(1); setFilterOpen(false); }}
-                      className={`w-full text-left px-4 py-2.5 text-xs font-black transition-colors flex items-center justify-between ${filter === f ? 'bg-blue-50 text-blue-700' : 'text-slate-600 hover:bg-slate-50'
-                        }`}>
+                      className="w-full text-left px-4 py-2.5 text-xs font-black transition-colors flex items-center justify-between"
+                      style={{
+                        background: filter === f ? '#fff9f0' : 'transparent',
+                        color: filter === f ? '#c8834a' : '#9a7a5a'
+                      }}>
                       {f.charAt(0).toUpperCase() + f.slice(1)}
-                      {filter === f && <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />}
+                      {filter === f && <CheckCircle2 className="w-3.5 h-3.5" style={{ color: '#c8834a' }} />}
                     </button>
                   ))}
                 </div>
@@ -988,8 +998,9 @@ function OperationsHRView({ token }) {
 
             {/* Refresh button */}
             <button onClick={fetchRoster} title="Refresh roster"
-              className="h-8 w-8 p-0 flex items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-blue-50 hover:border-blue-300 transition-all duration-200 hover:rotate-180 transition-transform">
-              <RefreshCw className="w-4 h-4 text-blue-600" />
+              className="h-8 w-8 p-0 flex items-center justify-center rounded-lg transition-all duration-200 hover:rotate-180"
+              style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
+              <RefreshCw className="w-4 h-4" style={{ color: '#c8834a' }} />
             </button>
 
           </div>
@@ -997,21 +1008,21 @@ function OperationsHRView({ token }) {
 
         {rosterLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 text-blue-300 animate-spin" />
+            <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
           </div>
         ) : filteredRoster.length === 0 ? (
-          <div className="text-center py-12 text-slate-400">
-            <Users className="w-10 h-10 mx-auto mb-2 text-slate-200" />
+          <div className="text-center py-12" style={{ color: '#9a7a5a' }}>
+            <Users className="w-10 h-10 mx-auto mb-2 opacity-50" />
             <p className="font-semibold text-sm">
               {filter === 'all' ? 'No workers checked in today.' : `No ${filter} shifts found.`}
             </p>
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto rounded-xl border border-slate-100">
+            <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }}>
               <table className="w-full text-left text-xs font-semibold">
                 <thead>
-                  <tr className="bg-slate-50 border-b border-slate-100 text-slate-400 font-bold uppercase tracking-wider">
+                  <tr className="font-bold uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', color: '#9a7a5a' }}>
                     <th className="p-3">Employee ID</th>
                     <th className="p-3">Check In</th>
                     <th className="p-3">Check Out</th>
@@ -1020,19 +1031,19 @@ function OperationsHRView({ token }) {
                     <th className="p-3">Flags</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50 text-slate-700">
+                <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
                   {paginated.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/60">
-                      <td className="p-3 font-mono text-[10px] font-black text-slate-400">
+                    <tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
+                      <td className="p-3 font-mono text-[10px] font-black" style={{ color: '#9a7a5a' }}>
                         {String(row.employee_id).slice(0, 8)}…
                       </td>
-                      <td className="p-3 font-black text-slate-800">{fmtTime(row.check_in_at)}</td>
+                      <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{fmtTime(row.check_in_at)}</td>
                       <td className="p-3">
                         {row.check_out_at
                           ? fmtTime(row.check_out_at)
                           : <Badge label="Active" type="active" />}
                       </td>
-                      <td className="p-3 text-slate-400 font-bold">{fmtDist(row.distance_m)}</td>
+                      <td className="p-3 font-bold" style={{ color: '#9a7a5a' }}>{fmtDist(row.distance_m)}</td>
                       <td className="p-3"><Badge label={row.source} type={row.source} /></td>
                       <td className="p-3">
                         <div className="flex flex-wrap gap-1">
@@ -1050,97 +1061,103 @@ function OperationsHRView({ token }) {
             <Paginator page={page} totalPages={totalPages} setPage={setPage} total={filteredRoster.length} perPage={PER_PAGE} />
           </>
         )}
-      </div>
+      </SpotlightCard>
 
       {/* Shift & Geofence Config */}
-      <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-6">
-        <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
-          <Settings className="w-5 h-5 text-blue-600" /> Shift &amp; Geofence Configuration
+      <SpotlightCard className="p-6 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
+          <Settings className="w-5 h-5" style={{ color: '#c8834a' }} /> Shift &amp; Geofence Configuration
         </h3>
 
         {configLoading ? (
           <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-8 h-8 text-blue-300 animate-spin" />
+            <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
             {/* Shift Policy */}
             <div className="space-y-4">
-              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <h4 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
                 <Clock className="w-3.5 h-3.5" /> Shift Policy
               </h4>
               <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">
+                <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>
                   Shift Start — HH:MM (24-hour) *
                 </label>
                 <input type="text" placeholder="09:00"
                   value={configForm.shift_start || ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, shift_start: e.target.value }))}
-                  className="input-field w-full h-10 text-sm font-black font-mono" />
-                <p className="text-[10px] text-slate-400 mt-1 font-semibold">
+                  className="w-full h-10 text-sm font-black font-mono px-3 rounded-lg focus:outline-none transition-colors"
+                  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
+                <p className="text-[10px] mt-1 font-semibold" style={{ color: '#c8834a' }}>
                   Strict format — e.g. 09:00, 14:30. Malformed values break check-in for all workers.
                 </p>
               </div>
               <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Shift Length (hours)</label>
+                <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Shift Length (hours)</label>
                 <input type="number" step="0.5" min="1" max="24"
                   value={configForm.shift_length_hours || ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, shift_length_hours: e.target.value }))}
-                  className="input-field w-full h-10 text-sm font-semibold" />
+                  className="w-full h-10 text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
+                  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
               <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Late Grace Period (minutes)</label>
+                <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Late Grace Period (minutes)</label>
                 <input type="number" min="0" max="120"
                   value={configForm.late_grace_minutes || ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, late_grace_minutes: e.target.value }))}
-                  className="input-field w-full h-10 text-sm font-semibold" />
+                  className="w-full h-10 text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
+                  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
-              <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl text-[10px] font-semibold text-blue-700 leading-relaxed">
+              <div className="p-3 rounded-xl text-[10px] font-semibold leading-relaxed" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)', color: '#a86022' }}>
                 <strong>Timezone:</strong> Managed automatically by the backend (Asia/Kolkata). Intentionally excluded from the save payload.
               </div>
             </div>
 
             {/* Geofence */}
             <div className="space-y-4">
-              <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <h4 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
                 <Shield className="w-3.5 h-3.5" /> Geofence Parameters
               </h4>
               <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Factory Latitude</label>
+                <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Factory Latitude</label>
                 <input type="number" step="0.0000001"
                   value={configForm.factory_lat ?? ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, factory_lat: e.target.value }))}
-                  className="input-field w-full h-10 text-sm font-semibold font-mono" />
+                  className="w-full h-10 text-sm font-semibold font-mono px-3 rounded-lg focus:outline-none transition-colors"
+                  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
               <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Factory Longitude</label>
+                <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Factory Longitude</label>
                 <input type="number" step="0.0000001"
                   value={configForm.factory_lon ?? ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, factory_lon: e.target.value }))}
-                  className="input-field w-full h-10 text-sm font-semibold font-mono" />
+                  className="w-full h-10 text-sm font-semibold font-mono px-3 rounded-lg focus:outline-none transition-colors"
+                  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
               <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Radius (meters)</label>
+                <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Radius (meters)</label>
                 <input type="number" min="10" max="5000"
                   value={configForm.radius_m ?? ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, radius_m: e.target.value }))}
-                  className="input-field w-full h-10 text-sm font-semibold" />
+                  className="w-full h-10 text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
+                  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
-              <div className="rounded-xl border border-slate-100 overflow-hidden bg-slate-50 h-40 flex items-center justify-center">
+              <div className="rounded-xl overflow-hidden h-40 flex items-center justify-center" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
                 {configForm.factory_lat && configForm.factory_lon ? (
-                  <div className="text-center text-slate-400">
-                    <MapPin className="w-8 h-8 mx-auto mb-1 text-blue-400" />
-                    <p className="text-[11px] font-bold text-slate-600">
+                  <div className="text-center" style={{ color: '#9a7a5a' }}>
+                    <MapPin className="w-8 h-8 mx-auto mb-1" style={{ color: '#c8834a' }} />
+                    <p className="text-[11px] font-bold" style={{ color: '#2d1f0e' }}>
                       {parseFloat(configForm.factory_lat).toFixed(5)}, {parseFloat(configForm.factory_lon).toFixed(5)}
                     </p>
-                    <p className="text-[10px] text-slate-400 mt-0.5">Radius: {configForm.radius_m} m</p>
-                    <p className="text-[9px] text-slate-300 mt-2 font-semibold max-w-[180px] mx-auto">
+                    <p className="text-[10px] mt-0.5">Radius: {configForm.radius_m} m</p>
+                    <p className="text-[9px] mt-2 font-semibold max-w-[180px] mx-auto opacity-70">
                       Mount Leaflet here — L.map() + L.circle() with radius_m
                     </p>
                   </div>
                 ) : (
-                  <p className="text-[11px] text-slate-300 font-semibold">Enter coordinates to preview geofence</p>
+                  <p className="text-[11px] font-semibold opacity-70" style={{ color: '#9a7a5a' }}>Enter coordinates to preview geofence</p>
                 )}
               </div>
             </div>
@@ -1148,16 +1165,17 @@ function OperationsHRView({ token }) {
         )}
 
         {!configLoading && (
-          <div className="flex justify-end border-t border-slate-100 pt-5">
+          <div className="flex justify-end pt-5" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
             <button onClick={handleSaveConfig} disabled={configSaving}
-              className="btn-primary h-11 px-8 text-xs font-black flex items-center gap-2">
+              className="h-11 px-8 text-xs font-black flex items-center gap-2 rounded-xl text-white shadow-md transition-all active:scale-95 hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
               {configSaving
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
                 : <><CheckCircle2 className="w-4 h-4" /> Save Configuration</>}
             </button>
           </div>
         )}
-      </div>
+      </SpotlightCard>
     </div>
   );
 }
@@ -1193,13 +1211,14 @@ export default function AttendancePage() {
   return (
     <div className="space-y-6">
       {/* Tab bar — only shows tabs the current role can access */}
-      <div className="flex items-center gap-1 border-b border-slate-200 overflow-x-auto">
+      <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
         {tabs.map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setActiveTab(key)}
-            className={`flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap border-b-2 transition-colors ${activeTab === key
-                ? 'border-blue-600 text-blue-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
-              }`}>
+            className="flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap border-b-2 transition-colors"
+            style={{
+              borderColor: activeTab === key ? '#c8834a' : 'transparent',
+              color: activeTab === key ? '#c8834a' : '#9a7a5a',
+            }}>
             <Icon className="w-4 h-4" />
             {label}
           </button>

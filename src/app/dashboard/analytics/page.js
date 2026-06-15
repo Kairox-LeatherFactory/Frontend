@@ -17,6 +17,7 @@ import {
   Ship,
   CheckCircle2
 } from 'lucide-react';
+import SpotlightCard from '@/components/SpotlightCard';
 
 export default function AnalyticsDashboard() {
   const { token } = useAuth();
@@ -67,11 +68,11 @@ export default function AnalyticsDashboard() {
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <TrendingUp className="w-8 h-8 text-blue-600" />
+          <h1 className="text-3xl font-black tracking-tight flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+            <TrendingUp className="w-8 h-8" style={{ color: '#c8834a' }} />
             Analytics & Operations
           </h1>
-          <p className="text-slate-500 font-medium">Live factory intelligence and proactive risk alerts.</p>
+          <p className="font-medium" style={{ color: '#9a7a5a' }}>Live factory intelligence and proactive risk alerts.</p>
         </div>
       </div>
 
@@ -84,34 +85,37 @@ export default function AnalyticsDashboard() {
       {/* OVERVIEW METRICS */}
       {overview && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-2">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+          <SpotlightCard className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100/50 flex flex-col gap-2 hover:-translate-y-1" spotlightColor="rgba(200,131,74,0.1)">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
               <Users className="w-5 h-5" />
             </div>
-            <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">Total Clients</p>
-            <p className="text-3xl font-black text-slate-900">{overview.clients || 0}</p>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-2">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <p className="text-sm font-bold uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Total Clients</p>
+            <p className="text-3xl font-black" style={{ color: '#2d1f0e' }}>{overview.clients || 0}</p>
+          </SpotlightCard>
+          
+          <SpotlightCard className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100/50 flex flex-col gap-2 hover:-translate-y-1" spotlightColor="rgba(200,131,74,0.1)">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
               <Scissors className="w-5 h-5" />
             </div>
-            <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">Active Styles</p>
-            <p className="text-3xl font-black text-slate-900">{overview.styles || 0}</p>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-2">
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+            <p className="text-sm font-bold uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Active Styles</p>
+            <p className="text-3xl font-black" style={{ color: '#2d1f0e' }}>{overview.styles || 0}</p>
+          </SpotlightCard>
+          
+          <SpotlightCard className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100/50 flex flex-col gap-2 hover:-translate-y-1" spotlightColor="rgba(200,131,74,0.1)">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
               <Box className="w-5 h-5" />
             </div>
-            <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">Pieces Ordered</p>
-            <p className="text-3xl font-black text-slate-900">{overview.total_pieces_ordered || 0}</p>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col gap-2">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+            <p className="text-sm font-bold uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Pieces Ordered</p>
+            <p className="text-3xl font-black" style={{ color: '#2d1f0e' }}>{overview.total_pieces_ordered || 0}</p>
+          </SpotlightCard>
+          
+          <SpotlightCard className="bg-white p-6 rounded-2xl shadow-sm border border-orange-100/50 flex flex-col gap-2 hover:-translate-y-1" spotlightColor="rgba(200,131,74,0.1)">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
               <TrendingUp className="w-5 h-5" />
             </div>
-            <p className="text-sm font-bold text-slate-500 uppercase tracking-wider">Events Logged</p>
-            <p className="text-3xl font-black text-slate-900">{overview.total_operations_logged || 0}</p>
-          </div>
+            <p className="text-sm font-bold uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Events Logged</p>
+            <p className="text-3xl font-black" style={{ color: '#2d1f0e' }}>{overview.total_operations_logged || 0}</p>
+          </SpotlightCard>
         </div>
       )}
 
@@ -119,28 +123,28 @@ export default function AnalyticsDashboard() {
         
         {/* FREIGHT RISK ALERTS */}
         <div className="space-y-4">
-          <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-            <Plane className="w-5 h-5 text-red-500" />
+          <h3 className="text-lg font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+            <Plane className="w-5 h-5" style={{ color: '#ef4444' }} />
             Freight Risk Alerts
           </h3>
-          <p className="text-sm text-slate-500">Orders risking Sea-Cutoff deadlines requiring expensive Air Freight.</p>
+          <p className="text-sm" style={{ color: '#9a7a5a' }}>Orders risking Sea-Cutoff deadlines requiring expensive Air Freight.</p>
           
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <SpotlightCard className="bg-white rounded-2xl shadow-sm border border-red-100/50 overflow-hidden" spotlightColor="rgba(239,68,68,0.08)">
             {freightAlerts.length > 0 ? (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-red-50">
                 {freightAlerts.map((alert, i) => (
-                  <div key={i} className="p-5 hover:bg-slate-50 transition-colors">
+                  <div key={i} className="p-5 hover:bg-red-50/30 transition-colors">
                     <div className="flex justify-between items-start mb-2">
                       <div>
                         <h4 className="font-bold text-slate-900">{alert.order_id || 'Unknown Order'}</h4>
                         <p className="text-xs font-medium text-slate-500">{alert.style_name || 'N/A'} - {alert.client_name || 'N/A'}</p>
                       </div>
-                      <span className="px-2.5 py-1 bg-red-50 text-red-700 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1">
+                      <span className="px-2.5 py-1 bg-red-50 text-red-700 text-[10px] font-black uppercase tracking-wider rounded-lg flex items-center gap-1 border border-red-100">
                         <AlertCircle className="w-3 h-3" /> Risk
                       </span>
                     </div>
-                    <div className="flex items-center gap-4 text-xs font-medium text-slate-600 bg-slate-100 p-3 rounded-xl">
-                      <div className="flex items-center gap-1.5 text-blue-700">
+                    <div className="flex items-center gap-4 text-xs font-medium bg-red-50/50 p-3 rounded-xl border border-red-50">
+                      <div className="flex items-center gap-1.5 text-red-800">
                         <Ship className="w-4 h-4" /> 
                         Cutoff: <span className="font-bold">{alert.sea_cutoff_date || 'N/A'}</span>
                       </div>
@@ -153,34 +157,34 @@ export default function AnalyticsDashboard() {
                 ))}
               </div>
             ) : (
-              <div className="p-12 text-center text-slate-500 flex flex-col items-center">
+              <div className="p-12 text-center flex flex-col items-center">
                 <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" />
-                <p className="font-bold">No Freight Risks detected</p>
-                <p className="text-xs mt-1">All orders are safely within sea-cutoff buffers.</p>
+                <p className="font-bold text-slate-900">No Freight Risks detected</p>
+                <p className="text-xs mt-1 text-slate-500">All orders are safely within sea-cutoff buffers.</p>
               </div>
             )}
-          </div>
+          </SpotlightCard>
         </div>
 
         {/* STAGE SPREAD ALERTS */}
         <div className="space-y-4">
-          <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-            <AlertCircle className="w-5 h-5 text-amber-500" />
+          <h3 className="text-lg font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+            <AlertCircle className="w-5 h-5" style={{ color: '#c8834a' }} />
             Stage Spread Alerts
           </h3>
-          <p className="text-sm text-slate-500">Unbalanced production stages (e.g. cutting done but stitching stalled).</p>
+          <p className="text-sm" style={{ color: '#9a7a5a' }}>Unbalanced production stages (e.g. cutting done but stitching stalled).</p>
           
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <SpotlightCard className="bg-white rounded-2xl shadow-sm border border-orange-100/50 overflow-hidden" spotlightColor="rgba(200,131,74,0.1)">
             {stageAlerts.length > 0 ? (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-orange-50">
                 {stageAlerts.map((alert, i) => (
-                  <div key={i} className="p-5 hover:bg-slate-50 transition-colors">
+                  <div key={i} className="p-5 hover:bg-orange-50/20 transition-colors">
                     <div className="flex justify-between items-start mb-3">
                       <div>
                         <h4 className="font-bold text-slate-900">{alert.style || 'Unknown Style'}</h4>
                         <p className="text-xs font-medium text-slate-500">Gap: {alert.gap} pcs</p>
                       </div>
-                      <span className="px-2.5 py-1 bg-amber-50 text-amber-700 text-[10px] font-black uppercase tracking-wider rounded-lg">
+                      <span className="px-2.5 py-1 bg-orange-50 text-[#c8834a] text-[10px] font-black uppercase tracking-wider rounded-lg border border-orange-100">
                         Bottleneck
                       </span>
                     </div>
@@ -201,13 +205,13 @@ export default function AnalyticsDashboard() {
                 ))}
               </div>
             ) : (
-              <div className="p-12 text-center text-slate-500 flex flex-col items-center">
+              <div className="p-12 text-center flex flex-col items-center">
                 <CheckCircle2 className="w-8 h-8 text-emerald-500 mb-2" />
-                <p className="font-bold">No Spread Issues detected</p>
-                <p className="text-xs mt-1">Production flow across stages is perfectly balanced.</p>
+                <p className="font-bold text-slate-900">No Spread Issues detected</p>
+                <p className="text-xs mt-1 text-slate-500">Production flow across stages is perfectly balanced.</p>
               </div>
             )}
-          </div>
+          </SpotlightCard>
         </div>
 
       </div>

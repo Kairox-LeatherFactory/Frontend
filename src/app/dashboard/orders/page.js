@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { useData } from '@/context/DataContext';
 import { useAuth } from '@/context/AuthContext';
 import { TreePine, Building2, ClipboardList, Shirt, Plus, X, Loader2, FileSpreadsheet } from 'lucide-react';
+import SpotlightCard from '@/components/SpotlightCard';
 
 export default function OrdersTreeBrowser() {
   const { orders, clients = [], createClient, apiLoading } = useData();
@@ -107,19 +108,20 @@ export default function OrdersTreeBrowser() {
       
       {/* ─── TITLE SECTION ─── */}
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Client SKU Tree</h1>
-        <p className="text-slate-500 font-medium">Explore active order components. Collapsible tree drilling down from clients down to size-level SKUs.</p>
+        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Client SKU Tree</h1>
+        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Explore active order components. Collapsible tree drilling down from clients down to size-level SKUs.</p>
       </div>
 
       {/* ─── SUB-NAVIGATION TABS ─── */}
-      <div className="flex border-b border-slate-200 gap-1 bg-white p-1 rounded-xl shadow-sm border border-slate-100 max-w-md">
+      <div className="flex gap-1 p-1 rounded-xl shadow-sm max-w-md" style={{ background: '#ffffff', border: '1px solid rgba(200,131,74,0.15)' }}>
         <button
           onClick={() => setActiveTab('tree')}
           className={`flex-1 py-2.5 px-4 font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer min-h-[40px] ${
             activeTab === 'tree'
-              ? 'bg-blue-600 text-white shadow-md'
-              : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+              ? 'text-white shadow-md'
+              : 'text-[#9a7a5a] hover:text-[#2d1f0e] hover:bg-[#faf6f0]'
           }`}
+          style={activeTab === 'tree' ? { background: '#c8834a' } : {}}
         >
           <TreePine className="w-4 h-4" />
           SKU Tree Browser
@@ -129,9 +131,10 @@ export default function OrdersTreeBrowser() {
             onClick={() => setActiveTab('list')}
             className={`flex-1 py-2.5 px-4 font-bold text-xs rounded-lg transition-all flex items-center justify-center gap-2 cursor-pointer min-h-[40px] ${
               activeTab === 'list'
-                ? 'bg-blue-600 text-white shadow-md'
-                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                ? 'text-white shadow-md'
+                : 'text-[#9a7a5a] hover:text-[#2d1f0e] hover:bg-[#faf6f0]'
             }`}
+            style={activeTab === 'list' ? { background: '#c8834a' } : {}}
           >
             <Building2 className="w-4 h-4" />
             Client List
@@ -145,9 +148,9 @@ export default function OrdersTreeBrowser() {
         </div>
       ) : activeTab === 'tree' ? (
         /* ─── TREE CARD WRAPPER ─── */
-        <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-6">
-          <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
-            <TreePine className="w-5 h-5 text-emerald-600" /> Interactive SKU Hierarchy Browser
+        <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+            <TreePine className="w-5 h-5" style={{ color: '#c8834a' }} /> Interactive SKU Hierarchy Browser
           </h3>
 
           <div className="space-y-4 text-sm font-semibold">
@@ -155,111 +158,114 @@ export default function OrdersTreeBrowser() {
               const isClientOpen = !!openedClients[clientName];
 
               return (
-                <div key={clientName} className="border border-blue-50 rounded-xl overflow-hidden shadow-sm">
+                <div key={clientName} className="rounded-xl overflow-hidden shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
                   
                   {/* ── LEVEL 1: CLIENT ── */}
                   <button
                     onClick={() => toggleClient(clientName)}
-                    className="w-full flex items-center justify-between p-4 bg-blue-50/50 hover:bg-blue-100/50 transition-colors text-left font-bold text-slate-800 cursor-pointer min-h-[48px]"
+                    className="w-full flex items-center justify-between p-4 transition-colors text-left font-bold cursor-pointer min-h-[48px]"
+                    style={{ background: isClientOpen ? '#faf6f0' : '#ffffff', color: '#2d1f0e' }}
                   >
                     <div className="flex items-center gap-3">
-                      <Building2 className="w-5 h-5 text-blue-600" />
+                      <Building2 className="w-5 h-5" style={{ color: '#c8834a' }} />
                       <div>
-                        <span className="text-slate-900 font-extrabold">{clientName}</span>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
+                        <span className="font-extrabold" style={{ color: '#2d1f0e' }}>{clientName}</span>
+                        <p className="text-[10px] font-bold uppercase mt-0.5" style={{ color: '#9a7a5a' }}>
                           {clientOrders.length} {clientOrders.length === 1 ? 'Order PO' : 'Order POs'} Active
                         </p>
                       </div>
                     </div>
-                    <span className="text-slate-400 font-black">{isClientOpen ? '▼' : '►'}</span>
+                    <span className="font-black" style={{ color: '#c8834a' }}>{isClientOpen ? '▼' : '►'}</span>
                   </button>
 
                   {/* CLIENT CONTENT */}
                   {isClientOpen && (
-                    <div className="p-4 bg-white border-t border-slate-100 space-y-3 pl-8">
+                    <div className="p-4 bg-white space-y-3 pl-8" style={{ borderTop: '1px solid rgba(200,131,74,0.15)' }}>
                       {clientOrders.length === 0 ? (
-                        <div className="text-center py-8 text-slate-400">
-                          <ClipboardList className="w-8 h-8 mx-auto mb-2 text-slate-200" />
+                        <div className="text-center py-8" style={{ color: '#9a7a5a' }}>
+                          <ClipboardList className="w-8 h-8 mx-auto mb-2 opacity-50" />
                           <p className="font-semibold text-xs">No purchase orders yet for this client.</p>
                         </div>
                       ) : clientOrders.map((order) => {
                         const isOrderOpen = !!openedOrders[order.id];
 
                         return (
-                          <div key={order.id} className="border border-slate-100 rounded-lg overflow-hidden">
+                          <div key={order.id} className="rounded-lg overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.1)' }}>
                             
                             {/* ── LEVEL 2: PURCHASE ORDER ── */}
                             <button
                               onClick={() => toggleOrder(order.id)}
-                              className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors text-left cursor-pointer min-h-[48px]"
+                              className="w-full flex items-center justify-between p-3 hover:bg-[#faf6f0] transition-colors text-left cursor-pointer min-h-[48px]"
+                              style={{ background: isOrderOpen ? '#faf6f0' : '#ffffff' }}
                             >
                               <div className="flex items-center gap-2">
-                                <ClipboardList className="w-4 h-4 text-blue-500" />
+                                <ClipboardList className="w-4 h-4" style={{ color: '#a86022' }} />
                                 <div>
-                                  <span className="font-extrabold text-blue-900">{order.id}</span>
-                                  <span className="text-[10px] text-slate-400 font-bold ml-2 uppercase">
+                                  <span className="font-extrabold" style={{ color: '#4a3a2a' }}>{order.id}</span>
+                                  <span className="text-[10px] font-bold ml-2 uppercase" style={{ color: '#9a7a5a' }}>
                                     ({order.type})
                                   </span>
                                 </div>
                               </div>
-                              <span className="text-slate-400 font-black">{isOrderOpen ? '▼' : '►'}</span>
+                              <span className="font-black" style={{ color: '#c8834a' }}>{isOrderOpen ? '▼' : '►'}</span>
                             </button>
 
                             {/* ORDER CONTENT */}
                             {isOrderOpen && (
-                              <div className="p-3 bg-white border-t border-slate-50 pl-6 space-y-2">
+                              <div className="p-3 bg-white pl-6 space-y-2" style={{ borderTop: '1px solid rgba(200,131,74,0.08)' }}>
                                 
                                 {/* ── LEVEL 3: STYLE ── */}
-                                <div className="border-l-2 border-blue-100 pl-4 py-2 space-y-3">
+                                <div className="pl-4 py-2 space-y-3" style={{ borderLeft: '2px solid rgba(200,131,74,0.15)' }}>
                                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
                                     <div>
-                                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Style SKU</span>
-                                      <span className="text-slate-800 font-extrabold text-base flex items-center gap-1.5">
-                                        <Shirt className="w-4 h-4 text-blue-500" /> Style: {order.style}
+                                      <span className="text-[10px] font-bold uppercase tracking-wider block" style={{ color: '#9a7a5a' }}>Style SKU</span>
+                                      <span className="font-extrabold text-base flex items-center gap-1.5" style={{ color: '#2d1f0e' }}>
+                                        <Shirt className="w-4 h-4" style={{ color: '#c8834a' }} /> Style: {order.style}
                                       </span>
                                     </div>
                                     <div className="flex gap-2">
-                                      <span className={`badge ${order.freight_mode.includes('RISK') ? 'badge-danger' : 'badge-info'}`}>
+                                      <span className="px-2 py-1 rounded text-xs font-bold border" style={order.freight_mode.includes('RISK') ? { background: '#fff0f0', color: '#e53e3e', borderColor: '#feb2b2' } : { background: '#f0f4ff', color: '#3182ce', borderColor: '#bee3f8' }}>
                                         {order.freight_mode}
                                       </span>
-                                      <span className="badge badge-success">
+                                      <span className="px-2 py-1 rounded text-xs font-bold border" style={{ background: '#f0fff4', color: '#38a169', borderColor: '#c6f6d5' }}>
                                         {order.progress}% Done
                                       </span>
                                     </div>
                                   </div>
 
-                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs p-3 rounded-lg border" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.1)' }}>
                                     <div>
-                                      <span className="text-[10px] text-slate-400 block uppercase font-bold">Total Batch Qty</span>
-                                      <span className="text-slate-800 font-black">{order.quantity} Pcs</span>
+                                      <span className="text-[10px] block uppercase font-bold" style={{ color: '#9a7a5a' }}>Total Batch Qty</span>
+                                      <span className="font-black" style={{ color: '#2d1f0e' }}>{order.quantity} Pcs</span>
                                     </div>
                                     <div>
-                                      <span className="text-[10px] text-slate-400 block uppercase font-bold">Delivery Deadline</span>
-                                      <span className="text-slate-800 font-extrabold">{order.deadline}</span>
+                                      <span className="text-[10px] block uppercase font-bold" style={{ color: '#9a7a5a' }}>Delivery Deadline</span>
+                                      <span className="font-extrabold" style={{ color: '#2d1f0e' }}>{order.deadline}</span>
                                     </div>
                                     <div>
-                                      <span className="text-[10px] text-slate-400 block uppercase font-bold">Order Placement</span>
-                                      <span className="text-slate-800">{order.order_date}</span>
+                                      <span className="text-[10px] block uppercase font-bold" style={{ color: '#9a7a5a' }}>Order Placement</span>
+                                      <span style={{ color: '#2d1f0e' }}>{order.order_date}</span>
                                     </div>
                                     <div>
-                                      <span className="text-[10px] text-slate-400 block uppercase font-bold">Active Station</span>
-                                      <span className="text-blue-700 font-extrabold">{order.status}</span>
+                                      <span className="text-[10px] block uppercase font-bold" style={{ color: '#9a7a5a' }}>Active Station</span>
+                                      <span className="font-extrabold" style={{ color: '#a86022' }}>{order.status}</span>
                                     </div>
                                   </div>
 
                                   {/* ── LEVEL 4: COLORWAY & ── LEVEL 5: SIZE-SKU GRID ── */}
                                   <div className="space-y-2">
-                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Colorway &amp; Size Breakdown</span>
-                                    <div className="p-3 bg-blue-50/30 rounded-lg border border-blue-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider block" style={{ color: '#9a7a5a' }}>Colorway &amp; Size Breakdown</span>
+                                    <div className="p-3 rounded-lg border flex flex-col sm:flex-row sm:items-center justify-between gap-4" style={{ background: '#ffffff', borderColor: 'rgba(200,131,74,0.15)' }}>
                                       <div className="flex items-center gap-2">
-                                        <span className="h-3 w-3 rounded-full bg-blue-500 border border-white" />
-                                        <span className="text-xs font-black text-slate-700">Colorway: {order.colorway}</span>
+                                        <span className="h-3 w-3 rounded-full border border-white shadow-sm" style={{ background: '#c8834a' }} />
+                                        <span className="text-xs font-black" style={{ color: '#4a3a2a' }}>Colorway: {order.colorway}</span>
                                       </div>
                                       <div className="flex flex-wrap gap-2">
                                         {order.sizes.map((size) => (
                                           <span
                                             key={size}
-                                            className="px-2.5 py-1 rounded-md bg-white border border-blue-100 text-blue-800 font-black text-xs shadow-sm"
+                                            className="px-2.5 py-1 rounded-md bg-white border font-black text-xs shadow-sm"
+                                            style={{ color: '#a86022', borderColor: 'rgba(200,131,74,0.2)' }}
                                           >
                                             SKU Size: {size} (Active)
                                           </span>
@@ -283,13 +289,13 @@ export default function OrdersTreeBrowser() {
               );
             })}
           </div>
-        </div>
+        </SpotlightCard>
       ) : (
         /* ─── CLIENT DIRECTORY LIST VIEW ─── */
-        <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-100 pb-4 gap-4">
-            <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-              <Building2 className="w-5 h-5 text-blue-600" /> Active Client Directory
+        <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 gap-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+            <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+              <Building2 className="w-5 h-5" style={{ color: '#c8834a' }} /> Active Client Directory
             </h3>
             <div className="flex gap-2">
               <button
@@ -297,7 +303,8 @@ export default function OrdersTreeBrowser() {
                   setShowCreateModal(true);
                   setCreateError('');
                 }}
-                className="py-2 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95 min-h-[40px]"
+                className="py-2 px-4 font-extrabold text-xs rounded-lg transition-all flex items-center gap-2 cursor-pointer shadow-md active:scale-95 min-h-[40px] text-white hover:shadow-lg hover:-translate-y-0.5"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
               >
                 <Plus className="w-4 h-4" />
                 Create Client
@@ -309,44 +316,46 @@ export default function OrdersTreeBrowser() {
             {allClients.map((client) => {
               const activePOs = orders.filter((o) => o.client === client.name).length;
               return (
-                <div 
+                <SpotlightCard 
                   key={client.id} 
-                  className="bg-slate-50/50 hover:bg-slate-50 border border-slate-100 rounded-2xl p-5 transition-all shadow-sm hover:shadow-md flex flex-col justify-between min-h-[160px]"
+                  className="rounded-2xl p-5 transition-all shadow-sm hover:shadow-md flex flex-col justify-between min-h-[160px] bg-white hover:-translate-y-1"
+                  style={{ border: '1px solid rgba(200,131,74,0.15)' }}
+                  spotlightColor="rgba(200,131,74,0.06)"
                 >
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-blue-50 rounded-xl">
-                        <Building2 className="w-5 h-5 text-blue-600" />
+                      <div className="p-2.5 rounded-xl" style={{ background: 'rgba(200,131,74,0.1)' }}>
+                        <Building2 className="w-5 h-5" style={{ color: '#c8834a' }} />
                       </div>
                       <div>
-                        <h4 className="text-sm font-black text-slate-800 leading-tight">{client.name}</h4>
-                        <p className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">Account ID: {client.id.substring(0, 8)}</p>
+                        <h4 className="text-sm font-black leading-tight" style={{ color: '#2d1f0e' }}>{client.name}</h4>
+                        <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5" style={{ color: '#9a7a5a' }}>Account ID: {client.id.substring(0, 8)}</p>
                       </div>
                     </div>
 
-                    <div className="border-t border-slate-100 pt-3 grid grid-cols-2 gap-4 text-xs font-semibold">
+                    <div className="pt-3 grid grid-cols-2 gap-4 text-xs font-semibold" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
                       <div>
-                        <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">Company Code</span>
-                        <span className="text-slate-700 font-extrabold">{client.key}</span>
+                        <span className="text-[9px] font-bold block uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Company Code</span>
+                        <span className="font-extrabold" style={{ color: '#2d1f0e' }}>{client.key}</span>
                       </div>
                       <div>
-                        <span className="text-[9px] text-slate-400 font-bold block uppercase tracking-wider">Country</span>
-                        <span className="text-slate-700 font-extrabold">{client.country === '—' ? 'International' : client.country}</span>
+                        <span className="text-[9px] font-bold block uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Country</span>
+                        <span className="font-extrabold" style={{ color: '#2d1f0e' }}>{client.country === '—' ? 'International' : client.country}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <span className="text-[10px] text-slate-400 font-bold uppercase">Active Orders</span>
-                    <span className="px-2.5 py-1 bg-blue-50 text-blue-700 font-black rounded-lg">
+                  <div className="mt-4 pt-3 flex items-center justify-between text-xs" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
+                    <span className="text-[10px] font-bold uppercase" style={{ color: '#9a7a5a' }}>Active Orders</span>
+                    <span className="px-2.5 py-1 font-black rounded-lg" style={{ background: 'rgba(200,131,74,0.1)', color: '#a86022' }}>
                       {activePOs} {activePOs === 1 ? 'PO' : 'POs'}
                     </span>
                   </div>
-                </div>
+                </SpotlightCard>
               );
             })}
           </div>
-        </div>
+        </SpotlightCard>
       )}
 
       {/* ─── CREATE CLIENT MODAL POPUP ─── */}

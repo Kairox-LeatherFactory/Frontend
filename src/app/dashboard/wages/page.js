@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiSetWageRate, apiComputeWageRun } from '@/lib/api';
 import { CheckCircle2, Tag, Lock, Settings, Coins, FolderOpen, Loader2 } from 'lucide-react';
+import SpotlightCard from '@/components/SpotlightCard';
 
 export default function PieceRatesAndWages() {
   const { user, token } = useAuth();
@@ -101,19 +102,19 @@ export default function PieceRatesAndWages() {
       
       {/* ─── TITLE SECTION ─── */}
       <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Payroll &amp; Rates Manager</h1>
-        <p className="text-slate-500 font-medium">Verify piece-rates and execute audits on shop floor wage calculations.</p>
+        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Payroll &amp; Rates Manager</h1>
+        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Verify piece-rates and execute audits on shop floor wage calculations.</p>
       </div>
 
       {/* ─── BANNER ALERTS ─── */}
       {successMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-center gap-2.5">
+        <div className="p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-center gap-2.5" style={{ background: '#f0fff4', border: '1px solid #c6f6d5', color: '#276749' }}>
           <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
           <p>{successMsg}</p>
         </div>
       )}
       {errorMsg && (
-        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-center gap-2.5">
+        <div className="p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-center gap-2.5" style={{ background: '#fff0f0', border: '1px solid #feb2b2', color: '#9b2c2c' }}>
           <p>{errorMsg}</p>
         </div>
       )}
@@ -122,24 +123,25 @@ export default function PieceRatesAndWages() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
         {/* LEFT COLUMN: SET PIECE RATE */}
-        <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-6">
-          <h3 className="text-lg font-extrabold text-slate-900 border-b border-slate-100 pb-4 flex items-center gap-2">
-            <Tag className="w-5 h-5 text-blue-600" /> Set Piece Rate
+        <SpotlightCard className="p-6 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+            <Tag className="w-5 h-5" style={{ color: '#c8834a' }} /> Set Piece Rate
           </h3>
-          <p className="text-xs font-semibold text-slate-400">
+          <p className="text-xs font-semibold" style={{ color: '#9a7a5a' }}>
             Define contract piece pay scale for specific styles and operations.
           </p>
 
           {!isDirectManager ? (
-            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 text-xs font-bold text-amber-800 flex items-center gap-2">
+            <div className="p-4 rounded-xl text-xs font-bold flex items-center gap-2" style={{ background: '#fff9f0', border: '1px solid #fbd38d', color: '#9c4221' }}>
               <Lock className="w-4 h-4" /> Manager Access Required
             </div>
           ) : (
             <form onSubmit={handleSetRate} className="space-y-4">
               <div>
-                <label className="text-xs font-bold text-slate-600 uppercase">Style</label>
+                <label className="text-xs font-bold uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Style</label>
                 <select 
-                  className="input-field mt-1" 
+                  className="w-full px-4 py-3 rounded-xl focus:outline-none transition-all cursor-pointer font-bold" 
+                  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
                   value={styleId} 
                   onChange={(e) => setStyleId(e.target.value)}
                   required
@@ -153,9 +155,10 @@ export default function PieceRatesAndWages() {
               </div>
               
               <div>
-                <label className="text-xs font-bold text-slate-600 uppercase">Operation</label>
+                <label className="text-xs font-bold uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Operation</label>
                 <select 
-                  className="input-field mt-1" 
+                  className="w-full px-4 py-3 rounded-xl focus:outline-none transition-all cursor-pointer font-bold" 
+                  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
                   value={operation} 
                   onChange={(e) => setOperation(e.target.value)}
                   required
@@ -171,12 +174,13 @@ export default function PieceRatesAndWages() {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-600 uppercase">Rate per Piece (₹)</label>
+                <label className="text-xs font-bold uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Rate per Piece (₹)</label>
                 <input 
                   type="number" 
                   step="0.01" 
                   min="0"
-                  className="input-field mt-1" 
+                  className="w-full px-4 py-3 rounded-xl focus:outline-none transition-all font-bold placeholder-opacity-50" 
+                  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
                   value={pieceRate} 
                   onChange={(e) => setPieceRate(e.target.value)}
                   placeholder="e.g. 80.00"
@@ -187,40 +191,42 @@ export default function PieceRatesAndWages() {
               <button 
                 type="submit" 
                 disabled={isSettingRate}
-                className="btn-primary w-full py-3 bg-blue-600 hover:bg-blue-700 flex justify-center items-center gap-2"
+                className="w-full py-3 text-white font-extrabold text-sm rounded-xl transition-all cursor-pointer shadow-md active:scale-95 flex items-center justify-center gap-2 hover:shadow-lg disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
               >
                 {isSettingRate ? <Loader2 className="w-4 h-4 animate-spin" /> : <Tag className="w-4 h-4" />}
                 Save Piece Rate
               </button>
             </form>
           )}
-        </div>
+        </SpotlightCard>
 
         {/* RIGHT COLUMN: PAYROLL OPERATIONS ENGINE */}
         <div className="lg:col-span-2 space-y-6">
           
           {!isDirectManager ? (
-            <div className="card p-8 bg-amber-50/60 border border-amber-200 shadow-lg text-center space-y-4">
-              <Lock className="w-12 h-12 text-amber-500 mx-auto" />
-              <h3 className="text-lg font-black text-amber-900 uppercase tracking-wide">
+            <SpotlightCard className="p-8 shadow-lg text-center space-y-4 rounded-3xl" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)' }} spotlightColor="rgba(200,131,74,0.1)">
+              <Lock className="w-12 h-12 mx-auto" style={{ color: '#c8834a' }} />
+              <h3 className="text-lg font-black uppercase tracking-wide" style={{ color: '#9c4221' }}>
                 Direct Manager Authorization Required
               </h3>
-              <p className="text-xs text-amber-700 font-semibold max-w-lg mx-auto">
+              <p className="text-xs font-semibold max-w-lg mx-auto" style={{ color: '#a86022' }}>
                 While piece rates are open to read-only floor audits, payroll runs, frozen logs, and cash distributions are restricted. Switch profiles to run computations.
               </p>
-            </div>
+            </SpotlightCard>
           ) : (
-            <div className="card p-6 sm:p-8 bg-white border border-blue-100 shadow-xl space-y-6">
+            <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
               
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between border-b border-slate-100 pb-4 gap-4">
-                <h3 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-                  <Settings className="w-5 h-5 text-blue-600" /> Active Computation Engine
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 gap-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+                <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+                  <Settings className="w-5 h-5" style={{ color: '#c8834a' }} /> Active Computation Engine
                 </h3>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-center gap-3">
                   <select
                     value={payPeriod}
                     onChange={(e) => setPayPeriod(e.target.value)}
-                    className="input-field h-10 py-0 min-h-[40px] font-extrabold text-xs bg-slate-50 cursor-pointer w-44"
+                    className="px-4 py-2 font-extrabold text-xs cursor-pointer w-full sm:w-44 rounded-xl focus:outline-none transition-all"
+                    style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
                   >
                     <option value="May 16-31, 2026">May 16-31, 2026</option>
                     <option value="June 01-15, 2026">June 01-15, 2026</option>
@@ -228,7 +234,8 @@ export default function PieceRatesAndWages() {
                   <button
                     onClick={handleComputeRun}
                     disabled={isFreezing}
-                    className="btn-primary h-10 min-h-[40px] py-0 text-xs font-black px-4 bg-gradient-brand shadow flex items-center gap-2"
+                    className="w-full sm:w-auto h-10 min-h-[40px] px-6 text-xs font-black rounded-xl text-white shadow-md active:scale-95 flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
                   >
                     {isFreezing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                     Compute & Freeze Pay
@@ -239,33 +246,33 @@ export default function PieceRatesAndWages() {
               {/* Computations Grid Panel */}
               {isCalculated ? (
                 <div className="space-y-6 animate-fade-in">
-                  <div className="flex items-center justify-between bg-blue-50 border border-blue-100 p-4 rounded-xl text-blue-900">
+                  <div className="flex items-center justify-between p-4 rounded-xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
                     <span className="text-xs font-black uppercase">Distribution Period: {payPeriod}</span>
                     <span className="text-sm font-black">
-                      Total Ledger: <strong className="text-blue-700 text-base">₹{totalPayrollAmount.toLocaleString()}</strong>
+                      Total Ledger: <strong className="text-base" style={{ color: '#c8834a' }}>₹{totalPayrollAmount.toLocaleString()}</strong>
                     </span>
                   </div>
 
-                  <div className="overflow-x-auto rounded-xl border border-slate-100">
+                  <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }}>
                     <table className="w-full text-left text-xs font-semibold">
                       <thead>
-                        <tr className="bg-slate-50 border-b border-slate-150 text-slate-400 font-bold uppercase tracking-wider">
+                        <tr className="font-bold uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', color: '#9a7a5a' }}>
                           <th className="p-3">Worker / Type</th>
                           <th className="p-3 text-center">Total Qty Done</th>
                           <th className="p-3 text-right">Wage Amount</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-100 text-slate-700">
+                      <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
                         {calculatedPayroll.map((pay, idx) => (
-                          <tr key={idx} className="hover:bg-slate-50/50">
-                            <td className="p-3 text-slate-900">
+                          <tr key={idx} className="hover:bg-[#fcfaf8] transition-colors">
+                            <td className="p-3">
                               <span className="block font-black">{pay.employee_name || 'Unknown Worker'}</span>
-                              <span className="block text-[10px] text-slate-400 font-bold mt-1 uppercase">
+                              <span className="block text-[10px] font-bold mt-1 uppercase" style={{ color: '#9a7a5a' }}>
                                 {pay.wage_type || 'Unknown'}
                               </span>
                             </td>
-                            <td className="p-3 font-black text-center">{pay.total_pieces || 0} pcs</td>
-                            <td className="p-3 text-right text-slate-900 font-black">₹{(pay.amount_calculated || 0).toLocaleString()}</td>
+                            <td className="p-3 font-black text-center" style={{ color: '#a86022' }}>{pay.total_pieces || 0} pcs</td>
+                            <td className="p-3 text-right font-black" style={{ color: '#2d1f0e' }}>₹{(pay.amount_calculated || 0).toLocaleString()}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -275,20 +282,21 @@ export default function PieceRatesAndWages() {
                   <div className="flex justify-end gap-3">
                     <button
                       onClick={() => setIsCalculated(false)}
-                      className="btn-secondary h-12 min-h-[48px] px-6 text-xs font-bold rounded-lg"
+                      className="px-6 py-2.5 text-xs font-bold rounded-xl transition-all hover:bg-slate-100"
+                      style={{ color: '#4a3a2a', border: '1px solid rgba(200,131,74,0.3)' }}
                     >
                       Clear View
                     </button>
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-12 text-slate-400 font-medium">
-                  <Coins className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                <div className="text-center py-12 font-medium" style={{ color: '#9a7a5a' }}>
+                  <Coins className="w-10 h-10 mx-auto mb-2 opacity-50" />
                   Select pay cycle period above and click "Compute & Freeze Pay" to parse active floor logs and auto-calculate payroll distributions.
                 </div>
               )}
 
-            </div>
+            </SpotlightCard>
           )}
         </div>
       </div>

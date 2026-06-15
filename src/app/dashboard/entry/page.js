@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiImportPreview, apiImportCommit } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info } from 'lucide-react';
+import SpotlightCard from '@/components/SpotlightCard';
 
 function DynamicDataViewer({ data }) {
   if (!data) return null;
@@ -226,8 +227,8 @@ export default function ProductionLogEntry() {
       {/* ─── TITLE SECTION ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-900 tracking-tight">Shop Floor Production Logger</h1>
-          <p className="text-slate-500 font-medium">Record work bundles completed by operators. Touch-friendly screens optimized for fast, accurate floor entry.</p>
+          <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Shop Floor Production Logger</h1>
+          <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Record work bundles completed by operators. Touch-friendly screens optimized for fast, accurate floor entry.</p>
         </div>
         {/* ─── UPLOAD FILE BUTTON ─── */}
         <div>
@@ -243,7 +244,12 @@ export default function ProductionLogEntry() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadLoading}
-            className="btn-secondary h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl border border-emerald-200 hover:border-emerald-500 hover:bg-emerald-50 text-emerald-700 transition-all active:scale-95 disabled:opacity-50"
+            className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50"
+            style={{ 
+              background: 'transparent',
+              border: '1px solid #c8834a',
+              color: '#c8834a'
+            }}
           >
             {uploadLoading ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Previewing...</>
@@ -286,17 +292,17 @@ export default function ProductionLogEntry() {
       )}
 
       {/* ─── LOGGING FORM CARD ─── */}
-      <div className="card p-8 bg-white border border-blue-100 shadow-xl space-y-8">
+      <SpotlightCard className="p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         
         {/* Helper context showing details about the active logging environment */}
-        <div className="p-4 bg-gradient-brand-light rounded-xl border border-blue-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="text-xs font-bold text-blue-900">
+        <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
+          <div className="text-xs font-bold" style={{ color: '#4a3a2a' }}>
             <span>Logged By: </span>
-            <span className="bg-blue-600 text-white px-2 py-0.5 rounded font-black uppercase tracking-wider">{user.replace('_', ' ')}</span>
+            <span className="text-white px-2 py-0.5 rounded font-black uppercase tracking-wider" style={{ background: '#c8834a' }}>{user.replace('_', ' ')}</span>
           </div>
           {selectedOrder && (
-            <div className="text-xs font-semibold text-blue-800">
-              Style Tracked: <strong className="font-black text-slate-900">{selectedOrder.style} ({selectedOrder.colorway})</strong> • Qty target: {selectedOrder.quantity}
+            <div className="text-xs font-semibold" style={{ color: '#4a3a2a' }}>
+              Style Tracked: <strong className="font-black" style={{ color: '#2d1f0e' }}>{selectedOrder.style} ({selectedOrder.colorway})</strong> • Qty target: {selectedOrder.quantity}
             </div>
           )}
         </div>
@@ -304,10 +310,10 @@ export default function ProductionLogEntry() {
         <form onSubmit={handleSubmit} className="space-y-8">
           
           {/* STEP 1: Core Selection */}
-          <div className="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest border-b border-slate-200 pb-3 flex items-center gap-2">
-              <span className="bg-blue-100 text-blue-700 w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span> 
+          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+            <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
+            <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span> 
               Order & Worker Selection
             </h3>
             
@@ -357,10 +363,10 @@ export default function ProductionLogEntry() {
           </div>
 
           {/* STEP 2: Operation & Size (Visual Cards) */}
-          <div className="space-y-6 bg-blue-50/40 p-6 rounded-2xl border border-blue-100 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500"></div>
-            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest border-b border-blue-200 pb-3 flex items-center gap-2">
-              <span className="bg-indigo-100 text-indigo-700 w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span> 
+          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+            <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
+            <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span> 
               Garment Details
             </h3>
             
@@ -368,8 +374,8 @@ export default function ProductionLogEntry() {
               
               {/* Size Pill Buttons */}
               <div className="flex flex-col gap-3">
-                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Ruler className="w-4 h-4 text-indigo-500" /> Garment Size *
+                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                  <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment Size *
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {(selectedOrder?.sizes?.length ? selectedOrder.sizes : ['S', 'M', 'L', 'XL']).map((s) => (
@@ -377,7 +383,7 @@ export default function ProductionLogEntry() {
                       key={s}
                       type="button"
                       onClick={() => setSize(String(s))}
-                      className={`min-w-[3rem] h-11 px-3 text-sm font-black rounded-xl border-2 transition-all cursor-pointer ${String(size) === String(s) ? 'bg-indigo-600 border-indigo-600 text-white shadow-md scale-105' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 shadow-sm'}`}
+                      className={`min-w-[3rem] h-11 px-3 text-sm font-black rounded-xl border-2 transition-all cursor-pointer ${String(size) === String(s) ? 'bg-[#c8834a] border-[#c8834a] text-white shadow-md scale-105' : 'bg-white border-[#c8834a]/20 text-[#9a7a5a] hover:border-[#c8834a] hover:text-[#c8834a] hover:bg-[#c8834a]/5 shadow-sm'}`}
                     >
                       {s}
                     </button>
@@ -387,8 +393,8 @@ export default function ProductionLogEntry() {
 
               {/* Operation Pill Buttons */}
               <div className="flex flex-col gap-3">
-                <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Scissors className="w-4 h-4 text-indigo-500" /> Operation Stage *
+                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                  <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
                 </label>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 min-h-[56px]">
                   {allowedOperations.map((op) => (
@@ -396,7 +402,7 @@ export default function ProductionLogEntry() {
                       key={op}
                       type="button"
                       onClick={() => setOperation(op)}
-                      className={`py-3 px-2 text-xs font-black rounded-xl border-2 transition-all cursor-pointer ${operation === op ? 'bg-indigo-600 border-indigo-600 text-white shadow-md scale-105' : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-300 hover:text-indigo-600 shadow-sm'}`}
+                      className={`py-3 px-2 text-xs font-black rounded-xl border-2 transition-all cursor-pointer ${operation === op ? 'bg-[#c8834a] border-[#c8834a] text-white shadow-md scale-105' : 'bg-white border-[#c8834a]/20 text-[#9a7a5a] hover:border-[#c8834a] hover:text-[#c8834a] hover:bg-[#c8834a]/5 shadow-sm'}`}
                     >
                       {op}
                     </button>
@@ -408,10 +414,10 @@ export default function ProductionLogEntry() {
           </div>
 
           {/* STEP 3: Quantity & Logging */}
-          <div className="space-y-6 bg-slate-50/50 p-6 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-            <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest border-b border-slate-200 pb-3 flex items-center gap-2">
-              <span className="bg-emerald-100 text-emerald-700 w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span> 
+          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+            <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
+            <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span> 
               Quantities & Submission
             </h3>
             
@@ -499,13 +505,15 @@ export default function ProductionLogEntry() {
                 setGarmentId('');
                 setSize('M');
               }}
-              className="btn-secondary h-14 font-bold rounded-xl text-base px-8"
+              className="h-14 font-bold rounded-xl text-base px-8 transition-all"
+              style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
             >
               Reset All
             </button>
             <button
               type="submit"
-              className="btn-primary h-14 font-black rounded-xl text-base px-10 bg-gradient-brand shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+              className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
             >
               <Rocket className="w-5 h-5" /> Submit Event
             </button>
@@ -513,7 +521,7 @@ export default function ProductionLogEntry() {
 
         </form>
 
-      </div>
+      </SpotlightCard>
 
       {/* ─── EXCEL PREVIEW MODAL ─── */}
       {showPreviewModal && (

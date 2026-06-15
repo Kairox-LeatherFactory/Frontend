@@ -28,6 +28,12 @@ async function proxyRequest(request, { params }) {
 
     const responseHeaders = new Headers(response.headers);
     responseHeaders.set('Access-Control-Allow-Origin', '*');
+    
+    // IMPORTANT: Node's fetch automatically decompresses gzip/br bodies.
+    // If we pass the original 'content-encoding' header to the browser, 
+    // the browser will fail to decode the uncompressed body and throw "Failed to fetch".
+    responseHeaders.delete('content-encoding');
+    responseHeaders.delete('content-length');
 
     return new NextResponse(response.body, {
       status: response.status,
