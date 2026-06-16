@@ -2,6 +2,7 @@ import { Lato } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { DataProvider } from '@/context/DataContext';
+import CustomCursor from '@/components/CustomCursor';
 
 const lato = Lato({
   subsets: ['latin'],
@@ -18,9 +19,10 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={lato.variable} data-scroll-behavior="smooth">
-      <body className="font-sans bg-[#f0f4ff] text-[#0f172a] antialiased">
+      <body className="font-sans bg-[#faf6f0] text-[#0f172a] antialiased">
         <AuthProvider>
           <DataProvider>
+            <CustomCursor />
             {children}
           </DataProvider>
         </AuthProvider>

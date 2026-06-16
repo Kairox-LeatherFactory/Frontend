@@ -100,7 +100,7 @@ export default function DashboardLayout({ children }) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row" style={{ background: '#f2ece4' }}>
+    <div className="min-h-screen flex flex-col md:flex-row" style={{ background: '#faf6f0' }}>
       
       {/* ─── SIDEBAR (Desktop & Mobile) ─── */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:inset-auto md:z-auto transition-transform duration-300 ease-in-out flex flex-col shadow-2xl`} style={{ background: 'linear-gradient(180deg, #2a1b10 0%, #140d08 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
@@ -161,7 +161,7 @@ export default function DashboardLayout({ children }) {
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
         
         {/* ─── TOP BAR HEADER ─── */}
-        <header className="h-20 flex items-center justify-between px-6 sticky top-0 z-30" style={{ background: '#f2ece4', borderBottom: '1px solid rgba(200,131,74,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.02)' }}>
+        <header className="h-20 flex items-center justify-between px-6 sticky top-0 z-30" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.02)' }}>
           <div className="flex items-center gap-4">
             {/* Mobile hamburger menu toggle */}
             <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden text-2xl p-2 rounded-lg" style={{ color: '#2d1f0e', background: 'rgba(200,131,74,0.1)' }}>
@@ -215,7 +215,7 @@ export default function DashboardLayout({ children }) {
         )}
 
         {/* ─── PAGE ROUTER CONTENT ─── */}
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-8 overflow-y-auto" style={{ background: '#f2ece4' }}>
+        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto space-y-8 overflow-y-auto" style={{ background: '#faf6f0' }}>
           {children}
         </main>
       </div>
