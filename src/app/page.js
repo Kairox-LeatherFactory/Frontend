@@ -13,6 +13,53 @@ import {
 } from 'lucide-react';
 import { apiLogin } from '@/lib/api';
 
+/* ─── Animated Gold Text Component ────────────────── */
+function AnimatedGoldText({ text }) {
+  const letters = text.split('');
+  
+  const container = {
+    hidden: { opacity: 1 },
+    visible: {
+      opacity: 1,
+      transition: { staggerChildren: 0.1, delayChildren: 0.2 }
+    },
+    hover: {
+      transition: { staggerChildren: 0.05 }
+    }
+  };
+
+  const child = {
+    hidden: { color: 'rgba(255,255,255,0.4)', textShadow: '0px 0px 0px rgba(200,131,74,0)' },
+    visible: { 
+      color: '#c8834a',
+      textShadow: '0px 0px 15px rgba(200,131,74,0.4)',
+      transition: { duration: 0.8, ease: "easeInOut" }
+    },
+    hover: {
+      color: ['#c8834a', '#ffdfa0', '#c8834a'],
+      textShadow: ['0px 0px 15px rgba(200,131,74,0.4)', '0px 0px 25px rgba(255,223,160,0.8)', '0px 0px 15px rgba(200,131,74,0.4)'],
+      transition: { duration: 0.6, ease: "easeInOut" }
+    }
+  };
+
+  return (
+    <motion.span
+      className="inline-block cursor-pointer"
+      style={{ fontFamily: 'var(--font-playfair)' }}
+      variants={container}
+      initial="hidden"
+      animate="visible"
+      whileHover="hover"
+    >
+      {letters.map((char, i) => (
+        <motion.span key={i} variants={child} className="inline-block">
+          {char === ' ' ? '\u00A0' : char}
+        </motion.span>
+      ))}
+    </motion.span>
+  );
+}
+
 /* ─── Panel Data ──────────────────────────────────── */
 const PANELS = [
   {
@@ -78,9 +125,9 @@ function Preloader({ onComplete }) {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1 }}
-        className="text-4xl font-serif tracking-[0.3em] text-white mb-10"
+        className="text-4xl tracking-[0.3em] mb-10"
       >
-        KAIROX
+        <AnimatedGoldText text="KAIROX" />
       </motion.h1>
       <div className="w-48 h-[1px] bg-[#222] relative overflow-hidden">
         <motion.div
@@ -117,6 +164,20 @@ export default function Home() {
 
   const handlePanelClick = (panel) => {
     setActivePanel(panel);
+  };
+
+  const handlePrev = (e) => {
+    e.stopPropagation();
+    const currentIndex = PANELS.findIndex(p => p.role === activePanel.role);
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : PANELS.length - 1;
+    setActivePanel(PANELS[prevIndex]);
+  };
+
+  const handleNext = (e) => {
+    e.stopPropagation();
+    const currentIndex = PANELS.findIndex(p => p.role === activePanel.role);
+    const nextIndex = currentIndex < PANELS.length - 1 ? currentIndex + 1 : 0;
+    setActivePanel(PANELS[nextIndex]);
   };
 
   const handleClosePanel = () => {
@@ -169,8 +230,8 @@ export default function Home() {
           animate={loadingComplete && !activePanel ? { opacity: 1 } : { opacity: 0 }}
           transition={{ duration: 1 }}
         >
-          <span className="font-serif text-xl tracking-[0.3em] text-white/90">KAIROX</span>
-          <p className="text-[9px] tracking-[0.2em] uppercase mt-1 text-white/40">
+          <span className="text-xl tracking-[0.3em]"><AnimatedGoldText text="KAIROX" /></span>
+          <p className="text-[9px] tracking-[0.2em] uppercase mt-1 text-white/40 font-sans">
             Intelligence
           </p>
         </motion.div>
@@ -200,7 +261,9 @@ export default function Home() {
           transition={{ duration: 1, delay: 0.2 }}
         >
           <p className="text-[#666] font-mono text-[10px] tracking-[0.4em] uppercase mb-4">Select Workspace</p>
-          <h2 className="text-3xl md:text-5xl font-serif text-white/90 tracking-wide">Select your role</h2>
+          <h2 className="text-3xl md:text-5xl tracking-wide">
+            <AnimatedGoldText text="Select your role" />
+          </h2>
         </motion.div>
 
         {/* ─── Aperture Style Landing Layout ─── */}
@@ -277,6 +340,22 @@ export default function Home() {
                       <ArrowUpRight className="w-6 h-6" style={{ color: activePanel.accent }} />
                     </div>
                   </div>
+
+                  {/* Mobile Navigation Arrows */}
+                  <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 md:hidden z-50 pointer-events-none">
+                    <button 
+                      onClick={handlePrev}
+                      className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center pointer-events-auto"
+                    >
+                      <ArrowRight className="w-5 h-5 text-white rotate-180" />
+                    </button>
+                    <button 
+                      onClick={handleNext}
+                      className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center pointer-events-auto"
+                    >
+                      <ArrowRight className="w-5 h-5 text-white" />
+                    </button>
+                  </div>
                 </motion.div>
 
                 {/* Actions below the expanded panel */}
@@ -309,8 +388,8 @@ export default function Home() {
 
                   return (
                     <>
-                      {/* Previous Panels (Left Side) */}
-                      <div className="absolute left-0 top-1/2 -translate-y-1/2 pl-2 md:pl-8 flex gap-2 md:gap-4 z-40">
+                      {/* Previous Panels (Left Side) - Hidden on mobile */}
+                      <div className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 pl-2 md:pl-8 gap-2 md:gap-4 z-40">
                         {prevPanels.map(panel => (
                           <motion.div
                             key={panel.role}
@@ -332,8 +411,8 @@ export default function Home() {
                         ))}
                       </div>
 
-                      {/* Next Panels (Right Side) */}
-                      <div className="absolute right-0 top-1/2 -translate-y-1/2 pr-2 md:pr-8 flex gap-2 md:gap-4 z-40">
+                      {/* Next Panels (Right Side) - Hidden on mobile */}
+                      <div className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 pr-2 md:pr-8 gap-2 md:gap-4 z-40">
                         {nextPanels.map(panel => (
                           <motion.div
                             key={panel.role}

@@ -34,8 +34,8 @@ export default function CustomCursor() {
 
     const animateRing = () => {
       // Ring follows with slight lag (lerp)
-      ringX += (mouseX - ringX) * 0.15;
-      ringY += (mouseY - ringY) * 0.15;
+      ringX += (mouseX - ringX) * 0.4;
+      ringY += (mouseY - ringY) * 0.4;
       
       ring.style.left = `${ringX}px`;
       ring.style.top = `${ringY}px`;
@@ -76,7 +76,7 @@ export default function CustomCursor() {
       />
       <div 
         ref={ringRef}
-        className="cursor-ring pointer-events-none fixed w-10 h-10 -ml-5 -mt-5 rounded-full z-[9998] transition-all duration-300"
+        className="cursor-ring pointer-events-none fixed w-10 h-10 -ml-5 -mt-5 rounded-full z-[9998] transition-[transform,background-color,border-color] duration-300"
         style={{ left: '-20px', top: '-20px', border: '1.5px solid rgba(200,131,74,0.6)' }}
       />
       <style jsx global>{`

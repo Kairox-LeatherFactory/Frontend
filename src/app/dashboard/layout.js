@@ -40,6 +40,8 @@ const NAV_ICONS = {
   '/dashboard/settings': Settings,
   '/dashboard/procurement': ShoppingCart,
   '/dashboard/procurement/intake': UploadCloud,
+  '/dashboard/procurement/inventory': Layers,
+  '/dashboard/procurement/po': ShoppingCart,
 };
 
 export default function DashboardLayout({ children }) {
@@ -81,6 +83,8 @@ export default function DashboardLayout({ children }) {
       // ── Procurement Suite ──
       { name: 'Procurement', href: '/dashboard/procurement', divider: true },
       { name: 'New Intake', href: '/dashboard/procurement/intake' },
+      { name: 'Inventory Check', href: '/dashboard/procurement/inventory' },
+      { name: 'PO Tracker', href: '/dashboard/procurement/po' },
       // ──────────────────────
       { name: 'Admin & Users', href: '/dashboard/admin', divider: true },
       { name: 'Security Settings', href: '/dashboard/settings' },
@@ -103,7 +107,7 @@ export default function DashboardLayout({ children }) {
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: '#faf6f0' }}>
       
       {/* ─── SIDEBAR (Desktop & Mobile) ─── */}
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:inset-auto md:z-auto transition-transform duration-300 ease-in-out flex flex-col shadow-2xl`} style={{ background: 'linear-gradient(180deg, #2a1b10 0%, #140d08 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:inset-auto md:z-auto transition-transform duration-300 ease-in-out flex flex-col shadow-2xl`} style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
         
         {/* Sidebar Brand Logo */}
         <div className="h-20 flex items-center justify-between px-6 border-b" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>

@@ -1,4 +1,4 @@
-import { Lato } from 'next/font/google';
+import { Lato, Playfair_Display } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { DataProvider } from '@/context/DataContext';
@@ -11,6 +11,13 @@ const lato = Lato({
   display: 'swap',
 });
 
+const playfair = Playfair_Display({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700', '800', '900'],
+  variable: '--font-playfair',
+  display: 'swap',
+});
+
 export const metadata = {
   title: 'Kairox Leather Intelligence Platform',
   description: 'Real-time leather factory production tracking, wage management, and traceability system.',
@@ -18,7 +25,7 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={lato.variable} data-scroll-behavior="smooth">
+    <html lang="en" className={`${lato.variable} ${playfair.variable}`} data-scroll-behavior="smooth">
       <body className="font-sans bg-[#faf6f0] text-[#0f172a] antialiased">
         <AuthProvider>
           <DataProvider>

@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
-/* ─── Blue Theme Tokens (Tailwind v4) ─── */
+/* ─── Warm Leather Theme Tokens (Tailwind v4) ─── */
 @theme inline {
-  --color-background:   #f0f4ff;
-  --color-foreground:   #0f172a;
+  --color-background:   #faf6f0;
+  --color-foreground:   #2d1f0e;
   --font-sans: var(--font-lato), 'Lato', sans-serif;
 
-  /* Blue brand palette */
-  --color-brand-50:  #eff6ff;
-  --color-brand-100: #dbeafe;
-  --color-brand-200: #bfdbfe;
-  --color-brand-300: #93c5fd;
-  --color-brand-400: #60a5fa;
-  --color-brand-500: #3b82f6;
-  --color-brand-600: #2563eb;
-  --color-brand-700: #1d4ed8;
-  --color-brand-800: #1e40af;
-  --color-brand-900: #1e3a8a;
-  --color-brand-950: #172554;
+  /* Warm Leather palette */
+  --color-brand-50:  #fff9f0;
+  --color-brand-100: #fdf0e0;
+  --color-brand-200: #fad9b8;
+  --color-brand-300: #f5bb84;
+  --color-brand-400: #e89554;
+  --color-brand-500: #c8834a;
+  --color-brand-600: #a86530;
+  --color-brand-700: #854d22;
+  --color-brand-800: #5a3518;
+  --color-brand-900: #2d1f0e;
+  --color-brand-950: #140d08;
 
   /* Status Colors */
   --color-success:  #16a34a;
@@ -47,14 +47,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #e2e8f0;
+  background: #faf6f0;
 }
 ::-webkit-scrollbar-thumb {
-  background: #93c5fd;
+  background: rgba(200,131,74,0.4);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2563eb;
+  background: #c8834a;
 }
 
 /* ─── Reusable Card Styles ─── */

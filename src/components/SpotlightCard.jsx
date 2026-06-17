@@ -1,7 +1,7 @@
 'use client';
 import { useRef, useState } from 'react';
 
-export default function SpotlightCard({ children, className = '', spotlightColor = 'rgba(200, 131, 74, 0.15)' }) {
+export default function SpotlightCard({ children, className = '', spotlightColor = 'rgba(200, 131, 74, 0.15)', style, ...props }) {
   const divRef = useRef(null);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [opacity, setOpacity] = useState(0);
@@ -19,6 +19,8 @@ export default function SpotlightCard({ children, className = '', spotlightColor
       onMouseEnter={() => setOpacity(1)}
       onMouseLeave={() => setOpacity(0)}
       className={`relative overflow-hidden transition-all duration-300 ${className}`}
+      style={style}
+      {...props}
     >
       <div
         className="pointer-events-none absolute -inset-px transition-opacity duration-300 z-0"
