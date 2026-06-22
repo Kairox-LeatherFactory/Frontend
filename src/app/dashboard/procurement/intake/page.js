@@ -183,7 +183,7 @@ export default function ProcurementIntakePage() {
           {/* Drop Zones */}
           <DropZone
             label="Order Sheet *"
-            accept=".xlsx,.xls,.csv"
+            accept=".xlsx,.xls,.csv,.pdf,.doc,.docx"
             icon={Sheet}
             file={orderFile}
             onFile={setOrderFile}
@@ -192,7 +192,7 @@ export default function ProcurementIntakePage() {
           />
           <DropZone
             label="Tech Spec Sheet (Optional)"
-            accept=".pdf"
+            accept=".xlsx,.xls,.csv,.pdf,.doc,.docx"
             icon={FileArchive}
             file={specFile}
             onFile={setSpecFile}
