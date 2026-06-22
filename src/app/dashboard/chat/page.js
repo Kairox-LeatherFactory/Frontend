@@ -1,6 +1,7 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
 import { Bot, User, Send, Sparkles, AlertCircle } from 'lucide-react';
+import SpotlightCard from '@/components/SpotlightCard';
 
 const MOCK_CHAT_HISTORY = [
   {
@@ -67,36 +68,36 @@ export default function AIChatPage() {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-8rem)] max-h-[800px] animate-fade-in">
+    <div className="flex flex-col h-[calc(100vh-8rem)] max-h-[800px] animate-fade-in max-w-5xl mx-auto">
       
       {/* ─── HEADER ─── */}
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            <Sparkles className="w-6 h-6 text-indigo-600" />
+          <h1 className="text-3xl font-black tracking-tight flex items-center gap-3" style={{ color: '#2d1f0e' }}>
+            <Sparkles className="w-8 h-8" style={{ color: '#c8834a' }} />
             AI Operations Assistant
           </h1>
-          <p className="text-sm text-slate-500 font-medium mt-1">
+          <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>
             Ask questions about orders, delays, and worker performance.
           </p>
         </div>
-        <div className="hidden sm:flex items-center gap-2 bg-indigo-50 px-3 py-1.5 rounded-full border border-indigo-100">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ background: 'rgba(200,131,74,0.1)', border: '1px solid rgba(200,131,74,0.2)' }}>
           <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: '#c8834a' }}></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5" style={{ background: '#c8834a' }}></span>
           </span>
-          <span className="text-xs font-bold text-indigo-800 uppercase tracking-wider">AI Active (Mock)</span>
+          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#c8834a' }}>AI Active (Mock)</span>
         </div>
       </div>
 
       {/* ─── CHAT WINDOW ─── */}
-      <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col relative">
+      <SpotlightCard className="flex-1 bg-white rounded-3xl shadow-xl overflow-hidden flex flex-col relative" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.05)">
         
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 bg-slate-50/50">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6" style={{ background: 'linear-gradient(to bottom, #ffffff, #faf6f0)' }}>
           
           <div className="flex justify-center mb-6">
-            <span className="bg-slate-100 text-slate-400 text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full">
+            <span className="text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-full" style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
               Today
             </span>
           </div>
@@ -108,30 +109,32 @@ export default function AIChatPage() {
               <div key={msg.id} className={`flex gap-3 max-w-[85%] ${isBot ? 'self-start' : 'ml-auto flex-row-reverse'}`}>
                 
                 {/* Avatar */}
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isBot ? 'bg-indigo-600 text-white' : 'bg-blue-100 text-blue-700'}`}>
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-white`}
+                     style={{ background: isBot ? 'linear-gradient(135deg, #c8834a, #e8a06a)' : 'linear-gradient(135deg, #2d1f0e, #5a3e28)' }}>
                   {isBot ? <Bot className="w-4 h-4" /> : <User className="w-4 h-4" />}
                 </div>
 
                 {/* Bubble */}
-                <div className={`flex flex-col gap-1 ${isBot ? 'items-start' : 'items-end'}`}>
+                <div className={`flex flex-col gap-1.5 ${isBot ? 'items-start' : 'items-end'}`}>
                   <div className="flex items-center gap-2 px-1">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>
                       {isBot ? 'Kairox AI' : 'You'}
                     </span>
-                    <span className="text-[10px] font-semibold text-slate-300">{msg.time}</span>
+                    <span className="text-[10px] font-semibold" style={{ color: 'rgba(154,122,90,0.6)' }}>{msg.time}</span>
                   </div>
                   
-                  <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed shadow-sm ${
+                  <div className={`px-5 py-3.5 text-sm leading-relaxed shadow-sm font-medium ${
                     isBot 
-                      ? 'bg-white border border-slate-100 text-slate-700 rounded-tl-sm' 
-                      : 'bg-gradient-to-br from-blue-600 to-blue-700 text-white rounded-tr-sm'
-                  }`}>
+                      ? 'bg-white rounded-2xl rounded-tl-sm' 
+                      : 'text-white rounded-2xl rounded-tr-sm'
+                  }`}
+                  style={isBot ? { border: '1px solid rgba(200,131,74,0.15)', color: '#2d1f0e' } : { background: 'linear-gradient(135deg, #2d1f0e, #5a3e28)' }}>
                     {/* Render newlines properly for mock bot responses */}
                     {msg.content.split('\n').map((line, i) => (
                       <p key={i} className={line === '' ? 'h-2' : ''}>
                         {/* Very simple bold parsing for mock data */}
                         {line.split('**').map((part, index) => 
-                          index % 2 === 1 ? <strong key={index} className={isBot ? 'text-slate-900' : 'text-white'}>{part}</strong> : part
+                          index % 2 === 1 ? <strong key={index} className={isBot ? 'font-black' : 'font-black text-white'} style={isBot ? { color: '#c8834a' } : {}}>{part}</strong> : part
                         )}
                       </p>
                     ))}
@@ -144,13 +147,13 @@ export default function AIChatPage() {
           {/* Typing Indicator */}
           {isTyping && (
             <div className="flex gap-3 max-w-[85%] self-start">
-              <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center flex-shrink-0">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-white" style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
                 <Bot className="w-4 h-4" />
               </div>
-              <div className="px-4 py-4 rounded-2xl bg-white border border-slate-100 rounded-tl-sm flex gap-1 items-center">
-                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+              <div className="px-5 py-4 bg-white rounded-2xl rounded-tl-sm flex gap-1.5 items-center shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.15)' }}>
+                <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: '#c8834a', animationDelay: '0ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: '#c8834a', animationDelay: '150ms' }} />
+                <div className="w-1.5 h-1.5 rounded-full animate-bounce" style={{ background: '#c8834a', animationDelay: '300ms' }} />
               </div>
             </div>
           )}
@@ -159,8 +162,8 @@ export default function AIChatPage() {
         </div>
 
         {/* ─── INPUT AREA ─── */}
-        <div className="p-4 bg-white border-t border-slate-100">
-          <form onSubmit={handleSend} className="relative flex items-end gap-2 max-w-4xl mx-auto">
+        <div className="p-4 bg-white relative z-10" style={{ borderTop: '1px solid rgba(200,131,74,0.15)' }}>
+          <form onSubmit={handleSend} className="relative flex items-end gap-3 max-w-4xl mx-auto">
             <div className="relative flex-1">
               <textarea
                 value={inputValue}
@@ -172,14 +175,22 @@ export default function AIChatPage() {
                   }
                 }}
                 placeholder="Ask about delays, worker efficiency, or air freight risks..."
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-4 pr-12 py-3.5 text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 resize-none"
+                className="w-full rounded-2xl pl-4 pr-12 py-3.5 text-sm font-semibold outline-none transition-all focus:ring-2 focus:ring-[#c8834a]/30 resize-none"
                 rows="1"
-                style={{ minHeight: '52px', maxHeight: '120px' }}
+                style={{ 
+                  minHeight: '52px', maxHeight: '120px', 
+                  background: '#faf6f0', 
+                  border: '1.5px solid rgba(200,131,74,0.2)', 
+                  color: '#2d1f0e' 
+                }}
               />
               <button 
                 type="button" 
-                className="absolute right-3 bottom-3 text-slate-400 hover:text-indigo-600 transition-colors"
+                className="absolute right-3 bottom-3 transition-colors"
                 title="AI context options"
+                style={{ color: '#9a7a5a' }}
+                onMouseEnter={e => e.currentTarget.style.color = '#c8834a'}
+                onMouseLeave={e => e.currentTarget.style.color = '#9a7a5a'}
               >
                 <AlertCircle className="w-5 h-5" />
               </button>
@@ -188,19 +199,20 @@ export default function AIChatPage() {
             <button
               type="submit"
               disabled={!inputValue.trim() || isTyping}
-              className="h-[52px] px-5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:hover:bg-indigo-600 text-white rounded-xl flex items-center justify-center transition-all active:scale-95 shadow-sm shadow-indigo-600/20"
+              className="h-[52px] px-5 text-white rounded-2xl flex items-center justify-center transition-all hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-40 disabled:hover:translate-y-0"
+              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
             >
               <Send className="w-4 h-4" />
             </button>
           </form>
           <div className="text-center mt-3">
-            <p className="text-[10px] text-slate-400 font-medium">
-              AI responses are generated based on real-time shop floor data. Check <span className="underline cursor-pointer hover:text-slate-600">Traceability Logs</span> for exact events.
+            <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: '#9a7a5a' }}>
+              AI responses are based on real-time data. Check <span className="underline cursor-pointer transition-colors" style={{ color: '#c8834a' }}>Traceability Logs</span> for exact events.
             </p>
           </div>
         </div>
 
-      </div>
+      </SpotlightCard>
     </div>
   );
 }

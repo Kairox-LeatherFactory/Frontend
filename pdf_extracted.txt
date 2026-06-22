@@ -1,0 +1,144 @@
+API Endpoint Test Report
+Factory Management System — REST API
+Test Date: June 03, 2026
+Base URL: http://localhost:8000
+Total Endpoints Tested: 13
+All Endpoints Status: PASSED ✓
+#
+Method
+Endpoint
+Status
+1
+GET
+/api/v1/analytics/overview
+200 OK
+2
+GET
+/api/v1/analytics/alerts/stage-spread
+200 OK
+3
+GET
+/api/v1/analytics/alerts/freight-risk
+200 OK
+4
+POST
+/api/v1/imports/preview
+200 OK
+5
+GET
+/api/v1/production/operations
+200 OK
+6
+POST
+/api/v1/production/events
+200 OK
+7
+GET
+/api/v1/production/events
+200 OK
+8
+GET
+/api/v1/production/styles/{id}/progress
+200 OK
+9
+POST
+/api/v1/wages/rates
+200 OK
+10
+POST
+/api/v1/wages/runs
+200 OK
+11
+GET
+/api/v1/wages/runs/{id}
+200 OK
+12
+GET
+/api/v1/employees
+200 OK
+13
+POST
+/api/v1/employees
+201 Created
+Endpoint 1 of 13
+GET
+http://localhost:8000/api/v1/analytics/overview
+200 OK
+Analytics Overview — Returns summary stats: total clients, styles, pieces ordered, and operations logged.
+Endpoint 2 of 13
+GET
+http://localhost:8000/api/v1/analytics/alerts/stage-spread
+200 OK
+Analytics Alerts: Stage Spread — Lists styles with large gaps between ordered cut and reached stage
+quantities.
+Endpoint 3 of 13
+GET
+http://localhost:8000/api/v1/analytics/alerts/freight-risk
+200 OK
+Analytics Alerts: Freight Risk — Returns POs at critical risk due to approaching sea cutoff dates with low
+completion.
+Endpoint 4 of 13
+POS
+ T
+http://localhost:8000/api/v1/imports/preview
+200 OK
+Imports Preview — Previews an import commit, showing clients, order lines, pieces ordered, styles,
+production cards and warnings.
+Endpoint 5 of 13
+GET
+http://localhost:8000/api/v1/production/operations
+200 OK
+Production Operations — Retrieves all production operations (Cutting, Fusing, Pasting, Shell stitch, etc.)
+with their sequence.
+Endpoint 6 of 13
+POS
+ T
+http://localhost:8000/api/v1/production/events
+200 OK
+Log Production Event — Creates a new production event entry with SKU, operation, employee, quantity
+and bundle reference.
+Endpoint 7 of 13
+GET
+http://localhost:8000/api/v1/production/events
+200 OK
+Get Production Events — Lists all logged production events with employee, operation, quantity,
+entered_by and bundle reference.
+Endpoint 8 of 13
+GET
+http://localhost:8000/api/v1/production/styles/{id}/progress
+200 OK
+Style Production Progress — Returns per-stage piece counts for a given style (Cutting, FF, Fusing, L/A,
+Lining Stich, Pasting, Shell).
+Endpoint 9 of 13
+POS
+ T
+http://localhost:8000/api/v1/wages/rates
+200 OK
+Set Wage Rate — Creates a wage rate for a style+operation combination with an effective date.
+Endpoint 10 of 13
+POS
+ T
+http://localhost:8000/api/v1/wages/runs
+200 OK
+Create Wage Run — Generates a payroll run for a given period, returning lines per employee with wage
+type, pieces and amounts.
+Endpoint 11 of 13
+GET
+http://localhost:8000/api/v1/wages/runs/{id}
+200 OK
+Get Wage Run — Retrieves an existing wage run by ID, showing all employee lines with pieces and
+calculated amounts.
+Endpoint 12 of 13
+GET
+http://localhost:8000/api/v1/employees
+200 OK
+List Employees — Returns all employees with id, name, designation, wage_type, monthly_salary, active
+status, phone and email.
+Endpoint 13 of 13
+POS
+ T
+http://localhost:8000/api/v1/employees
+201
+Created
+Create Employee — Adds a new employee record with employee_code, name and wage_type. Returns
+the created employee object.
