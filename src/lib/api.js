@@ -327,3 +327,84 @@ export async function apiChangePassword(token, current_password, new_password) {
   const text = await res.text();
   return text ? JSON.parse(text) : true;
 }
+
+// ─── PROCUREMENT SUITE ───
+
+export async function apiOpenSubmission(token, client_id = null) {
+  const body = client_id ? JSON.stringify({ client_id }) : undefined;
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/submissions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body
+  });
+  if (!res.ok) throw new Error('Failed to open submission');
+  return res.json();
+}
+
+export async function apiUploadSlot(token, submissionId, kind, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const endpoint = kind === 'order_sheet' ? 'order-sheet' : 'spec-sheet';
+  
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/submissions/${submissionId}/${endpoint}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData
+  });
+  
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Upload failed');
+    try {
+      // Return the rich JSON envelope for validation errors (e.g. 422)
+      return JSON.parse(errText);
+    } catch {
+      throw new Error(errText || `Upload failed (${res.status})`);
+    }
+  }
+  return res.json();
+}
+
+export async function apiGetSubmission(token, submissionId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/submissions/${submissionId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch submission status');
+  return res.json();
+}
+
+export async function apiGetBom(token, bomId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/boms/${bomId}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch BOM');
+  return res.json();
+}
+
+export async function apiPatchBomItems(token, bomId, baseRevision, edits) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/boms/${bomId}/items`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`
+    },
+    body: JSON.stringify({ base_revision: baseRevision, edits })
+  });
+  if (!res.ok) {
+    const errText = await res.text();
+    if (res.status === 409) throw new Error('stale_revision');
+    throw new Error(errText || 'Failed to update BOM items');
+  }
+  return res.json();
+}
+
+export async function apiExportBom(token, bomId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/boms/${bomId}/export`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to export BOM');
+  return res.json();
+}

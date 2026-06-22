@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   UploadCloud, FileText, CheckCircle2, X, Loader2,
@@ -7,34 +7,24 @@ import {
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
+import { apiOpenSubmission, apiUploadSlot, apiGetSubmission } from '@/lib/api';
 
-// ─── MOCK API — Replace with POST /api/v1/procurement/submissions ─────────────
-async function mockSubmitIntake(orderFile, specFile, onProgress) {
-  // Simulate upload delay with progress callbacks
-  for (let p = 10; p <= 100; p += 15) {
-    await new Promise(r => setTimeout(r, 300));
-    onProgress(p);
-  }
-  // Return a mock submission object
-  return {
-    id: `SUB-${String(Math.floor(Math.random() * 900) + 100)}`,
-    status: 'processing',
-    message: 'Files uploaded. Backend is parsing your order sheet and spec PDF. BOM will be ready shortly.',
-  };
-}
-
-function DropZone({ label, accept, icon: Icon, file, onFile, onClear, description }) {
+function DropZone({ label, accept, icon: Icon, file, onFile, onClear, description, disabled }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
 
   const handleDrop = useCallback((e) => {
     e.preventDefault();
+    if (disabled) return;
     setDragging(false);
     const dropped = e.dataTransfer.files[0];
     if (dropped) onFile(dropped);
-  }, [onFile]);
+  }, [onFile, disabled]);
 
-  const handleDragOver = (e) => { e.preventDefault(); setDragging(true); };
+  const handleDragOver = (e) => { 
+    e.preventDefault(); 
+    if (!disabled) setDragging(true); 
+  };
   const handleDragLeave = () => setDragging(false);
 
   return (
@@ -55,11 +45,11 @@ function DropZone({ label, accept, icon: Icon, file, onFile, onClear, descriptio
         </div>
       ) : (
         <div
-          onClick={() => inputRef.current?.click()}
+          onClick={() => !disabled && inputRef.current?.click()}
           onDrop={handleDrop}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
-          className="cursor-pointer flex flex-col items-center justify-center gap-3 p-8 rounded-2xl transition-all"
+          className={`flex flex-col items-center justify-center gap-3 p-8 rounded-2xl transition-all ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
           style={{
             background: dragging ? '#fff9f0' : '#faf6f0',
             border: `2px dashed ${dragging ? '#c8834a' : 'rgba(200,131,74,0.3)'}`,
@@ -75,7 +65,31 @@ function DropZone({ label, accept, icon: Icon, file, onFile, onClear, descriptio
             </p>
           </div>
           <input ref={inputRef} type="file" accept={accept} className="hidden"
-            onChange={e => e.target.files[0] && onFile(e.target.files[0])} />
+            onChange={e => e.target.files[0] && onFile(e.target.files[0])} disabled={disabled} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Component to neatly display JSON validation responses
+function ValidationResponse({ title, data }) {
+  if (!data) return null;
+  const isAccepted = data.validation?.status === 'accepted' || data.scan_status === 'clean';
+  const isRejected = data.validation?.status === 'rejected' || data.error;
+
+  return (
+    <div className="p-4 rounded-xl mt-4" style={{ background: '#faf6f0', border: `1px solid ${isRejected ? 'rgba(220,38,38,0.3)' : isAccepted ? 'rgba(22,163,74,0.3)' : 'rgba(200,131,74,0.2)'}` }}>
+      <div className="flex items-center gap-2 mb-2">
+        {isRejected ? <X className="w-4 h-4 text-red-600" /> : <CheckCircle2 className="w-4 h-4 text-green-600" />}
+        <span className="text-xs font-bold" style={{ color: '#2d1f0e' }}>{title} Status: {data.validation?.status || data.error || 'Processed'}</span>
+      </div>
+      <pre className="text-[10px] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap" style={{ background: '#2d1f0e', color: '#fff9f0' }}>
+        {JSON.stringify(data, null, 2)}
+      </pre>
+      {data.validation?.suggested_fix && (
+        <div className="mt-2 p-2 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200">
+          <strong>Suggested Fix:</strong> {data.validation.suggested_fix}
         </div>
       )}
     </div>
@@ -84,33 +98,87 @@ function DropZone({ label, accept, icon: Icon, file, onFile, onClear, descriptio
 
 export default function ProcurementIntakePage() {
   const router = useRouter();
-  const { user } = useAuth();
-
-  // Role gate — only manager and cutting manager can submit intake
+  const { user, token } = useAuth();
   const isAllowed = user === 'direct_manager' || user === 'cutting_manager';
+
+  const [submissionId, setSubmissionId] = useState(null);
+  const [initLoading, setInitLoading] = useState(true);
+  const [initError, setInitError] = useState(null);
 
   const [orderFile, setOrderFile] = useState(null);
   const [specFile, setSpecFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [uploadingOrder, setUploadingOrder] = useState(false);
+  const [uploadingSpec, setUploadingSpec] = useState(false);
 
-  const handleSubmit = async () => {
-    if (!orderFile) { setError('Order Sheet is required before submission.'); return; }
-    setError(null);
-    setUploading(true);
-    setProgress(0);
-    try {
-      // TODO: Replace mockSubmitIntake with real API call:
-      // const res = await fetch('/api/v1/procurement/submissions', { method:'POST', body: formData })
-      const res = await mockSubmitIntake(orderFile, specFile, setProgress);
-      setResult(res);
-    } catch (e) {
-      setError(e.message || 'Upload failed. Please try again.');
-    } finally {
-      setUploading(false);
+  const [orderValidation, setOrderValidation] = useState(null);
+  const [specValidation, setSpecValidation] = useState(null);
+  const [readyForStage2, setReadyForStage2] = useState(false);
+
+  // 1. On Mount: Create a submission ID automatically
+  useEffect(() => {
+    if (!isAllowed) return;
+    async function initSubmission() {
+      try {
+        setInitLoading(true);
+        if (!token) throw new Error('No authentication token found. Please log in again.');
+        const res = await apiOpenSubmission(token); 
+        setSubmissionId(res.submission_id);
+      } catch (err) {
+        setInitError(err.message);
+      } finally {
+        setInitLoading(false);
+      }
     }
+    initSubmission();
+  }, [isAllowed]);
+
+  // 2. Poll submission status to check if it's ready for Stage 2
+  const checkStatus = useCallback(async () => {
+    if (!submissionId) return;
+    try {
+      const statusRes = await apiGetSubmission(token, submissionId);
+      if (statusRes.ready_for_stage_2) {
+        setReadyForStage2(true);
+      }
+    } catch (err) {
+      console.error('Failed to get submission status', err);
+    }
+  }, [submissionId]);
+
+  // 3. Upload handlers
+  const handleOrderUpload = async (file) => {
+    setOrderFile(file);
+    setUploadingOrder(true);
+    setOrderValidation(null);
+    try {
+      const res = await apiUploadSlot(token, submissionId, 'order_sheet', file);
+      setOrderValidation(res);
+      await checkStatus();
+    } catch (err) {
+      setOrderValidation({ error: err.message });
+    } finally {
+      setUploadingOrder(false);
+    }
+  };
+
+  const handleSpecUpload = async (file) => {
+    setSpecFile(file);
+    setUploadingSpec(true);
+    setSpecValidation(null);
+    try {
+      const res = await apiUploadSlot(token, submissionId, 'spec_sheet', file);
+      setSpecValidation(res);
+      await checkStatus();
+    } catch (err) {
+      setSpecValidation({ error: err.message });
+    } finally {
+      setUploadingSpec(false);
+    }
+  };
+
+  const handleGenerateBom = () => {
+    // Navigate to Stage 2 BOM view
+    router.push(`/dashboard/procurement/bom/${submissionId}`);
   };
 
   if (!isAllowed) {
@@ -126,8 +194,7 @@ export default function ProcurementIntakePage() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in max-w-3xl mx-auto">
-
+    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto pb-12">
       {/* ─── HEADER ─── */}
       <div>
         <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>
@@ -137,49 +204,63 @@ export default function ProcurementIntakePage() {
           Intake & Upload
         </h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>
-          Upload the client's Order Sheet and Technical Spec. The backend will parse them and generate the Bill of Materials automatically.
+          Uploading to Submission ID: {initLoading ? <span className="animate-pulse">Generating...</span> : <strong className="font-mono">{submissionId || 'Failed'}</strong>}
         </p>
       </div>
 
-      {/* ─── SUCCESS RESULT ─── */}
-      {result && (
-        <SpotlightCard className="p-6 rounded-3xl" style={{ background: '#f0fdf4', border: '1px solid rgba(22,163,74,0.25)' }} spotlightColor="rgba(22,163,74,0.06)">
-          <div className="flex items-start gap-4">
-            <CheckCircle2 className="w-8 h-8 flex-shrink-0 mt-0.5" style={{ color: '#16a34a' }} />
-            <div className="flex-1">
-              <h3 className="font-black text-lg" style={{ color: '#14532d' }}>Submission Accepted!</h3>
-              <p className="text-sm font-semibold mt-1" style={{ color: '#166534' }}>{result.message}</p>
-              <p className="text-xs font-black mt-2 font-mono" style={{ color: '#9a7a5a' }}>Reference: {result.id}</p>
-            </div>
-          </div>
-          <div className="flex gap-3 mt-5">
-            <button onClick={() => { setOrderFile(null); setSpecFile(null); setResult(null); setProgress(0); }}
-              className="flex-1 h-10 rounded-xl text-xs font-black transition-all"
-              style={{ background: '#faf6f0', color: '#9a7a5a', border: '1px solid rgba(200,131,74,0.2)' }}>
-              New Submission
-            </button>
-            <button onClick={() => router.push('/dashboard/procurement')}
-              className="flex-1 h-10 rounded-xl text-xs font-black text-white transition-all flex items-center justify-center gap-2 hover:shadow-lg hover:-translate-y-0.5"
-              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
-              View All Submissions <ArrowRight className="w-4 h-4" />
-            </button>
-          </div>
-        </SpotlightCard>
+      {initError && (
+        <div className="p-4 bg-red-50 text-red-800 rounded-xl border border-red-200 font-semibold text-sm">
+          Failed to initialize submission: {initError}. Please ensure backend is running.
+        </div>
       )}
 
       {/* ─── UPLOAD FORM ─── */}
-      {!result && (
-        <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl rounded-3xl space-y-6" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl rounded-3xl space-y-6" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        
+        {/* Info banner */}
+        <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#c8834a' }} />
+          <div className="text-[11px] font-semibold space-y-1" style={{ color: '#9a7a5a' }}>
+            <p><strong style={{ color: '#2d1f0e' }}>Order Sheet (.xlsx)</strong> — required. Must contain columns: Style, Colorway, Size Run, Quantity.</p>
+            <p><strong style={{ color: '#2d1f0e' }}>Tech Spec Sheet (.pdf)</strong> — recommended. Material breakdown, stitching specs.</p>
+          </div>
+        </div>
 
-          {/* Info banner */}
-          <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
-            <Info className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#c8834a' }} />
-            <div className="text-[11px] font-semibold space-y-1" style={{ color: '#9a7a5a' }}>
-              <p><strong style={{ color: '#2d1f0e' }}>Order Sheet (.xlsx)</strong> — required. Must contain columns: Style, Colorway, Size Run, Quantity, Unit Price, Delivery Date.</p>
-              <p><strong style={{ color: '#2d1f0e' }}>Tech Spec Sheet (.pdf)</strong> — recommended. Material breakdown, stitching specs, and hardware details help the BOM parser.</p>
-            </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Order Sheet Zone */}
+          <div>
+            <DropZone
+              label="Order Sheet *"
+              accept=".xlsx,.xls,.csv"
+              icon={Sheet}
+              file={orderFile}
+              onFile={handleOrderUpload}
+              onClear={() => { setOrderFile(null); setOrderValidation(null); }}
+              description="Excel order form from the buyer"
+              disabled={initLoading || !submissionId || uploadingOrder}
+            />
+            {uploadingOrder && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/> Validating Order Sheet...</div>}
+            <ValidationResponse title="Order Sheet" data={orderValidation} />
           </div>
 
+<<<<<<< HEAD
+          {/* Spec Sheet Zone */}
+          <div>
+            <DropZone
+              label="Tech Spec Sheet (Optional)"
+              accept=".pdf"
+              icon={FileArchive}
+              file={specFile}
+              onFile={handleSpecUpload}
+              onClear={() => { setSpecFile(null); setSpecValidation(null); }}
+              description="PDF spec sheet with material details"
+              disabled={initLoading || !submissionId || uploadingSpec}
+            />
+            {uploadingSpec && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/> Validating Spec Sheet...</div>}
+            <ValidationResponse title="Spec Sheet" data={specValidation} />
+          </div>
+        </div>
+=======
           {/* Drop Zones */}
           <DropZone
             label="Order Sheet *"
@@ -199,73 +280,26 @@ export default function ProcurementIntakePage() {
             onClear={() => setSpecFile(null)}
             description="PDF spec sheet with material & hardware details"
           />
+>>>>>>> 7f1e27158b431044ddbea0ee6ab1d5d119387540
 
-          {/* Error */}
-          {error && (
-            <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: '#fef2f2', border: '1px solid rgba(220,38,38,0.2)' }}>
-              <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: '#dc2626' }} />
-              <p className="text-xs font-semibold" style={{ color: '#991b1b' }}>{error}</p>
-            </div>
-          )}
+      </SpotlightCard>
 
-          {/* Upload progress */}
-          {uploading && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold" style={{ color: '#9a7a5a' }}>Uploading & parsing files…</span>
-                <span className="text-xs font-black" style={{ color: '#c8834a' }}>{progress}%</span>
-              </div>
-              <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(200,131,74,0.15)' }}>
-                <div
-                  className="h-full rounded-full transition-all duration-300"
-                  style={{ width: `${progress}%`, background: 'linear-gradient(to right, #c8834a, #e8a06a)' }}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Submit */}
+      {/* ─── GENERATE BOM ─── */}
+      {readyForStage2 && (
+        <SpotlightCard className="p-8 text-center rounded-3xl animate-fade-in shadow-xl" style={{ background: '#f0fdf4', border: '1px solid rgba(22,163,74,0.3)' }} spotlightColor="rgba(22,163,74,0.1)">
+          <CheckCircle2 className="w-12 h-12 mx-auto mb-4" style={{ color: '#16a34a' }} />
+          <h2 className="text-2xl font-black mb-2" style={{ color: '#14532d' }}>Intake Complete!</h2>
+          <p className="text-sm font-semibold mb-6" style={{ color: '#166534' }}>Files parsed successfully. The system is ready to generate the Bill of Materials.</p>
           <button
-            onClick={handleSubmit}
-            disabled={uploading || !orderFile}
-            className="w-full h-12 rounded-2xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:translate-y-0"
-            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+            onClick={handleGenerateBom}
+            className="px-8 py-3 rounded-xl font-black text-white transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+            style={{ background: 'linear-gradient(135deg, #16a34a, #22c55e)' }}
           >
-            {uploading
-              ? <><Loader2 className="w-5 h-5 animate-spin" /> Processing…</>
-              : <><UploadCloud className="w-5 h-5" /> Submit Intake</>}
+            Generate BOM
           </button>
-
-          <p className="text-[10px] font-semibold text-center" style={{ color: '#9a7a5a' }}>
-            Files are processed securely on the factory server. No data leaves the Kairox environment.
-          </p>
         </SpotlightCard>
       )}
 
-      {/* ─── WHAT HAPPENS NEXT ─── */}
-      {!result && (
-        <SpotlightCard className="p-6 bg-white rounded-3xl shadow-md" style={{ border: '1px solid rgba(200,131,74,0.1)' }} spotlightColor="rgba(200,131,74,0.04)">
-          <h4 className="text-sm font-black uppercase tracking-wider mb-4 flex items-center gap-2" style={{ color: '#9a7a5a' }}>
-            <ArrowRight className="w-4 h-4" style={{ color: '#c8834a' }} /> What happens next?
-          </h4>
-          <div className="space-y-3">
-            {[
-              { step: '1', label: 'Intake', desc: 'Files are uploaded and parsed by the backend parser engine.' },
-              { step: '2', label: 'BOM Generation', desc: 'A Bill of Materials is auto-generated from your order sheet.' },
-              { step: '3', label: 'Cutting Manager Review', desc: 'The Cutting Manager edits and confirms the BOM line items.' },
-              { step: '4', label: 'Manager Approval', desc: 'Direct Manager approves or rejects the finalised BOM.' },
-            ].map(({ step, label, desc }) => (
-              <div key={step} className="flex items-start gap-3">
-                <span className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white" style={{ background: '#c8834a' }}>{step}</span>
-                <div>
-                  <p className="text-xs font-black" style={{ color: '#2d1f0e' }}>{label}</p>
-                  <p className="text-[11px] font-semibold" style={{ color: '#9a7a5a' }}>{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </SpotlightCard>
-      )}
     </div>
   );
 }
