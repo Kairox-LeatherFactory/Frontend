@@ -243,6 +243,7 @@ export default function ProcurementIntakePage() {
             <ValidationResponse title="Order Sheet" data={orderValidation} />
           </div>
 
+<<<<<<< HEAD
           {/* Spec Sheet Zone */}
           <div>
             <DropZone
@@ -259,6 +260,27 @@ export default function ProcurementIntakePage() {
             <ValidationResponse title="Spec Sheet" data={specValidation} />
           </div>
         </div>
+=======
+          {/* Drop Zones */}
+          <DropZone
+            label="Order Sheet *"
+            accept=".xlsx,.xls,.csv,.pdf,.doc,.docx"
+            icon={Sheet}
+            file={orderFile}
+            onFile={setOrderFile}
+            onClear={() => setOrderFile(null)}
+            description="Excel order form from the buyer"
+          />
+          <DropZone
+            label="Tech Spec Sheet (Optional)"
+            accept=".xlsx,.xls,.csv,.pdf,.doc,.docx"
+            icon={FileArchive}
+            file={specFile}
+            onFile={setSpecFile}
+            onClear={() => setSpecFile(null)}
+            description="PDF spec sheet with material & hardware details"
+          />
+>>>>>>> 7f1e27158b431044ddbea0ee6ab1d5d119387540
 
       </SpotlightCard>
 
