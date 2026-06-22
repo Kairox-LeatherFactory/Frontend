@@ -61,10 +61,10 @@ function DropZone({ label, accept, icon: Icon, file, onFile, onClear, descriptio
             <p className="text-sm font-black" style={{ color: '#2d1f0e' }}>Drop your {label} here</p>
             <p className="text-[11px] font-semibold mt-0.5" style={{ color: '#9a7a5a' }}>{description}</p>
             <p className="text-[10px] font-semibold mt-1" style={{ color: '#c8834a' }}>
-              {accept.toUpperCase().replace('.', '')} supported · Click to browse
+              CSV, PDF, XLSX supported · Click to browse
             </p>
           </div>
-          <input ref={inputRef} type="file" accept={accept} className="hidden"
+          <input ref={inputRef} type="file" accept={accept || "*/*"} className="hidden"
             onChange={e => e.target.files[0] && onFile(e.target.files[0])} disabled={disabled} />
         </div>
       )}
@@ -231,7 +231,7 @@ export default function ProcurementIntakePage() {
           <div>
             <DropZone
               label="Order Sheet *"
-              accept=".xlsx,.xls,.csv"
+              accept=".csv,.pdf,.xlsx"
               icon={Sheet}
               file={orderFile}
               onFile={handleOrderUpload}
@@ -243,12 +243,11 @@ export default function ProcurementIntakePage() {
             <ValidationResponse title="Order Sheet" data={orderValidation} />
           </div>
 
-<<<<<<< HEAD
           {/* Spec Sheet Zone */}
           <div>
             <DropZone
               label="Tech Spec Sheet (Optional)"
-              accept=".pdf"
+              accept=".csv,.pdf,.xlsx"
               icon={FileArchive}
               file={specFile}
               onFile={handleSpecUpload}
@@ -260,28 +259,6 @@ export default function ProcurementIntakePage() {
             <ValidationResponse title="Spec Sheet" data={specValidation} />
           </div>
         </div>
-=======
-          {/* Drop Zones */}
-          <DropZone
-            label="Order Sheet *"
-            accept=".xlsx,.xls,.csv,.pdf,.doc,.docx"
-            icon={Sheet}
-            file={orderFile}
-            onFile={setOrderFile}
-            onClear={() => setOrderFile(null)}
-            description="Excel order form from the buyer"
-          />
-          <DropZone
-            label="Tech Spec Sheet (Optional)"
-            accept=".xlsx,.xls,.csv,.pdf,.doc,.docx"
-            icon={FileArchive}
-            file={specFile}
-            onFile={setSpecFile}
-            onClear={() => setSpecFile(null)}
-            description="PDF spec sheet with material & hardware details"
-          />
->>>>>>> 7f1e27158b431044ddbea0ee6ab1d5d119387540
-
       </SpotlightCard>
 
       {/* ─── GENERATE BOM ─── */}
