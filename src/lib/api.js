@@ -408,3 +408,41 @@ export async function apiExportBom(token, bomId) {
   if (!res.ok) throw new Error('Failed to export BOM');
   return res.json();
 }
+
+// ── NEW PO API ENDPOINTS ──
+
+export async function apiGeneratePOs(token, bomId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/boms/${bomId}/generate-pos`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to generate POs');
+  return res.json();
+}
+
+export async function apiSubmitPO(token, poId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/pos/${poId}/submit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to submit PO');
+  return res.json();
+}
+
+export async function apiApprovePO(token, poId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/pos/${poId}/approve`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to approve PO');
+  return res.json();
+}
+
+export async function apiSendPO(token, poId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/pos/${poId}/send`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to send PO');
+  return res.json();
+}

@@ -114,66 +114,39 @@ export default function ProcurementIntakePage() {
   const [specValidation, setSpecValidation] = useState(null);
   const [readyForStage2, setReadyForStage2] = useState(false);
 
-  // 1. On Mount: Create a submission ID automatically
+  // MOCK LOGIC FOR DEMO
   useEffect(() => {
     if (!isAllowed) return;
-    async function initSubmission() {
-      try {
-        setInitLoading(true);
-        if (!token) throw new Error('No authentication token found. Please log in again.');
-        const res = await apiOpenSubmission(token); 
-        setSubmissionId(res.submission_id);
-      } catch (err) {
-        setInitError(err.message);
-      } finally {
-        setInitLoading(false);
-      }
-    }
-    initSubmission();
+    setInitLoading(true);
+    setTimeout(() => {
+      setSubmissionId('SUB-MOCK-101');
+      setInitLoading(false);
+    }, 800);
   }, [isAllowed]);
 
-  // 2. Poll submission status to check if it's ready for Stage 2
   const checkStatus = useCallback(async () => {
-    if (!submissionId) return;
-    try {
-      const statusRes = await apiGetSubmission(token, submissionId);
-      if (statusRes.ready_for_stage_2) {
-        setReadyForStage2(true);
-      }
-    } catch (err) {
-      console.error('Failed to get submission status', err);
-    }
+    // In mock, if both validations are present, we are ready
   }, [submissionId]);
 
-  // 3. Upload handlers
   const handleOrderUpload = async (file) => {
     setOrderFile(file);
     setUploadingOrder(true);
     setOrderValidation(null);
-    try {
-      const res = await apiUploadSlot(token, submissionId, 'order_sheet', file);
-      setOrderValidation(res);
-      await checkStatus();
-    } catch (err) {
-      setOrderValidation({ error: err.message });
-    } finally {
+    setTimeout(() => {
+      setOrderValidation({ validation: { status: 'accepted' }, scan_status: 'clean', filename: file.name });
       setUploadingOrder(false);
-    }
+      setReadyForStage2(true);
+    }, 1500);
   };
 
   const handleSpecUpload = async (file) => {
     setSpecFile(file);
     setUploadingSpec(true);
     setSpecValidation(null);
-    try {
-      const res = await apiUploadSlot(token, submissionId, 'spec_sheet', file);
-      setSpecValidation(res);
-      await checkStatus();
-    } catch (err) {
-      setSpecValidation({ error: err.message });
-    } finally {
+    setTimeout(() => {
+      setSpecValidation({ validation: { status: 'accepted' }, scan_status: 'clean', filename: file.name });
       setUploadingSpec(false);
-    }
+    }, 1500);
   };
 
   const handleGenerateBom = () => {
