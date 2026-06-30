@@ -99,6 +99,7 @@ const PANELS = [
 /* ─── Preloader ───────────────────────────────────── */
 function Preloader({ onComplete }) {
   const [progress, setProgress] = useState(0);
+  const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
     let current = 0;
@@ -107,7 +108,8 @@ function Preloader({ onComplete }) {
       if (current >= 100) {
         current = 100;
         clearInterval(interval);
-        setTimeout(onComplete, 600);
+        setIsComplete(true);
+        setTimeout(onComplete, 800);
       }
       setProgress(current);
     }, 80);
@@ -126,8 +128,20 @@ function Preloader({ onComplete }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1 }}
         className="text-4xl tracking-[0.3em] mb-10"
+        style={{ fontFamily: 'var(--font-playfair)' }}
       >
-        <AnimatedGoldText text="KAIROX" />
+        <motion.span
+          animate={isComplete ? {
+            color: '#c8834a',
+            textShadow: '0px 0px 20px rgba(200,131,74,0.6)',
+          } : {
+            color: 'rgba(255,255,255,0.5)',
+            textShadow: '0px 0px 0px rgba(200,131,74,0)',
+          }}
+          transition={{ duration: 0.8, ease: 'easeInOut' }}
+        >
+          KAIROX
+        </motion.span>
       </motion.h1>
       <div className="w-48 h-[1px] bg-[#222] relative overflow-hidden">
         <motion.div
@@ -201,6 +215,11 @@ export default function Home() {
       // Call actual backend authentication API
       const data = await apiLogin(username, password);
 
+      // Enforce Role Matching (User must click the right card for their credentials)
+      if (data.role && activePanel && data.role !== activePanel.role) {
+        throw new Error('Access Denied: The credentials provided do not match the selected role. Please check your credentials.');
+      }
+
       // On success, trigger the exit animation
       setIsSuccess(true);
 
@@ -236,33 +255,41 @@ export default function Home() {
           </p>
         </motion.div>
 
-        {/* Dashboard Link top-right */}
-        {user && (
-          <motion.div
-            className="absolute top-6 right-6 md:top-10 md:right-12 z-40"
-            initial={{ opacity: 0 }}
-            animate={loadingComplete && !activePanel ? { opacity: 1 } : { opacity: 0 }}
-            transition={{ duration: 1 }}
-          >
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-[10px] uppercase tracking-[0.2em] text-white/50 hover:text-white transition-colors flex items-center gap-2"
-            >
-              Go to Dashboard <ArrowUpRight className="w-3 h-3" />
-            </button>
-          </motion.div>
-        )}
+
 
         {/* Center Text */}
         <motion.div
-          className="absolute top-28 md:top-32 left-0 w-full text-center z-30 pointer-events-none px-4"
+          className="absolute top-28 md:top-32 left-0 w-full text-center z-30 px-4"
           initial={{ opacity: 0, y: 20 }}
           animate={loadingComplete && !activePanel ? { opacity: 1, y: 0 } : { opacity: 0, y: -20 }}
           transition={{ duration: 1, delay: 0.2 }}
         >
           <p className="text-[#666] font-mono text-[10px] tracking-[0.4em] uppercase mb-4">Select Workspace</p>
-          <h2 className="text-3xl md:text-5xl tracking-wide">
-            <AnimatedGoldText text="Select your role" />
+          <h2 className="text-3xl md:text-5xl tracking-wide" style={{ fontFamily: 'var(--font-playfair)' }}>
+            <motion.span
+              className="inline-block cursor-default"
+              initial="rest"
+              whileHover="hover"
+              animate="rest"
+            >
+              {'Select your role'.split('').map((char, i) => (
+                <motion.span
+                  key={i}
+                  className="inline-block"
+                  variants={{
+                    rest: { color: '#ffffff', y: 0, textShadow: 'none' },
+                    hover: {
+                      color: ['#ffffff', '#c8834a', '#ffffff'],
+                      y: [0, -6, 0],
+                      textShadow: ['none', '0px 0px 20px rgba(200,131,74,0.7)', 'none'],
+                      transition: { duration: 0.5, delay: i * 0.04, ease: 'easeInOut' }
+                    }
+                  }}
+                >
+                  {char === ' ' ? '\u00A0' : char}
+                </motion.span>
+              ))}
+            </motion.span>
           </h2>
         </motion.div>
 

@@ -169,21 +169,37 @@ export default function BOMReviewPage() {
     }
   };
 
-  const handleApproveAndSendPO = async () => {
+  const handleApprovePO = async () => {
     setExporting(true);
-    showToast('info', 'Approving and Sending PO...', 3000);
+    showToast('info', 'Approving PO...', 3000);
     try {
       if (!poId) throw new Error('No PO ID found. DM must submit first.');
       
       // 1. Approve PO
       await apiApprovePO(token, poId);
+
+      setPoStatus('approved');
+      localStorage.setItem(`po_state_${id}`, JSON.stringify({ status: 'approved', id: poId }));
+      showToast('success', 'PO Approved! DM can now send it.');
+    } catch (err) {
+      showToast('error', 'Failed: ' + err.message);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleSendPO = async () => {
+    setExporting(true);
+    showToast('info', 'Sending PO to Supplier...', 3000);
+    try {
+      if (!poId) throw new Error('No PO ID found.');
       
       // 2. Send PO
       await apiSendPO(token, poId);
 
       setPoStatus('sent');
       localStorage.setItem(`po_state_${id}`, JSON.stringify({ status: 'sent', id: poId }));
-      showToast('success', 'PO Approved and Sent successfully!');
+      showToast('success', 'PO Sent successfully!');
     } catch (err) {
       showToast('error', 'Failed: ' + err.message);
     } finally {
@@ -555,29 +571,49 @@ export default function BOMReviewPage() {
             </button>
           )}
 
-          {/* Cutting Manager: Approve & Send PO - only after DM submits */}
+          {/* Cutting Manager: Approve PO - only after DM submits */}
           {user === 'cutting_manager' && poStatus === 'pending_approval' && (
             <button
-              onClick={handleApproveAndSendPO}
+              onClick={handleApprovePO}
               disabled={exporting}
               className="flex-1 md:flex-none px-6 h-12 rounded-2xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50"
               style={{ background: 'linear-gradient(135deg, #16a34a, #15803d)' }}
             >
               {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-              Approve & Send PO
+              Approve PO
             </button>
           )}
 
-          {/* Status Indicator */}
+          {/* Direct Manager: Send PO - only after CM approves */}
+          {user === 'direct_manager' && poStatus === 'approved' && (
+            <button
+              onClick={handleSendPO}
+              disabled={exporting}
+              className="flex-1 md:flex-none px-6 h-12 rounded-2xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #3b82f6, #2563eb)' }}
+            >
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Package className="w-4 h-4" />}
+              Send PO to Supplier
+            </button>
+          )}
+
+          {/* Status Indicators */}
           {poStatus === 'pending_approval' && user !== 'cutting_manager' && (
              <div className="px-4 h-12 rounded-2xl font-bold text-sm text-yellow-700 bg-yellow-100 flex items-center gap-2 border border-yellow-200">
                <Loader2 className="w-4 h-4 animate-spin" /> Pending CM Approval
              </div>
           )}
 
+          {poStatus === 'approved' && user !== 'direct_manager' && (
+             <div className="px-4 h-12 rounded-2xl font-bold text-sm text-green-700 bg-green-100 flex items-center gap-2 border border-green-200">
+               <CheckCircle2 className="w-4 h-4" /> Approved (Waiting for DM to Send)
+             </div>
+          )}
+
           {poStatus === 'sent' && (
              <div className="px-4 h-12 rounded-2xl font-bold text-sm text-green-700 bg-green-100 flex items-center gap-2 border border-green-200">
                <CheckCircle2 className="w-4 h-4" /> PO Sent
+
              </div>
           )}
         </div>
