@@ -152,15 +152,15 @@ export default function BOMReviewPage() {
     showToast('info', 'Generating and Submitting PO...', 3000);
     try {
       // 1. Generate PO (using hardcoded backend mock BOM ID for demo)
-      const poRes = await apiGeneratePOs('mock-token', '00000000-0000-0000-0000-0000000000b0');
+      const poRes = await apiGeneratePOs(token, '00000000-0000-0000-0000-0000000000b0');
       const newPoId = poRes.purchase_orders[0].id;
       setPoId(newPoId);
 
       // 2. Submit PO
-      await apiSubmitPO('mock-token', newPoId);
+      await apiSubmitPO(token, newPoId);
       
       setPoStatus('pending_approval');
-      localStorage.setItem(`po_state_${params.id}`, JSON.stringify({ status: 'pending_approval', id: newPoId }));
+      localStorage.setItem(`po_state_${id}`, JSON.stringify({ status: 'pending_approval', id: newPoId }));
       showToast('success', 'PO Submitted for Approval!');
     } catch (err) {
       showToast('error', 'Failed to submit PO: ' + err.message);
@@ -176,13 +176,13 @@ export default function BOMReviewPage() {
       if (!poId) throw new Error('No PO ID found to approve.');
       
       // 1. Approve PO
-      await apiApprovePO('mock-token', poId);
+      await apiApprovePO(token, poId);
       
       // 2. Send PO
-      await apiSendPO('mock-token', poId);
+      await apiSendPO(token, poId);
 
       setPoStatus('sent');
-      localStorage.setItem(`po_state_${params.id}`, JSON.stringify({ status: 'sent', id: poId }));
+      localStorage.setItem(`po_state_${id}`, JSON.stringify({ status: 'sent', id: poId }));
       showToast('success', 'PO Approved and Sent successfully!');
     } catch (err) {
       showToast('error', 'Failed to approve/send PO: ' + err.message);
