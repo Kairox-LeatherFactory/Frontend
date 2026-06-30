@@ -173,7 +173,7 @@ export default function BOMReviewPage() {
     setExporting(true);
     showToast('info', 'Approving and Sending PO...', 3000);
     try {
-      if (!poId) throw new Error('No PO ID found to approve.');
+      if (!poId) throw new Error('No PO ID found. DM must submit first.');
       
       // 1. Approve PO
       await apiApprovePO(token, poId);
@@ -185,7 +185,7 @@ export default function BOMReviewPage() {
       localStorage.setItem(`po_state_${id}`, JSON.stringify({ status: 'sent', id: poId }));
       showToast('success', 'PO Approved and Sent successfully!');
     } catch (err) {
-      showToast('error', 'Failed to approve/send PO: ' + err.message);
+      showToast('error', 'Failed: ' + err.message);
     } finally {
       setExporting(false);
     }
@@ -555,7 +555,7 @@ export default function BOMReviewPage() {
             </button>
           )}
 
-          {/* Cutting Manager: Approve & Send PO */}
+          {/* Cutting Manager: Approve & Send PO - only after DM submits */}
           {user === 'cutting_manager' && poStatus === 'pending_approval' && (
             <button
               onClick={handleApproveAndSendPO}
