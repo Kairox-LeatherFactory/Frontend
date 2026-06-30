@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiOpenSubmission, apiUploadSlot, apiGetSubmission } from '@/lib/api';
+import { apiOpenSubmission, apiUploadSlot, apiGetSubmission, apiSendPO } from '@/lib/api';
 
 function DropZone({ label, accept, icon: Icon, file, onFile, onClear, description, disabled }) {
   const inputRef = useRef(null);
@@ -93,6 +93,46 @@ function ValidationResponse({ title, data }) {
         </div>
       )}
     </div>
+  );
+}
+
+/* ─── DM Send Button Component ─── */
+function DMSendButton({ poId, bomId }) {
+  const { token } = useAuth();
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleSend = async () => {
+    if (!poId) return;
+    setSending(true);
+    try {
+      await apiSendPO(token, poId);
+      localStorage.setItem(`po_state_${bomId}`, JSON.stringify({ status: 'sent', id: poId }));
+      setSent(true);
+    } catch (err) {
+      alert('Failed to send: ' + err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <span className="px-4 py-2 bg-green-100 text-green-800 text-xs font-bold rounded-lg flex items-center gap-2">
+        <CheckCircle2 className="w-3 h-3" /> Sent!
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleSend}
+      disabled={sending}
+      className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+    >
+      {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
+      {sending ? 'Sending...' : 'Send to Supplier'}
+    </button>
   );
 }
 
@@ -222,11 +262,46 @@ export default function ProcurementIntakePage() {
         </SpotlightCard>
       )}
 
+      {/* ─── APPROVED - READY TO SEND (FOR DM) ─── */}
+      {user === 'direct_manager' && ((() => {
+        let approvedId = null;
+        let approvedPoId = null;
+        try {
+          const savedPO = localStorage.getItem('po_state_SUB-MOCK-101');
+          if (savedPO) {
+            const parsed = JSON.parse(savedPO);
+            if (parsed.status === 'approved') {
+              approvedId = 'SUB-MOCK-101';
+              approvedPoId = parsed.id;
+            }
+          }
+        } catch (e) {}
+
+        if (!approvedId) return null;
+
+        return (
+          <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl space-y-4" style={{ border: '1px solid rgba(59,130,246,0.3)' }} spotlightColor="rgba(59,130,246,0.1)">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 className="w-5 h-5 text-blue-600" />
+              <h2 className="text-lg font-black text-blue-900">Approved — Ready to Send</h2>
+            </div>
+            <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50 border border-blue-100">
+              <div>
+                <p className="text-sm font-bold text-blue-900">BOM ID: {approvedId}</p>
+                <p className="text-xs font-semibold text-blue-700 mt-1">Cutting Manager has approved this PO. Click Send to email the supplier.</p>
+              </div>
+              <DMSendButton poId={approvedPoId} bomId={approvedId} />
+            </div>
+          </SpotlightCard>
+        );
+      })())}
+
       {initError && (
         <div className="p-4 bg-red-50 text-red-800 rounded-xl border border-red-200 font-semibold text-sm">
           Failed to initialize submission: {initError}. Please ensure backend is running.
         </div>
       )}
+
 
       {/* ─── UPLOAD FORM ─── */}
       <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl rounded-3xl space-y-6" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">

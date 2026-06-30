@@ -64,15 +64,14 @@ export default function DashboardLayout({ children }) {
   const [pendingPoCount, setPendingPoCount] = useState(0);
 
   useEffect(() => {
-    if (user !== 'cutting_manager') return;
-    
     const checkPendingPOs = () => {
       try {
-        // In a real app this would be an API call. For demo, we check localStorage.
         const savedPO = localStorage.getItem('po_state_SUB-MOCK-101');
         if (savedPO) {
           const { status } = JSON.parse(savedPO);
-          if (status === 'pending_approval') {
+          if (user === 'cutting_manager' && status === 'pending_approval') {
+            setPendingPoCount(1);
+          } else if (user === 'direct_manager' && status === 'approved') {
             setPendingPoCount(1);
           } else {
             setPendingPoCount(0);
@@ -173,7 +172,7 @@ export default function DashboardLayout({ children }) {
                     <IconComp className="w-[18px] h-[18px]" />
                     <span>{link.name}</span>
                   </div>
-                  {link.name === 'New Intake' && user === 'cutting_manager' && pendingPoCount > 0 && (
+                  {link.name === 'New Intake' && (user === 'cutting_manager' || user === 'direct_manager') && pendingPoCount > 0 && (
                     <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
                       {pendingPoCount}
                     </span>
