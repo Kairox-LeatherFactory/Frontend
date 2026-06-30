@@ -3,7 +3,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ArrowLeft, CheckCircle2, XCircle, Edit3, Save, X,
-  Loader2, AlertCircle, Package, Download, Info
+  Loader2, AlertCircle, Package, Download, Info, Clock
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
@@ -600,7 +600,7 @@ export default function BOMReviewPage() {
           {/* Status Indicators */}
           {poStatus === 'pending_approval' && user !== 'cutting_manager' && (
              <div className="px-4 h-12 rounded-2xl font-bold text-sm text-yellow-700 bg-yellow-100 flex items-center gap-2 border border-yellow-200">
-               <Loader2 className="w-4 h-4 animate-spin" /> Pending CM Approval
+               <Clock className="w-4 h-4" /> Waiting for CM Approval
              </div>
           )}
 
