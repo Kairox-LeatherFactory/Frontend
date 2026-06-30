@@ -181,6 +181,44 @@ export default function ProcurementIntakePage() {
         </p>
       </div>
 
+      {/* ─── PENDING APPROVALS (EXTRA FEATURE FOR CM) ─── */}
+      {user === 'cutting_manager' && (
+        <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl space-y-4" style={{ border: '1px solid rgba(22,163,74,0.3)' }} spotlightColor="rgba(22,163,74,0.1)">
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle2 className="w-5 h-5 text-green-600" />
+            <h2 className="text-lg font-black text-green-900">Pending Approvals</h2>
+          </div>
+          {(() => {
+            let pendingId = null;
+            try {
+              const savedPO = localStorage.getItem('po_state_SUB-MOCK-101');
+              if (savedPO && JSON.parse(savedPO).status === 'pending_approval') {
+                pendingId = 'SUB-MOCK-101';
+              }
+            } catch (e) {}
+
+            if (pendingId) {
+              return (
+                <div className="flex items-center justify-between p-4 rounded-xl bg-green-50 border border-green-100">
+                  <div>
+                    <p className="text-sm font-bold text-green-900">BOM ID: {pendingId}</p>
+                    <p className="text-xs font-semibold text-green-700 mt-1">Waiting for your approval</p>
+                  </div>
+                  <button
+                    onClick={() => router.push(`/dashboard/procurement/bom/${pendingId}`)}
+                    className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    View & Approve <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            } else {
+              return <p className="text-sm font-semibold text-slate-500">No pending approvals at the moment.</p>;
+            }
+          })()}
+        </SpotlightCard>
+      )}
+
       {initError && (
         <div className="p-4 bg-red-50 text-red-800 rounded-xl border border-red-200 font-semibold text-sm">
           Failed to initialize submission: {initError}. Please ensure backend is running.
