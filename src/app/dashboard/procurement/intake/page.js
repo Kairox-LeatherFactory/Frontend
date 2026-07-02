@@ -190,8 +190,9 @@ export default function ProcurementIntakePage() {
   };
 
   const handleGenerateBom = () => {
-    // Reset any previous PO state for this submission to ensure a fresh start
+    // Reset any previous PO and alert state for this submission to ensure a fresh start
     localStorage.removeItem(`po_state_${submissionId}`);
+    localStorage.removeItem(`inventory_alert_sent_${submissionId}`);
     
     // Navigate to Stage 2 BOM view
     router.push(`/dashboard/procurement/bom/${submissionId}`);
