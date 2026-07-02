@@ -1,27 +1,25 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
+// Demo fallback credentials (used when .env.local is not present)
+const SMTP_EMAIL = process.env.SMTP_EMAIL || 'danishahamed2023@gmail.com';
+const SMTP_PASSWORD = (process.env.SMTP_PASSWORD || 'cdtg rssa qgen tkaa').replace(/\s+/g, '');
+
 export async function POST(req) {
   try {
     const { toEmail, subject, text } = await req.json();
 
-    if (!process.env.SMTP_EMAIL || !process.env.SMTP_PASSWORD) {
-      throw new Error('SMTP credentials are not configured in environment variables.');
-    }
-
-    const appPassword = process.env.SMTP_PASSWORD.replace(/\s+/g, '');
-
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: process.env.SMTP_EMAIL,
-        pass: appPassword,
+        user: SMTP_EMAIL,
+        pass: SMTP_PASSWORD,
       },
     });
 
     const mailOptions = {
-      from: `"Kairox Procurement" <${process.env.SMTP_EMAIL}>`,
-      to: toEmail || process.env.SMTP_EMAIL,
+      from: `"Kairox Procurement" <${SMTP_EMAIL}>`,
+      to: toEmail || SMTP_EMAIL,
       subject: subject || `Urgent: Stock Shortage Alert`,
       text: text || `Hello,\n\nWe have detected a stock shortage.\n\nRegards,\nKairox Procurement Team`,
     };
