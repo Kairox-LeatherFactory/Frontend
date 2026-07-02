@@ -7,14 +7,14 @@ import {
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { 
-  apiGetBom, 
-  apiPatchBomItems, 
-  apiExportBom, 
-  apiGeneratePOs, 
-  apiSubmitPO, 
-  apiApprovePO, 
-  apiSendPO 
+import {
+  apiGetBom,
+  apiPatchBomItems,
+  apiExportBom,
+  apiGeneratePOs,
+  apiSubmitPO,
+  apiApprovePO,
+  apiSendPO
 } from '@/lib/api';
 
 const STATUS_CONFIG = {
@@ -64,7 +64,7 @@ export default function BOMReviewPage() {
   const [editingId, setEditingId] = useState(null);
   const [editBuf, setEditBuf] = useState({});
   const [saving, setSaving] = useState(false);
-  
+
   const [exporting, setExporting] = useState(false);
   const [toast, setToast] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState('All');
@@ -89,13 +89,13 @@ export default function BOMReviewPage() {
           items: MOCK_BOM_ITEMS
         });
         setLoading(false);
-        
+
         // Mock Inventory Check & Auto-Email
         const alertKey = `inventory_alert_sent_${id}`;
         if (!localStorage.getItem(alertKey)) {
           // Simulate finding a shortage
           const shortageText = `Dear Supplier,\n\nWe are running short on the following materials for our upcoming production run.\nPlease confirm availability and lead time at your earliest.\n\nLEATHER:\n• Full Grain Calf — Cognac — Need 270 sq.ft additional\n\nHARDWARE:\n• Insole Board (Cellulose Fibre) — Need 500 pairs\n\nOrder Qty: 500 pairs | Style: Chelsea Boot - Oxford | Client: Acne Studios\n\nPlease reply urgently to avoid production delays.\n\nRegards,\nKAIROX Procurement Team`;
-          
+
           fetch('/api/send-inventory-alert', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -174,7 +174,7 @@ export default function BOMReviewPage() {
   };
 
   // ── NEW PO WORKFLOW ACTIONS ──
-  
+
   const handleSubmitPO = async () => {
     setExporting(true);
     showToast('info', 'Generating and Submitting PO...', 3000);
@@ -186,7 +186,7 @@ export default function BOMReviewPage() {
 
       // 2. Submit PO
       await apiSubmitPO(token, newPoId);
-      
+
       setPoStatus('pending_approval');
       localStorage.setItem(`po_state_${id}`, JSON.stringify({ status: 'pending_approval', id: newPoId }));
       showToast('success', 'PO Submitted for Approval!');
@@ -202,7 +202,7 @@ export default function BOMReviewPage() {
     showToast('info', 'Approving PO...', 3000);
     try {
       if (!poId) throw new Error('No PO ID found. DM must submit first.');
-      
+
       // 1. Approve PO
       await apiApprovePO(token, poId);
 
@@ -221,7 +221,7 @@ export default function BOMReviewPage() {
     showToast('info', 'Sending PO to Supplier...', 3000);
     try {
       if (!poId) throw new Error('No PO ID found.');
-      
+
       // 2. Send PO
       await apiSendPO(token, poId);
 
@@ -371,7 +371,7 @@ export default function BOMReviewPage() {
         doc.text(cat, margin + 2, rowY + 5);
         rowY += 7;
 
-        items.forEach((item,idx) => {
+        items.forEach((item, idx) => {
           drawRow(
             '',
             item.name + (item.material_color ? ` - ${item.material_color}` : ''),
@@ -407,28 +407,28 @@ export default function BOMReviewPage() {
       doc.save(`BOM_Quotation_${bomData.id}.pdf`);
 
       // ── GENERATE PO FORM AND EMAIL IT ──
-      showToast("success","Email was successfully sent to supplier!!");
-      
+      showToast("success", "Email was successfully sent to supplier!!");
+
       const poDoc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       const pw = 297, m = 14;
-      
+
       poDoc.setFont('helvetica', 'bold');
       poDoc.setFontSize(14);
       poDoc.text('ATC', m, 18);
-      poDoc.text('PTE', pw/2, 18, { align: 'center' });
-      poDoc.text('Po Form', pw/2, 26, { align: 'center' });
+      poDoc.text('PTE', pw / 2, 18, { align: 'center' });
+      poDoc.text('Po Form', pw / 2, 26, { align: 'center' });
 
       poDoc.setDrawColor(0);
       poDoc.setLineWidth(0.3);
       poDoc.rect(m, 32, 40, 8);
       poDoc.setFontSize(10);
-      poDoc.text('Po No', m+2, 37.5);
-      poDoc.rect(m+40, 32, 60, 8);
-      poDoc.text(`PO-${bomData.id.replace('SUB-MOCK-', '')}`, m+42, 37.5);
+      poDoc.text('Po No', m + 2, 37.5);
+      poDoc.rect(m + 40, 32, 60, 8);
+      poDoc.text(`PO-${bomData.id.replace('SUB-MOCK-', '')}`, m + 42, 37.5);
 
       poDoc.setFillColor(255, 235, 59);
-      poDoc.rect(m, 44, pw - 2*m, 8, 'F');
-      
+      poDoc.rect(m, 44, pw - 2 * m, 8, 'F');
+
       poDoc.setFontSize(9);
       const poCols = [15, 60, 35, 25, 20, 20, 25, 20, 20, 29];
       const poHeaders = ['SL.No', 'Article', 'Colour', 'Size', 'Substance', 'Selection', 'Qty', 'Price', 'Priority', 'Delivery Date'];
@@ -450,7 +450,7 @@ export default function BOMReviewPage() {
         const deliveryDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toLocaleDateString();
 
         const rowData = [
-          String(i+1),
+          String(i + 1),
           item.name.toUpperCase(),
           (item.material_color || '—').toUpperCase(),
           size,
@@ -461,7 +461,7 @@ export default function BOMReviewPage() {
           'HIGH',
           deliveryDate
         ];
-        
+
         rowData.forEach((val, cIdx) => {
           poDoc.rect(dx, py, poCols[cIdx], 8);
           poDoc.text(String(val), dx + 2, py + 5.5);
@@ -482,7 +482,7 @@ export default function BOMReviewPage() {
       poDoc.setFont('helvetica', 'bold');
       poDoc.text('NO VINE MARK AND BONE MARK', m + 15, noteY + 15);
       poDoc.text('SKIN SIZE 4/7 (45 TO 50)', m + 15, noteY + 22);
-      
+
       poDoc.setFont('helvetica', 'normal');
       poDoc.text('Prepared by (Sender)', m + 15, noteY + 50);
       poDoc.text('Authorised by', m + 90, noteY + 50);
@@ -575,7 +575,7 @@ export default function BOMReviewPage() {
 
         {/* ACTION BUTTONS */}
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-          
+
           <button
             onClick={handleExport}
             disabled={exporting}
@@ -627,22 +627,22 @@ export default function BOMReviewPage() {
 
           {/* Status Indicators */}
           {poStatus === 'pending_approval' && user !== 'cutting_manager' && (
-             <div className="px-4 h-12 rounded-2xl font-bold text-sm text-yellow-700 bg-yellow-100 flex items-center gap-2 border border-yellow-200">
-               <Clock className="w-4 h-4" /> Waiting for CM Approval
-             </div>
+            <div className="px-4 h-12 rounded-2xl font-bold text-sm text-yellow-700 bg-yellow-100 flex items-center gap-2 border border-yellow-200">
+              <Clock className="w-4 h-4" /> Waiting for CM Approval
+            </div>
           )}
 
           {poStatus === 'approved' && user !== 'direct_manager' && (
-             <div className="px-4 h-12 rounded-2xl font-bold text-sm text-green-700 bg-green-100 flex items-center gap-2 border border-green-200">
-               <CheckCircle2 className="w-4 h-4" /> Approved (Waiting for DM to Send)
-             </div>
+            <div className="px-4 h-12 rounded-2xl font-bold text-sm text-green-700 bg-green-100 flex items-center gap-2 border border-green-200">
+              <CheckCircle2 className="w-4 h-4" /> Approved (Waiting for DM to Send)
+            </div>
           )}
 
           {poStatus === 'sent' && (
-             <div className="px-4 h-12 rounded-2xl font-bold text-sm text-green-700 bg-green-100 flex items-center gap-2 border border-green-200">
-               <CheckCircle2 className="w-4 h-4" /> PO Sent
+            <div className="px-4 h-12 rounded-2xl font-bold text-sm text-green-700 bg-green-100 flex items-center gap-2 border border-green-200">
+              <CheckCircle2 className="w-4 h-4" /> PO Sent
 
-             </div>
+            </div>
           )}
         </div>
       </div>
@@ -693,7 +693,7 @@ export default function BOMReviewPage() {
                 const isEditing = editingId === item.id;
                 return (
                   <tr key={item.id} className="transition-colors group hover:bg-opacity-50" style={{ background: i % 2 === 0 ? '#ffffff' : '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.05)' }}>
-                    
+
                     <td className="p-4">
                       {isEditing ? (
                         <span className="px-2 py-1 bg-white text-[10px] font-black uppercase tracking-wider rounded-lg text-gray-600 border border-gray-200 shadow-sm">
@@ -705,7 +705,7 @@ export default function BOMReviewPage() {
                         </span>
                       )}
                     </td>
-                    
+
                     <td className="p-4">
                       {isEditing ? (
                         <div className="flex flex-col gap-1">

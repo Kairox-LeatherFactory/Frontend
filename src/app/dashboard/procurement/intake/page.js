@@ -189,11 +189,27 @@ export default function ProcurementIntakePage() {
     }, 1500);
   };
 
-  const handleGenerateBom = () => {
-    // Reset any previous PO and alert state for this submission to ensure a fresh start
+  const handleGenerateBom = async () => {
+    // Reset any previous PO and alert state for this submission
     localStorage.removeItem(`po_state_${submissionId}`);
     localStorage.removeItem(`inventory_alert_sent_${submissionId}`);
-    
+
+    // Auto-send stock shortage alert to supplier
+    const shortageText = `Dear Supplier,\n\nWe are running short on the following materials for our upcoming production run.\nPlease confirm availability and lead time at your earliest.\n\nLEATHER:\n• Full Grain Calf — Cognac — Need 270 sq.ft additional\n\nHARDWARE:\n• Insole Board (Cellulose Fibre) — Need 500 pairs\n\nOrder Qty: 500 pairs | Style: Chelsea Boot - Oxford | Client: Acne Studios\n\nPlease reply urgently to avoid production delays.\n\nRegards,\nKAIROX Procurement Team`;
+
+    try {
+      await fetch('/api/send-inventory-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: '[KAIROX URGENT] Stock Shortage — Please Confirm Availability',
+          text: shortageText,
+        })
+      });
+    } catch (e) {
+      console.error('Inventory alert failed:', e);
+    }
+
     // Navigate to Stage 2 BOM view
     router.push(`/dashboard/procurement/bom/${submissionId}`);
   };
