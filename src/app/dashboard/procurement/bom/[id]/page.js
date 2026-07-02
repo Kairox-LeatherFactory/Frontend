@@ -103,12 +103,19 @@ export default function BOMReviewPage() {
               subject: '[KAIROX URGENT] Stock Shortage — Please Confirm Availability',
               text: shortageText,
             })
-          }).then(res => {
+          }).then(async res => {
             if (res.ok) {
               showToast('info', 'Auto-Alert: Inventory shortage email sent to supplier.');
               localStorage.setItem(alertKey, 'true');
+            } else {
+              const err = await res.json();
+              showToast('error', `Mail Error: ${err.error || 'Failed to send'}`);
+              console.error(err);
             }
-          }).catch(err => console.error('Inventory alert failed:', err));
+          }).catch(err => {
+            showToast('error', `Network Error: ${err.message}`);
+            console.error('Inventory alert failed:', err);
+          });
         }
       }, 1000);
     }
