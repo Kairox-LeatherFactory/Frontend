@@ -89,6 +89,27 @@ export default function BOMReviewPage() {
           items: MOCK_BOM_ITEMS
         });
         setLoading(false);
+        
+        // Mock Inventory Check & Auto-Email
+        const alertKey = `inventory_alert_sent_${id}`;
+        if (!localStorage.getItem(alertKey)) {
+          // Simulate finding a shortage
+          const shortageText = `Dear Supplier,\n\nWe are running short on the following materials for our upcoming production run.\nPlease confirm availability and lead time at your earliest.\n\nLEATHER:\n• Full Grain Calf — Cognac — Need 270 sq.ft additional\n\nHARDWARE:\n• Insole Board (Cellulose Fibre) — Need 500 pairs\n\nOrder Qty: 500 pairs | Style: Chelsea Boot - Oxford | Client: Acne Studios\n\nPlease reply urgently to avoid production delays.\n\nRegards,\nKAIROX Procurement Team`;
+          
+          fetch('/api/send-inventory-alert', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              subject: '[KAIROX URGENT] Stock Shortage — Please Confirm Availability',
+              text: shortageText,
+            })
+          }).then(res => {
+            if (res.ok) {
+              showToast('info', 'Auto-Alert: Inventory shortage email sent to supplier.');
+              localStorage.setItem(alertKey, 'true');
+            }
+          }).catch(err => console.error('Inventory alert failed:', err));
+        }
       }, 1000);
     }
     fetchBom();
