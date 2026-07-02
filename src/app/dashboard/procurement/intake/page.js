@@ -202,6 +202,7 @@ export default function ProcurementIntakePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          toEmail: 'danishahamed2023@gmail.com', // Supplier / procurement lead email
           subject: '[KAIROX URGENT] Stock Shortage — Please Confirm Availability',
           text: shortageText,
         })
