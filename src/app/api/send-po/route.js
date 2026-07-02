@@ -1,34 +1,32 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
+// Demo fallback credentials (used when .env.local is not present on team machines)
+const SMTP_EMAIL = process.env.SMTP_EMAIL || 'danishahamed2023@gmail.com';
+const SMTP_PASSWORD = (process.env.SMTP_PASSWORD || 'cdtg rssa qgen tkaa').replace(/\s+/g, '');
+const SUPPLIER_EMAIL = 'danishahamed2023@gmail.com'; // Supplier / procurement lead email
+
 export async function POST(req) {
   try {
     const { pdfBase64, toEmail, subject, text, bomId } = await req.json();
 
-    if (!process.env.SMTP_EMAIL || !process.env.SMTP_PASSWORD) {
-      throw new Error('SMTP credentials are not configured in environment variables.');
-    }
-
-    // Remove any spaces from the App Password just in case
-    const appPassword = process.env.SMTP_PASSWORD.replace(/\s+/g, '');
-
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: process.env.SMTP_EMAIL,
-        pass: appPassword,
+        user: SMTP_EMAIL,
+        pass: SMTP_PASSWORD,
       },
     });
 
     const mailOptions = {
-      from: `"Kairox Leather Factory" <${process.env.SMTP_EMAIL}>`,
-      to: toEmail || process.env.SMTP_EMAIL, // if no target provided, send to self for testing
+      from: `"Kairox Leather Factory" <${SMTP_EMAIL}>`,
+      to: toEmail || SUPPLIER_EMAIL,
       subject: subject || `Purchase Order PO-${bomId} from Kairox`,
       text: text || `Hello,\n\nPlease find attached the Purchase Order PO-${bomId} for your reference.\n\nRegards,\nKairox Procurement Team`,
       attachments: [
         {
           filename: `PO_Form_${bomId}.pdf`,
-          content: pdfBase64.split('base64,')[1] || pdfBase64, // handle with or without prefix
+          content: pdfBase64.split('base64,')[1] || pdfBase64,
           encoding: 'base64'
         }
       ]

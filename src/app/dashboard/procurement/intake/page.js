@@ -21,9 +21,9 @@ function DropZone({ label, accept, icon: Icon, file, onFile, onClear, descriptio
     if (dropped) onFile(dropped);
   }, [onFile, disabled]);
 
-  const handleDragOver = (e) => { 
-    e.preventDefault(); 
-    if (!disabled) setDragging(true); 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!disabled) setDragging(true);
   };
   const handleDragLeave = () => setDragging(false);
 
@@ -202,7 +202,6 @@ export default function ProcurementIntakePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          toEmail: 'danishahamed2023@gmail.com', // Supplier / procurement lead email
           subject: '[KAIROX URGENT] Stock Shortage — Please Confirm Availability',
           text: shortageText,
         })
@@ -256,7 +255,7 @@ export default function ProcurementIntakePage() {
               if (savedPO && JSON.parse(savedPO).status === 'pending_approval') {
                 pendingId = 'SUB-MOCK-101';
               }
-            } catch (e) {}
+            } catch (e) { }
 
             if (pendingId) {
               return (
@@ -293,7 +292,7 @@ export default function ProcurementIntakePage() {
               approvedPoId = parsed.id;
             }
           }
-        } catch (e) {}
+        } catch (e) { }
 
         if (!approvedId) return null;
 
@@ -323,7 +322,7 @@ export default function ProcurementIntakePage() {
 
       {/* ─── UPLOAD FORM ─── */}
       <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl rounded-3xl space-y-6" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-        
+
         {/* Info banner */}
         <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
           <Info className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#c8834a' }} />
@@ -346,7 +345,7 @@ export default function ProcurementIntakePage() {
               description="Excel order form from the buyer"
               disabled={initLoading || !submissionId || uploadingOrder}
             />
-            {uploadingOrder && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/> Validating Order Sheet...</div>}
+            {uploadingOrder && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin" /> Validating Order Sheet...</div>}
             <ValidationResponse title="Order Sheet" data={orderValidation} />
           </div>
 
@@ -362,7 +361,7 @@ export default function ProcurementIntakePage() {
               description="PDF spec sheet with material details"
               disabled={initLoading || !submissionId || uploadingSpec}
             />
-            {uploadingSpec && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/> Validating Spec Sheet...</div>}
+            {uploadingSpec && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin" /> Validating Spec Sheet...</div>}
             <ValidationResponse title="Spec Sheet" data={specValidation} />
           </div>
         </div>
