@@ -496,7 +496,7 @@ export default function BOMReviewPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           pdfBase64,
-          toEmail: 'kairoxsupplier.leather@gmail.com',
+          toEmail: 'danishahamed2023@gmail.com', // Fix: Send to the user's email
           bomId: bomData.id.replace('SUB-MOCK-', '')
         })
       });
