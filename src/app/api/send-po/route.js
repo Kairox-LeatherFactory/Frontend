@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
-// Demo fallback credentials (used when .env.local is not present on team machines)
+
 const SMTP_EMAIL = process.env.SMTP_EMAIL || 'danishahamed2023@gmail.com';
 const SMTP_PASSWORD = (process.env.SMTP_PASSWORD || 'cdtg rssa qgen tkaa').replace(/\s+/g, '');
-const SUPPLIER_EMAIL = 'danishahamed2023@gmail.com'; // Supplier / procurement lead email
+const SUPPLIER_EMAIL = 'workspacekaizen@gmail.com'; // Supplier / procurement lead email
 
 export async function POST(req) {
   try {
