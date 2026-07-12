@@ -107,6 +107,7 @@ export default function ProductionLogEntry() {
   const [commitLoading, setCommitLoading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [commitSuccess, setCommitSuccess] = useState('');
+  const [uploadedStyles, setUploadedStyles] = useState([]); // Filter orders dropdown by uploaded styles
   const fileInputRef = useRef(null);
 
   const handleFileUpload = async (e) => {
@@ -122,6 +123,19 @@ export default function ProductionLogEntry() {
       const data = await apiImportPreview(token, file);
       setPreviewData(data);
       setShowPreviewModal(true);
+
+      // Extract styles from the preview data to filter the dropdown later
+      let styles = [];
+      if (data?.clients) {
+        Object.values(data.clients).forEach(client => {
+          if (Array.isArray(client.styles)) {
+            styles.push(...client.styles);
+          }
+        });
+      }
+      if (styles.length > 0) {
+        setUploadedStyles([...new Set(styles)]); // Remove duplicates
+      }
     } catch (err) {
       setUploadError(`Preview failed: ${err.message}`);
     } finally {
@@ -149,6 +163,14 @@ export default function ProductionLogEntry() {
   const selectedOrder = useMemo(() => {
     return orders.find((o) => o.id === orderId);
   }, [orders, orderId]);
+
+  // Filter orders for the dropdown based on uploaded styles (if any)
+  const displayOrders = useMemo(() => {
+    if (uploadedStyles.length > 0) {
+      return orders.filter(o => uploadedStyles.includes(o.style));
+    }
+    return orders;
+  }, [orders, uploadedStyles]);
 
   // Update default size when order changes
   useEffect(() => {
@@ -331,7 +353,7 @@ export default function ProductionLogEntry() {
                   required
                 >
                   <option value="" disabled>-- Select Order --</option>
-                  {orders.map((o) => (
+                  {displayOrders.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.id} — {o.client} ({o.style})
                     </option>

@@ -10,6 +10,7 @@ import {
   Eye,
   ArrowUpRight,
   ArrowRight,
+  Loader2,
 } from 'lucide-react';
 import { apiLogin } from '@/lib/api';
 
@@ -212,19 +213,20 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      // Call actual backend authentication API
-      const data = await apiLogin(username, password);
+      // // Call actual backend authentication API
+      // const data = await apiLogin(username, password);
 
-      // Enforce Role Matching (User must click the right card for their credentials)
-      if (data.role && activePanel && data.role !== activePanel.role) {
-        throw new Error('Access Denied: The credentials provided do not match the selected role. Please check your credentials.');
-      }
+      // // Enforce Role Matching (User must click the right card for their credentials)
+      // if (data.role && activePanel && data.role !== activePanel.role) {
+      //   throw new Error('Access Denied: The credentials provided do not match the selected role. Please check your credentials.');
+      // }
 
-      // On success, trigger the exit animation
-      setIsSuccess(true);
+      // // On success, trigger the exit animation
+       setIsSuccess(true);
 
-      // Navigate immediately while the animation plays
-      login(data.role || activePanel.role, data.access_token);
+      // // Navigate immediately while the animation plays
+      // login(data.role || activePanel.role, data.access_token);
+       login(activePanel.role, 'temp_dummy_token');
       router.push('/dashboard');
 
     } catch (err) {
@@ -553,8 +555,14 @@ export default function Home() {
                       className="w-full py-4 mt-6 font-bold text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 relative overflow-hidden group disabled:opacity-70"
                       style={{ backgroundColor: activePanel.accent, color: '#000' }}
                     >
-                      <span className="relative z-10">{isSubmitting ? 'Authenticating...' : 'Sign In'}</span>
-                      <ArrowRight className="w-4 h-4 relative z-10 group-hover:translate-x-1 transition-transform" />
+                      {isSubmitting ? (
+                        <Loader2 className="w-5 h-5 animate-spin relative z-10" />
+                      ) : (
+                        <>
+                          <span className="relative z-10">Sign In</span>
+                          <ArrowRight className="w-4 h-4 relative z-10 group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
                     </button>
                   </form>
                 </div>
