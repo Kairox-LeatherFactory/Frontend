@@ -14,15 +14,22 @@ import { apiInventoryPreview, apiInventoryCommit } from '@/lib/api';
 
 function InventoryPreviewViewer({ data }) {
   const [showDropped, setShowDropped] = useState(false);
+  const [showKept, setShowKept] = useState(false);
+  const [showWarnings, setShowWarnings] = useState(false);
   if (!data) return null;
 
-  // Handle the specific preview format: { raw_count, kept, dropped }
-  if (data.raw_count !== undefined || data.kept !== undefined || data.dropped !== undefined) {
-    const rawCount = data.raw_count ?? 0;
-    const kept = data.kept ?? 0;
+  if (data.raw_count !== undefined || data.kept !== undefined || data.dropped !== undefined || data.rows !== undefined) {
     const dropped = Array.isArray(data.dropped) ? data.dropped : [];
+    const keptRows = Array.isArray(data.rows) ? data.rows : [];
+    const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+    
     const droppedCount = dropped.length;
-    const keptPct = rawCount > 0 ? Math.round((kept / rawCount) * 100) : 0;
+    const keptCount = keptRows.length > 0 ? keptRows.length : (data.kept ?? 0);
+    const rawCount = data.raw_count ?? (droppedCount + keptCount);
+    const keptPct = rawCount > 0 ? Math.round((keptCount / rawCount) * 100) : 0;
+    
+    const formatHeader = (key) => key.replace(/_/g, ' ').toUpperCase();
+    const keptKeys = ['normalized_key', 'description', 'category', 'qty_on_hand', 'uom', 'rate', 'color', 'lots'];
 
     return (
       <div className="space-y-5">
@@ -33,7 +40,7 @@ function InventoryPreviewViewer({ data }) {
             <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1">Total Rows</p>
           </div>
           <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4 text-center shadow-sm">
-            <p className="text-2xl font-black text-emerald-700">{kept.toLocaleString()}</p>
+            <p className="text-2xl font-black text-emerald-700">{keptCount.toLocaleString()}</p>
             <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mt-1">✓ Kept ({keptPct}%)</p>
           </div>
           <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 text-center shadow-sm">
@@ -84,6 +91,90 @@ function InventoryPreviewViewer({ data }) {
                             {d.reason}
                           </span>
                         </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Kept Rows Toggle */}
+        {keptRows.length > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowKept(v => !v)}
+              className="flex items-center gap-2 text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
+            >
+              {showKept ? '▲ Hide' : '▼ Show'} {keptRows.length} Kept Rows (valid stock items)
+            </button>
+
+            {showKept && (
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 max-h-64 overflow-y-auto shadow-sm">
+                <table className="min-w-full text-left text-xs bg-white">
+                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider sticky top-0 z-10 shadow-sm">
+                    <tr>
+                      {keptKeys.map(k => (
+                        <th key={k} className="px-4 py-2 border-b border-slate-200">
+                          {formatHeader(k)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {keptRows.map((row, i) => (
+                      <tr key={i} className="hover:bg-slate-50 transition-colors">
+                        {keptKeys.map(k => (
+                          <td key={k} className="px-4 py-1.5 text-slate-700 whitespace-nowrap">
+                            {k === 'qty_on_hand' ? (
+                              <span className="font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                                {row[k] !== null ? row[k].toLocaleString() : '-'}
+                              </span>
+                            ) : k === 'rate' ? (
+                              <span className="font-bold text-slate-900">
+                                {row[k] ? `₹${Number(row[k]).toFixed(2)}` : '-'}
+                              </span>
+                            ) : (
+                              <span className={k === 'normalized_key' ? 'font-mono text-[10px] text-slate-500' : 'truncate max-w-[200px] block'} title={String(row[k] ?? '-')}>
+                                {String(row[k] ?? '-')}
+                              </span>
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Warnings Toggle */}
+        {warnings.length > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowWarnings(v => !v)}
+              className="flex items-center gap-2 text-xs font-black text-blue-700 bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"
+            >
+              {showWarnings ? '▲ Hide' : '▼ Show'} {warnings.length} Warnings
+            </button>
+
+            {showWarnings && (
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 max-h-64 overflow-y-auto shadow-sm">
+                <table className="min-w-full text-left text-xs bg-white">
+                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 border-b border-slate-200">Warning Details</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {warnings.map((w, i) => (
+                      <tr key={i} className="hover:bg-blue-50">
+                        <td className="px-4 py-2 text-slate-700">{String(w)}</td>
                       </tr>
                     ))}
                   </tbody>
