@@ -114,10 +114,10 @@ function InventoryPreviewViewer({ data }) {
             {showKept && (
               <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 max-h-64 overflow-y-auto shadow-sm">
                 <table className="min-w-full text-left text-xs bg-white">
-                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider sticky top-0 z-10 shadow-sm">
+                  <thead className="bg-slate-100 text-slate-900 font-extrabold uppercase tracking-wider sticky top-0 z-10 shadow-sm">
                     <tr>
-                      {keptKeys.map(k => (
-                        <th key={k} className="px-4 py-2 border-b border-slate-200">
+                      {Object.keys(keptRows[0] || {}).map(k => (
+                        <th key={k} className="px-4 py-2 border-b border-slate-300 whitespace-nowrap text-slate-800">
                           {formatHeader(k)}
                         </th>
                       ))}
@@ -125,19 +125,23 @@ function InventoryPreviewViewer({ data }) {
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {keptRows.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50 transition-colors">
-                        {keptKeys.map(k => (
-                          <td key={k} className="px-4 py-1.5 text-slate-700 whitespace-nowrap">
-                            {k === 'qty_on_hand' ? (
-                              <span className="font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                                {row[k] !== null ? row[k].toLocaleString() : '-'}
+                      <tr key={i} className="hover:bg-slate-100 transition-colors">
+                        {Object.keys(keptRows[0] || {}).map(k => (
+                          <td key={k} className="px-4 py-1.5 text-slate-900 font-semibold whitespace-nowrap">
+                            {k === 'qty_on_hand' || k === 'quantity' || k === 'qty' ? (
+                              <span className="font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
+                                {row[k] !== null && row[k] !== undefined ? Number(row[k]).toLocaleString() : '-'}
                               </span>
-                            ) : k === 'rate' ? (
-                              <span className="font-bold text-slate-900">
+                            ) : k === 'rate' || k === 'unit_price' || k === 'price' ? (
+                              <span className="font-extrabold text-slate-900">
                                 {row[k] ? `₹${Number(row[k]).toFixed(2)}` : '-'}
                               </span>
+                            ) : k === 'normalized_key' ? (
+                              <span className="font-mono text-[10px] text-slate-700 font-bold">
+                                {String(row[k] ?? '-')}
+                              </span>
                             ) : (
-                              <span className={k === 'normalized_key' ? 'font-mono text-[10px] text-slate-500' : 'truncate max-w-[200px] block'} title={String(row[k] ?? '-')}>
+                              <span className="truncate max-w-[200px] block font-semibold text-slate-900" title={String(row[k] ?? '-')}>
                                 {String(row[k] ?? '-')}
                               </span>
                             )}
@@ -517,14 +521,14 @@ export default function InventoryPage() {
       {/* ─── EXCEL PREVIEW MODAL ─── */}
       {showPreviewModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col text-slate-900">
+            <div className="flex justify-between items-center p-6 border-b border-slate-200">
               <div>
                 <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
                   <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
                   Excel Import Preview
                 </h3>
-                <p className="text-xs text-slate-500 font-medium mt-1">
+                <p className="text-xs text-slate-700 font-bold mt-1">
                   File: {fileName} — Review before importing to database
                 </p>
               </div>
@@ -536,11 +540,11 @@ export default function InventoryPage() {
               </button>
             </div>
 
-            <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
+            <div className="p-6 overflow-auto bg-white flex-1 text-sm text-slate-900">
               {previewData ? (
                 <InventoryPreviewViewer data={previewData} />
               ) : (
-                <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
+                <div className="text-center py-12 text-slate-700 font-bold">No preview data available.</div>
               )}
               {uploadError && (
                 <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl">
@@ -549,10 +553,10 @@ export default function InventoryPage() {
               )}
             </div>
 
-            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
+            <div className="flex gap-3 p-6 border-t border-slate-200 bg-white rounded-b-2xl">
               <button
                 onClick={() => setShowPreviewModal(false)}
-                className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+                className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-950 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
               >
                 Cancel
               </button>
