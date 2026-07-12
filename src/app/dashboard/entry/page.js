@@ -83,6 +83,7 @@ export default function ProductionLogEntry() {
   const [size, setSize] = useState('M');
   const [qty, setQty] = useState('');
   const [garmentId, setGarmentId] = useState('');
+  const [bundleId, setBundleId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
 
   // Auto-select first order and worker once backend data loads
@@ -107,7 +108,6 @@ export default function ProductionLogEntry() {
   const [commitLoading, setCommitLoading] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [commitSuccess, setCommitSuccess] = useState('');
-  const [uploadedStyles, setUploadedStyles] = useState([]); // Filter orders dropdown by uploaded styles
   const fileInputRef = useRef(null);
 
   const handleFileUpload = async (e) => {
@@ -123,19 +123,6 @@ export default function ProductionLogEntry() {
       const data = await apiImportPreview(token, file);
       setPreviewData(data);
       setShowPreviewModal(true);
-
-      // Extract styles from the preview data to filter the dropdown later
-      let styles = [];
-      if (data?.clients) {
-        Object.values(data.clients).forEach(client => {
-          if (Array.isArray(client.styles)) {
-            styles.push(...client.styles);
-          }
-        });
-      }
-      if (styles.length > 0) {
-        setUploadedStyles([...new Set(styles)]); // Remove duplicates
-      }
     } catch (err) {
       setUploadError(`Preview failed: ${err.message}`);
     } finally {
@@ -163,14 +150,6 @@ export default function ProductionLogEntry() {
   const selectedOrder = useMemo(() => {
     return orders.find((o) => o.id === orderId);
   }, [orders, orderId]);
-
-  // Filter orders for the dropdown based on uploaded styles (if any)
-  const displayOrders = useMemo(() => {
-    if (uploadedStyles.length > 0) {
-      return orders.filter(o => uploadedStyles.includes(o.style));
-    }
-    return orders;
-  }, [orders, uploadedStyles]);
 
   // Update default size when order changes
   useEffect(() => {
@@ -245,7 +224,7 @@ export default function ProductionLogEntry() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-      
+
       {/* ─── TITLE SECTION ─── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -267,7 +246,7 @@ export default function ProductionLogEntry() {
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadLoading}
             className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50"
-            style={{ 
+            style={{
               background: 'transparent',
               border: '1px solid #c8834a',
               color: '#c8834a'
@@ -315,7 +294,7 @@ export default function ProductionLogEntry() {
 
       {/* ─── LOGGING FORM CARD ─── */}
       <SpotlightCard className="p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-        
+
         {/* Helper context showing details about the active logging environment */}
         <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
           <div className="text-xs font-bold" style={{ color: '#4a3a2a' }}>
@@ -330,15 +309,15 @@ export default function ProductionLogEntry() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
-          
+
           {/* STEP 1: Core Selection */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span> 
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
               Order & Worker Selection
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
               {/* Order Selection */}
               <div className="flex flex-col gap-2">
@@ -353,7 +332,7 @@ export default function ProductionLogEntry() {
                   required
                 >
                   <option value="" disabled>-- Select Order --</option>
-                  {displayOrders.map((o) => (
+                  {orders.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.id} — {o.client} ({o.style})
                     </option>
@@ -388,12 +367,12 @@ export default function ProductionLogEntry() {
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span> 
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
               Garment Details
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
-              
+
               {/* Size Pill Buttons */}
               <div className="flex flex-col gap-3">
                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
@@ -439,12 +418,12 @@ export default function ProductionLogEntry() {
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span> 
+              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span>
               Quantities & Submission
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-              
+
               {/* Quantity Input with Quick Add Buttons */}
               <div className="flex flex-col gap-3 md:col-span-2">
                 <label htmlFor="qty-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -467,17 +446,17 @@ export default function ProductionLogEntry() {
                       required
                     />
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-xl">
-                      
+
                     </span>
                   </div>
                   <div className="flex gap-2 w-1/4">
                     <button
-                        type="button"
-                        onClick={() => setQty('')}
-                        className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
-                      >
-                        Clear
-                      </button>
+                      type="button"
+                      onClick={() => setQty('')}
+                      className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                    >
+                      Clear
+                    </button>
                   </div>
                 </div>
               </div>
@@ -512,6 +491,30 @@ export default function ProductionLogEntry() {
                     className="input-field w-full h-14 pl-12 bg-white font-semibold border-2 border-slate-200 shadow-sm focus:border-emerald-500"
                   />
                   <ScanBarcode className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+                </div>
+              </div>
+
+              {/* Bundle ID Submit Row */}
+              <div className="md:col-span-2 flex flex-col gap-2">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileBox className="w-4 h-4 text-violet-500" /> Bundle ID
+                </label>
+                <div className="flex items-stretch gap-3">
+                  <input
+                    type="text"
+                    id="bundle-id-input"
+                    placeholder="Enter Bundle ID"
+                    value={bundleId}
+                    onChange={(e) => setBundleId(e.target.value)}
+                    className="input-field flex-1 h-14 bg-white font-semibold border-2 border-slate-200 shadow-sm focus:border-violet-400 transition-all"
+                  />
+                  <button
+                    type="button"
+                    className="h-14 px-6 font-black text-sm rounded-xl border-2 transition-all active:scale-95 shadow-sm"
+                    style={{ background: 'rgba(139,92,246,0.1)', border: '2px solid rgba(139,92,246,0.3)', color: '#7c3aed' }}
+                  >
+                    Submit Bundle ID
+                  </button>
                 </div>
               </div>
 
@@ -559,14 +562,14 @@ export default function ProductionLogEntry() {
                   File: {fileName} — Review before importing to database
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowPreviewModal(false)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
               {previewData ? (
                 <DynamicDataViewer data={previewData} />

@@ -1,13 +1,74 @@
 'use client';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Package, AlertTriangle, CheckCircle2,
   AlertCircle, ShoppingCart, TrendingDown, Warehouse,
-  ArrowRight, ChevronDown, ChevronUp,
+  ArrowRight, ChevronDown, ChevronUp, FileSpreadsheet,
+  Loader2, X, Upload
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
+import { useAuth } from '@/context/AuthContext';
+import { apiImportPreview, apiImportCommit } from '@/lib/api';
+
+function DynamicDataViewer({ data }) {
+  if (!data) return null;
+
+  if (Array.isArray(data)) {
+    if (data.length === 0) return <div className="text-slate-400 italic">Empty list</div>;
+    // Check if it's an array of objects to render as a table
+    if (typeof data[0] === 'object' && data[0] !== null) {
+      const keys = Array.from(new Set(data.flatMap(Object.keys)));
+      return (
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="min-w-full text-left text-sm whitespace-nowrap bg-white">
+            <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider">
+              <tr>
+                {keys.map(k => <th key={k} className="px-4 py-3 border-b border-slate-200">{k.replace(/_/g, ' ')}</th>)}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.map((row, i) => (
+                <tr key={i} className="hover:bg-slate-50">
+                  {keys.map(k => (
+                    <td key={k} className="px-4 py-2 text-slate-700">
+                      {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    // Simple array
+    return (
+      <ul className="list-disc pl-5 space-y-1 text-slate-700">
+        {data.map((item, i) => <li key={i}>{String(item)}</li>)}
+      </ul>
+    );
+  }
+
+  if (typeof data === 'object' && data !== null) {
+    return (
+      <div className="space-y-6">
+        {Object.entries(data).map(([key, val]) => (
+          <div key={key} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+            <h4 className="text-md font-black text-slate-800 mb-3 capitalize flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+              {key.replace(/_/g, ' ')}
+            </h4>
+            <DynamicDataViewer data={val} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return <span className="text-slate-700 font-medium">{String(data)}</span>;
+}
 
 // ─── MOCK INVENTORY DATA ────────────────────────────────────────────────────────
 // TODO: Replace with GET /api/v1/procurement/inventory-checks
@@ -63,8 +124,58 @@ function StockBadge({ status }) {
 
 export default function InventoryPage() {
   const router = useRouter();
+  const { token } = useAuth();
+  
   const [expandedOrder, setExpandedOrder] = useState('INV-001');
   const [toast, setToast] = useState(null);
+
+  // ─── Excel Upload States ───
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [commitLoading, setCommitLoading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [commitSuccess, setCommitSuccess] = useState('');
+  const fileInputRef = useRef(null);
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setFileName(file.name);
+    setSelectedFile(file);
+    setUploadError('');
+    setCommitSuccess('');
+    setUploadLoading(true);
+
+    try {
+      const data = await apiImportPreview(token, file);
+      setPreviewData(data);
+      setShowPreviewModal(true);
+    } catch (err) {
+      setUploadError(`Preview failed: ${err.message}`);
+    } finally {
+      setUploadLoading(false);
+      e.target.value = null;
+    }
+  };
+
+  const handleCommit = async () => {
+    if (!selectedFile) return;
+    setCommitLoading(true);
+    setUploadError('');
+    try {
+      await apiImportCommit(token, selectedFile);
+      setCommitSuccess('Import committed successfully! Data has been saved to the database.');
+      showToast('success', 'Import committed successfully! Data has been saved.');
+      setShowPreviewModal(false);
+    } catch (err) {
+      setUploadError(`Commit failed: ${err.message}`);
+    } finally {
+      setCommitLoading(false);
+    }
+  };
 
   const showToast = (type, msg) => {
     setToast({ type, msg });
@@ -114,17 +225,47 @@ export default function InventoryPage() {
       )}
 
       {/* ─── HEADER ─── */}
-      <div>
-        <Link href="/dashboard/procurement" className="flex items-center gap-1.5 text-xs font-bold mb-3 w-fit transition-opacity hover:opacity-70" style={{ color: '#9a7a5a' }}>
-          <ArrowLeft className="w-3.5 h-3.5" /> All Submissions
-        </Link>
-        <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>
-          Procurement · Stage 4 — Inventory Check
-        </p>
-        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Stock vs. Demand</h1>
-        <p className="font-medium mt-0.5" style={{ color: '#9a7a5a' }}>
-          Compare BOM requirements against factory inventory and generate Purchase Orders for shortfalls.
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <Link href="/dashboard/procurement" className="flex items-center gap-1.5 text-xs font-bold mb-3 w-fit transition-opacity hover:opacity-70" style={{ color: '#9a7a5a' }}>
+            <ArrowLeft className="w-3.5 h-3.5" /> All Submissions
+          </Link>
+          <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>
+            Procurement · Stage 4 — Inventory Check
+          </p>
+          <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Stock vs. Demand</h1>
+          <p className="font-medium mt-0.5" style={{ color: '#9a7a5a' }}>
+            Compare BOM requirements against factory inventory and generate Purchase Orders for shortfalls.
+          </p>
+        </div>
+        {/* ─── UPLOAD FILE BUTTON ─── */}
+        <div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleFileUpload}
+            className="hidden"
+            id="inventory-file-upload"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploadLoading}
+            className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50"
+            style={{ 
+              background: 'transparent',
+              border: '1px solid #c8834a',
+              color: '#c8834a'
+            }}
+          >
+            {uploadLoading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Previewing...</>
+            ) : (
+              <><FileSpreadsheet className="w-4 h-4" /> Upload Excel</>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* ─── SUMMARY STATS ─── */}
@@ -246,6 +387,65 @@ export default function InventoryPage() {
           );
         })}
       </div>
+
+      {/* ─── EXCEL PREVIEW MODAL ─── */}
+      {showPreviewModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                  Excel Import Preview
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  File: {fileName} — Review before importing to database
+                </p>
+              </div>
+              <button 
+                onClick={() => setShowPreviewModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
+              {previewData ? (
+                <DynamicDataViewer data={previewData} />
+              ) : (
+                <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
+              )}
+              {uploadError && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl">
+                  {uploadError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCommit}
+                disabled={commitLoading}
+                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+              >
+                {commitLoading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
+                ) : (
+                  <><Upload className="w-4 h-4" /> Confirm & Import to Database</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
