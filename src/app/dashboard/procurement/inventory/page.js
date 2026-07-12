@@ -97,7 +97,12 @@ function InventoryPreviewViewer({ data }) {
   }
 
   // Fallback if data is not in raw_count format
-  return <div className="text-slate-400 italic font-bold p-6 text-center">Unrecognized stock data format.</div>;
+  return (
+    <div className="text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap">
+      <div className="text-red-500 font-bold mb-2">Unrecognized data format. Raw response:</div>
+      {JSON.stringify(data, null, 2)}
+    </div>
+  );
 }
 
 // ─── MOCK INVENTORY DATA ────────────────────────────────────────────────────────
