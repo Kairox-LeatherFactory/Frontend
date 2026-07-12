@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiImportPreview, apiImportCommit } from '@/lib/api';
+import { apiInventoryPreview, apiInventoryCommit } from '@/lib/api';
 
 function InventoryPreviewViewer({ data }) {
   const [showDropped, setShowDropped] = useState(false);
@@ -185,7 +185,7 @@ export default function InventoryPage() {
     setUploadLoading(true);
 
     try {
-      const data = await apiImportPreview(token, file);
+      const data = await apiInventoryPreview(token, file);
       setPreviewData(data);
       setShowPreviewModal(true);
     } catch (err) {
@@ -201,7 +201,7 @@ export default function InventoryPage() {
     setCommitLoading(true);
     setUploadError('');
     try {
-      await apiImportCommit(token, selectedFile);
+      await apiInventoryCommit(token, selectedFile);
       setCommitSuccess('Import committed successfully! Data has been saved to the database.');
       showToast('success', 'Import committed successfully! Data has been saved.');
       setShowPreviewModal(false);

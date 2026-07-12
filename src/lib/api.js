@@ -223,6 +223,44 @@ export async function apiImportCommit(token, file) {
   return res.json();
 }
 
+/**
+ * Preview an Excel import for Inventory (dry-run)
+ */
+export async function apiInventoryPreview(token, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/inventory/preview`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to preview inventory import');
+    console.error('[API] /procurement/inventory/preview failed:', res.status, errText);
+    throw new Error(errText || `Failed to preview inventory import (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * Commit an Excel import for Inventory
+ */
+export async function apiInventoryCommit(token, file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  const res = await fetch(`${API_BASE_URL}/api/v1/procurement/inventory/commit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to commit inventory import');
+    console.error('[API] /procurement/inventory/commit failed:', res.status, errText);
+    throw new Error(errText || `Failed to commit inventory import (${res.status})`);
+  }
+  return res.json();
+}
+
 // ─── ANALYTICS ───
 
 export async function apiGetAnalyticsOverview(token) {
