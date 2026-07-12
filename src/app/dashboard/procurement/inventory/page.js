@@ -12,62 +12,68 @@ import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
 import { apiImportPreview, apiImportCommit } from '@/lib/api';
 
-function DynamicDataViewer({ data }) {
+function InventoryPreviewViewer({ data }) {
   if (!data) return null;
 
-  if (Array.isArray(data)) {
-    if (data.length === 0) return <div className="text-slate-400 italic">Empty list</div>;
-    // Check if it's an array of objects to render as a table
-    if (typeof data[0] === 'object' && data[0] !== null) {
-      const keys = Array.from(new Set(data.flatMap(Object.keys)));
-      return (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-full text-left text-sm whitespace-nowrap bg-white">
-            <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider">
-              <tr>
-                {keys.map(k => <th key={k} className="px-4 py-3 border-b border-slate-200">{k.replace(/_/g, ' ')}</th>)}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.map((row, i) => (
-                <tr key={i} className="hover:bg-slate-50">
-                  {keys.map(k => (
-                    <td key={k} className="px-4 py-2 text-slate-700">
-                      {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+  // Expected format from inventory endpoint: { rows: [...] }
+  const rows = data.rows || (Array.isArray(data) ? data : []);
+
+  if (rows.length === 0) {
+    return <div className="text-slate-400 italic font-bold p-6 text-center">No valid stock data found to preview.</div>;
+  }
+
+  const formatHeader = (key) => key.replace(/_/g, ' ').toUpperCase();
+
+  // Pick common keys to display
+  const keys = ['normalized_key', 'description', 'category', 'qty_on_hand', 'uom', 'rate', 'color', 'lots'];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-end">
+        <div>
+          <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Parsed Inventory Data</h4>
+          <p className="text-xs text-slate-500 font-medium">Found {rows.length} valid items ready for import</p>
         </div>
-      );
-    }
-    // Simple array
-    return (
-      <ul className="list-disc pl-5 space-y-1 text-slate-700">
-        {data.map((item, i) => <li key={i}>{String(item)}</li>)}
-      </ul>
-    );
-  }
-
-  if (typeof data === 'object' && data !== null) {
-    return (
-      <div className="space-y-6">
-        {Object.entries(data).map(([key, val]) => (
-          <div key={key} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <h4 className="text-md font-black text-slate-800 mb-3 capitalize flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              {key.replace(/_/g, ' ')}
-            </h4>
-            <DynamicDataViewer data={val} />
-          </div>
-        ))}
       </div>
-    );
-  }
 
-  return <span className="text-slate-700 font-medium">{String(data)}</span>;
+      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm max-h-[60vh]">
+        <table className="min-w-full text-left text-xs bg-white">
+          <thead className="bg-slate-50 text-slate-600 font-bold tracking-wider sticky top-0 z-10 shadow-sm">
+            <tr>
+              {keys.map(k => (
+                <th key={k} className="px-4 py-3 border-b border-slate-200">
+                  {formatHeader(k)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {rows.map((row, i) => (
+              <tr key={i} className="hover:bg-slate-50 transition-colors">
+                {keys.map(k => (
+                  <td key={k} className="px-4 py-2 text-slate-700 whitespace-nowrap">
+                    {k === 'qty_on_hand' ? (
+                      <span className="font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                        {row[k] !== null ? row[k].toLocaleString() : '-'}
+                      </span>
+                    ) : k === 'rate' ? (
+                      <span className="font-bold text-slate-900">
+                        {row[k] ? `₹${Number(row[k]).toFixed(2)}` : '-'}
+                      </span>
+                    ) : (
+                      <span className={k === 'normalized_key' ? 'font-mono text-[10px] text-slate-500' : 'truncate max-w-[200px] block'}>
+                        {String(row[k] ?? '-')}
+                      </span>
+                    )}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
 }
 
 // ─── MOCK INVENTORY DATA ────────────────────────────────────────────────────────
