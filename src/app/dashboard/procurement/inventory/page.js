@@ -13,67 +13,91 @@ import { useAuth } from '@/context/AuthContext';
 import { apiImportPreview, apiImportCommit } from '@/lib/api';
 
 function InventoryPreviewViewer({ data }) {
+  const [showDropped, setShowDropped] = useState(false);
   if (!data) return null;
 
-  // Expected format from inventory endpoint: { rows: [...] }
-  const rows = data.rows || (Array.isArray(data) ? data : []);
+  // Handle the specific preview format: { raw_count, kept, dropped }
+  if (data.raw_count !== undefined || data.kept !== undefined || data.dropped !== undefined) {
+    const rawCount = data.raw_count ?? 0;
+    const kept = data.kept ?? 0;
+    const dropped = Array.isArray(data.dropped) ? data.dropped : [];
+    const droppedCount = dropped.length;
+    const keptPct = rawCount > 0 ? Math.round((kept / rawCount) * 100) : 0;
 
-  if (rows.length === 0) {
-    return <div className="text-slate-400 italic font-bold p-6 text-center">No valid stock data found to preview.</div>;
+    return (
+      <div className="space-y-5">
+        {/* Summary Stats */}
+        <div className="grid grid-cols-3 gap-4">
+          <div className="bg-white rounded-xl border border-slate-200 p-4 text-center shadow-sm">
+            <p className="text-2xl font-black text-slate-800">{rawCount.toLocaleString()}</p>
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1">Total Rows</p>
+          </div>
+          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4 text-center shadow-sm">
+            <p className="text-2xl font-black text-emerald-700">{kept.toLocaleString()}</p>
+            <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mt-1">✓ Kept ({keptPct}%)</p>
+          </div>
+          <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 text-center shadow-sm">
+            <p className="text-2xl font-black text-amber-700">{droppedCount.toLocaleString()}</p>
+            <p className="text-xs font-bold text-amber-600 uppercase tracking-wider mt-1">⚠ Dropped</p>
+          </div>
+        </div>
+
+        {/* Progress bar */}
+        <div>
+          <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
+            <span>Import Coverage</span>
+            <span>{keptPct}% stock rows</span>
+          </div>
+          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+            <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${keptPct}%` }} />
+          </div>
+        </div>
+
+        {/* Dropped Rows Toggle */}
+        {droppedCount > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowDropped(v => !v)}
+              className="flex items-center gap-2 text-xs font-black text-amber-700 bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer"
+            >
+              {showDropped ? '▲ Hide' : '▼ Show'} {droppedCount} Dropped Rows (non-stock / empty)
+            </button>
+
+            {showDropped && (
+              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 max-h-64 overflow-y-auto">
+                <table className="min-w-full text-left text-xs bg-white">
+                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 border-b border-slate-200 w-16">Row #</th>
+                      <th className="px-4 py-2 border-b border-slate-200">Description</th>
+                      <th className="px-4 py-2 border-b border-slate-200 w-32">Reason</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {dropped.map((d, i) => (
+                      <tr key={i} className="hover:bg-amber-50">
+                        <td className="px-4 py-1.5 text-slate-400 font-mono">{d.row}</td>
+                        <td className="px-4 py-1.5 text-slate-600 truncate max-w-xs" title={d.description}>{d.description}</td>
+                        <td className="px-4 py-1.5">
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                            {d.reason}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
   }
 
-  const formatHeader = (key) => key.replace(/_/g, ' ').toUpperCase();
-
-  // Pick common keys to display
-  const keys = ['normalized_key', 'description', 'category', 'qty_on_hand', 'uom', 'rate', 'color', 'lots'];
-
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-end">
-        <div>
-          <h4 className="text-sm font-black text-slate-800 uppercase tracking-widest">Parsed Inventory Data</h4>
-          <p className="text-xs text-slate-500 font-medium">Found {rows.length} valid items ready for import</p>
-        </div>
-      </div>
-
-      <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm max-h-[60vh]">
-        <table className="min-w-full text-left text-xs bg-white">
-          <thead className="bg-slate-50 text-slate-600 font-bold tracking-wider sticky top-0 z-10 shadow-sm">
-            <tr>
-              {keys.map(k => (
-                <th key={k} className="px-4 py-3 border-b border-slate-200">
-                  {formatHeader(k)}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {rows.map((row, i) => (
-              <tr key={i} className="hover:bg-slate-50 transition-colors">
-                {keys.map(k => (
-                  <td key={k} className="px-4 py-2 text-slate-700 whitespace-nowrap">
-                    {k === 'qty_on_hand' ? (
-                      <span className="font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                        {row[k] !== null ? row[k].toLocaleString() : '-'}
-                      </span>
-                    ) : k === 'rate' ? (
-                      <span className="font-bold text-slate-900">
-                        {row[k] ? `₹${Number(row[k]).toFixed(2)}` : '-'}
-                      </span>
-                    ) : (
-                      <span className={k === 'normalized_key' ? 'font-mono text-[10px] text-slate-500' : 'truncate max-w-[200px] block'}>
-                        {String(row[k] ?? '-')}
-                      </span>
-                    )}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
+  // Fallback if data is not in raw_count format
+  return <div className="text-slate-400 italic font-bold p-6 text-center">Unrecognized stock data format.</div>;
 }
 
 // ─── MOCK INVENTORY DATA ────────────────────────────────────────────────────────
