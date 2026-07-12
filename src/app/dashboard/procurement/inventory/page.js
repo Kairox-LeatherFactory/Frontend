@@ -80,13 +80,13 @@ const MOCK_INVENTORY = [
     style: 'Chelsea Boot - Oxford',
     order_qty: 500,
     items: [
-      { id: 1, component: 'Upper Leather',   material: 'Full Grain Calf — Cognac',  unit: 'sq.ft',  required: 1250, available: 980,  status: 'partial'       },
-      { id: 2, component: 'Lining Leather',  material: 'Split Grain Lamb',           unit: 'sq.ft',  required: 900,  available: 1200, status: 'sufficient'    },
-      { id: 3, component: 'Outsole',         material: 'Rubber Compound — Black',    unit: 'pairs',  required: 500,  available: 500,  status: 'sufficient'    },
-      { id: 4, component: 'Insole Board',    material: 'Cellulose Fibre',            unit: 'pairs',  required: 500,  available: 0,    status: 'out_of_stock'  },
-      { id: 5, component: 'Thread',          material: 'Nylon 40s — Brown',          unit: 'spools', required: 50,   available: 22,   status: 'partial'       },
-      { id: 6, component: 'Zip Puller',      material: 'Antique Brass — 5mm',        unit: 'pairs',  required: 500,  available: 600,  status: 'sufficient'    },
-      { id: 7, component: 'Toe Stiffener',   material: 'Thermoplastic',              unit: 'pairs',  required: 500,  available: 120,  status: 'partial'       },
+      { id: 1, component: 'Upper Leather', material: 'Full Grain Calf — Cognac', unit: 'sq.ft', required: 1250, available: 980, status: 'partial' },
+      { id: 2, component: 'Lining Leather', material: 'Split Grain Lamb', unit: 'sq.ft', required: 900, available: 1200, status: 'sufficient' },
+      { id: 3, component: 'Outsole', material: 'Rubber Compound — Black', unit: 'pairs', required: 500, available: 500, status: 'sufficient' },
+      { id: 4, component: 'Insole Board', material: 'Cellulose Fibre', unit: 'pairs', required: 500, available: 0, status: 'out_of_stock' },
+      { id: 5, component: 'Thread', material: 'Nylon 40s — Brown', unit: 'spools', required: 50, available: 22, status: 'partial' },
+      { id: 6, component: 'Zip Puller', material: 'Antique Brass — 5mm', unit: 'pairs', required: 500, available: 600, status: 'sufficient' },
+      { id: 7, component: 'Toe Stiffener', material: 'Thermoplastic', unit: 'pairs', required: 500, available: 120, status: 'partial' },
     ],
   },
   {
@@ -96,19 +96,19 @@ const MOCK_INVENTORY = [
     style: 'Derby Shoe - Black Brogue',
     order_qty: 300,
     items: [
-      { id: 1, component: 'Upper Leather',   material: 'Corrected Grain — Black',    unit: 'sq.ft',  required: 660,  available: 0,    status: 'out_of_stock'  },
-      { id: 2, component: 'Sock Lining',     material: 'Genuine Leather — Tan',      unit: 'pairs',  required: 300,  available: 300,  status: 'sufficient'    },
-      { id: 3, component: 'Leather Outsole', material: 'Vegtan Oak-Bark',             unit: 'pairs',  required: 300,  available: 180,  status: 'partial'       },
-      { id: 4, component: 'Brass Brogue Cap',material: 'Solid Brass — Burnished',    unit: 'pairs',  required: 300,  available: 0,    status: 'out_of_stock'  },
-      { id: 5, component: 'Wax Laces',       material: 'Cotton Wax — Black 75cm',    unit: 'pairs',  required: 300,  available: 300,  status: 'sufficient'    },
+      { id: 1, component: 'Upper Leather', material: 'Corrected Grain — Black', unit: 'sq.ft', required: 660, available: 0, status: 'out_of_stock' },
+      { id: 2, component: 'Sock Lining', material: 'Genuine Leather — Tan', unit: 'pairs', required: 300, available: 300, status: 'sufficient' },
+      { id: 3, component: 'Leather Outsole', material: 'Vegtan Oak-Bark', unit: 'pairs', required: 300, available: 180, status: 'partial' },
+      { id: 4, component: 'Brass Brogue Cap', material: 'Solid Brass — Burnished', unit: 'pairs', required: 300, available: 0, status: 'out_of_stock' },
+      { id: 5, component: 'Wax Laces', material: 'Cotton Wax — Black 75cm', unit: 'pairs', required: 300, available: 300, status: 'sufficient' },
     ],
   },
 ];
 
 const STATUS_BADGE = {
-  sufficient:   { label: 'Sufficient',    color: '#16a34a', bg: '#f0fdf4', border: 'rgba(22,163,74,0.2)',    icon: CheckCircle2  },
-  partial:      { label: 'Partial Stock', color: '#d97706', bg: '#fffbeb', border: 'rgba(217,119,6,0.2)',    icon: AlertTriangle  },
-  out_of_stock: { label: 'Out of Stock',  color: '#dc2626', bg: '#fef2f2', border: 'rgba(220,38,38,0.2)',    icon: AlertCircle    },
+  sufficient: { label: 'Sufficient', color: '#16a34a', bg: '#f0fdf4', border: 'rgba(22,163,74,0.2)', icon: CheckCircle2 },
+  partial: { label: 'Partial Stock', color: '#d97706', bg: '#fffbeb', border: 'rgba(217,119,6,0.2)', icon: AlertTriangle },
+  out_of_stock: { label: 'Out of Stock', color: '#dc2626', bg: '#fef2f2', border: 'rgba(220,38,38,0.2)', icon: AlertCircle },
 };
 
 function StockBadge({ status }) {
@@ -125,7 +125,7 @@ function StockBadge({ status }) {
 export default function InventoryPage() {
   const router = useRouter();
   const { token } = useAuth();
-  
+
   const [expandedOrder, setExpandedOrder] = useState('INV-001');
   const [toast, setToast] = useState(null);
 
@@ -253,7 +253,7 @@ export default function InventoryPage() {
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadLoading}
             className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50"
-            style={{ 
+            style={{
               background: 'transparent',
               border: '1px solid #c8834a',
               color: '#c8834a'
@@ -271,10 +271,10 @@ export default function InventoryPage() {
       {/* ─── SUMMARY STATS ─── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Total BOM Lines',   value: stats.total,       icon: Package,     color: '#9a7a5a'  },
-          { label: 'Sufficient',        value: stats.sufficient,  icon: CheckCircle2,color: '#16a34a'  },
-          { label: 'Partial Stock',     value: stats.partial,     icon: TrendingDown,color: '#d97706'  },
-          { label: 'Out of Stock',      value: stats.outOfStock,  icon: AlertCircle, color: '#dc2626'  },
+          { label: 'Total BOM Lines', value: stats.total, icon: Package, color: '#9a7a5a' },
+          { label: 'Sufficient', value: stats.sufficient, icon: CheckCircle2, color: '#16a34a' },
+          { label: 'Partial Stock', value: stats.partial, icon: TrendingDown, color: '#d97706' },
+          { label: 'Out of Stock', value: stats.outOfStock, icon: AlertCircle, color: '#dc2626' },
         ].map(({ label, value, icon: Icon, color }) => (
           <SpotlightCard key={label} className="p-4 bg-white rounded-2xl shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.12)' }} spotlightColor="rgba(200,131,74,0.05)">
             <div className="flex items-center gap-2 mb-1">
@@ -402,17 +402,17 @@ export default function InventoryPage() {
                   File: {fileName} — Review before importing to database
                 </p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowPreviewModal(false)}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
               {previewData ? (
-                <DynamicDataViewer data={previewData} />
+                <InventoryPreviewViewer data={previewData} />
               ) : (
                 <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
               )}

@@ -319,6 +319,30 @@ export default function ProductionLogEntry() {
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+              {/* Bundle ID Submit Row */}
+              <div className="md:col-span-2 flex flex-col gap-2 pb-4 border-b border-slate-100">
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                  <FileBox className="w-4 h-4 text-violet-500" /> Track via Bundle ID
+                </label>
+                <div className="flex items-stretch gap-3">
+                  <input
+                    type="text"
+                    id="bundle-id-input"
+                    placeholder="Enter Bundle ID"
+                    value={bundleId}
+                    onChange={(e) => setBundleId(e.target.value)}
+                    className="input-field flex-1 h-14 bg-white font-black text-lg border-2 border-slate-200 shadow-sm focus:border-violet-400 transition-all"
+                  />
+                  <button
+                    type="button"
+                    className="h-14 px-8 font-black text-sm rounded-xl border-2 transition-all active:scale-95 shadow-sm"
+                    style={{ background: 'rgba(139,92,246,0.1)', border: '2px solid rgba(139,92,246,0.3)', color: '#7c3aed' }}
+                  >
+                    Submit BundleId
+                  </button>
+                </div>
+              </div>
+
               {/* Order Selection */}
               <div className="flex flex-col gap-2">
                 <label htmlFor="order-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
@@ -494,29 +518,6 @@ export default function ProductionLogEntry() {
                 </div>
               </div>
 
-              {/* Bundle ID Submit Row */}
-              <div className="md:col-span-2 flex flex-col gap-2">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileBox className="w-4 h-4 text-violet-500" /> Bundle ID
-                </label>
-                <div className="flex items-stretch gap-3">
-                  <input
-                    type="text"
-                    id="bundle-id-input"
-                    placeholder="Enter Bundle ID"
-                    value={bundleId}
-                    onChange={(e) => setBundleId(e.target.value)}
-                    className="input-field flex-1 h-14 bg-white font-semibold border-2 border-slate-200 shadow-sm focus:border-violet-400 transition-all"
-                  />
-                  <button
-                    type="button"
-                    className="h-14 px-6 font-black text-sm rounded-xl border-2 transition-all active:scale-95 shadow-sm"
-                    style={{ background: 'rgba(139,92,246,0.1)', border: '2px solid rgba(139,92,246,0.3)', color: '#7c3aed' }}
-                  >
-                    Submit Bundle ID
-                  </button>
-                </div>
-              </div>
 
             </div>
           </div>
