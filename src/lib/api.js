@@ -122,6 +122,52 @@ export async function apiLogEvent(token, payload) {
 }
 
 /**
+ * Fetch SKUs for production logging (filterable by order/style)
+ * @returns {Array<{ sku_id, code, label, order_number, style_name, color_code, size, qty_ordered }>}
+ */
+export async function apiGetSkus(token, orderId = null, styleId = null) {
+  let url = `${API_BASE_URL}/api/v1/production/skus`;
+  const params = new URLSearchParams();
+  if (orderId) params.append('order_id', orderId);
+  if (styleId) params.append('style_id', styleId);
+  if (params.toString()) url += `?${params.toString()}`;
+
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch SKUs (${res.status})`);
+  return res.json();
+}
+
+/**
+ * Log a production event at the per-piece level (scan)
+ */
+export async function apiProductionScan(token, payload) {
+  console.warn('[apiProductionScan] payload:', JSON.stringify(payload));
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/scan`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let errText;
+    try {
+      const errObj = await res.json();
+      errText = errObj.detail || errObj.message || JSON.stringify(errObj);
+    } catch {
+      errText = await res.text().catch(() => 'Failed to scan pieces');
+    }
+    console.warn('[apiProductionScan] error response:', errText);
+    throw new Error(errText || `Failed to scan pieces (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
  * Fetch a specific wage run by ID
  * NOTE: /api/v1/wages/runs has no GET (list) endpoint — only POST (create).
  * Use this to fetch a single run by ID after creation.

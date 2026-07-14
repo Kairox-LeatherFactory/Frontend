@@ -9,6 +9,7 @@ import {
   apiGetOperations,
   apiGetEvents,
   apiLogEvent,
+  apiProductionScan,
   apiComputeWageRun,
 } from '@/lib/api';
 import {
@@ -247,6 +248,13 @@ export function DataProvider({ children }) {
     }
   };
 
+  // ─── Log a scan event (per-piece tracking) ───
+  const addScanEvent = async (payload) => {
+    // payload: { operation_id, employee_id, work_date, sku_code, piece_seqs, piece_codes }
+    const result = await apiProductionScan(token, payload);
+    return result; // returning so UI can show how many logged, rework, etc.
+  };
+
   // ─── Freeze a wage run ───
   const addWageRun = async (period) => {
     if (!token) throw new Error('Not authenticated. Please log in.');
@@ -267,6 +275,7 @@ export function DataProvider({ children }) {
         wageRuns,
         traceCards,
         addEvent,
+        addScanEvent,
         addWageRun,
         createClient,
         apiLoading,

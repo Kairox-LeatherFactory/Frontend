@@ -2,7 +2,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiImportPreview, apiImportCommit } from '@/lib/api';
+import { apiImportPreview, apiImportCommit, apiGetSkus } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
@@ -67,7 +67,7 @@ function DynamicDataViewer({ data }) {
 
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
-  const { orders, workers, addEvent } = useData();
+  const { orders, workers, addScanEvent } = useData();
 
   // Role operational permissions — memoized: only recomputes when user role changes
   const allowedOperations = useMemo(
@@ -80,11 +80,10 @@ export default function ProductionLogEntry() {
   const [orderId, setOrderId] = useState('');
   const [operation, setOperation] = useState(allowedOperations[0] || '');
   const [workerId, setWorkerId] = useState('');
-  const [size, setSize] = useState('M');
-  const [qty, setQty] = useState('');
-  const [garmentId, setGarmentId] = useState('');
-  const [bundleId, setBundleId] = useState('');
+  const [skuCode, setSkuCode] = useState('');
+  const [pieceSeqs, setPieceSeqs] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [fetchedSkus, setFetchedSkus] = useState([]);
 
   // Auto-select first order and worker once backend data loads
   useEffect(() => {
@@ -151,12 +150,24 @@ export default function ProductionLogEntry() {
     return orders.find((o) => o.id === orderId);
   }, [orders, orderId]);
 
-  // Update default size when order changes
+  // Fetch SKUs when order changes
   useEffect(() => {
-    if (selectedOrder?.sizes?.length && !selectedOrder.sizes.includes(size)) {
-      setSize(selectedOrder.sizes[0]);
+    let active = true;
+    if (selectedOrder?.style_id) {
+      apiGetSkus(token, null, selectedOrder.style_id).then(skus => {
+        if (active) {
+          setFetchedSkus(skus || []);
+          if (skus?.length > 0 && !skus.find(s => s.code === skuCode)) {
+            setSkuCode(skus[0].code);
+          }
+        }
+      }).catch(err => console.warn('Failed to fetch SKUs:', err));
+    } else {
+      setFetchedSkus([]);
+      setSkuCode('');
     }
-  }, [selectedOrder, size]);
+    return () => { active = false; };
+  }, [selectedOrder, token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -168,41 +179,57 @@ export default function ProductionLogEntry() {
       return;
     }
 
-    if (!orderId || !operation || !workerId || !qty || !size || !date) {
+    if (!orderId || !operation || !workerId || !date || (!skuCode && !pieceSeqs)) {
       setErrorMsg('Please ensure all required shop floor logging fields are completed.');
       return;
     }
 
-    const parsedQty = parseInt(qty, 10);
-    if (isNaN(parsedQty) || parsedQty <= 0) {
-      setErrorMsg('Operation logging aborted. Quantity logged must be a valid positive integer.');
+    // Parse pieceSeqs "1, 2, 3-5" into array of numbers
+    let parsedSeqs = [];
+    if (pieceSeqs) {
+      const parts = pieceSeqs.split(',').map(s => s.trim()).filter(Boolean);
+      for (const part of parts) {
+        if (part.includes('-')) {
+          const [start, end] = part.split('-').map(n => parseInt(n, 10));
+          if (!isNaN(start) && !isNaN(end) && start <= end) {
+            for (let i = start; i <= end; i++) parsedSeqs.push(i);
+          }
+        } else {
+          const num = parseInt(part, 10);
+          if (!isNaN(num)) parsedSeqs.push(num);
+        }
+      }
+    }
+
+    if (parsedSeqs.length === 0 && pieceSeqs) {
+      // Maybe they typed full bundle codes? Let's check if it looks like a sequence
+      setErrorMsg('Invalid piece numbers format. Use numbers and ranges like "1, 2, 5-8".');
       return;
     }
 
-    // Prepare event data
+    // Prepare event data for POST /production/scan
     const newEvent = {
-      order_id: orderId,
-      style: selectedOrder?.style || 'CARNABY',
-      colorway: selectedOrder?.colorway || 'Black',
-      size,
-      worker_id: workerId,
-      operation,
-      qty: parsedQty,
-      date,
-      garment_id: garmentId.trim() || null,
+      operation_id: operation, // The context might need to map this to UUID or backend accepts name?
+      employee_id: workerId,
+      work_date: date,
+      sku_code: skuCode,
+      piece_seqs: parsedSeqs,
     };
 
     try {
-      await addEvent(newEvent);
+      const result = await addScanEvent(newEvent);
 
-      // Reset quantity and garment ID, show success
-      setQty('');
-      setGarmentId('');
-      setSuccessMsg(`Successfully registered ${parsedQty} pieces for ${operation} (Order ${orderId})! All dashboards have been recomputed dynamically.`);
+      // Reset sequence, show success
+      setPieceSeqs('');
+      setSuccessMsg(`Logged ${result.count_logged || parsedSeqs.length} pieces for ${operation}. ` + 
+        (result.rework?.length ? `(Rework: ${result.rework.length}) ` : '') +
+        (result.not_found?.length ? `(Not Found: ${result.not_found.length})` : '')
+      );
     } catch (err) {
       setErrorMsg(`Failed to submit event: ${err.message}`);
     }
   };
+
 
   // If the user has a viewer role, display permission error
   if (isReadOnly) {
@@ -319,29 +346,7 @@ export default function ProductionLogEntry() {
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-              {/* Bundle ID Submit Row */}
-              <div className="md:col-span-2 flex flex-col gap-2 pb-4 border-b border-slate-100">
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileBox className="w-4 h-4 text-violet-500" /> Track via Bundle ID
-                </label>
-                <div className="flex items-stretch gap-3">
-                  <input
-                    type="text"
-                    id="bundle-id-input"
-                    placeholder="Enter Bundle ID"
-                    value={bundleId}
-                    onChange={(e) => setBundleId(e.target.value)}
-                    className="input-field flex-1 h-14 bg-white font-black text-lg border-2 border-slate-200 shadow-sm focus:border-violet-400 transition-all"
-                  />
-                  <button
-                    type="button"
-                    className="h-14 px-8 font-black text-sm rounded-xl border-2 transition-all active:scale-95 shadow-sm"
-                    style={{ background: 'rgba(139,92,246,0.1)', border: '2px solid rgba(139,92,246,0.3)', color: '#7c3aed' }}
-                  >
-                    Submit BundleId
-                  </button>
-                </div>
-              </div>
+
 
               {/* Order Selection */}
               <div className="flex flex-col gap-2">
@@ -397,22 +402,25 @@ export default function ProductionLogEntry() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
 
-              {/* Size Pill Buttons */}
+              {/* SKU Selection */}
               <div className="flex flex-col gap-3">
                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                  <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment Size *
+                  <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
                 </label>
-                <div className="flex flex-wrap gap-2">
-                  {(selectedOrder?.sizes?.length ? selectedOrder.sizes : ['S', 'M', 'L', 'XL']).map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setSize(String(s))}
-                      className={`min-w-[3rem] h-11 px-3 text-sm font-black rounded-xl border-2 transition-all cursor-pointer ${String(size) === String(s) ? 'bg-[#c8834a] border-[#c8834a] text-white shadow-md scale-105' : 'bg-white border-[#c8834a]/20 text-[#9a7a5a] hover:border-[#c8834a] hover:text-[#c8834a] hover:bg-[#c8834a]/5 shadow-sm'}`}
-                    >
-                      {s}
-                    </button>
-                  ))}
+                <div className="flex flex-col gap-2">
+                  <select
+                    value={skuCode}
+                    onChange={(e) => setSkuCode(e.target.value)}
+                    className="input-field h-14 bg-white font-bold border-2 border-[#c8834a]/20 focus:border-[#c8834a] cursor-pointer shadow-sm text-sm transition-all"
+                    required
+                  >
+                    <option value="" disabled>-- Select SKU --</option>
+                    {fetchedSkus.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        {s.label || `${s.color_name} - ${s.size}`}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -448,35 +456,28 @@ export default function ProductionLogEntry() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
-              {/* Quantity Input with Quick Add Buttons */}
+              {/* Piece Sequences Input */}
               <div className="flex flex-col gap-3 md:col-span-2">
-                <label htmlFor="qty-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Plus className="w-4 h-4 text-emerald-500" /> Quantity Completed (Pieces) *
+                <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
                 </label>
+                <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8)</p>
                 <div className="flex flex-col sm:flex-row items-stretch gap-4">
                   <div className="relative flex-1">
                     <input
                       type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      id="qty-input"
-                      placeholder="0"
-                      value={qty}
-                      onChange={(e) => {
-                        const val = e.target.value.replace(/[^0-9]/g, '');
-                        setQty(val);
-                      }}
-                      className="input-field w-full h-14 pl-12 bg-white font-black text-2xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all"
+                      id="piece-seq-input"
+                      placeholder="e.g. 1, 2, 5-8"
+                      value={pieceSeqs}
+                      onChange={(e) => setPieceSeqs(e.target.value)}
+                      className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all"
                       required
                     />
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-400 font-bold text-xl">
-
-                    </span>
                   </div>
                   <div className="flex gap-2 w-1/4">
                     <button
                       type="button"
-                      onClick={() => setQty('')}
+                      onClick={() => setPieceSeqs('')}
                       className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
                     >
                       Clear
@@ -500,23 +501,7 @@ export default function ProductionLogEntry() {
                 />
               </div>
 
-              {/* Optional Garment Tracing barcode */}
-              <div className="flex flex-col gap-2">
-                <label htmlFor="garment-id-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <ScanBarcode className="w-4 h-4 text-emerald-500" /> Garment ID / Barcode
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    id="garment-id-input"
-                    placeholder="Scan or type (Optional)"
-                    value={garmentId}
-                    onChange={(e) => setGarmentId(e.target.value)}
-                    className="input-field w-full h-14 pl-12 bg-white font-semibold border-2 border-slate-200 shadow-sm focus:border-emerald-500"
-                  />
-                  <ScanBarcode className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
-                </div>
-              </div>
+
 
 
             </div>
@@ -527,9 +512,8 @@ export default function ProductionLogEntry() {
             <button
               type="button"
               onClick={() => {
-                setQty('');
-                setGarmentId('');
-                setSize('M');
+                setPieceSeqs('');
+                setSkuCode('');
               }}
               className="h-14 font-bold rounded-xl text-base px-8 transition-all"
               style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
