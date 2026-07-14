@@ -225,8 +225,8 @@ export default function Home() {
        setIsSuccess(true);
 
       // // Navigate immediately while the animation plays
-      login(data.role || activePanel.role, data.access_token);
-      //login(activePanel.role, 'temp_dummy_token');
+     login(data.role || activePanel.role, data.access_token);
+    //  login(activePanel.role, 'temp_dummy_token');
       router.push('/dashboard');
 
     } catch (err) {
