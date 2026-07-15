@@ -169,6 +169,23 @@ export async function apiGetSkus(token, orderId = null, styleId = null) {
 }
 
 /**
+ * Fetch pieces for a specific SKU and operation
+ * @returns {Promise<{ pieces: Array<{ piece_id, code, seq, current_stage, current_stage_label, done_at_op }>, total, done, pending }>}
+ */
+export async function apiGetSkuPieces(token, skuId, operationId) {
+  let url = `${API_BASE_URL}/api/v1/production/skus/${encodeURIComponent(skuId)}/pieces`;
+  if (operationId) {
+    url += `?operation_id=${encodeURIComponent(operationId)}`;
+  }
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch SKU pieces (${res.status})`);
+  return res.json();
+}
+
+/**
  * Log a production event at the per-piece level (scan)
  */
 export async function apiProductionScan(token, payload) {

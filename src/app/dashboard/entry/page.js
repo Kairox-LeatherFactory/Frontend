@@ -2,8 +2,8 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiImportPreview, apiImportCommit, apiGetSkus } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info, Lightbulb } from 'lucide-react';
+import { apiImportPreview, apiImportCommit, apiGetSkus, apiGetSkuPieces } from '@/lib/api';
+import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info, Lightbulb, ListChecks } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 function DynamicDataViewer({ data }) {
@@ -84,6 +84,17 @@ export default function ProductionLogEntry() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [fetchedSkus, setFetchedSkus] = useState([]);
 
+  // Modal State for Checklist
+  const [showChecklistModal, setShowChecklistModal] = useState(false);
+  const [checklistPieces, setChecklistPieces] = useState([]);
+  const [selectedPieces, setSelectedPieces] = useState([]);
+  const [loadingPieces, setLoadingPieces] = useState(false);
+  const [piecesMeta, setPiecesMeta] = useState(null);
+
+  // SKU Filter
+  const [skuFilter, setSkuFilter] = useState('');
+  const [skuRefreshKey, setSkuRefreshKey] = useState(0);
+
   // Auto-select first worker once backend data loads
   useEffect(() => {
     if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
@@ -146,6 +157,10 @@ export default function ProductionLogEntry() {
       const skus = result?.written?.skus_created ?? '';
       setCommitSuccess(`Imported${styles ? ` ${styles} styles,` : ''} ${skus ? `${skus} new SKUs` : 'data'} into order ${orderNum}. Opening Orders Explorer to verify.`);
       setShowPreviewModal(false);
+      // Auto-filter the SKU dropdown to show only this order's styles
+      setSkuFilter(orderNum);
+      // Re-fetch SKUs so newly imported ones appear immediately
+      setSkuRefreshKey(k => k + 1);
       setUploadOrderNumber('');
     } catch (err) {
       setUploadError(`Commit failed: ${err.message}`);
@@ -154,19 +169,16 @@ export default function ProductionLogEntry() {
     }
   };
 
-  // Fetch all SKUs on mount
+  // Fetch all SKUs on mount and whenever skuRefreshKey changes (e.g. after import)
   useEffect(() => {
     let active = true;
     apiGetSkus(token).then(skus => {
       if (active) {
         setFetchedSkus(skus || []);
-        if (skus?.length > 0 && !skus.find(s => s.code === skuCode)) {
-          setSkuCode(skus[0].code);
-        }
       }
     }).catch(err => console.warn('Failed to fetch SKUs:', err));
     return () => { active = false; };
-  }, [token]);
+  }, [token, skuRefreshKey]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -178,8 +190,13 @@ export default function ProductionLogEntry() {
       return;
     }
 
-    if (!operation || !workerId || !date || (!skuCode && !pieceSeqs)) {
+    if (!operation || !workerId || !date || !skuCode) {
       setErrorMsg('Please ensure all required shop floor logging fields are completed.');
+      return;
+    }
+
+    if (operation !== 'Cutting' && !pieceSeqs) {
+      setErrorMsg('Please enter piece sequences or use the checklist.');
       return;
     }
 
@@ -214,11 +231,17 @@ export default function ProductionLogEntry() {
       return;
     }
 
+    const skuObj = fetchedSkus.find(s => s.code === skuCode);
+    if (!skuObj) {
+      setErrorMsg(`Could not find SKU ID for ${skuCode}`);
+      return;
+    }
+
     const newEvent = {
       operation_id: opRecord.id,
       employee_id: workerId,
       work_date: date,
-      sku_code: skuCode,
+      sku_id: skuObj.sku_id,
       piece_seqs: parsedSeqs,
     };
 
@@ -227,7 +250,7 @@ export default function ProductionLogEntry() {
 
       // Reset sequence, show success
       setPieceSeqs('');
-      setSuccessMsg(`Logged ${result.count_logged || parsedSeqs.length} pieces for ${operation}. ` + 
+      setSuccessMsg(`Logged ${result.count_logged || parsedSeqs.length} pieces for ${operation}. ` +
         (result.rework?.length ? `(Rework: ${result.rework.length}) ` : '') +
         (result.not_found?.length ? `(Not Found: ${result.not_found.length})` : '')
       );
@@ -236,6 +259,67 @@ export default function ProductionLogEntry() {
     }
   };
 
+
+  // Open checklist modal
+  const openChecklistModal = async () => {
+    if (!skuCode || !operation) return;
+
+    const opRecord = operations.find(o => o.label === operation);
+    if (!opRecord) {
+      setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
+      return;
+    }
+
+    const skuObj = fetchedSkus.find(s => s.code === skuCode);
+    if (!skuObj) {
+      setErrorMsg(`Could not find SKU ID for ${skuCode}`);
+      return;
+    }
+
+    setLoadingPieces(true);
+    setChecklistPieces([]);
+    setSelectedPieces([]);
+    setPiecesMeta(null);
+    setShowChecklistModal(true);
+
+    try {
+      const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
+      setChecklistPieces(data.pieces || []);
+      setPiecesMeta({ total: data.total, done: data.done, pending: data.pending });
+    } catch (err) {
+      setErrorMsg(`Failed to fetch pieces checklist: ${err.message}`);
+      setShowChecklistModal(false);
+    } finally {
+      setLoadingPieces(false);
+    }
+  };
+
+  const submitChecklist = async () => {
+    if (selectedPieces.length === 0) return;
+
+    const opRecord = operations.find(o => o.label === operation);
+    const skuObj = fetchedSkus.find(s => s.code === skuCode);
+
+    const newEvent = {
+      operation_id: opRecord.id,
+      employee_id: workerId,
+      work_date: date,
+      sku_id: skuObj.sku_id,
+      piece_seqs: selectedPieces,
+    };
+
+    try {
+      const result = await addScanEvent(newEvent);
+      setSuccessMsg(`Logged ${result.count_logged || selectedPieces.length} pieces for ${operation}. ` +
+        (result.rework?.length ? `(Rework: ${result.rework.length}) ` : '') +
+        (result.not_found?.length ? `(Not Found: ${result.not_found.length})` : '')
+      );
+      setShowChecklistModal(false);
+      setSelectedPieces([]);
+    } catch (err) {
+      setErrorMsg(`Failed to submit event: ${err.message}`);
+    }
+  };
 
   // If the user has a viewer role, display permission error
   if (isReadOnly) {
@@ -341,17 +425,14 @@ export default function ProductionLogEntry() {
 
         <form onSubmit={handleSubmit} className="space-y-8">
 
-          {/* STEP 1: Core Selection */}
+          {/* STEP 1: Core Selection — Worker Only */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
               Worker Selection
             </h3>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-
-              {/* Worker Selection */}
               <div className="flex flex-col gap-2">
                 <label htmlFor="worker-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                   <Users className="w-4 h-4 text-blue-500" /> Assigned Worker / Operator *
@@ -373,6 +454,7 @@ export default function ProductionLogEntry() {
               </div>
             </div>
           </div>
+
 
           {/* STEP 2: Operation & Size (Visual Cards) */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
@@ -399,7 +481,7 @@ export default function ProductionLogEntry() {
                     <option value="" disabled>-- Select SKU --</option>
                     {fetchedSkus.map((s) => (
                       <option key={s.code} value={s.code}>
-                        {s.label || `${s.color_name} - ${s.size}`}
+                        {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}
                       </option>
                     ))}
                   </select>
@@ -441,10 +523,20 @@ export default function ProductionLogEntry() {
               {/* Piece Sequences Input */}
               {operation !== 'Cutting' ? (
                 <div className="flex flex-col gap-3 md:col-span-2">
-                  <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
-                  </label>
-                  <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8)</p>
+                  <div className="flex justify-between items-end">
+                    <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={openChecklistModal}
+                      className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                      style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#fff' }}
+                    >
+                      <ListChecks className="w-3.5 h-3.5" /> Select from Checklist
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8), or use the checklist.</p>
                   <div className="flex flex-col sm:flex-row items-stretch gap-4">
                     <div className="relative flex-1">
                       <input
@@ -474,7 +566,7 @@ export default function ProductionLogEntry() {
                     <Lightbulb className="w-4 h-4" /> Cutting events are logged automatically.
                   </p>
                   <p className="text-xs text-blue-600 font-medium">
-                    When you upload a Breakdown Sheet, the system automatically creates the Cutting events for those SKUs. You do not need to manually log pieces for the Cutting stage here.
+                    When you upload a Breakdown Sheet, the system automatically creates Cutting events for those SKUs. No manual logging needed here.
                   </p>
                 </div>
               )}
@@ -513,14 +605,15 @@ export default function ProductionLogEntry() {
             >
               Reset All
             </button>
-            <button
-              type="submit"
-              disabled={operation === 'Cutting'}
-              className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
-            >
-              <Rocket className="w-5 h-5" /> Submit Event
-            </button>
+            {operation !== 'Cutting' && (
+              <button
+                type="submit"
+                className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
+              >
+                <Rocket className="w-5 h-5" /> Submit Event
+              </button>
+            )}
           </div>
 
         </form>
@@ -619,11 +712,10 @@ export default function ProductionLogEntry() {
                 value={uploadOrderNumber}
                 onChange={(e) => { setUploadOrderNumber(e.target.value.trim()); setUploadOrderNumberError(''); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && uploadOrderNumber.trim()) { e.preventDefault(); fileInputRef.current?.click(); } }}
-                className={`w-full px-4 py-3 rounded-xl border text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 transition-colors ${
-                  uploadOrderNumberError
+                className={`w-full px-4 py-3 rounded-xl border text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 transition-colors ${uploadOrderNumberError
                     ? 'border-red-400 bg-red-50 focus:ring-red-400/20'
                     : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
-                }`}
+                  }`}
               />
               {uploadOrderNumberError ? (
                 <p className="text-xs font-bold text-red-600 flex items-start gap-1.5 pt-1">
@@ -652,6 +744,140 @@ export default function ProductionLogEntry() {
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
               >
                 {uploadLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</> : <><FileSpreadsheet className="w-3.5 h-3.5" /> Choose File</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── PIECE CHECKLIST MODAL ─── */}
+      {showChecklistModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+
+            {/* Header */}
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
+                  <ListChecks className="w-4 h-4" style={{ color: '#c8834a' }} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Select Pieces — {operation}</h3>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{skuCode}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowChecklistModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Counts */}
+            {piecesMeta && (
+              <div className="flex gap-3 px-6 py-3 bg-slate-50 border-b border-slate-100">
+                <span className="text-xs font-bold text-slate-500">Total: <strong className="text-slate-700">{piecesMeta.total}</strong></span>
+                <span className="text-xs font-bold text-emerald-600">Done: <strong>{piecesMeta.done}</strong></span>
+                <span className="text-xs font-bold text-amber-600">Pending: <strong>{piecesMeta.pending}</strong></span>
+                <span className="text-xs font-bold ml-auto" style={{ color: '#c8834a' }}>Selected: <strong>{selectedPieces.length}</strong></span>
+              </div>
+            )}
+
+            {/* Piece List */}
+            <div className="flex-1 overflow-y-auto p-6">
+              {loadingPieces ? (
+                <div className="flex flex-col items-center justify-center h-32 gap-3">
+                  <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
+                  <p className="text-sm font-bold text-slate-400">Loading pieces...</p>
+                </div>
+              ) : checklistPieces.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 gap-2">
+                  <p className="text-sm font-bold text-slate-400">No pieces found for this SKU and stage.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {/* Select All / Deselect All */}
+                  <div className="col-span-2 sm:col-span-3 flex gap-2 mb-2">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPieces(checklistPieces.filter(p => !p.done_at_op).map(p => p.seq))}
+                      className="text-[10px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                      style={{ background: 'rgba(200,131,74,0.12)', color: '#c8834a' }}
+                    >
+                      Select All Pending
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPieces([])}
+                      className="text-[10px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                      style={{ background: '#f1f5f9', color: '#475569' }}
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+
+                  {checklistPieces.map((piece) => {
+                    const isSelected = selectedPieces.includes(piece.seq);
+                    const isDone = piece.done_at_op;
+                    return (
+                      <button
+                        key={piece.piece_id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedPieces(prev =>
+                            prev.includes(piece.seq)
+                              ? prev.filter(s => s !== piece.seq)
+                              : [...prev, piece.seq]
+                          );
+                        }}
+                        className={`relative p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${isSelected
+                            ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
+                            : isDone
+                              ? 'border-emerald-200 bg-emerald-50 opacity-70'
+                              : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
+                          }`}
+                      >
+                        <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : '#2d1f0e' }}>
+                          #{piece.seq}
+                        </p>
+                        <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage}</p>
+                        {isDone && (
+                          <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-white" />
+                          </span>
+                        )}
+                        {isSelected && (
+                          <span className="absolute top-1 right-1 w-3 h-3 rounded-full flex items-center justify-center" style={{ background: '#c8834a' }}>
+                            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex gap-3 p-6 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowChecklistModal(false)}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors"
+                style={{ background: '#f1f5f9', color: '#475569' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={selectedPieces.length === 0}
+                onClick={submitChecklist}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+              >
+                <Rocket className="w-3.5 h-3.5" />
+                Submit {selectedPieces.length > 0 ? `${selectedPieces.length} Pieces` : 'Event'}
               </button>
             </div>
           </div>
