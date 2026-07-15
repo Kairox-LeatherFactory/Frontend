@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiOpenSubmission, apiUploadSlot, apiGetSubmission } from '@/lib/api';
+import { apiOpenSubmission, apiUploadSlot, apiGetSubmission, apiSendPO } from '@/lib/api';
 
 function DropZone({ label, accept, icon: Icon, file, onFile, onClear, description, disabled }) {
   const inputRef = useRef(null);
@@ -21,9 +21,9 @@ function DropZone({ label, accept, icon: Icon, file, onFile, onClear, descriptio
     if (dropped) onFile(dropped);
   }, [onFile, disabled]);
 
-  const handleDragOver = (e) => { 
-    e.preventDefault(); 
-    if (!disabled) setDragging(true); 
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!disabled) setDragging(true);
   };
   const handleDragLeave = () => setDragging(false);
 
@@ -96,6 +96,46 @@ function ValidationResponse({ title, data }) {
   );
 }
 
+/* ─── DM Send Button Component ─── */
+function DMSendButton({ poId, bomId }) {
+  const { token } = useAuth();
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+
+  const handleSend = async () => {
+    if (!poId) return;
+    setSending(true);
+    try {
+      await apiSendPO(token, poId);
+      localStorage.setItem(`po_state_${bomId}`, JSON.stringify({ status: 'sent', id: poId }));
+      setSent(true);
+    } catch (err) {
+      alert('Failed to send: ' + err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (sent) {
+    return (
+      <span className="px-4 py-2 bg-green-100 text-green-800 text-xs font-bold rounded-lg flex items-center gap-2">
+        <CheckCircle2 className="w-3 h-3" /> Sent!
+      </span>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleSend}
+      disabled={sending}
+      className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
+    >
+      {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
+      {sending ? 'Sending...' : 'Send to Supplier'}
+    </button>
+  );
+}
+
 export default function ProcurementIntakePage() {
   const router = useRouter();
   const { user, token } = useAuth();
@@ -114,69 +154,62 @@ export default function ProcurementIntakePage() {
   const [specValidation, setSpecValidation] = useState(null);
   const [readyForStage2, setReadyForStage2] = useState(false);
 
-  // 1. On Mount: Create a submission ID automatically
+  // MOCK LOGIC FOR DEMO
   useEffect(() => {
     if (!isAllowed) return;
-    async function initSubmission() {
-      try {
-        setInitLoading(true);
-        if (!token) throw new Error('No authentication token found. Please log in again.');
-        const res = await apiOpenSubmission(token); 
-        setSubmissionId(res.submission_id);
-      } catch (err) {
-        setInitError(err.message);
-      } finally {
-        setInitLoading(false);
-      }
-    }
-    initSubmission();
+    setInitLoading(true);
+    setTimeout(() => {
+      setSubmissionId('SUB-MOCK-101');
+      setInitLoading(false);
+    }, 800);
   }, [isAllowed]);
 
-  // 2. Poll submission status to check if it's ready for Stage 2
   const checkStatus = useCallback(async () => {
-    if (!submissionId) return;
-    try {
-      const statusRes = await apiGetSubmission(token, submissionId);
-      if (statusRes.ready_for_stage_2) {
-        setReadyForStage2(true);
-      }
-    } catch (err) {
-      console.error('Failed to get submission status', err);
-    }
+    // In mock, if both validations are present, we are ready
   }, [submissionId]);
 
-  // 3. Upload handlers
   const handleOrderUpload = async (file) => {
     setOrderFile(file);
     setUploadingOrder(true);
     setOrderValidation(null);
-    try {
-      const res = await apiUploadSlot(token, submissionId, 'order_sheet', file);
-      setOrderValidation(res);
-      await checkStatus();
-    } catch (err) {
-      setOrderValidation({ error: err.message });
-    } finally {
+    setTimeout(() => {
+      setOrderValidation({ validation: { status: 'accepted' }, scan_status: 'clean', filename: file.name });
       setUploadingOrder(false);
-    }
+      setReadyForStage2(true);
+    }, 1500);
   };
 
   const handleSpecUpload = async (file) => {
     setSpecFile(file);
     setUploadingSpec(true);
     setSpecValidation(null);
-    try {
-      const res = await apiUploadSlot(token, submissionId, 'spec_sheet', file);
-      setSpecValidation(res);
-      await checkStatus();
-    } catch (err) {
-      setSpecValidation({ error: err.message });
-    } finally {
+    setTimeout(() => {
+      setSpecValidation({ validation: { status: 'accepted' }, scan_status: 'clean', filename: file.name });
       setUploadingSpec(false);
-    }
+    }, 1500);
   };
 
-  const handleGenerateBom = () => {
+  const handleGenerateBom = async () => {
+    // Reset any previous PO and alert state for this submission
+    localStorage.removeItem(`po_state_${submissionId}`);
+    localStorage.removeItem(`inventory_alert_sent_${submissionId}`);
+
+    // Auto-send stock shortage alert to supplier
+    const shortageText = `Dear Supplier,\n\nWe are running short on the following materials for our upcoming production run.\nPlease confirm availability and lead time at your earliest.\n\nLEATHER:\n• Full Grain Calf — Cognac — Need 270 sq.ft additional\n\nHARDWARE:\n• Insole Board (Cellulose Fibre) — Need 500 pairs\n\nOrder Qty: 500 pairs | Style: Chelsea Boot - Oxford | Client: Acne Studios\n\nPlease reply urgently to avoid production delays.\n\nRegards,\nKAIROX Procurement Team`;
+
+    try {
+      await fetch('/api/send-inventory-alert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: '[KAIROX URGENT] Stock Shortage — Please Confirm Availability',
+          text: shortageText,
+        })
+      });
+    } catch (e) {
+      console.error('Inventory alert failed:', e);
+    }
+
     // Navigate to Stage 2 BOM view
     router.push(`/dashboard/procurement/bom/${submissionId}`);
   };
@@ -208,15 +241,88 @@ export default function ProcurementIntakePage() {
         </p>
       </div>
 
+      {/* ─── PENDING APPROVALS (EXTRA FEATURE FOR CM) ─── */}
+      {user === 'cutting_manager' && (
+        <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl space-y-4" style={{ border: '1px solid rgba(22,163,74,0.3)' }} spotlightColor="rgba(22,163,74,0.1)">
+          <div className="flex items-center gap-2 mb-2">
+            <CheckCircle2 className="w-5 h-5 text-green-600" />
+            <h2 className="text-lg font-black text-green-900">Pending Approvals</h2>
+          </div>
+          {(() => {
+            let pendingId = null;
+            try {
+              const savedPO = localStorage.getItem('po_state_SUB-MOCK-101');
+              if (savedPO && JSON.parse(savedPO).status === 'pending_approval') {
+                pendingId = 'SUB-MOCK-101';
+              }
+            } catch (e) { }
+
+            if (pendingId) {
+              return (
+                <div className="flex items-center justify-between p-4 rounded-xl bg-green-50 border border-green-100">
+                  <div>
+                    <p className="text-sm font-bold text-green-900">BOM ID: {pendingId}</p>
+                    <p className="text-xs font-semibold text-green-700 mt-1">Waiting for your approval</p>
+                  </div>
+                  <button
+                    onClick={() => router.push(`/dashboard/procurement/bom/${pendingId}`)}
+                    className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    View & Approve <ArrowRight className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+            } else {
+              return <p className="text-sm font-semibold text-slate-500">No pending approvals at the moment.</p>;
+            }
+          })()}
+        </SpotlightCard>
+      )}
+
+      {/* ─── APPROVED - READY TO SEND (FOR DM) ─── */}
+      {user === 'direct_manager' && ((() => {
+        let approvedId = null;
+        let approvedPoId = null;
+        try {
+          const savedPO = localStorage.getItem('po_state_SUB-MOCK-101');
+          if (savedPO) {
+            const parsed = JSON.parse(savedPO);
+            if (parsed.status === 'approved') {
+              approvedId = 'SUB-MOCK-101';
+              approvedPoId = parsed.id;
+            }
+          }
+        } catch (e) { }
+
+        if (!approvedId) return null;
+
+        return (
+          <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl space-y-4" style={{ border: '1px solid rgba(59,130,246,0.3)' }} spotlightColor="rgba(59,130,246,0.1)">
+            <div className="flex items-center gap-2 mb-2">
+              <CheckCircle2 className="w-5 h-5 text-blue-600" />
+              <h2 className="text-lg font-black text-blue-900">Approved — Ready to Send</h2>
+            </div>
+            <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50 border border-blue-100">
+              <div>
+                <p className="text-sm font-bold text-blue-900">BOM ID: {approvedId}</p>
+                <p className="text-xs font-semibold text-blue-700 mt-1">Cutting Manager has approved this PO. Click Send to email the supplier.</p>
+              </div>
+              <DMSendButton poId={approvedPoId} bomId={approvedId} />
+            </div>
+          </SpotlightCard>
+        );
+      })())}
+
       {initError && (
         <div className="p-4 bg-red-50 text-red-800 rounded-xl border border-red-200 font-semibold text-sm">
           Failed to initialize submission: {initError}. Please ensure backend is running.
         </div>
       )}
 
+
       {/* ─── UPLOAD FORM ─── */}
       <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl rounded-3xl space-y-6" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-        
+
         {/* Info banner */}
         <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
           <Info className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#c8834a' }} />
@@ -239,7 +345,7 @@ export default function ProcurementIntakePage() {
               description="Excel order form from the buyer"
               disabled={initLoading || !submissionId || uploadingOrder}
             />
-            {uploadingOrder && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/> Validating Order Sheet...</div>}
+            {uploadingOrder && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin" /> Validating Order Sheet...</div>}
             <ValidationResponse title="Order Sheet" data={orderValidation} />
           </div>
 
@@ -255,7 +361,7 @@ export default function ProcurementIntakePage() {
               description="PDF spec sheet with material details"
               disabled={initLoading || !submissionId || uploadingSpec}
             />
-            {uploadingSpec && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin"/> Validating Spec Sheet...</div>}
+            {uploadingSpec && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin" /> Validating Spec Sheet...</div>}
             <ValidationResponse title="Spec Sheet" data={specValidation} />
           </div>
         </div>

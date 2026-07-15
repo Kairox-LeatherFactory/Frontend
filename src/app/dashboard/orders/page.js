@@ -3,23 +3,37 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { useData } from '@/context/DataContext';
 import { useAuth } from '@/context/AuthContext';
-import { TreePine, Building2, ClipboardList, Shirt, Plus, X, Loader2, FileSpreadsheet } from 'lucide-react';
+import { TreePine, Building2, ClipboardList, Shirt, Plus, X, Loader2, FileSpreadsheet, PackagePlus, Calendar, Ship } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 export default function OrdersTreeBrowser() {
-  const { orders, clients = [], createClient, apiLoading } = useData();
+  const { orders, clients = [], createClient, addClientOrder, apiLoading } = useData();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState('tree'); // 'tree' or 'list'
 
   // Local state for dynamically created clients (fallback if no API)
   const [localClients, setLocalClients] = useState([]);
 
-  // Modal states
+  // Modal states — Create Client
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newClientName, setNewClientName] = useState('');
   const [newCompanyCode, setNewCompanyCode] = useState('');
+  const [newOrderNumber, setNewOrderNumber] = useState('');
+  const [orderNumberError, setOrderNumberError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+
+  // Modal states — Add Order
+  const [showAddOrderModal, setShowAddOrderModal] = useState(false);
+  const [addOrderClient, setAddOrderClient] = useState(null); // { id, name }
+  const [addOrderNum, setAddOrderNum] = useState('');
+  const [addOrderNumError, setAddOrderNumError] = useState('');
+  const [addOrderDate, setAddOrderDate] = useState('');
+  const [addDeadline, setAddDeadline] = useState('');
+  const [addSeaCutoff, setAddSeaCutoff] = useState('');
+  const [addShipMode, setAddShipMode] = useState('sea');
+  const [isAddingOrder, setIsAddingOrder] = useState(false);
+  const [addOrderError, setAddOrderError] = useState('');
 
   // Excel Upload States
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -347,9 +361,31 @@ export default function OrdersTreeBrowser() {
 
                   <div className="mt-4 pt-3 flex items-center justify-between text-xs" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
                     <span className="text-[10px] font-bold uppercase" style={{ color: '#9a7a5a' }}>Active Orders</span>
-                    <span className="px-2.5 py-1 font-black rounded-lg" style={{ background: 'rgba(200,131,74,0.1)', color: '#a86022' }}>
-                      {activePOs} {activePOs === 1 ? 'PO' : 'POs'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2.5 py-1 font-black rounded-lg" style={{ background: 'rgba(200,131,74,0.1)', color: '#a86022' }}>
+                        {activePOs} {activePOs === 1 ? 'PO' : 'POs'}
+                      </span>
+                      {user === 'direct_manager' && (
+                        <button
+                          onClick={() => {
+                            setAddOrderClient({ id: client.id, name: client.name });
+                            setAddOrderNum('');
+                            setAddOrderNumError('');
+                            setAddOrderDate('');
+                            setAddDeadline('');
+                            setAddSeaCutoff('');
+                            setAddShipMode('sea');
+                            setAddOrderError('');
+                            setShowAddOrderModal(true);
+                          }}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg font-black text-[10px] transition-all hover:shadow-sm active:scale-95 cursor-pointer"
+                          style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a', border: '1px solid rgba(200,131,74,0.25)' }}
+                          title="Add new order to this client"
+                        >
+                          <Plus className="w-3 h-3" /> Add Order
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </SpotlightCard>
               );
@@ -374,6 +410,8 @@ export default function OrdersTreeBrowser() {
                   setShowCreateModal(false);
                   setNewClientName('');
                   setNewCompanyCode('');
+                  setNewOrderNumber('');
+                  setOrderNumberError('');
                   setCreateError('');
                 }}
                 disabled={isCreating}
@@ -393,14 +431,15 @@ export default function OrdersTreeBrowser() {
             <form 
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (!newClientName.trim() || !newCompanyCode.trim()) return;
+                if (!newClientName.trim() || !newCompanyCode.trim() || !newOrderNumber.trim()) return;
                 
                 setIsCreating(true);
                 setCreateError('');
+                setOrderNumberError('');
 
                 try {
                   if (createClient) {
-                    await createClient(newClientName.trim(), newCompanyCode.trim());
+                    await createClient(newClientName.trim(), newCompanyCode.trim(), newOrderNumber.trim());
                   } else {
                     // Fallback to local state if not logged in via API
                     const newClient = {
@@ -415,8 +454,14 @@ export default function OrdersTreeBrowser() {
                   setShowCreateModal(false);
                   setNewClientName('');
                   setNewCompanyCode('');
+                  setNewOrderNumber('');
+                  setOrderNumberError('');
                 } catch (err) {
-                  setCreateError('Failed to create client. Please try again.');
+                  if (err.status === 409 || err.message?.includes('409') || err.message?.toLowerCase().includes('already exists')) {
+                    setOrderNumberError(`Order number "${newOrderNumber.trim()}" is already in use. Choose a unique one.`);
+                  } else {
+                    setCreateError(err.message || 'Failed to create client. Please try again.');
+                  }
                 } finally {
                   setIsCreating(false);
                 }
@@ -453,6 +498,32 @@ export default function OrdersTreeBrowser() {
                 />
               </div>
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700 uppercase tracking-wider block">
+                  Order Number <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. 1001"
+                  value={newOrderNumber}
+                  onChange={(e) => { setNewOrderNumber(e.target.value.trim()); setOrderNumberError(''); }}
+                  disabled={isCreating}
+                  className={`w-full px-4 py-3 rounded-xl border text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 disabled:opacity-50 transition-colors ${
+                    orderNumberError
+                      ? 'border-red-400 focus:ring-red-500/20 focus:border-red-500 bg-red-50'
+                      : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
+                  }`}
+                />
+                {orderNumberError && (
+                  <p className="text-xs font-bold text-red-600 flex items-center gap-1.5">
+                    <span className="w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center shrink-0">!</span>
+                    {orderNumberError}
+                  </p>
+                )}
+                <p className="text-[10px] text-slate-400 font-medium">Globally unique. This becomes the first order for this client (e.g. 1001, 1002).</p>
+              </div>
+
               {/* Action Buttons */}
               <div className="flex gap-3 pt-4 border-t border-slate-100">
                 <button
@@ -461,6 +532,8 @@ export default function OrdersTreeBrowser() {
                     setShowCreateModal(false);
                     setNewClientName('');
                     setNewCompanyCode('');
+                    setNewOrderNumber('');
+                    setOrderNumberError('');
                     setCreateError('');
                   }}
                   disabled={isCreating}
@@ -470,7 +543,7 @@ export default function OrdersTreeBrowser() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isCreating || !newClientName.trim() || !newCompanyCode.trim()}
+                  disabled={isCreating || !newClientName.trim() || !newCompanyCode.trim() || !newOrderNumber.trim()}
                   className="flex-1 py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isCreating ? (
@@ -556,6 +629,175 @@ export default function OrdersTreeBrowser() {
                 Upload to Backend (Coming Soon)
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ADD ORDER MODAL ─── */}
+      {showAddOrderModal && addOrderClient && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full p-6 sm:p-8 space-y-5 relative">
+
+            {/* Header */}
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
+                  <PackagePlus className="w-4 h-4" style={{ color: '#c8834a' }} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Add New Order</h3>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{addOrderClient.name}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddOrderModal(false)}
+                disabled={isAddingOrder}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {addOrderError && (
+              <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
+                {addOrderError}
+              </div>
+            )}
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!addOrderNum.trim()) return;
+                setIsAddingOrder(true);
+                setAddOrderNumError('');
+                setAddOrderError('');
+                try {
+                  await addClientOrder(addOrderClient.id, {
+                    order_number: addOrderNum.trim(),
+                    ...(addOrderDate && { order_date: addOrderDate }),
+                    ...(addDeadline && { delivery_deadline: addDeadline }),
+                    ...(addSeaCutoff && { sea_cutoff_date: addSeaCutoff }),
+                    ship_mode: addShipMode,
+                  });
+                  setShowAddOrderModal(false);
+                } catch (err) {
+                  if (err.status === 409 || err.message?.includes('409') || err.message?.toLowerCase().includes('already exists')) {
+                    setAddOrderNumError(`Order number "${addOrderNum.trim()}" already exists. Choose a unique one.`);
+                  } else if (err.status === 404) {
+                    setAddOrderError('Client not found. Please refresh the page.');
+                  } else {
+                    setAddOrderError(err.message || 'Failed to add order. Please try again.');
+                  }
+                } finally {
+                  setIsAddingOrder(false);
+                }
+              }}
+              className="space-y-4"
+            >
+              {/* Order Number — Required */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>
+                  Order Number <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  required
+                  placeholder="e.g. 1002"
+                  value={addOrderNum}
+                  onChange={(e) => { setAddOrderNum(e.target.value.trim()); setAddOrderNumError(''); }}
+                  disabled={isAddingOrder}
+                  className={`w-full px-4 py-3 rounded-xl border text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 disabled:opacity-50 transition-colors ${
+                    addOrderNumError
+                      ? 'border-red-400 bg-red-50 focus:ring-red-400/20'
+                      : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
+                  }`}
+                />
+                {addOrderNumError && (
+                  <p className="text-xs font-bold text-red-600 flex items-start gap-1.5">
+                    <span className="mt-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center shrink-0">!</span>
+                    {addOrderNumError}
+                  </p>
+                )}
+              </div>
+
+              {/* Optional date fields */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black uppercase tracking-widest flex items-center gap-1" style={{ color: '#9a7a5a' }}>
+                    <Calendar className="w-3 h-3" /> Order Date
+                  </label>
+                  <input
+                    type="date"
+                    value={addOrderDate}
+                    onChange={(e) => setAddOrderDate(e.target.value)}
+                    disabled={isAddingOrder}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/20 focus:border-[#c8834a] disabled:opacity-50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black uppercase tracking-widest flex items-center gap-1" style={{ color: '#9a7a5a' }}>
+                    <Calendar className="w-3 h-3" /> Delivery Deadline
+                  </label>
+                  <input
+                    type="date"
+                    value={addDeadline}
+                    onChange={(e) => setAddDeadline(e.target.value)}
+                    disabled={isAddingOrder}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/20 focus:border-[#c8834a] disabled:opacity-50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black uppercase tracking-widest flex items-center gap-1" style={{ color: '#9a7a5a' }}>
+                    <Ship className="w-3 h-3" /> Sea Cutoff Date
+                  </label>
+                  <input
+                    type="date"
+                    value={addSeaCutoff}
+                    onChange={(e) => setAddSeaCutoff(e.target.value)}
+                    disabled={isAddingOrder}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/20 focus:border-[#c8834a] disabled:opacity-50"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>
+                    Ship Mode
+                  </label>
+                  <select
+                    value={addShipMode}
+                    onChange={(e) => setAddShipMode(e.target.value)}
+                    disabled={isAddingOrder}
+                    className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/20 focus:border-[#c8834a] disabled:opacity-50"
+                  >
+                    <option value="sea">Sea Freight</option>
+                    <option value="air">Air Freight</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex gap-3 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddOrderModal(false)}
+                  disabled={isAddingOrder}
+                  className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors disabled:opacity-50"
+                  style={{ background: '#f1f5f9', color: '#475569' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAddingOrder || !addOrderNum.trim()}
+                  className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
+                  style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                >
+                  {isAddingOrder
+                    ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Adding...</>
+                    : <><PackagePlus className="w-3.5 h-3.5" /> Add Order</>}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

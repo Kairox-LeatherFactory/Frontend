@@ -10,13 +10,14 @@ import {
   Eye,
   ArrowUpRight,
   ArrowRight,
+  Loader2,
 } from 'lucide-react';
 import { apiLogin } from '@/lib/api';
 
 /* ─── Animated Gold Text Component ────────────────── */
 function AnimatedGoldText({ text }) {
   const letters = text.split('');
-  
+
   const container = {
     hidden: { opacity: 1 },
     visible: {
@@ -30,7 +31,7 @@ function AnimatedGoldText({ text }) {
 
   const child = {
     hidden: { color: 'rgba(255,255,255,0.4)', textShadow: '0px 0px 0px rgba(200,131,74,0)' },
-    visible: { 
+    visible: {
       color: '#c8834a',
       textShadow: '0px 0px 15px rgba(200,131,74,0.4)',
       transition: { duration: 0.8, ease: "easeInOut" }
@@ -68,7 +69,7 @@ const PANELS = [
     subtitle: 'Full factory oversight & production control',
     accent: '#d4915a',
     icon: ShieldCheck,
-    img: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1200&q=80',
+    img: '/images/roles/manager.png',
   },
   {
     role: 'cutting_manager',
@@ -76,7 +77,7 @@ const PANELS = [
     subtitle: 'Cutting floor operations & patterns',
     accent: '#7b9fc8',
     icon: Scissors,
-    img: 'https://images.unsplash.com/photo-1542744173-8e7e53415bb0?w=1200&q=80',
+    img: '/images/roles/cutting.png',
   },
   {
     role: 'stitching_manager',
@@ -84,7 +85,7 @@ const PANELS = [
     subtitle: 'Assembly floor & quality control',
     accent: '#b07bc8',
     icon: Layers,
-    img: 'https://images.unsplash.com/photo-1521737852567-6949f3f9f2b5?w=1200&q=80',
+    img: '/images/roles/stitching.png',
   },
   {
     role: 'viewer',
@@ -92,13 +93,14 @@ const PANELS = [
     subtitle: 'Read-only access for compliance & auditing',
     accent: '#a0a0a0',
     icon: Eye,
-    img: 'https://images.unsplash.com/photo-1507679799987-c73779587ccf?w=1200&q=80',
+    img: '/images/roles/auditor.png',
   },
 ];
 
 /* ─── Preloader ───────────────────────────────────── */
 function Preloader({ onComplete }) {
   const [progress, setProgress] = useState(0);
+  const [isComplete, setIsComplete] = useState(false);
 
   useEffect(() => {
     let current = 0;
@@ -107,7 +109,8 @@ function Preloader({ onComplete }) {
       if (current >= 100) {
         current = 100;
         clearInterval(interval);
-        setTimeout(onComplete, 600);
+        setIsComplete(true);
+        setTimeout(onComplete, 800);
       }
       setProgress(current);
     }, 80);
@@ -126,8 +129,20 @@ function Preloader({ onComplete }) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 1 }}
         className="text-4xl tracking-[0.3em] mb-10"
+        style={{ fontFamily: 'var(--font-playfair)' }}
       >
-        <AnimatedGoldText text="KAIROX" />
+        <motion.span
+          animate={isComplete ? {
+            color: '#c8834a',
+            textShadow: '0px 0px 20px rgba(200,131,74,0.6)',
+          } : {
+            color: 'rgba(255,255,255,0.5)',
+            textShadow: '0px 0px 0px rgba(200,131,74,0)',
+          }}
+          transition={{ duration: 0.8, ease: 'easeInOut' }}
+        >
+          KAIROX
+        </motion.span>
       </motion.h1>
       <div className="w-48 h-[1px] bg-[#222] relative overflow-hidden">
         <motion.div
@@ -148,10 +163,10 @@ export default function Home() {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [loadingComplete, setLoadingComplete] = useState(false);
-  
+
   const [activePanel, setActivePanel] = useState(null);
   const [showLogin, setShowLogin] = useState(false);
-  
+
   // Login Form States
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -193,21 +208,27 @@ export default function Home() {
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!username || !password) return;
-    
+
     setLoginError('');
     setIsSubmitting(true);
-    
+
     try {
-      // Call actual backend authentication API
+      // // Call actual backend authentication API
       const data = await apiLogin(username, password);
-      
-      // On success, trigger the exit animation
-      setIsSuccess(true);
-      
-      // Navigate immediately while the animation plays
+
+      // Enforce Role Matching (User must click the right card for their credentials)
+      if (data.role && activePanel && data.role !== activePanel.role) {
+        throw new Error('Access Denied: The credentials provided do not match the selected role. Please check your credentials.');
+      }
+
+      // // On success, trigger the exit animation
+       setIsSuccess(true);
+
+      // // Navigate immediately while the animation plays
       login(data.role || activePanel.role, data.access_token);
+    // login(activePanel.role, 'temp_dummy_token');
       router.push('/dashboard');
-      
+
     } catch (err) {
       setIsSubmitting(false);
       setIsSuccess(false);
@@ -222,7 +243,7 @@ export default function Home() {
       </AnimatePresence>
 
       <div className="min-h-screen bg-[#050505] text-white overflow-x-hidden overflow-y-auto relative selection:bg-[#c8b09b]/30">
-        
+
         {/* KAIROX wordmark top-left */}
         <motion.div
           className="absolute top-6 left-6 md:top-10 md:left-12 z-40"
@@ -236,43 +257,51 @@ export default function Home() {
           </p>
         </motion.div>
 
-        {/* Dashboard Link top-right */}
-        {user && (
-          <motion.div
-            className="absolute top-6 right-6 md:top-10 md:right-12 z-40"
-            initial={{ opacity: 0 }}
-            animate={loadingComplete && !activePanel ? { opacity: 1 } : { opacity: 0 }}
-            transition={{ duration: 1 }}
-          >
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="text-[10px] uppercase tracking-[0.2em] text-white/50 hover:text-white transition-colors flex items-center gap-2"
-            >
-              Go to Dashboard <ArrowUpRight className="w-3 h-3" />
-            </button>
-          </motion.div>
-        )}
+
 
         {/* Center Text */}
-        <motion.div 
-          className="absolute top-28 md:top-32 left-0 w-full text-center z-30 pointer-events-none px-4"
+        <motion.div
+          className="absolute top-28 md:top-32 left-0 w-full text-center z-30 px-4"
           initial={{ opacity: 0, y: 20 }}
           animate={loadingComplete && !activePanel ? { opacity: 1, y: 0 } : { opacity: 0, y: -20 }}
           transition={{ duration: 1, delay: 0.2 }}
         >
           <p className="text-[#666] font-mono text-[10px] tracking-[0.4em] uppercase mb-4">Select Workspace</p>
-          <h2 className="text-3xl md:text-5xl tracking-wide">
-            <AnimatedGoldText text="Select your role" />
+          <h2 className="text-3xl md:text-5xl tracking-wide" style={{ fontFamily: 'var(--font-playfair)' }}>
+            <motion.span
+              className="inline-block cursor-default"
+              initial="rest"
+              whileHover="hover"
+              animate="rest"
+            >
+              {'Select your role'.split('').map((char, i) => (
+                <motion.span
+                  key={i}
+                  className="inline-block"
+                  variants={{
+                    rest: { color: '#ffffff', y: 0, textShadow: 'none' },
+                    hover: {
+                      color: ['#ffffff', '#c8834a', '#ffffff'],
+                      y: [0, -6, 0],
+                      textShadow: ['none', '0px 0px 20px rgba(200,131,74,0.7)', 'none'],
+                      transition: { duration: 0.5, delay: i * 0.04, ease: 'easeInOut' }
+                    }
+                  }}
+                >
+                  {char === ' ' ? '\u00A0' : char}
+                </motion.span>
+              ))}
+            </motion.span>
           </h2>
         </motion.div>
 
         {/* ─── Aperture Style Landing Layout ─── */}
         <div className="relative z-20 w-full flex-1 flex items-center justify-center min-h-screen overflow-hidden">
-          
+
           {/* State 1: All panels as vertical slices in the center */}
           <AnimatePresence>
             {!activePanel && (
-              <motion.div 
+              <motion.div
                 className="flex items-center justify-center gap-2 md:gap-6 mt-32 md:mt-48 z-30"
                 initial={{ opacity: 0 }}
                 animate={loadingComplete ? { opacity: 1 } : { opacity: 0 }}
@@ -314,9 +343,9 @@ export default function Home() {
                     style={{ backgroundImage: `url(${activePanel.img})` }}
                   />
                   <div className="absolute inset-0 bg-black/40 transition-colors duration-500 group-hover:bg-black/50" />
-                  
+
                   {/* Title centered inside */}
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: 0.3, duration: 0.6 }}
@@ -343,13 +372,13 @@ export default function Home() {
 
                   {/* Mobile Navigation Arrows */}
                   <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 md:hidden z-50 pointer-events-none">
-                    <button 
+                    <button
                       onClick={handlePrev}
                       className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center pointer-events-auto"
                     >
                       <ArrowRight className="w-5 h-5 text-white rotate-180" />
                     </button>
-                    <button 
+                    <button
                       onClick={handleNext}
                       className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center pointer-events-auto"
                     >
@@ -365,7 +394,7 @@ export default function Home() {
                   transition={{ delay: 0.4, duration: 0.4 }}
                   className="absolute top-[calc(50%+35vh+30px)] left-1/2 -translate-x-1/2 z-40 flex items-center gap-6"
                 >
-                  <button 
+                  <button
                     onClick={() => setActivePanel(null)}
                     className="w-10 h-10 flex items-center justify-center rounded-full border border-white/20 text-white/60 hover:text-white hover:border-white/50 transition-colors bg-black/40 backdrop-blur-md"
                   >
@@ -444,7 +473,7 @@ export default function Home() {
         {/* ─── Fullscreen Login Form ─── */}
         <AnimatePresence>
           {showLogin && activePanel && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -452,7 +481,7 @@ export default function Home() {
               className="fixed inset-0 z-[150] flex items-center justify-center bg-[#050505]"
             >
               {/* Fullscreen background image from the active panel */}
-              <div 
+              <div
                 className="absolute inset-0 bg-cover bg-center opacity-20"
                 style={{ backgroundImage: `url(${activePanel.img})` }}
               />
@@ -465,13 +494,13 @@ export default function Home() {
                 className="relative z-10 w-full max-w-md bg-[#0a0a0a] overflow-hidden shadow-2xl border border-[#222] rounded-2xl"
               >
                 {/* Top Accent Line */}
-                <div 
-                  className="absolute top-0 left-0 w-full h-[3px]" 
-                  style={{ backgroundColor: activePanel.accent }} 
+                <div
+                  className="absolute top-0 left-0 w-full h-[3px]"
+                  style={{ backgroundColor: activePanel.accent }}
                 />
-                
+
                 {/* Close Button */}
-                <button 
+                <button
                   onClick={handleClosePanel}
                   className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-white/50 hover:text-white rounded-full transition-colors z-20"
                 >
@@ -488,17 +517,17 @@ export default function Home() {
                       Workspace Authentication
                     </p>
                   </div>
-                  
+
                   {loginError && (
                     <div className="w-full bg-red-950/30 border border-red-900/50 text-red-400 text-xs p-3 mb-6 rounded text-center">
                       {loginError}
                     </div>
                   )}
-                  
+
                   <form onSubmit={handleLoginSubmit} className="w-full flex flex-col gap-5">
                     <div className="flex flex-col gap-2">
                       <label className="text-[10px] text-white/50 tracking-[0.2em] uppercase">Username</label>
-                      <input 
+                      <input
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
@@ -510,7 +539,7 @@ export default function Home() {
 
                     <div className="flex flex-col gap-2">
                       <label className="text-[10px] text-white/50 tracking-[0.2em] uppercase">Password</label>
-                      <input 
+                      <input
                         type="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -519,15 +548,21 @@ export default function Home() {
                         className="w-full bg-[#111] border border-[#222] text-white p-4 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
                       />
                     </div>
-                    
-                    <button 
+
+                    <button
                       type="submit"
                       disabled={isSubmitting || isSuccess}
                       className="w-full py-4 mt-6 font-bold text-xs uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 relative overflow-hidden group disabled:opacity-70"
                       style={{ backgroundColor: activePanel.accent, color: '#000' }}
                     >
-                      <span className="relative z-10">{isSubmitting ? 'Authenticating...' : 'Sign In'}</span>
-                      <ArrowRight className="w-4 h-4 relative z-10 group-hover:translate-x-1 transition-transform" />
+                      {isSubmitting ? (
+                        <Loader2 className="w-5 h-5 animate-spin relative z-10" />
+                      ) : (
+                        <>
+                          <span className="relative z-10">Sign In</span>
+                          <ArrowRight className="w-4 h-4 relative z-10 group-hover:translate-x-1 transition-transform" />
+                        </>
+                      )}
                     </button>
                   </form>
                 </div>
