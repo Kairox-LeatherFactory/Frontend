@@ -2,7 +2,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiImportPreview, apiImportCommit, apiGetSkus, apiGetSkuPieces } from '@/lib/api';
+import { apiImportPreview, apiImportCommit, apiGetSkus, apiGetSkuPieces, apiProductionCutting } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info, Lightbulb, ListChecks } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
@@ -195,7 +195,34 @@ export default function ProductionLogEntry() {
       return;
     }
 
-    if (operation !== 'Cutting' && !pieceSeqs) {
+    // ── CUTTING: Call POST /production/cutting ──────────────────────────────────
+    if (operation === 'Cutting') {
+      const skuObj = fetchedSkus.find(s => s.code === skuCode);
+      if (!skuObj) {
+        setErrorMsg(`Could not find SKU for ${skuCode}`);
+        return;
+      }
+      const count = skuObj.qty_ordered;
+      if (!count || count <= 0) {
+        setErrorMsg('SKU has no ordered quantity. Cannot create cutting event.');
+        return;
+      }
+      try {
+        const result = await apiProductionCutting(token, {
+          sku_code: skuCode,
+          employee_id: workerId,
+          work_date: date,
+          count,
+        });
+        setSuccessMsg(`✅ Cut ${result.count} pieces for ${skuCode}. Traveler cards ready.`);
+      } catch (err) {
+        setErrorMsg(`Cutting failed: ${err.message}`);
+      }
+      return;
+    }
+
+    // ── OTHER STAGES: POST /production/scan ─────────────────────────────────────
+    if (!pieceSeqs) {
       setErrorMsg('Please enter piece sequences or use the checklist.');
       return;
     }
@@ -218,13 +245,10 @@ export default function ProductionLogEntry() {
     }
 
     if (parsedSeqs.length === 0 && pieceSeqs) {
-      // Maybe they typed full bundle codes? Let's check if it looks like a sequence
       setErrorMsg('Invalid piece numbers format. Use numbers and ranges like "1, 2, 5-8".');
       return;
     }
 
-    // Prepare event data for POST /production/scan
-    // Map the operation label (e.g. "Cutting") to its backend UUID
     const opRecord = operations.find(o => o.label === operation);
     if (!opRecord) {
       setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
@@ -247,10 +271,8 @@ export default function ProductionLogEntry() {
 
     try {
       const result = await addScanEvent(newEvent);
-
-      // Reset sequence, show success
       setPieceSeqs('');
-      setSuccessMsg(`Logged ${result.count_logged || parsedSeqs.length} pieces for ${operation}. ` +
+      setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${operation}. ` +
         (result.rework?.length ? `(Rework: ${result.rework.length}) ` : '') +
         (result.not_found?.length ? `(Not Found: ${result.not_found.length})` : '')
       );
@@ -310,7 +332,7 @@ export default function ProductionLogEntry() {
 
     try {
       const result = await addScanEvent(newEvent);
-      setSuccessMsg(`Logged ${result.count_logged || selectedPieces.length} pieces for ${operation}. ` +
+      setSuccessMsg(`Logged ${result.count_logged ?? selectedPieces.length} pieces for ${operation}. ` +
         (result.rework?.length ? `(Rework: ${result.rework.length}) ` : '') +
         (result.not_found?.length ? `(Not Found: ${result.not_found.length})` : '')
       );
@@ -481,7 +503,7 @@ export default function ProductionLogEntry() {
                     <option value="" disabled>-- Select SKU --</option>
                     {fetchedSkus.map((s) => (
                       <option key={s.code} value={s.code}>
-                        {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}
+                        [{s.order_number || 'N/A'}] {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}
                       </option>
                     ))}
                   </select>
@@ -520,8 +542,19 @@ export default function ProductionLogEntry() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
-              {/* Piece Sequences Input */}
-              {operation !== 'Cutting' ? (
+              {/* Piece Sequences Input - hidden for Cutting (automatic) */}
+              {/* Cutting: info banner | Other stages: piece seq textbox + checklist */}
+              {operation === 'Cutting' ? (
+                <div className="flex flex-col gap-2 md:col-span-2 p-4 rounded-xl border" style={{ background: '#fff8f0', borderColor: 'rgba(200,131,74,0.25)' }}>
+                  <p className="text-sm font-bold flex items-center gap-2" style={{ color: '#c8834a' }}>
+                    <Scissors className="w-4 h-4" /> Cutting will mint pieces automatically
+                  </p>
+                  <p className="text-xs font-medium" style={{ color: '#9a7a5a' }}>
+                    Selecting <strong>{skuCode || 'a SKU'}</strong> and clicking Submit will call the cutting endpoint
+                    and create <strong>{fetchedSkus.find(s => s.code === skuCode)?.qty_ordered ?? '—'} pieces</strong> (qty from order).
+                  </p>
+                </div>
+              ) : (
                 <div className="flex flex-col gap-3 md:col-span-2">
                   <div className="flex justify-between items-end">
                     <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -546,7 +579,6 @@ export default function ProductionLogEntry() {
                         value={pieceSeqs}
                         onChange={(e) => setPieceSeqs(e.target.value)}
                         className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all"
-                        required={operation !== 'Cutting'}
                       />
                     </div>
                     <div className="flex gap-2 w-1/4">
@@ -559,15 +591,6 @@ export default function ProductionLogEntry() {
                       </button>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3 md:col-span-2 p-4 rounded-xl bg-blue-50 border border-blue-100">
-                  <p className="text-sm font-bold text-blue-800 flex items-center gap-2">
-                    <Lightbulb className="w-4 h-4" /> Cutting events are logged automatically.
-                  </p>
-                  <p className="text-xs text-blue-600 font-medium">
-                    When you upload a Breakdown Sheet, the system automatically creates Cutting events for those SKUs. No manual logging needed here.
-                  </p>
                 </div>
               )}
 
@@ -605,15 +628,13 @@ export default function ProductionLogEntry() {
             >
               Reset All
             </button>
-            {operation !== 'Cutting' && (
-              <button
-                type="submit"
-                className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
-                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
-              >
-                <Rocket className="w-5 h-5" /> Submit Event
-              </button>
-            )}
+            <button
+              type="submit"
+              className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
+            >
+              <Rocket className="w-5 h-5" /> Submit Event
+            </button>
           </div>
 
         </form>

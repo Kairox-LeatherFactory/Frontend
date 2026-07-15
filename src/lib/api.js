@@ -213,6 +213,35 @@ export async function apiProductionScan(token, payload) {
 }
 
 /**
+ * Mint N pieces at the Cutting stage.
+ * POST /production/cutting
+ * @param {{ sku_code, employee_id, work_date, count }} payload
+ */
+export async function apiProductionCutting(token, payload) {
+  console.warn('[apiProductionCutting] payload:', JSON.stringify(payload));
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/cutting`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    let errText;
+    try {
+      const errObj = await res.json();
+      errText = errObj.detail || errObj.message || JSON.stringify(errObj);
+    } catch {
+      errText = await res.text().catch(() => 'Failed to create cutting event');
+    }
+    console.warn('[apiProductionCutting] error response:', errText);
+    throw new Error(errText || `Failed to create cutting event (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
  * Fetch a specific wage run by ID
  * NOTE: /api/v1/wages/runs has no GET (list) endpoint — only POST (create).
  * Use this to fetch a single run by ID after creation.
