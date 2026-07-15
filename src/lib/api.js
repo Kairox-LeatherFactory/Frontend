@@ -32,19 +32,24 @@ export async function apiGetClients(token) {
 }
 
 /**
- * Create a new client
- * @returns {{ id, name, country }}
+ * Create a new client (mints first order in same call)
+ * @returns {{ id, name, country, code, order_number, order_id }}
  */
-export async function apiCreateClient(token, name, companyName) {
+export async function apiCreateClient(token, name, companyName, orderNumber) {
   const res = await fetch(`${API_BASE_URL}/api/v1/clients`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ name, company_name: companyName }),
+    body: JSON.stringify({ name, company_name: companyName, order_number: orderNumber }),
   });
-  if (!res.ok) throw new Error(`Failed to create client (${res.status})`);
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to create client');
+    const err = new Error(errText || `Failed to create client (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -60,6 +65,29 @@ export async function apiGetClientOrders(token, clientId) {
   if (!res.ok) throw new Error(`Failed to fetch orders for client ${clientId} (${res.status})`);
   return res.json();
 }
+
+/**
+ * Add a new order to an existing client
+ * @returns {{ id, order_number, order_date, delivery_deadline, sea_cutoff_date, ship_mode, styles }}
+ */
+export async function apiAddClientOrder(token, clientId, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/clients/${clientId}/orders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to add order');
+    const err = new Error(errText || `Failed to add order (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
 
 /**
  * Fetch all active employees
@@ -234,8 +262,9 @@ export async function apiGetStyleProgress(token, styleId) {
 /**
  * Preview an Excel import (dry-run, no DB writes)
  */
-export async function apiImportPreview(token, file) {
+export async function apiImportPreview(token, file, orderNumber) {
   const formData = new FormData();
+  if (orderNumber) formData.append('order_number', orderNumber);
   formData.append('file', file);
   const res = await fetch(`${API_BASE_URL}/api/v1/imports/preview`, {
     method: 'POST',
@@ -245,7 +274,9 @@ export async function apiImportPreview(token, file) {
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to preview import');
     console.error('[API] /imports/preview failed:', res.status, errText);
-    throw new Error(errText || `Failed to preview import (${res.status})`);
+    const err = new Error(errText || `Failed to preview import (${res.status})`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -253,8 +284,9 @@ export async function apiImportPreview(token, file) {
 /**
  * Commit an Excel import (writes to DB, idempotent)
  */
-export async function apiImportCommit(token, file) {
+export async function apiImportCommit(token, file, orderNumber) {
   const formData = new FormData();
+  if (orderNumber) formData.append('order_number', orderNumber);
   formData.append('file', file);
   const res = await fetch(`${API_BASE_URL}/api/v1/imports/commit`, {
     method: 'POST',
@@ -264,7 +296,9 @@ export async function apiImportCommit(token, file) {
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to commit import');
     console.error('[API] /imports/commit failed:', res.status, errText);
-    throw new Error(errText || `Failed to commit import (${res.status})`);
+    const err = new Error(errText || `Failed to commit import (${res.status})`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }

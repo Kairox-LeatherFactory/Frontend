@@ -100,6 +100,9 @@ export default function ProductionLogEntry() {
 
   // ─── Excel Upload States ───
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showOrderNumModal, setShowOrderNumModal] = useState(false);
+  const [uploadOrderNumber, setUploadOrderNumber] = useState('');
+  const [uploadOrderNumberError, setUploadOrderNumberError] = useState('');
   const [previewData, setPreviewData] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileName, setFileName] = useState('');
@@ -115,15 +118,22 @@ export default function ProductionLogEntry() {
     setFileName(file.name);
     setSelectedFile(file);
     setUploadError('');
+    setUploadOrderNumberError('');
     setCommitSuccess('');
     setUploadLoading(true);
+    setShowOrderNumModal(false);
 
     try {
-      const data = await apiImportPreview(token, file);
+      const data = await apiImportPreview(token, file, uploadOrderNumber.trim());
       setPreviewData(data);
       setShowPreviewModal(true);
     } catch (err) {
-      setUploadError(`Preview failed: ${err.message}`);
+      if (err.status === 404 || err.message?.includes('404') || err.message?.toLowerCase().includes('not found')) {
+        setUploadOrderNumberError(`Order number "${uploadOrderNumber.trim()}" not found. Verify with the client record.`);
+        setShowOrderNumModal(true); // re-open so user can fix it
+      } else {
+        setUploadError(`Preview failed: ${err.message}`);
+      }
     } finally {
       setUploadLoading(false);
       e.target.value = null;
@@ -135,9 +145,13 @@ export default function ProductionLogEntry() {
     setCommitLoading(true);
     setUploadError('');
     try {
-      await apiImportCommit(token, selectedFile);
-      setCommitSuccess('Import committed successfully! Data has been saved to the database.');
+      const result = await apiImportCommit(token, selectedFile, uploadOrderNumber.trim());
+      const orderNum = result?.written?.order_number || uploadOrderNumber.trim();
+      const styles = result?.written?.styles ?? '';
+      const skus = result?.written?.skus_created ?? '';
+      setCommitSuccess(`Imported${styles ? ` ${styles} styles,` : ''} ${skus ? `${skus} new SKUs` : 'data'} into order ${orderNum}. Opening Orders Explorer to verify.`);
       setShowPreviewModal(false);
+      setUploadOrderNumber('');
     } catch (err) {
       setUploadError(`Commit failed: ${err.message}`);
     } finally {
@@ -263,14 +277,17 @@ export default function ProductionLogEntry() {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".xlsx,.xls,.csv"
+            accept=".xlsx,.xlsm,.xls"
             onChange={handleFileUpload}
             className="hidden"
             id="entry-file-upload"
           />
           <button
             type="button"
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              setUploadOrderNumberError('');
+              setShowOrderNumModal(true);
+            }}
             disabled={uploadLoading}
             className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50"
             style={{
@@ -282,7 +299,7 @@ export default function ProductionLogEntry() {
             {uploadLoading ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Previewing...</>
             ) : (
-              <><FileSpreadsheet className="w-4 h-4" /> Upload File</>
+              <><FileSpreadsheet className="w-4 h-4" /> Upload Breakdown Sheet</>
             )}
           </button>
         </div>
@@ -585,6 +602,79 @@ export default function ProductionLogEntry() {
                 ) : (
                   <><Upload className="w-4 h-4" /> Confirm & Import to Database</>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── ORDER NUMBER MODAL (Step 1 before file pick) ─── */}
+      {showOrderNumModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 sm:p-8 space-y-5 relative">
+            {/* Header */}
+            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
+                  <FileSpreadsheet className="w-4 h-4" style={{ color: '#c8834a' }} />
+                </div>
+                <div>
+                  <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Upload Breakdown Sheet</h3>
+                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Step 1 of 2 — Enter Order Number</p>
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowOrderNumModal(false); setUploadOrderNumberError(''); }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>
+                Order Number <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                autoFocus
+                placeholder="e.g. 1001"
+                value={uploadOrderNumber}
+                onChange={(e) => { setUploadOrderNumber(e.target.value.trim()); setUploadOrderNumberError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && uploadOrderNumber.trim()) { e.preventDefault(); fileInputRef.current?.click(); } }}
+                className={`w-full px-4 py-3 rounded-xl border text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 transition-colors ${
+                  uploadOrderNumberError
+                    ? 'border-red-400 bg-red-50 focus:ring-red-400/20'
+                    : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
+                }`}
+              />
+              {uploadOrderNumberError ? (
+                <p className="text-xs font-bold text-red-600 flex items-start gap-1.5 pt-1">
+                  <span className="mt-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center shrink-0">!</span>
+                  {uploadOrderNumberError}
+                </p>
+              ) : (
+                <p className="text-[10px] text-slate-400 font-medium">Must match an existing order. The sheet SKUs will be written into this order.</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => { setShowOrderNumModal(false); setUploadOrderNumberError(''); }}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors"
+                style={{ background: '#f1f5f9', color: '#475569' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!uploadOrderNumber.trim() || uploadLoading}
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+              >
+                {uploadLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</> : <><FileSpreadsheet className="w-3.5 h-3.5" /> Choose File</>}
               </button>
             </div>
           </div>
