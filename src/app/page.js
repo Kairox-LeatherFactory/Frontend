@@ -214,19 +214,19 @@ export default function Home() {
 
     try {
       // // Call actual backend authentication API
-      // const data = await apiLogin(username, password);
+      const data = await apiLogin(username, password);
 
-      // // Enforce Role Matching (User must click the right card for their credentials)
-      // if (data.role && activePanel && data.role !== activePanel.role) {
-      //   throw new Error('Access Denied: The credentials provided do not match the selected role. Please check your credentials.');
-      // }
+      // Enforce Role Matching (User must click the right card for their credentials)
+      if (data.role && activePanel && data.role !== activePanel.role) {
+        throw new Error('Access Denied: The credentials provided do not match the selected role. Please check your credentials.');
+      }
 
       // // On success, trigger the exit animation
        setIsSuccess(true);
 
       // // Navigate immediately while the animation plays
-   //   login(data.role || activePanel.role, data.access_token);
-     login(activePanel.role, 'temp_dummy_token');
+      login(data.role || activePanel.role, data.access_token);
+    // login(activePanel.role, 'temp_dummy_token');
       router.push('/dashboard');
 
     } catch (err) {
