@@ -58,7 +58,7 @@ export async function apiCreateClient(token, name, companyName, orderNumber) {
  * @returns {Array<{ id, po_number, order_date, delivery_deadline, sea_cutoff_date, ship_mode, styles }>}
  */
 export async function apiGetClientOrders(token, clientId) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/clients/${clientId}/orders`, {
+  const res = await fetch(`${API_BASE_URL}/api/v1/clients/${encodeURIComponent(clientId)}/orders`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -71,7 +71,7 @@ export async function apiGetClientOrders(token, clientId) {
  * @returns {{ id, order_number, order_date, delivery_deadline, sea_cutoff_date, ship_mode, styles }}
  */
 export async function apiAddClientOrder(token, clientId, payload) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/clients/${clientId}/orders`, {
+  const res = await fetch(`${API_BASE_URL}/api/v1/clients/${encodeURIComponent(clientId)}/orders`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

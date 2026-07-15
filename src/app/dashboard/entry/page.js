@@ -3,7 +3,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiImportPreview, apiImportCommit, apiGetSkus } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info, Lightbulb } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 function DynamicDataViewer({ data }) {
@@ -67,7 +67,7 @@ function DynamicDataViewer({ data }) {
 
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
-  const { orders, workers, addScanEvent } = useData();
+  const { orders, workers, addScanEvent, operations } = useData();
 
   // Role operational permissions — memoized: only recomputes when user role changes
   const allowedOperations = useMemo(
@@ -77,7 +77,6 @@ export default function ProductionLogEntry() {
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
 
   // Form State
-  const [orderId, setOrderId] = useState('');
   const [operation, setOperation] = useState(allowedOperations[0] || '');
   const [workerId, setWorkerId] = useState('');
   const [skuCode, setSkuCode] = useState('');
@@ -85,11 +84,7 @@ export default function ProductionLogEntry() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [fetchedSkus, setFetchedSkus] = useState([]);
 
-  // Auto-select first order and worker once backend data loads
-  useEffect(() => {
-    if (!orderId && orders.length > 0) setOrderId(orders[0].id);
-  }, [orders, orderId]);
-
+  // Auto-select first worker once backend data loads
   useEffect(() => {
     if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
   }, [workers, workerId]);
@@ -159,29 +154,19 @@ export default function ProductionLogEntry() {
     }
   };
 
-  // Handle selected order details — memoized: .find() only reruns when orderId or orders change
-  const selectedOrder = useMemo(() => {
-    return orders.find((o) => o.id === orderId);
-  }, [orders, orderId]);
-
-  // Fetch SKUs when order changes
+  // Fetch all SKUs on mount
   useEffect(() => {
     let active = true;
-    if (selectedOrder?.style_id) {
-      apiGetSkus(token, null, selectedOrder.style_id).then(skus => {
-        if (active) {
-          setFetchedSkus(skus || []);
-          if (skus?.length > 0 && !skus.find(s => s.code === skuCode)) {
-            setSkuCode(skus[0].code);
-          }
+    apiGetSkus(token).then(skus => {
+      if (active) {
+        setFetchedSkus(skus || []);
+        if (skus?.length > 0 && !skus.find(s => s.code === skuCode)) {
+          setSkuCode(skus[0].code);
         }
-      }).catch(err => console.warn('Failed to fetch SKUs:', err));
-    } else {
-      setFetchedSkus([]);
-      setSkuCode('');
-    }
+      }
+    }).catch(err => console.warn('Failed to fetch SKUs:', err));
     return () => { active = false; };
-  }, [selectedOrder, token]);
+  }, [token]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -193,7 +178,7 @@ export default function ProductionLogEntry() {
       return;
     }
 
-    if (!orderId || !operation || !workerId || !date || (!skuCode && !pieceSeqs)) {
+    if (!operation || !workerId || !date || (!skuCode && !pieceSeqs)) {
       setErrorMsg('Please ensure all required shop floor logging fields are completed.');
       return;
     }
@@ -222,8 +207,15 @@ export default function ProductionLogEntry() {
     }
 
     // Prepare event data for POST /production/scan
+    // Map the operation label (e.g. "Cutting") to its backend UUID
+    const opRecord = operations.find(o => o.label === operation);
+    if (!opRecord) {
+      setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
+      return;
+    }
+
     const newEvent = {
-      operation_id: operation, // The context might need to map this to UUID or backend accepts name?
+      operation_id: opRecord.id,
       employee_id: workerId,
       work_date: date,
       sku_code: skuCode,
@@ -345,11 +337,6 @@ export default function ProductionLogEntry() {
             <span>Logged By: </span>
             <span className="text-white px-2 py-0.5 rounded font-black uppercase tracking-wider" style={{ background: '#c8834a' }}>{user.replace('_', ' ')}</span>
           </div>
-          {selectedOrder && (
-            <div className="text-xs font-semibold" style={{ color: '#4a3a2a' }}>
-              Style Tracked: <strong className="font-black" style={{ color: '#2d1f0e' }}>{selectedOrder.style} ({selectedOrder.colorway})</strong> • Qty target: {selectedOrder.quantity}
-            </div>
-          )}
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-8">
@@ -359,32 +346,10 @@ export default function ProductionLogEntry() {
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
-              Order & Worker Selection
+              Worker Selection
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-
-
-              {/* Order Selection */}
-              <div className="flex flex-col gap-2">
-                <label htmlFor="order-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <FileBox className="w-4 h-4 text-blue-500" /> Select Client Order / PO *
-                </label>
-                <select
-                  id="order-select"
-                  value={orderId}
-                  onChange={(e) => setOrderId(e.target.value)}
-                  className="input-field h-14 bg-white font-bold border-2 border-slate-200 focus:border-blue-500 cursor-pointer shadow-sm text-sm transition-all"
-                  required
-                >
-                  <option value="" disabled>-- Select Order --</option>
-                  {orders.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.id} — {o.client} ({o.style})
-                    </option>
-                  ))}
-                </select>
-              </div>
 
               {/* Worker Selection */}
               <div className="flex flex-col gap-2">
@@ -474,34 +439,45 @@ export default function ProductionLogEntry() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
               {/* Piece Sequences Input */}
-              <div className="flex flex-col gap-3 md:col-span-2">
-                <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                  <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
-                </label>
-                <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8)</p>
-                <div className="flex flex-col sm:flex-row items-stretch gap-4">
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      id="piece-seq-input"
-                      placeholder="e.g. 1, 2, 5-8"
-                      value={pieceSeqs}
-                      onChange={(e) => setPieceSeqs(e.target.value)}
-                      className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all"
-                      required
-                    />
-                  </div>
-                  <div className="flex gap-2 w-1/4">
-                    <button
-                      type="button"
-                      onClick={() => setPieceSeqs('')}
-                      className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
-                    >
-                      Clear
-                    </button>
+              {operation !== 'Cutting' ? (
+                <div className="flex flex-col gap-3 md:col-span-2">
+                  <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
+                  </label>
+                  <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8)</p>
+                  <div className="flex flex-col sm:flex-row items-stretch gap-4">
+                    <div className="relative flex-1">
+                      <input
+                        type="text"
+                        id="piece-seq-input"
+                        placeholder="e.g. 1, 2, 5-8"
+                        value={pieceSeqs}
+                        onChange={(e) => setPieceSeqs(e.target.value)}
+                        className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all"
+                        required={operation !== 'Cutting'}
+                      />
+                    </div>
+                    <div className="flex gap-2 w-1/4">
+                      <button
+                        type="button"
+                        onClick={() => setPieceSeqs('')}
+                        className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                      >
+                        Clear
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="flex flex-col gap-3 md:col-span-2 p-4 rounded-xl bg-blue-50 border border-blue-100">
+                  <p className="text-sm font-bold text-blue-800 flex items-center gap-2">
+                    <Lightbulb className="w-4 h-4" /> Cutting events are logged automatically.
+                  </p>
+                  <p className="text-xs text-blue-600 font-medium">
+                    When you upload a Breakdown Sheet, the system automatically creates the Cutting events for those SKUs. You do not need to manually log pieces for the Cutting stage here.
+                  </p>
+                </div>
+              )}
 
               {/* Date Selector Row */}
               <div className="flex flex-col gap-2">
@@ -539,7 +515,8 @@ export default function ProductionLogEntry() {
             </button>
             <button
               type="submit"
-              className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
+              disabled={operation === 'Cutting'}
+              className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
             >
               <Rocket className="w-5 h-5" /> Submit Event
