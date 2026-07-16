@@ -243,7 +243,7 @@ function MyAttendanceView({ token }) {
           setStatus(null);
         }
         setCountdown(null);
-      } catch {}
+      } catch { }
     } finally {
       setStatusLoading(false);
     }
@@ -529,7 +529,7 @@ function FloorCommandView({ workers = [], token }) {
   const [alert, setAlert] = useState(null);
   const [diffModal, setDiffModal] = useState(null);
   const [addModal, setAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', phone: '', designations: [], daily_rate: '' });
+  const [addForm, setAddForm] = useState({ name: '', phone: '', designation: '', daily_rate: '' });
   const [addLoading, setAddLoading] = useState(false);
 
   const showAlert = (type, message) => {
@@ -590,8 +590,8 @@ function FloorCommandView({ workers = [], token }) {
   };
 
   const handleAddWorker = async () => {
-    if (!addForm.name.trim() || !addForm.phone.trim() || addForm.designations.length === 0) {
-      showAlert('warning', 'Name, phone, and at least one designation are required.');
+    if (!addForm.name.trim() || !addForm.phone.trim() || !addForm.designation.trim()) {
+      showAlert('warning', 'Name, phone, and designation are required.');
       return;
     }
     setAddLoading(true);
@@ -602,7 +602,7 @@ function FloorCommandView({ workers = [], token }) {
         body: JSON.stringify({
           name: addForm.name,
           phone: addForm.phone,
-          designation: addForm.designations.join(', '),
+          designation: addForm.designation,
           daily_rate: addForm.daily_rate ? parseFloat(addForm.daily_rate) : null,
           wage_type: 'PIECE_RATE',
         }),
@@ -610,7 +610,7 @@ function FloorCommandView({ workers = [], token }) {
 
       showAlert('success', `Worker "${addForm.name}" onboarded to floor roster.`);
       setAddModal(false);
-      setAddForm({ name: '', phone: '', designations: [], daily_rate: '' });
+      setAddForm({ name: '', phone: '', designation: '', daily_rate: '' });
     } catch (e) {
       if (e.status === 403) showAlert('error', `Geofence check failed: ${e.message}`);
       else showAlert('error', typeof e === 'string' ? e : e.message || 'Failed to add worker.');
@@ -652,7 +652,7 @@ function FloorCommandView({ workers = [], token }) {
               placeholder="Search workers…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="h-9 w-52 rounded-lg pl-9 pr-3 text-xs font-semibold focus:outline-none transition-colors"
+              className="h-9 w-full sm:w-52 rounded-lg pl-9 pr-3 text-xs font-semibold focus:outline-none transition-colors"
               style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
             />
           </div>
@@ -705,7 +705,7 @@ function FloorCommandView({ workers = [], token }) {
 
       {/* Floating batch action bar */}
       {selected.size > 0 && (
-        <div className="absolute bottom-4 left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-40 flex flex-wrap sm:flex-nowrap items-center justify-center gap-2 sm:gap-3 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl animate-fade-in border border-slate-700">
+        <div className="fixed sm:absolute bottom-4 left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-40 flex flex-wrap sm:flex-nowrap items-center justify-center gap-2 sm:gap-3 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl animate-fade-in border border-slate-700">
           <span className="text-xs font-black text-slate-300">{selected.size} selected</span>
           <div className="w-px h-5 bg-slate-700" />
           <button onClick={() => batchAction('check-in')} disabled={actionLoading || !!gps.error}
@@ -726,10 +726,11 @@ function FloorCommandView({ workers = [], token }) {
 
       {/* Diff result modal */}
       {diffModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[999] flex items-start justify-center pt-16 px-4 pb-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4 animate-fade-in my-auto">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[999] flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white w-full sm:max-w-md sm:rounded-2xl rounded-t-3xl shadow-2xl max-h-[90vh] overflow-y-auto p-5 sm:p-6 space-y-4 animate-fade-in">
+            <div className="sm:hidden w-10 h-1.5 bg-slate-200 rounded-full mx-auto -mt-1" />
             <div className="flex items-center justify-between">
-              <h3 className="font-black text-slate-900 text-lg">
+              <h3 className="font-black text-slate-900 text-base sm:text-lg">
                 {diffModal.type === 'check-in' ? 'Check-In' : 'Check-Out'} Results
               </h3>
               <button onClick={() => setDiffModal(null)}><X className="w-5 h-5 text-slate-400" /></button>
@@ -757,81 +758,62 @@ function FloorCommandView({ workers = [], token }) {
                 </div>
               )}
             </div>
-            <button onClick={() => setDiffModal(null)} className="btn-primary w-full h-10 text-xs font-black">Done</button>
+            <button onClick={() => setDiffModal(null)} className="btn-primary w-full h-11 sm:h-10 text-xs font-black">Done</button>
           </div>
         </div>
       )}
-
-      {/* Add floor worker modal */}
-      {addModal && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[999] flex items-start justify-center pt-16 px-4 pb-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-5 animate-fade-in my-auto">
-            <div className="flex items-center justify-between">
-              <h3 className="font-black text-slate-900 text-lg flex items-center gap-2">
+{/* Add floor worker modal */}
+{addModal && (
+  // 🌟 Wrapper custom configuration fix logic: Centered alignment dynamically!
+  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[999] flex items-center justify-center p-4 overflow-y-auto">
+    {/* Inner element configuration block height fixes */}
+    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto p-5 sm:p-6 space-y-5 animate-fade-in relative">
+      
+      {/* Dynamic top bar sticky layout alignment boundary checks */}
+      <div className="flex items-center justify-between sticky top-0 bg-white z-10 pb-2 border-b border-slate-100">
+              <h3 className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" /> Add Floor Worker
               </h3>
-              <button onClick={() => setAddModal(false)}><X className="w-5 h-5 text-slate-400" /></button>
+              <button onClick={() => setAddModal(false)} className="p-1 -m-1">
+                <X className="w-5 h-5 text-slate-400" />
+              </button>
             </div>
+
             <p className="text-xs text-slate-400 font-semibold">
               GPS location will be verified before submission — floor-only onboarding rule.
             </p>
+
             <div className="space-y-3">
               <div>
                 <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Full Name *</label>
                 <input type="text" value={addForm.name} placeholder="e.g. Ramesh Kumar"
                   onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
-                  className="input-field w-full h-10 text-sm font-semibold" />
+                  className="input-field w-full h-11 sm:h-10 text-base sm:text-sm font-semibold" />
               </div>
               <div>
                 <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Phone Number *</label>
-                <input type="text" value={addForm.phone} placeholder="e.g. 9876543210"
+                <input type="tel" inputMode="numeric" value={addForm.phone} placeholder="e.g. 9876543210"
                   onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value }))}
-                  className="input-field w-full h-10 text-sm font-semibold" />
+                  className="input-field w-full h-11 sm:h-10 text-base sm:text-sm font-semibold" />
               </div>
               <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">
-                  Designation * <span className="normal-case text-slate-400 font-semibold">(hold Ctrl / Cmd for multiple)</span>
-                </label>
-                <select multiple value={addForm.designations}
-                  onChange={(e) => {
-                    const sel = Array.from(e.target.selectedOptions).map((o) => o.value);
-                    setAddForm((f) => ({ ...f, designations: sel }));
-                  }}
-                  className="input-field w-full text-sm font-semibold rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 min-h-[120px] p-1">
-                  {['Cutter', 'Fusing Operator', 'Pasting Operator', 'Shell Stitcher',
-                    'Lining Attacher', 'Lining Stitcher',
-                    'Helper', 'Packer'].map((role) => (
-                      <option key={role} value={role}
-                        className={`px-3 py-1.5 rounded-lg font-semibold cursor-pointer ${addForm.designations.includes(role) ? 'bg-blue-600 text-white' : 'text-slate-700'
-                          }`}>
-                        {role}
-                      </option>
-                    ))}
-                </select>
-                {addForm.designations.length > 0 && (
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    {addForm.designations.map((d) => (
-                      <span key={d} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 border border-blue-200 rounded-full text-[10px] font-black">
-                        {d}
-                        <button type="button" onClick={() => setAddForm((f) => ({ ...f, designations: f.designations.filter((x) => x !== d) }))}>
-                          <X className="w-3 h-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Designation *</label>
+                <input type="text" placeholder="Enter Designation" value={addForm.designation}
+                  onChange={(e) => setAddForm((f) => ({ ...f, designation: e.target.value }))}
+                  className="input-field w-full h-11 sm:h-10 text-base sm:text-sm font-semibold" />
               </div>
               <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Daily Rate (₹)</label>
-                <input type="number" value={addForm.daily_rate} placeholder="Optional"
+                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Salary (₹)</label>
+                <input type="number" inputMode="decimal" placeholder="Enter Daily Rate" value={addForm.daily_rate}
                   onChange={(e) => setAddForm((f) => ({ ...f, daily_rate: e.target.value }))}
-                  className="input-field w-full h-10 text-sm font-semibold" />
+                  className="input-field w-full h-11 sm:h-10 text-base sm:text-sm font-semibold" />
               </div>
             </div>
-            <div className="flex gap-3 pt-1">
-              <button onClick={() => setAddModal(false)} className="btn-secondary flex-1 h-10 text-xs font-bold">Cancel</button>
+
+            <div className="flex flex-col-reverse sm:flex-row gap-3 pt-1 sticky bottom-0 bg-white">
+              <button onClick={() => setAddModal(false)} className="btn-secondary flex-1 h-11 sm:h-10 text-xs font-bold">Cancel</button>
               <button onClick={handleAddWorker} disabled={addLoading}
-                className="btn-primary flex-1 h-10 text-xs font-black flex items-center justify-center gap-2">
+                className="btn-primary flex-1 h-11 sm:h-10 text-xs font-black flex items-center justify-center gap-2">
                 {addLoading
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding…</>
                   : <><UserPlus className="w-4 h-4" /> Add Worker</>}
@@ -1088,7 +1070,7 @@ function OperationsHRView({ token }) {
                 <input type="text" placeholder="09:00"
                   value={configForm.shift_start || ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, shift_start: e.target.value }))}
-                  className="w-full h-10 text-sm font-black font-mono px-3 rounded-lg focus:outline-none transition-colors"
+                  className="w-full h-11 sm:h-10 text-base sm:text-sm font-black font-mono px-3 rounded-lg focus:outline-none transition-colors"
                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
                 <p className="text-[10px] mt-1 font-semibold" style={{ color: '#c8834a' }}>
                   Strict format — e.g. 09:00, 14:30. Malformed values break check-in for all workers.
@@ -1099,7 +1081,7 @@ function OperationsHRView({ token }) {
                 <input type="number" step="0.5" min="1" max="24"
                   value={configForm.shift_length_hours || ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, shift_length_hours: e.target.value }))}
-                  className="w-full h-10 text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
+                  className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
               <div>
@@ -1107,7 +1089,7 @@ function OperationsHRView({ token }) {
                 <input type="number" min="0" max="120"
                   value={configForm.late_grace_minutes || ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, late_grace_minutes: e.target.value }))}
-                  className="w-full h-10 text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
+                  className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
               <div className="p-3 rounded-xl text-[10px] font-semibold leading-relaxed" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)', color: '#a86022' }}>
@@ -1125,7 +1107,7 @@ function OperationsHRView({ token }) {
                 <input type="number" step="0.0000001"
                   value={configForm.factory_lat ?? ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, factory_lat: e.target.value }))}
-                  className="w-full h-10 text-sm font-semibold font-mono px-3 rounded-lg focus:outline-none transition-colors"
+                  className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold font-mono px-3 rounded-lg focus:outline-none transition-colors"
                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
               <div>
@@ -1133,7 +1115,7 @@ function OperationsHRView({ token }) {
                 <input type="number" step="0.0000001"
                   value={configForm.factory_lon ?? ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, factory_lon: e.target.value }))}
-                  className="w-full h-10 text-sm font-semibold font-mono px-3 rounded-lg focus:outline-none transition-colors"
+                  className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold font-mono px-3 rounded-lg focus:outline-none transition-colors"
                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
               <div>
@@ -1141,7 +1123,7 @@ function OperationsHRView({ token }) {
                 <input type="number" min="10" max="5000"
                   value={configForm.radius_m ?? ''}
                   onChange={(e) => setConfigForm((f) => ({ ...f, radius_m: e.target.value }))}
-                  className="w-full h-10 text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
+                  className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
               <div className="rounded-xl overflow-hidden h-40 flex items-center justify-center" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>

@@ -25,39 +25,9 @@ import {
 } from 'lucide-react';
 import { useData } from '@/context/DataContext';
 
-const MOCK_ORDERS = [
-  {
-    id: 'ORD-1001-STYLE1',
-    client: 'Acne Studios',
-    style: 'Chelsea Boot - Oxford',
-    quantity: 500,
-    skus: [
-      { code: 'SKU-001', color_name: 'Cognac', size: 'M' },
-      { code: 'SKU-002', color_name: 'Cognac', size: 'L' },
-    ],
-  },
-  {
-    id: 'ORD-1001-STYLE2',
-    client: 'Acne Studios',
-    style: 'Derby Shoe',
-    quantity: 300,
-    skus: [{ code: 'SKU-003', color_name: 'Black', size: 'M' }],
-  },
-  {
-    id: 'ORD-1002-STYLE1',
-    client: 'Zara',
-    style: 'Leather Jacket',
-    quantity: 200,
-    skus: [
-      { code: 'SKU-004', color_name: 'Brown', size: 'L' },
-      { code: 'SKU-005', color_name: 'Brown', size: 'XL' },
-    ],
-  },
-];
-
 function OrdersExplorer() {
   const { orders: realOrders } = useData();
-  const orders = realOrders?.length > 0 ? realOrders : MOCK_ORDERS;
+  const orders = realOrders || [];
 
   const [expandedOrders, setExpandedOrders] = useState({});
   const [expandedStyles, setExpandedStyles] = useState({});

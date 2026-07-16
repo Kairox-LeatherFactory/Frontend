@@ -406,7 +406,7 @@ export async function apiGetStageSpreadAlerts(token) {
 }
 
 export async function apiGetFreightRiskAlerts(token, todayDate = null) {
-  const url = todayDate 
+  const url = todayDate
     ? `${API_BASE_URL}/api/v1/analytics/alerts/freight-risk?today=${todayDate}`
     : `${API_BASE_URL}/api/v1/analytics/alerts/freight-risk`;
   const res = await fetch(url, {
@@ -482,11 +482,11 @@ export async function apiChangePassword(token, current_password, new_password) {
     const errText = await res.text().catch(() => 'Failed to change password');
     throw new Error(errText || `Failed to change password (${res.status})`);
   }
-  
+
   if (res.status === 204) {
     return true;
   }
-  
+
   // Just in case it returns JSON sometimes
   const text = await res.text();
   return text ? JSON.parse(text) : true;
@@ -512,13 +512,13 @@ export async function apiUploadSlot(token, submissionId, kind, file) {
   const formData = new FormData();
   formData.append('file', file);
   const endpoint = kind === 'order_sheet' ? 'order-sheet' : 'spec-sheet';
-  
+
   const res = await fetch(`${API_BASE_URL}/api/v1/procurement/submissions/${submissionId}/${endpoint}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}` },
     body: formData
   });
-  
+
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Upload failed');
     try {
