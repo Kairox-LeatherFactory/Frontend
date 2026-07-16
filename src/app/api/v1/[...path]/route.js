@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 // This custom proxy Route Handler replaces the next.config.mjs rewrites
 // to prevent Turbopack panics when the proxy encounters a timeout.
 
-const TARGET_BASE_URL = (process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000') + '/api/v1';
+const TARGET_BASE_URL = (process.env.NEXT_BACKEND_URL || process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000') + '/api/v1';
 
 async function proxyRequest(request, { params }) {
   // Await params to avoid Next.js 15+ warnings about synchronous access

@@ -3,7 +3,7 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiImportPreview, apiImportCommit, apiGetSkus, apiGetSkuPieces, apiProductionCutting } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info, Lightbulb, ListChecks } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info, Lightbulb, ListChecks, BarChart3 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 function DynamicDataViewer({ data }) {
@@ -16,7 +16,7 @@ function DynamicDataViewer({ data }) {
       const keys = Array.from(new Set(data.flatMap(Object.keys)));
       return (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-full text-left text-sm whitespace-nowrap bg-white">
+          <table className="min-w-full text-left text-sm bg-white break-words">
             <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider">
               <tr>
                 {keys.map(k => <th key={k} className="px-4 py-3 border-b border-slate-200">{k.replace(/_/g, ' ')}</th>)}
@@ -26,7 +26,7 @@ function DynamicDataViewer({ data }) {
               {data.map((row, i) => (
                 <tr key={i} className="hover:bg-slate-50">
                   {keys.map(k => (
-                    <td key={k} className="px-4 py-2 text-slate-700">
+                    <td key={k} className="px-4 py-2 text-slate-700 max-w-[250px] whitespace-normal break-words">
                       {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
                     </td>
                   ))}
@@ -90,6 +90,8 @@ export default function ProductionLogEntry() {
   const [selectedPieces, setSelectedPieces] = useState([]);
   const [loadingPieces, setLoadingPieces] = useState(false);
   const [piecesMeta, setPiecesMeta] = useState(null);
+  const [checklistError, setChecklistError] = useState('');
+  const [checklistSubmitting, setChecklistSubmitting] = useState(false);
 
   // SKU Filter
   const [skuFilter, setSkuFilter] = useState('');
@@ -302,15 +304,21 @@ export default function ProductionLogEntry() {
     setChecklistPieces([]);
     setSelectedPieces([]);
     setPiecesMeta(null);
+    setChecklistError('');
     setShowChecklistModal(true);
 
     try {
       const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
-      setChecklistPieces(data.pieces || []);
-      setPiecesMeta({ total: data.total, done: data.done, pending: data.pending });
+      const pieces = data.pieces || data || [];
+      setChecklistPieces(Array.isArray(pieces) ? pieces : []);
+      if (data.total !== undefined) {
+        setPiecesMeta({ total: data.total, done: data.done, pending: data.pending });
+      } else if (Array.isArray(pieces)) {
+        const done = pieces.filter(p => p.done_at_op).length;
+        setPiecesMeta({ total: pieces.length, done, pending: pieces.length - done });
+      }
     } catch (err) {
-      setErrorMsg(`Failed to fetch pieces checklist: ${err.message}`);
-      setShowChecklistModal(false);
+      setChecklistError(`Could not load pieces: ${err.message}`);
     } finally {
       setLoadingPieces(false);
     }
@@ -322,6 +330,11 @@ export default function ProductionLogEntry() {
     const opRecord = operations.find(o => o.label === operation);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
+    if (!opRecord || !skuObj) {
+      setChecklistError('Missing operation or SKU. Please close and re-open.');
+      return;
+    }
+
     const newEvent = {
       operation_id: opRecord.id,
       employee_id: workerId,
@@ -330,16 +343,21 @@ export default function ProductionLogEntry() {
       piece_seqs: selectedPieces,
     };
 
+    setChecklistSubmitting(true);
+    setChecklistError('');
     try {
       const result = await addScanEvent(newEvent);
-      setSuccessMsg(`Logged ${result.count_logged ?? selectedPieces.length} pieces for ${operation}. ` +
-        (result.rework?.length ? `(Rework: ${result.rework.length}) ` : '') +
-        (result.not_found?.length ? `(Not Found: ${result.not_found.length})` : '')
+      setSuccessMsg(
+        `✅ Logged ${result.count_logged ?? selectedPieces.length} pieces for ${operation}.` +
+        (result.rework?.length ? ` Rework: ${result.rework.length}.` : '') +
+        (result.not_found?.length ? ` Not Found: ${result.not_found.length}.` : '')
       );
       setShowChecklistModal(false);
       setSelectedPieces([]);
     } catch (err) {
-      setErrorMsg(`Failed to submit event: ${err.message}`);
+      setChecklistError(`Submit failed: ${err.message}`);
+    } finally {
+      setChecklistSubmitting(false);
     }
   };
 
@@ -403,36 +421,47 @@ export default function ProductionLogEntry() {
         </div>
       </div>
 
-      {/* ─── ALERT BANNERS ─── */}
-      {successMsg && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-start gap-2.5">
-          <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-extrabold">Shop Floor Transaction Confirmed</p>
-            <p className="text-xs text-emerald-600 mt-0.5">{successMsg}</p>
+      {/* ─── ALERT BANNERS (TOASTS) ─── */}
+      <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3 w-full max-w-sm pointer-events-none">
+        {successMsg && (
+          <div className="bg-emerald-50 border-2 border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-2.5 pointer-events-auto">
+            <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="flex justify-between items-start">
+                <p className="font-extrabold">Transaction Confirmed</p>
+                <button onClick={() => setSuccessMsg('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
+              </div>
+              <p className="text-xs text-emerald-600 mt-0.5 break-words whitespace-pre-wrap">{successMsg}</p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {commitSuccess && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-start gap-2.5">
-          <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-extrabold">Excel Import Successful</p>
-            <p className="text-xs text-emerald-600 mt-0.5">{commitSuccess}</p>
+        {commitSuccess && (
+          <div className="bg-emerald-50 border-2 border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-2.5 pointer-events-auto">
+            <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <div className="flex justify-between items-start">
+                <p className="font-extrabold">Import Successful</p>
+                <button onClick={() => setCommitSuccess('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
+              </div>
+              <p className="text-xs text-emerald-600 mt-0.5 break-words whitespace-pre-wrap">{commitSuccess}</p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {(errorMsg || uploadError) && (
-        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-start gap-2.5">
-          <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>
-            <p className="font-extrabold">Operation Log Refused</p>
-            <p className="text-xs text-red-600 mt-0.5">{errorMsg || uploadError}</p>
+        {(errorMsg || uploadError) && (
+          <div className="bg-red-50 border-2 border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-2.5 pointer-events-auto">
+            <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-600" />
+            <div className="flex-1">
+              <div className="flex justify-between items-start">
+                <p className="font-extrabold text-red-700">Operation Failed</p>
+                <button onClick={() => { setErrorMsg(''); setUploadError(''); }} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
+              </div>
+              <p className="text-xs text-red-600 mt-0.5 break-words whitespace-pre-wrap">{errorMsg || uploadError}</p>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ─── LOGGING FORM CARD ─── */}
       <SpotlightCard className="p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
@@ -616,25 +645,38 @@ export default function ProductionLogEntry() {
           </div>
 
           {/* Form Actions */}
-          <div className="pt-4 flex flex-col sm:flex-row gap-4 justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setPieceSeqs('');
-                setSkuCode('');
-              }}
-              className="h-14 font-bold rounded-xl text-base px-8 transition-all"
-              style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
-            >
-              Reset All
-            </button>
-            <button
-              type="submit"
-              className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2"
-              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
-            >
-              <Rocket className="w-5 h-5" /> Submit Event
-            </button>
+          <div className="pt-4 flex flex-col items-center sm:items-end gap-3">
+            <div className="flex flex-col sm:flex-row gap-4 justify-end w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  setPieceSeqs('');
+                  setSkuCode('');
+                }}
+                className="h-14 font-bold rounded-xl text-base px-8 transition-all"
+                style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
+              >
+                Reset All
+              </button>
+              <button
+                type="submit"
+                className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 flex-1 sm:flex-none"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
+              >
+                <Rocket className="w-5 h-5" /> Submit Event
+              </button>
+            </div>
+            
+            {/* Link to Analytics */}
+            {skuCode && (
+              <a
+                href={`/dashboard/analytics`}
+                className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-50 flex items-center gap-1.5"
+                style={{ color: '#c8834a' }}
+              >
+                <BarChart3 className="w-3.5 h-3.5" /> View Analytics for Order
+              </a>
+            )}
           </div>
 
         </form>
@@ -812,9 +854,21 @@ export default function ProductionLogEntry() {
                   <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
                   <p className="text-sm font-bold text-slate-400">Loading pieces...</p>
                 </div>
+              ) : checklistError && checklistPieces.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 gap-2 text-center">
+                  <XCircle className="w-8 h-8 text-red-400" />
+                  <p className="text-sm font-bold text-red-500">{checklistError}</p>
+                  <button
+                    type="button"
+                    onClick={openChecklistModal}
+                    className="text-xs font-black px-3 py-1.5 rounded-lg mt-1"
+                    style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
+                  >Retry</button>
+                </div>
               ) : checklistPieces.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-32 gap-2">
-                  <p className="text-sm font-bold text-slate-400">No pieces found for this SKU and stage.</p>
+                  <p className="text-sm font-bold text-slate-400">No pieces found for this SKU/stage.</p>
+                  <p className="text-xs text-slate-400">Run Cutting first to mint pieces for this SKU.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -843,7 +897,7 @@ export default function ProductionLogEntry() {
                     const isDone = piece.done_at_op;
                     return (
                       <button
-                        key={piece.piece_id}
+                        key={piece.piece_id || piece.seq}
                         type="button"
                         onClick={() => {
                           setSelectedPieces(prev =>
@@ -862,8 +916,8 @@ export default function ProductionLogEntry() {
                         <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : '#2d1f0e' }}>
                           #{piece.seq}
                         </p>
-                        <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage}</p>
-                        {isDone && (
+                        <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage || '—'}</p>
+                        {isDone && !isSelected && (
                           <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
                             <CheckCircle2 className="w-2.5 h-2.5 text-white" />
                           </span>
@@ -876,6 +930,14 @@ export default function ProductionLogEntry() {
                       </button>
                     );
                   })}
+
+                  {/* Inline submit error */}
+                  {checklistError && (
+                    <div className="col-span-2 sm:col-span-3 mt-2 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2">
+                      <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                      <p className="text-xs font-bold text-red-700">{checklistError}</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -884,7 +946,7 @@ export default function ProductionLogEntry() {
             <div className="flex gap-3 p-6 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setShowChecklistModal(false)}
+                onClick={() => { setShowChecklistModal(false); setChecklistError(''); }}
                 className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors"
                 style={{ background: '#f1f5f9', color: '#475569' }}
               >
@@ -892,13 +954,16 @@ export default function ProductionLogEntry() {
               </button>
               <button
                 type="button"
-                disabled={selectedPieces.length === 0}
+                disabled={selectedPieces.length === 0 || checklistSubmitting}
                 onClick={submitChecklist}
                 className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
               >
-                <Rocket className="w-3.5 h-3.5" />
-                Submit {selectedPieces.length > 0 ? `${selectedPieces.length} Pieces` : 'Event'}
+                {checklistSubmitting ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Submitting...</>
+                ) : (
+                  <><Rocket className="w-3.5 h-3.5" /> Submit {selectedPieces.length > 0 ? `${selectedPieces.length} Pieces` : 'Event'}</>
+                )}
               </button>
             </div>
           </div>

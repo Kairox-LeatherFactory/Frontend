@@ -13,10 +13,7 @@ import {
   apiProductionScan,
   apiComputeWageRun,
 } from '@/lib/api';
-import {
-  RATES,
-  TRACE_CARDS,
-} from '@/hooks/useMockData';
+// Removed mock data imports
 
 const DataContext = createContext(null);
 
@@ -94,68 +91,10 @@ export function DataProvider({ children }) {
         });
         setEvents(mappedEvents);
 
-        // Fetch orders for each client
-        const allOrders = [];
-        for (const client of clientsData) {
-          try {
-            const ordersData = await apiGetClientOrders(token, client.id);
-            if (cancelled) return;
-            if (Array.isArray(ordersData)) {
-              ordersData.forEach((order) => {
-                if (order.styles && Array.isArray(order.styles)) {
-                  order.styles.forEach((style) => {
-                    const sizes = Array.from(new Set((style.skus || []).map((sk) => sk.size)));
-                    const colors = Array.from(new Set((style.skus || []).map((sk) => sk.color_name)));
-                    const totalQty = (style.skus || []).reduce((sum, sk) => sum + (sk.qty_ordered || 0), 0);
-
-                    allOrders.push({
-                      id: `ORD-${(order.po_number || order.id.substring(0, 8)).toUpperCase()}-${style.id.substring(0, 4)}`,
-                      style_id: style.id,
-                      type: totalQty <= 5 ? 'Sample Order' : totalQty < 100 ? 'SMS Order' : 'Bulk Production',
-                      client: client.name,
-                      quantity: totalQty,
-                      style: style.name,
-                      colorway: colors.join(', '),
-                      sizes,
-                      skus: style.skus || [],
-                      order_date: order.order_date || '—',
-                      deadline: order.delivery_deadline || '—',
-                      sea_cutoff: order.sea_cutoff_date || '—',
-                      current_stage: 4,
-                      status: 'Active',
-                      delay_days: 0,
-                      freight_mode: order.ship_mode === 'air' ? 'Air Freight (RISK)' : 'Sea Freight',
-                      progress: 0,
-                    });
-                  });
-                }
-              });
-            }
-          } catch (orderErr) {
-            console.warn(`Failed to fetch orders for client ${client.name}:`, orderErr);
-          }
-        }
-
-        // Now that orders are loaded, enrich events with order/sku info
+        // Set empty orders for now - let individual pages fetch what they need
         if (!cancelled) {
-          setOrders(allOrders);
-          setEvents((prev) =>
-            prev.map((evt) => {
-              let foundOrder = null;
-              let foundSku = null;
-              for (const ord of allOrders) {
-                const sk = ord.skus?.find((s) => s.id === evt.sku_id);
-                if (sk) { foundOrder = ord; foundSku = sk; break; }
-              }
-              return {
-                ...evt,
-                order_id: foundOrder ? foundOrder.id : 'Unknown',
-                style: foundOrder ? foundOrder.style : 'Unknown',
-                colorway: foundSku ? foundSku.color_name : 'Unknown',
-                size: foundSku ? foundSku.size : 'Unknown',
-              };
-            })
-          );
+          setOrders([]);
+          setEvents(mappedEvents);
         }
       } catch (err) {
         if (!cancelled) {
@@ -278,7 +217,7 @@ export function DataProvider({ children }) {
         orders,
         workers,
         operations,
-        rates: RATES,
+        rates: {},
         clients,
         wageRuns,
         traceCards,
