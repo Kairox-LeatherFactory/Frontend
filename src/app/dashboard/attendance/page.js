@@ -6,7 +6,7 @@ import {
   Users, Search, Settings, ChevronLeft, ChevronRight,
   Lock, RefreshCw, CheckSquare, Square, X,
   Timer, CalendarDays, Shield, Zap, Filter,
-  UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff,
+  UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
@@ -38,7 +38,7 @@ function padTime(secs) {
   return [h, m, s].map((v) => String(v).padStart(2, '0')).join(':');
 }
 
-// ─── FETCH HELPER — token passed explicitly from useAuth() state ─────────────
+// ─── FETCH HELPER ────────────────────────────────────────────────────────────
 async function apiFetch(url, options = {}, token = null) {
   const res = await fetch(url, {
     ...options,
@@ -183,7 +183,6 @@ function LockedView({ title, description }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // VIEW A — MY ATTENDANCE
-// Endpoints: GET /me/status · POST /check-in · POST /check-out · GET /me
 // ═══════════════════════════════════════════════════════════════════════════════
 function MyAttendanceView({ token }) {
   const gps = useGps();
@@ -210,11 +209,9 @@ function MyAttendanceView({ token }) {
     if (type === 'success') setTimeout(() => setAlert(null), 5000);
   };
 
-  // GET /me/status — server-anchored shift data (backend confirmed working)
   const fetchStatus = useCallback(async () => {
     try {
       const data = await apiFetch(`${API}/me/status`, {}, token);
-      // Backend response: { checked_in, checked_out, check_in_at, shift_end_at, remaining_seconds, ... }
       setStatus(data);
       if (data.remaining_seconds != null && data.checked_in && !data.checked_out) {
         setCountdown(data.remaining_seconds);
@@ -223,7 +220,6 @@ function MyAttendanceView({ token }) {
       }
     } catch (e) {
       console.error('Status fetch failed:', e.message);
-      // Fallback: try reading today's history if /me/status fails
       try {
         const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
         const histData = await apiFetch(`${API}/me?start=${todayStr}&end=${todayStr}`, {}, token);
@@ -249,8 +245,6 @@ function MyAttendanceView({ token }) {
     }
   }, [token]);
 
-
-  // GET /me?start=&end=
   const fetchHistory = useCallback(async () => {
     setHistLoading(true);
     try {
@@ -266,7 +260,6 @@ function MyAttendanceView({ token }) {
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
   useEffect(() => { fetchHistory(); setPage(1); }, [fetchHistory]);
 
-  // Live countdown — no polling, pure setInterval ticking remaining_seconds
   useEffect(() => {
     if (intervalRef.current) clearInterval(intervalRef.current);
     if (status?.remaining_seconds == null || status?.checked_out) return;
@@ -279,7 +272,6 @@ function MyAttendanceView({ token }) {
     return () => clearInterval(intervalRef.current);
   }, [status]);
 
-  // POST /check-in — payload: { lat, lon } only (identity + timestamp from JWT/server)
   const handleCheckIn = async () => {
     setActionLoading(true);
     try {
@@ -296,7 +288,6 @@ function MyAttendanceView({ token }) {
     }
   };
 
-  // POST /check-out — payload: { lat, lon }
   const handleCheckOut = async () => {
     setActionLoading(true);
     try {
@@ -518,7 +509,6 @@ function MyAttendanceView({ token }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // VIEW B — FLOOR COMMAND
-// Endpoints: POST /proxy/check-in · POST /proxy/check-out · POST /daily-workers
 // ═══════════════════════════════════════════════════════════════════════════════
 function FloorCommandView({ workers = [], token }) {
   const gps = useGps();
@@ -528,13 +518,54 @@ function FloorCommandView({ workers = [], token }) {
   const [actionLoading, setActionLoading] = useState(false);
   const [alert, setAlert] = useState(null);
   const [diffModal, setDiffModal] = useState(null);
+
+  // Unified State for Add Worker
   const [addModal, setAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', phone: '', designation: '', daily_rate: '' });
+  const [addForm, setAddForm] = useState({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '', password: '' });
   const [addLoading, setAddLoading] = useState(false);
 
   const showAlert = (type, message) => {
     setAlert({ type, message });
     if (type === 'success') setTimeout(() => setAlert(null), 6000);
+  };
+
+  const handleAddWorker = async () => {
+    const { name, phone, designation, wage_type, daily_rate, password } = addForm;
+    if (!name.trim() || !designation.trim()) {
+      showAlert('warning', 'Name and designation are required.');
+      return;
+    }
+    if (wage_type === 'monthly' && (!phone.trim() || !password.trim())) {
+      showAlert('warning', 'Phone number and password are required for monthly employees.');
+      return;
+    }
+    setAddLoading(true);
+    try {
+      await gps.getPosition();
+
+      const payload = {
+        name: name.trim(),
+        designation: designation.trim(),
+        wage_type: wage_type,
+        phone: phone.trim() || null,
+        password: wage_type === 'monthly' ? password : null,
+        daily_rate: daily_rate ? parseFloat(daily_rate) : null,
+      };
+
+      await apiFetch(`/api/v1/employees`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+      }, token);
+
+      showAlert('success', `Worker "${name}" onboarded to floor roster.`);
+      setAddModal(false);
+      setAddForm({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '', password: '' });
+    } catch (e) {
+      if (e.status === 403) showAlert('error', `Geofence check failed: ${e.message}`);
+      else showAlert('error', typeof e === 'string' ? e : e.message || 'Failed to add worker.');
+    } finally {
+      setAddLoading(false);
+    }
   };
 
   const dailyWorkers = useMemo(
@@ -579,43 +610,12 @@ function FloorCommandView({ workers = [], token }) {
       const succeeded = normalizedRequested.filter((id) => succeededIds.has(id));
       const failed = normalizedRequested.filter((id) => !succeededIds.has(id));
       setSelected(new Set());
-      // Defer modal open to next tick so cleared selection doesn't race with render
       setTimeout(() => setDiffModal({ type, succeeded, failed }), 0);
     } catch (e) {
       if (e.status === 403) showAlert('error', `Geofence: ${e.message}`);
       else showAlert('error', typeof e === 'string' ? e : e.message || 'Batch action failed.');
     } finally {
       setActionLoading(false);
-    }
-  };
-
-  const handleAddWorker = async () => {
-    if (!addForm.name.trim() || !addForm.phone.trim() || !addForm.designation.trim()) {
-      showAlert('warning', 'Name, phone, and designation are required.');
-      return;
-    }
-    setAddLoading(true);
-    try {
-      await gps.getPosition();
-      await apiFetch(`${API}/daily-workers`, {
-        method: 'POST',
-        body: JSON.stringify({
-          name: addForm.name,
-          phone: addForm.phone,
-          designation: addForm.designation,
-          daily_rate: addForm.daily_rate ? parseFloat(addForm.daily_rate) : null,
-          wage_type: 'PIECE_RATE',
-        }),
-      }, token);
-
-      showAlert('success', `Worker "${addForm.name}" onboarded to floor roster.`);
-      setAddModal(false);
-      setAddForm({ name: '', phone: '', designation: '', daily_rate: '' });
-    } catch (e) {
-      if (e.status === 403) showAlert('error', `Geofence check failed: ${e.message}`);
-      else showAlert('error', typeof e === 'string' ? e : e.message || 'Failed to add worker.');
-    } finally {
-      setAddLoading(false);
     }
   };
 
@@ -626,11 +626,12 @@ function FloorCommandView({ workers = [], token }) {
           <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Floor Command</h1>
           <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Proxy check-in / check-out for daily-wage floor workers.</p>
         </div>
-        <button onClick={() => setAddModal(true)}
-          className="h-10 px-4 text-xs font-black flex items-center gap-2 self-start sm:self-auto rounded-xl text-white shadow-md active:scale-95 transition-all hover:shadow-lg hover:-translate-y-0.5"
-          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
-          <UserPlus className="w-4 h-4" /> Add Floor Worker
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <button onClick={() => setAddModal(true)}
+            className="btn-primary h-10 px-4 text-xs font-black flex items-center gap-2">
+            <UserPlus className="w-4 h-4" /> Add Worker
+          </button>
+        </div>
       </div>
 
       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
@@ -762,61 +763,84 @@ function FloorCommandView({ workers = [], token }) {
           </div>
         </div>
       )}
-{/* Add floor worker modal */}
-{addModal && (
-  // 🌟 Wrapper custom configuration fix logic: Centered alignment dynamically!
-  <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[999] flex items-center justify-center p-4 overflow-y-auto">
-    {/* Inner element configuration block height fixes */}
-    <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl max-h-[90vh] overflow-y-auto p-5 sm:p-6 space-y-5 animate-fade-in relative">
-      
-      {/* Dynamic top bar sticky layout alignment boundary checks */}
-      <div className="flex items-center justify-between sticky top-0 bg-white z-10 pb-2 border-b border-slate-100">
+
+      {/* Add floor worker modal */}
+      {addModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl max-h-[85vh] flex flex-col animate-fade-in" role="dialog" aria-modal="true" aria-labelledby="add-worker-title">
+            <div className="flex-shrink-0 flex items-center justify-between p-5 sm:p-6 border-b border-slate-100">
               <h3 className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" /> Add Floor Worker
               </h3>
-              <button onClick={() => setAddModal(false)} className="p-1 -m-1">
-                <X className="w-5 h-5 text-slate-400" />
+              <button onClick={() => setAddModal(false)} className="p-1 -m-1 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" aria-label="Close modal" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-400 font-semibold">
-              GPS location will be verified before submission — floor-only onboarding rule.
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Full Name *</label>
-                <input type="text" value={addForm.name} placeholder="e.g. Ramesh Kumar"
-                  onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
-                  className="input-field w-full h-11 sm:h-10 text-base sm:text-sm font-semibold" />
-              </div>
-              <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Phone Number *</label>
-                <input type="tel" inputMode="numeric" value={addForm.phone} placeholder="e.g. 9876543210"
-                  onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value }))}
-                  className="input-field w-full h-11 sm:h-10 text-base sm:text-sm font-semibold" />
-              </div>
-              <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Designation *</label>
-                <input type="text" placeholder="Enter Designation" value={addForm.designation}
-                  onChange={(e) => setAddForm((f) => ({ ...f, designation: e.target.value }))}
-                  className="input-field w-full h-11 sm:h-10 text-base sm:text-sm font-semibold" />
-              </div>
-              <div>
-                <label className="text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Salary (₹)</label>
-                <input type="number" inputMode="decimal" placeholder="Enter Daily Rate" value={addForm.daily_rate}
-                  onChange={(e) => setAddForm((f) => ({ ...f, daily_rate: e.target.value }))}
-                  className="input-field w-full h-11 sm:h-10 text-base sm:text-sm font-semibold" />
+            <div className="flex-1 p-5 sm:p-6 space-y-4 overflow-y-auto min-h-[100px]">
+              <p className="text-xs text-slate-400 font-semibold leading-relaxed">
+                GPS location will be verified before submission — floor-only onboarding rule.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="input-label text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Full Name *</label>
+                  <input type="text" value={addForm.name} placeholder="e.g. Ramesh Kumar"
+                    onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
+                    className="input-field w-full h-10 px-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                </div>
+                <div>
+                  <label className="input-label text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Designation *</label>
+                  <input type="text" value={addForm.designation} placeholder="e.g. Cutter, Stitcher, Helper"
+                    onChange={(e) => setAddForm((f) => ({ ...f, designation: e.target.value }))}
+                    className="input-field w-full h-10 px-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                </div>
+                <div>
+                  <label className="input-label text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Wage Type</label>
+                  <select value={addForm.wage_type}
+                    onChange={(e) => setAddForm(f => ({ ...f, wage_type: e.target.value, password: '' }))}
+                    className="input-field w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20">
+                    <option value="piece_rate">Piece Rate / Daily Wage</option>
+                    <option value="monthly">Monthly Salary</option>
+                  </select>
+                </div>
+                {addForm.wage_type === 'monthly' ? (
+                  <>
+                    <div>
+                      <label className="input-label text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Phone Number *</label>
+                      <input type="tel" inputMode="numeric" pattern="[0-9]*" value={addForm.phone} placeholder="10-digit mobile number"
+                        onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '') }))}
+                        className="input-field w-full h-10 px-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                    </div>
+                    <div>
+                      <label className="input-label text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Set Password *</label>
+                      <input type="password" value={addForm.password} placeholder="Min. 6 characters"
+                        onChange={(e) => setAddForm((f) => ({ ...f, password: e.target.value }))}
+                        className="input-field w-full h-10 px-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="input-label text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Phone Number (Optional)</label>
+                      <input type="tel" inputMode="numeric" pattern="[0-9]*" value={addForm.phone} placeholder="Optional for daily workers"
+                        onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '') }))}
+                        className="input-field w-full h-10 px-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                    </div>
+                    <div>
+                      <label className="input-label text-[11px] font-black text-slate-500 uppercase tracking-wider block mb-1">Daily Rate (₹)</label>
+                      <input type="number" inputMode="decimal" placeholder="e.g. 500" value={addForm.daily_rate}
+                        onChange={(e) => setAddForm((f) => ({ ...f, daily_rate: e.target.value }))}
+                        className="input-field w-full h-10 px-3 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
-
-            <div className="flex flex-col-reverse sm:flex-row gap-3 pt-1 sticky bottom-0 bg-white">
+            <div className="flex-shrink-0 flex flex-col-reverse sm:flex-row gap-3 p-5 sm:p-6 border-t border-slate-100">
               <button onClick={() => setAddModal(false)} className="btn-secondary flex-1 h-11 sm:h-10 text-xs font-bold">Cancel</button>
               <button onClick={handleAddWorker} disabled={addLoading}
                 className="btn-primary flex-1 h-11 sm:h-10 text-xs font-black flex items-center justify-center gap-2">
-                {addLoading
-                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding…</>
-                  : <><UserPlus className="w-4 h-4" /> Add Worker</>}
+                {addLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding...</> : <><UserPlus className="w-4 h-4" /> Add Worker</>}
               </button>
             </div>
           </div>
@@ -828,13 +852,13 @@ function FloorCommandView({ workers = [], token }) {
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // VIEW C — OPERATIONS & HR
-// Endpoints: GET /today · GET /config · PATCH /config
 // ═══════════════════════════════════════════════════════════════════════════════
 function OperationsHRView({ token }) {
   const [roster, setRoster] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(true);
   const [config, setConfig] = useState(null);
   const [configLoading, setConfigLoading] = useState(true);
+
   const [configForm, setConfigForm] = useState({});
   const [configSaving, setConfigSaving] = useState(false);
   const [alert, setAlert] = useState(null);
@@ -848,7 +872,6 @@ function OperationsHRView({ token }) {
     if (type === 'success') setTimeout(() => setAlert(null), 5000);
   };
 
-  // Click-outside close for filter dropdown
   useEffect(() => {
     if (!filterOpen) return;
     const close = (e) => { if (!e.target.closest('.filter-dropdown')) setFilterOpen(false); };
@@ -856,7 +879,6 @@ function OperationsHRView({ token }) {
     return () => document.removeEventListener('mousedown', close);
   }, [filterOpen]);
 
-  // GET /today
   const fetchRoster = useCallback(async () => {
     setRosterLoading(true);
     try {
@@ -869,7 +891,6 @@ function OperationsHRView({ token }) {
     }
   }, [token]);
 
-  // GET /config
   const fetchConfig = useCallback(async () => {
     setConfigLoading(true);
     try {
@@ -892,7 +913,6 @@ function OperationsHRView({ token }) {
 
   useEffect(() => { fetchRoster(); fetchConfig(); }, [fetchRoster, fetchConfig]);
 
-  // PATCH /config
   const handleSaveConfig = async () => {
     const timeRegex = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
     if (!timeRegex.test(configForm.shift_start || '')) {
@@ -944,11 +964,10 @@ function OperationsHRView({ token }) {
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
             <Activity className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster
             <span className="text-xs font-black px-2 py-0.5 rounded-full ml-1" style={{ background: '#faf6f0', color: '#a86022', border: '1px solid rgba(200,131,74,0.2)' }}>
-              {roster.length}
+              {roster.length} Live
             </span>
           </h3>
           <div className="flex items-center gap-2">
-
             {/* Filter dropdown */}
             <div className="relative filter-dropdown">
               <button onClick={() => setFilterOpen((o) => !o)}
@@ -984,7 +1003,6 @@ function OperationsHRView({ token }) {
               style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
               <RefreshCw className="w-4 h-4" style={{ color: '#c8834a' }} />
             </button>
-
           </div>
         </div>
 
@@ -1166,9 +1184,8 @@ function OperationsHRView({ token }) {
 // ROOT EXPORT — Attendance Module Router
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function AttendancePage() {
-  const { user, token } = useAuth();  // token from React state, not localStorage
+  const { user, token } = useAuth();
 
-  // Role strings match AuthContext exactly: lowercase with underscores
   const isManager = user === 'direct_manager';
   const isSupervisor = user === 'cutting_manager' || user === 'stitching_manager' || isManager;
 
@@ -1180,19 +1197,23 @@ export default function AttendancePage() {
 
   const [activeTab, setActiveTab] = useState('me');
   const [workers, setWorkers] = useState([]);
+  const [workerRefreshKey, setWorkerRefreshKey] = useState(0);
 
-  // Load daily-wage workers lazily when Floor Command tab is first opened
+  const refreshWorkers = () => {
+    setWorkerRefreshKey(k => k + 1);
+  };
+
   useEffect(() => {
-    if (activeTab === 'proxy' && workers.length === 0) {
+    if ((activeTab === 'proxy' || activeTab === 'admin')) {
       apiFetch('/api/v1/employees?wage_type=PIECE_RATE', {}, token)
         .then(setWorkers)
         .catch(() => { });
     }
-  }, [activeTab, workers.length, token]);
+  }, [activeTab, token, workerRefreshKey]);
 
   return (
     <div className="space-y-6">
-      {/* Tab bar — only shows tabs the current role can access */}
+      {/* Tab bar */}
       <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
         {tabs.map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setActiveTab(key)}
@@ -1207,7 +1228,7 @@ export default function AttendancePage() {
         ))}
       </div>
 
-      {/* Views — token passed as prop, role gates enforced */}
+      {/* Views */}
       {activeTab === 'me' && <MyAttendanceView token={token} />}
 
       {activeTab === 'proxy' && (

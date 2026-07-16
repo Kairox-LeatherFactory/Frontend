@@ -1,12 +1,12 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiGetUsers, apiCreateClientUser, apiCreateEmployee } from '@/lib/api';
+import { apiGetUsers, apiCreateUser, apiCreateEmployee } from '@/lib/api';
 import {
   CheckCircle2, Users, UserPlus, Factory, Loader2,
   ShieldCheck, Lock, AlertCircle, Building2, User,
-  ChevronRight, Search,
+  Search, MapPin
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
@@ -21,7 +21,6 @@ function Field({ label, children }) {
 }
 
 const inputCls = "w-full h-11 px-4 rounded-xl text-sm font-semibold outline-none transition-all focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a] hover:border-[#c8834a]/50 bg-[#faf6f0] text-[#2d1f0e] border-[1.5px] border-[#c8834a]/20";
-const inputStyle = {}; // Using tailwind arbitrary values above instead of inline to allow focus/hover cleanly
 
 const ROLE_COLORS = {
   direct_manager:   { bg: '#fff9f0', color: '#c8834a', border: 'rgba(200,131,74,0.3)', label: 'Direct Manager' },
@@ -29,11 +28,42 @@ const ROLE_COLORS = {
   stitching_manager:{ bg: '#f5f3ff', color: '#7c3aed', border: 'rgba(124,58,237,0.2)', label: 'Stitching Manager' },
   hr_admin:         { bg: '#f0fdf4', color: '#16a34a', border: 'rgba(22,163,74,0.2)',  label: 'HR Admin' },
   client_viewer:    { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)',label: 'Client Viewer' },
+  viewer:           { bg: '#f1f5f9', color: '#64748b', border: 'rgba(100,116,139,0.15)',label: 'Viewer' },
+  employee:         { bg: '#ecfdf5', color: '#059669', border: 'rgba(5,150,105,0.15)', label: 'Employee' },
 };
+
+// GPS helper hook within component context for Floor/Admin verification
+function useGps() {
+  const [state, setState] = useState({ lat: null, lon: null, error: null, loading: false });
+  const getPosition = () => {
+    return new Promise((resolve, reject) => {
+      setState((s) => ({ ...s, loading: true, error: null }));
+      if (!navigator.geolocation) {
+        const err = 'Geolocation is not supported by this browser.';
+        setState((s) => ({ ...s, loading: false, error: err }));
+        return reject(err);
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+          setState({ ...coords, loading: false, error: null });
+          resolve(coords);
+        },
+        (err) => {
+          const msg = 'Location access denied or timed out. Unable to resolve GPS coordinates.';
+          setState({ lat: null, lon: null, loading: false, error: msg });
+          reject(msg);
+        },
+        { timeout: 8000 }
+      );
+    });
+  };
+  return { ...state, getPosition };
+}
 
 export default function AdminDashboard() {
   const { user, token } = useAuth();
-  const { clients } = useData();
+  const gps = useGps();
 
   const isHRAdmin = user === 'hr_admin' || user === 'direct_manager';
 
@@ -42,10 +72,27 @@ export default function AdminDashboard() {
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState('');
 
-  const [clientForm, setClientForm] = useState({ name: '', phone: '', username: '', password: '', role: 'client_viewer', client_id: '' });
-  const [employeeForm, setEmployeeForm] = useState({ name: '', designation: 'Cutter', wage_type: 'piece_rate', monthly_salary: 0 });
-  const [isSubmittingClient, setIsSubmittingClient] = useState(false);
-  const [isSubmittingEmployee, setIsSubmittingEmployee] = useState(false);
+  // 1. Corrected Worker Form State matching the Floor Command specification
+  const [workerForm, setWorkerForm] = useState({
+    name: '',
+    phone: '',
+    designation: 'Cutter',
+    wage_type: 'piece_rate',
+    daily_rate: '',
+    password: ''
+  });
+  const [isSubmittingWorker, setIsSubmittingWorker] = useState(false);
+
+  // 2. Corrected Add User Form State matching the User specification
+  const [userForm, setUserForm] = useState({
+    name: '',
+    phone: '',
+    email: '',
+    role: 'viewer',
+    password: '',
+    employee_id: ''
+  });
+  const [isSubmittingUser, setIsSubmittingUser] = useState(false);
 
   const showToast = (type, msg) => {
     setToast({ type, msg });
@@ -65,46 +112,86 @@ export default function AdminDashboard() {
     })();
   }, [token]);
 
-  const handleCreateEmployee = async (e) => {
+  // Handle Add Worker Submission (strictly using JSON payload as verified)
+  const handleCreateWorker = async (e) => {
     e.preventDefault();
-    setIsSubmittingEmployee(true);
+    const { name, phone, designation, wage_type, daily_rate, password } = workerForm;
+    
+    if (!name.trim() || !designation.trim()) {
+      showToast('error', 'Name and designation are required.');
+      return;
+    }
+    if (wage_type === 'monthly' && (!phone.trim() || !password.trim())) {
+      showToast('error', 'Phone number and password are required for monthly employees.');
+      return;
+    }
+
+    setIsSubmittingWorker(true);
     try {
-      await apiCreateEmployee(token, {
-        name: employeeForm.name,
-        designation: employeeForm.designation,
-        wage_type: employeeForm.wage_type,
-        monthly_salary: parseFloat(employeeForm.monthly_salary) || 0,
+      // Fetch GPS coordinates to fulfill floor-only location onboarding requirement
+      await gps.getPosition();
+
+      const payload = {
+        name: name.trim(),
+        designation: designation.trim(),
+        wage_type: wage_type,
+        phone: phone.trim() || null,
+        password: wage_type === 'monthly' ? password : null,
+        daily_rate: daily_rate ? parseFloat(daily_rate) : null,
+      };
+
+      const res = await fetch(`/api/v1/employees`, {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       });
-      showToast('success', `Employee '${employeeForm.name}' registered successfully.`);
-      setEmployeeForm({ name: '', designation: 'Cutter', wage_type: 'piece_rate', monthly_salary: 0 });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail || `Server error: ${res.status}`);
+      }
+
+      showToast('success', `Worker "${name}" successfully registered onto the floor.`);
+      setWorkerForm({ name: '', phone: '', designation: 'Cutter', wage_type: 'piece_rate', daily_rate: '', password: '' });
       await refreshUsers();
     } catch (err) {
-      showToast('error', err.message);
+      showToast('error', err.message || 'Onboarding failed.');
     } finally {
-      setIsSubmittingEmployee(false);
+      setIsSubmittingWorker(false);
     }
   };
 
-  const handleCreateClientUser = async (e) => {
+  // Handle Add User Login Submission
+  const handleCreateUser = async (e) => {
     e.preventDefault();
-    setIsSubmittingClient(true);
+    const { name, phone, password, role, email, employee_id } = userForm;
+    if (!name.trim() || !phone.trim() || !password.trim()) {
+      showToast('error', 'Name, Phone, and Password are required.');
+      return;
+    }
+
+    setIsSubmittingUser(true);
     try {
-      if (!clientForm.client_id) throw new Error('Please select a client brand.');
-      await apiCreateClientUser(token, {
-        name: clientForm.name,
-        phone: clientForm.phone,
-        username: clientForm.username,
-        password: clientForm.password,
-        role: clientForm.role,
-        client_id: clientForm.client_id,
-      });
-      showToast('success', `Client account '${clientForm.username}' created.`);
-      setClientForm({ name: '', phone: '', username: '', password: '', role: 'client_viewer', client_id: '' });
+      const payload = {
+        name: name.trim(),
+        phone: phone.trim(),
+        password: password,
+        role: role,
+        email: email.trim() || null,
+        employee_id: employee_id.trim() || null,
+      };
+
+      await apiCreateUser(token, payload);
+      showToast('success', `User account login for "${name}" created successfully.`);
+      setUserForm({ name: '', phone: '', email: '', role: 'viewer', password: '', employee_id: '' });
       await refreshUsers();
     } catch (err) {
-      showToast('error', err.message);
+      showToast('error', err.message || 'Failed to create user login.');
     } finally {
-      setIsSubmittingClient(false);
+      setIsSubmittingUser(false);
     }
   };
 
@@ -153,16 +240,16 @@ export default function AdminDashboard() {
           Admin &amp; User Management
         </h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>
-          Register factory employees and provision external client portal accounts.
+          Register factory floor employees and provision system login accounts.
         </p>
       </div>
 
       {/* ─── STATS STRIP ─── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         {[
-          { label: 'Total Users',     value: users.length,                                     icon: Users },
+          { label: 'Total Accounts',  value: users.length,                                      icon: Users },
           { label: 'Internal Staff',  value: users.filter(u => !u.client_id).length,           icon: Factory },
-          { label: 'Client Accounts', value: users.filter(u => !!u.client_id).length,          icon: Building2 },
+          { label: 'Client Portals',  value: users.filter(u => !!u.client_id).length,          icon: Building2 },
         ].map(({ label, value, icon: Icon }) => (
           <SpotlightCard key={label} className="p-4 bg-white rounded-2xl shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.12)' }} spotlightColor="rgba(200,131,74,0.05)">
             <div className="flex items-center justify-between mb-1">
@@ -177,98 +264,149 @@ export default function AdminDashboard() {
       {/* ─── FORMS GRID ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
-        {/* FACTORY EMPLOYEE CREATION */}
+        {/* 1. REGISTER FACTORY EMPLOYEE CARD */}
         <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
           <h3 className="text-lg font-extrabold pb-4 mb-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
             <Factory className="w-5 h-5" style={{ color: '#c8834a' }} /> Register Factory Employee
           </h3>
-          <form onSubmit={handleCreateEmployee} className="space-y-4">
-            <Field label="Employee Full Name">
-              <input type="text" className={inputCls} style={inputStyle}
-                value={employeeForm.name}
-                onChange={e => setEmployeeForm({ ...employeeForm, name: e.target.value })}
-                placeholder="e.g. Ramesh Kumar" required />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Designation">
-                <select className={inputCls} style={inputStyle}
-                  value={employeeForm.designation}
-                  onChange={e => setEmployeeForm({ ...employeeForm, designation: e.target.value })}>
-                  {['Cutter', 'Stitcher', 'Fusing Operator', 'Pasting Operator', 'Lining Attacher', 'Helper', 'QC Inspector', 'Packer', 'Manager'].map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
-              </Field>
+          <form onSubmit={handleCreateWorker} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <Field label="Employee Full Name *">
+                  <input type="text" className={inputCls}
+                    value={workerForm.name}
+                    onChange={e => setWorkerForm({ ...workerForm, name: e.target.value })}
+                    placeholder="e.g. Ramesh Kumar" required />
+                </Field>
+              </div>
+
+              <Field label="Designation *">
+  <input type="text" className={inputCls}
+    value={workerForm.designation}
+    placeholder="e.g. Cutter, Stitcher, Helper" required
+    onChange={e => setWorkerForm({ ...workerForm, designation: e.target.value })} />
+</Field>
+
               <Field label="Wage Type">
-                <select className={inputCls} style={inputStyle}
-                  value={employeeForm.wage_type}
-                  onChange={e => setEmployeeForm({ ...employeeForm, wage_type: e.target.value })}>
-                  <option value="piece_rate">Piece-rate</option>
+                <select className={inputCls}
+                  value={workerForm.wage_type}
+                  onChange={e => setWorkerForm({ ...workerForm, wage_type: e.target.value, password: '' })}>
+                  <option value="piece_rate">Piece Rate / Daily Wage</option>
                   <option value="monthly">Monthly Salary</option>
-                  <option value="daily_wage">Daily Wage</option>
                 </select>
               </Field>
+
+              {workerForm.wage_type === 'monthly' ? (
+                <>
+                  <Field label="Phone Number *">
+                    <input type="tel" inputMode="numeric" pattern="[0-9]*" className={inputCls}
+                      value={workerForm.phone}
+                      placeholder="10-digit mobile number"
+                      onChange={e => setWorkerForm({ ...workerForm, phone: e.target.value.replace(/\D/g, '') })} required />
+                  </Field>
+                  <Field label="Set Password *">
+                    <input type="password" className={inputCls}
+                      value={workerForm.password}
+                      placeholder="Min. 6 characters"
+                      onChange={e => setWorkerForm({ ...workerForm, password: e.target.value })} required minLength="6" />
+                  </Field>
+                </>
+              ) : (
+                <>
+                  <Field label="Phone Number (Optional)">
+                    <input type="tel" inputMode="numeric" pattern="[0-9]*" className={inputCls}
+                      value={workerForm.phone}
+                      placeholder="Optional for daily wage"
+                      onChange={e => setWorkerForm({ ...workerForm, phone: e.target.value.replace(/\D/g, '') })} />
+                  </Field>
+                  <Field label="Daily Rate (₹)">
+                    <input type="number" className={inputCls}
+                      value={workerForm.daily_rate}
+                      placeholder="e.g. 500"
+                      onChange={e => setWorkerForm({ ...workerForm, daily_rate: e.target.value })} />
+                  </Field>
+                </>
+              )}
             </div>
-            {employeeForm.wage_type === 'monthly' && (
-              <Field label="Monthly Salary (₹)">
-                <input type="number" className={inputCls} style={inputStyle}
-                  value={employeeForm.monthly_salary}
-                  onChange={e => setEmployeeForm({ ...employeeForm, monthly_salary: e.target.value })}
-                  min="0" required />
-              </Field>
-            )}
-            <button type="submit" disabled={isSubmittingEmployee}
+
+            <div className="flex items-center gap-2 text-[10px] font-semibold" style={{ color: '#9a7a5a' }}>
+              <MapPin className="w-3.5 h-3.5" style={{ color: '#c8834a' }} />
+              GPS verification will be performed automatically upon submission.
+            </div>
+
+            <button type="submit" disabled={isSubmittingWorker}
               className="w-full h-11 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
               style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
-              {isSubmittingEmployee ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserPlus className="w-4 h-4" />}
-              Register Employee
+              {isSubmittingWorker ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying GPS...</> : <><UserPlus className="w-4 h-4" /> Register Employee</>}
             </button>
           </form>
         </SpotlightCard>
 
-        {/* CLIENT USER CREATION */}
+        {/* 2. PROVISION USER LOGIN CARD */}
         <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
           <h3 className="text-lg font-extrabold pb-4 mb-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
-            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Provision Client Login
+            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Create User Login
           </h3>
-          <form onSubmit={handleCreateClientUser} className="space-y-4">
-            <Field label="Client Brand">
-              <select className={inputCls} style={inputStyle}
-                value={clientForm.client_id}
-                onChange={e => setClientForm({ ...clientForm, client_id: e.target.value })} required>
-                <option value="" disabled>Select brand…</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Contact Name">
-                <input type="text" className={inputCls} style={inputStyle}
-                  value={clientForm.name}
-                  onChange={e => setClientForm({ ...clientForm, name: e.target.value })} required />
+          <form onSubmit={handleCreateUser} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <Field label="Full Name *">
+                  <input type="text" className={inputCls}
+                    value={userForm.name}
+                    placeholder="e.g. Priya Nair" required
+                    onChange={e => setUserForm({ ...userForm, name: e.target.value })} />
+                </Field>
+              </div>
+
+              <Field label="Phone Number (Login ID) *">
+                <input type="tel" inputMode="numeric" pattern="[0-9]*" className={inputCls}
+                  value={userForm.phone}
+                  placeholder="10-digit mobile number" required
+                  onChange={e => setUserForm({ ...userForm, phone: e.target.value.replace(/\D/g, '') })} />
               </Field>
-              <Field label="Phone Number">
-                <input type="tel" className={inputCls} style={inputStyle}
-                  value={clientForm.phone}
-                  onChange={e => setClientForm({ ...clientForm, phone: e.target.value })} required />
+
+              <Field label="Password *">
+                <input type="password" className={inputCls}
+                  value={userForm.password}
+                  placeholder="Min. 6 characters" required minLength="6"
+                  onChange={e => setUserForm({ ...userForm, password: e.target.value })} />
+              </Field>
+
+              <div className="sm:col-span-2">
+                <Field label="User Role">
+                  <select className={inputCls}
+                    value={userForm.role}
+                    onChange={e => setUserForm({ ...userForm, role: e.target.value })}>
+                    <option value="viewer">Viewer</option>
+                    <option value="employee">Employee</option>
+                    <option value="cutting_manager">Cutting Manager</option>
+                    <option value="stitching_manager">Stitching Manager</option>
+                    <option value="direct_manager">Direct Manager</option>
+                    <option value="client">Client</option>
+                  </select>
+                </Field>
+              </div>
+
+              <Field label="Email (Optional)">
+                <input type="email" className={inputCls}
+                  value={userForm.email}
+                  placeholder="e.g. priya@factory.local"
+                  onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
+              </Field>
+
+              <Field label="Employee ID (Optional)">
+                <input type="text" className={inputCls}
+                  value={userForm.employee_id}
+                  placeholder="e.g. emp_123"
+                  onChange={e => setUserForm({ ...userForm, employee_id: e.target.value })} />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Username">
-                <input type="text" className={inputCls} style={inputStyle}
-                  value={clientForm.username}
-                  onChange={e => setClientForm({ ...clientForm, username: e.target.value })} required />
-              </Field>
-              <Field label="Password">
-                <input type="password" className={inputCls} style={inputStyle}
-                  value={clientForm.password}
-                  onChange={e => setClientForm({ ...clientForm, password: e.target.value })} required minLength="6" />
-              </Field>
-            </div>
-            <button type="submit" disabled={isSubmittingClient}
+
+            <button type="submit" disabled={isSubmittingUser}
               className="w-full h-11 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
               style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
-              {isSubmittingClient ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
-              Create Client Account
+              {isSubmittingUser ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
+              Create User Account
             </button>
           </form>
         </SpotlightCard>
