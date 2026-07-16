@@ -429,6 +429,27 @@ export async function apiGetUsers(token) {
 }
 
 /**
+ * Create a new user (staff, manager, etc.)
+ */
+export async function apiCreateUser(token, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/users`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to create user');
+    const err = new Error(errText || `Failed to create user (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/**
  * Create a new client user
  */
 export async function apiCreateClientUser(token, payload) {

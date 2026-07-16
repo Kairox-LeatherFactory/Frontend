@@ -197,9 +197,15 @@ export default function ProductionLogEntry() {
       return;
     }
 
+    // FIX: Centralize the operation lookup to happen *before* any branching logic.
+    // This ensures that whether the operation is 'Cutting' or something else,
+    // we correctly map the UI label (e.g., "Fusing") to the backend label ("Fusing & Skiving").
+    const backendOperationLabel = operation === 'Fusing' ? 'Fusing & Skiving' : operation;
+    const opRecord = operations.find(o => o.label === backendOperationLabel);
+    const skuObj = fetchedSkus.find(s => s.code === skuCode);
+
     // ── CUTTING: Call POST /production/cutting ──────────────────────────────────
     if (operation === 'Cutting') {
-      const skuObj = fetchedSkus.find(s => s.code === skuCode);
       if (!skuObj) {
         setErrorMsg(`Could not find SKU for ${skuCode}`);
         return;
@@ -211,7 +217,7 @@ export default function ProductionLogEntry() {
       }
       try {
         const result = await apiProductionCutting(token, {
-          sku_code: skuCode,
+          sku_id: skuObj.sku_id, // FIX: Send sku_id instead of sku_code
           employee_id: workerId,
           work_date: date,
           count,
@@ -251,15 +257,8 @@ export default function ProductionLogEntry() {
       return;
     }
 
-    const opRecord = operations.find(o => o.label === operation);
     if (!opRecord) {
       setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
-      return;
-    }
-
-    const skuObj = fetchedSkus.find(s => s.code === skuCode);
-    if (!skuObj) {
-      setErrorMsg(`Could not find SKU ID for ${skuCode}`);
       return;
     }
 
@@ -288,7 +287,11 @@ export default function ProductionLogEntry() {
   const openChecklistModal = async () => {
     if (!skuCode || !operation) return;
 
-    const opRecord = operations.find(o => o.label === operation);
+    // When the UI button is "Fusing", the backend operation is "Fusing & Skiving".
+    // This maps the UI selection to the correct backend data.
+    const backendOperationLabel = operation === 'Fusing' ? 'Fusing & Skiving' : operation;
+    const opRecord = operations.find(o => o.label === backendOperationLabel);
+
     if (!opRecord) {
       setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
       return;
@@ -327,7 +330,9 @@ export default function ProductionLogEntry() {
   const submitChecklist = async () => {
     if (selectedPieces.length === 0) return;
 
-    const opRecord = operations.find(o => o.label === operation);
+    // FIX: Ensure "Fusing" from UI maps to "Fusing & Skiving" in backend data, consistent with openChecklistModal
+    const backendOperationLabel = operation === 'Fusing' ? 'Fusing & Skiving' : operation;
+    const opRecord = operations.find(o => o.label === backendOperationLabel);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
     if (!opRecord || !skuObj) {
