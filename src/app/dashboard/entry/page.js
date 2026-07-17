@@ -3,32 +3,25 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiImportPreview, apiImportCommit, apiGetSkus, apiGetSkuPieces, apiProductionCutting } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info, Lightbulb, ListChecks, BarChart3 } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 function DynamicDataViewer({ data }) {
   if (!data) return null;
-
   if (Array.isArray(data)) {
     if (data.length === 0) return <div className="text-slate-400 italic">Empty list</div>;
     if (typeof data[0] === 'object' && data[0] !== null) {
       const keys = Array.from(new Set(data.flatMap(Object.keys)));
       return (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-full text-left text-sm bg-white break-words">
+          <table className="min-w-full text-left text-sm bg-white">
             <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider">
-              <tr>
-                {keys.map(k => <th key={k} className="px-4 py-3 border-b border-slate-200">{k.replace(/_/g, ' ')}</th>)}
-              </tr>
+              <tr>{keys.map(k => <th key={k} className="px-4 py-3 border-b">{k.replace(/_/g, ' ')}</th>)}</tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y">
               {data.map((row, i) => (
                 <tr key={i} className="hover:bg-slate-50">
-                  {keys.map(k => (
-                    <td key={k} className="px-4 py-2 text-slate-700 max-w-[250px] whitespace-normal break-words">
-                      {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
-                    </td>
-                  ))}
+                  {keys.map(k => <td key={k} className="px-4 py-2 text-slate-700">{String(row[k] ?? '-')}</td>)}
                 </tr>
               ))}
             </tbody>
@@ -36,53 +29,26 @@ function DynamicDataViewer({ data }) {
         </div>
       );
     }
-    return (
-      <ul className="list-disc pl-5 space-y-1 text-slate-700">
-        {data.map((item, i) => <li key={i}>{String(item)}</li>)}
-      </ul>
-    );
+    return <ul className="list-disc pl-5">{data.map((item, i) => <li key={i}>{String(item)}</li>)}</ul>;
   }
-
-  if (typeof data === 'object' && data !== null) {
-    return (
-      <div className="space-y-6">
-        {Object.entries(data).map(([key, val]) => (
-          <div key={key} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <h4 className="text-md font-black text-slate-800 mb-3 capitalize flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-              {key.replace(/_/g, ' ')}
-            </h4>
-            <DynamicDataViewer data={val} />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
   return <span className="text-slate-700 font-medium">{String(data)}</span>;
 }
 
-
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
-  const { orders, workers, addScanEvent, operations } = useData();
+  const { workers, addScanEvent, operations } = useData();
 
-  const allowedOperations = useMemo(
-    () => ROLE_OPERATIONS[user] || [],
-    [user, ROLE_OPERATIONS]
-  );
+  const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
 
-  // Form State
   const [operation, setOperation] = useState(allowedOperations[0] || '');
   const [workerId, setWorkerId] = useState('');
   const [skuCode, setSkuCode] = useState('');
   const [pieceSeqs, setPieceSeqs] = useState('');
-  const [cuttingCount, setCuttingCount] = useState(''); // Text box state for cutting pieces
+  const [cuttingCount, setCuttingCount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [fetchedSkus, setFetchedSkus] = useState([]);
 
-  // Modal State for Checklist
   const [showChecklistModal, setShowChecklistModal] = useState(false);
   const [checklistPieces, setChecklistPieces] = useState([]);
   const [selectedPieces, setSelectedPieces] = useState([]);
@@ -91,277 +57,92 @@ export default function ProductionLogEntry() {
   const [checklistError, setChecklistError] = useState('');
   const [checklistSubmitting, setChecklistSubmitting] = useState(false);
 
-  // SKU Filter
-  const [skuFilter, setSkuFilter] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
   }, [workers, workerId]);
 
-  // Alert State
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+  useEffect(() => {
+    apiGetSkus(token).then(setFetchedSkus).catch(console.warn);
+  }, [token, skuRefreshKey]);
 
-  // Excel Upload States
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [showOrderNumModal, setShowOrderNumModal] = useState(false);
-  const [uploadOrderNumber, setUploadOrderNumber] = useState('');
-  const [uploadOrderNumberError, setUploadOrderNumberError] = useState('');
-  const [previewData, setPreviewData] = useState(null);
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [fileName, setFileName] = useState('');
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const [commitLoading, setCommitLoading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [commitSuccess, setCommitSuccess] = useState('');
-  const fileInputRef = useRef(null);
-
-  // Auto fill cutting count textbox when SKU is selected
   useEffect(() => {
     if (skuCode) {
       const skuObj = fetchedSkus.find(s => s.code === skuCode);
-      if (skuObj && skuObj.qty_ordered) {
-        setCuttingCount(skuObj.qty_ordered.toString());
-      }
+      if (skuObj?.qty_ordered) setCuttingCount(skuObj.qty_ordered.toString());
     }
   }, [skuCode, fetchedSkus]);
 
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setFileName(file.name);
-    setSelectedFile(file);
-    setUploadError('');
-    setUploadOrderNumberError('');
-    setCommitSuccess('');
-    setUploadLoading(true);
-    setShowOrderNumModal(false);
-
-    try {
-      const data = await apiImportPreview(token, file, uploadOrderNumber.trim());
-      setPreviewData(data);
-      setShowPreviewModal(true);
-    } catch (err) {
-      if (err.status === 404 || err.message?.includes('404') || err.message?.toLowerCase().includes('not found')) {
-        setUploadOrderNumberError(`Order number "${uploadOrderNumber.trim()}" not found. Verify with the client record.`);
-        setShowOrderNumModal(true);
-      } else {
-        setUploadError(`Preview failed: ${err.message}`);
-      }
-    } finally {
-      setUploadLoading(false);
-      e.target.value = null;
-    }
-  };
-
-  const handleCommit = async () => {
-    if (!selectedFile) return;
-    setCommitLoading(true);
-    setUploadError('');
-    try {
-      const result = await apiImportCommit(token, selectedFile, uploadOrderNumber.trim());
-      const orderNum = result?.written?.order_number || uploadOrderNumber.trim();
-      const styles = result?.written?.styles ?? '';
-      const skus = result?.written?.skus_created ?? '';
-      setCommitSuccess(`Imported${styles ? ` ${styles} styles,` : ''} ${skus ? `${skus} new SKUs` : 'data'} into order ${orderNum}. Opening Orders Explorer to verify.`);
-      setShowPreviewModal(false);
-      setSkuFilter(orderNum);
-      setSkuRefreshKey(k => k + 1);
-      setUploadOrderNumber('');
-    } catch (err) {
-      setUploadError(`Commit failed: ${err.message}`);
-    } finally {
-      setCommitLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    let active = true;
-    apiGetSkus(token).then(skus => {
-      if (active) {
-        setFetchedSkus(skus || []);
-      }
-    }).catch(err => console.warn('Failed to fetch SKUs:', err));
-    return () => { active = false; };
-  }, [token, skuRefreshKey]);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setSuccessMsg('');
-    setErrorMsg('');
+    setSuccessMsg(''); setErrorMsg('');
 
-    if (isReadOnly) {
-      setErrorMsg('Unauthorized: Your active role profile is restricted to read-only viewing.');
-      return;
-    }
+    if (isReadOnly) return setErrorMsg('Unauthorized');
+    if (!operation || !workerId || !date || !skuCode) return setErrorMsg('Missing fields');
 
-    if (!operation || !workerId || !date || !skuCode) {
-      setErrorMsg('Please ensure all required shop floor logging fields are completed.');
-      return;
-    }
-
-    // Fusing -> Pasting mapping logic
-  //  const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    // தப்பான backendOperationLabel லாஜிக் நீக்கப்பட்டு, நேரடியாக operation-ஐ பயன்படுத்தியுள்ளேன்
     const opRecord = operations.find(o => o.label === operation);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
-    // ── CUTTING SUBMISSION ──
     if (operation === 'Cutting') {
-      if (!skuObj) {
-        setErrorMsg(`Could not find SKU for ${skuCode}`);
-        return;
-      }
-      const count = parseInt(cuttingCount, 10);
-      if (isNaN(count) || count <= 0) {
-        setErrorMsg('Please enter a valid piece count for Cutting.');
-        return;
-      }
       try {
-        const result = await apiProductionCutting(token, {
-          sku_id: skuObj.sku_id, 
-          employee_id: workerId,
-          work_date: date,
-          count,
-        });
-        setSuccessMsg(`✅ Cut ${result.count} pieces for ${skuCode}. Traveler cards ready.`);
-      } catch (err) {
-        setErrorMsg(`Cutting failed: ${err.message}`);
-      }
+        const result = await apiProductionCutting(token, { sku_id: skuObj.sku_id, employee_id: workerId, work_date: date, count: parseInt(cuttingCount) });
+        setSuccessMsg(`✅ Cut ${result.count} pieces.`);
+      } catch (err) { setErrorMsg(`Cutting failed: ${err.message}`); }
       return;
     }
 
-    // ── OTHER STAGES ──
-    if (!pieceSeqs) {
-      setErrorMsg('Please enter piece sequences or use the checklist.');
-      return;
-    }
+    if (!opRecord) return setErrorMsg(`Could not find ID for: ${operation}`);
 
     let parsedSeqs = [];
     if (pieceSeqs) {
-      const parts = pieceSeqs.split(',').map(s => s.trim()).filter(Boolean);
-      for (const part of parts) {
-        if (part.includes('-')) {
-          const [start, end] = part.split('-').map(n => parseInt(n, 10));
-          if (!isNaN(start) && !isNaN(end) && start <= end) {
-            for (let i = start; i <= end; i++) parsedSeqs.push(i);
-          }
-        } else {
-          const num = parseInt(part, 10);
-          if (!isNaN(num)) parsedSeqs.push(num);
-        }
-      }
+        const parts = pieceSeqs.split(',').map(s => s.trim()).filter(Boolean);
+        parts.forEach(part => {
+            if (part.includes('-')) {
+                const [s, e] = part.split('-').map(n => parseInt(n, 10));
+                for (let i = s; i <= e; i++) parsedSeqs.push(i);
+            } else {
+                parsedSeqs.push(parseInt(part, 10));
+            }
+        });
     }
-
-    if (parsedSeqs.length === 0 && pieceSeqs) {
-      setErrorMsg('Invalid piece numbers format. Use numbers and ranges like "1, 2, 5-8".');
-      return;
-    }
-
-    if (!opRecord) {
-      setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
-      return;
-    }
-
-    const newEvent = {
-      operation_id: opRecord.id,
-      employee_id: workerId,
-      work_date: date,
-      sku_id: skuObj.sku_id,
-      piece_seqs: parsedSeqs,
-    };
 
     try {
-      const result = await addScanEvent(newEvent);
+      const result = await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: parsedSeqs });
+      setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${operation}.`);
       setPieceSeqs('');
-      setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${operation}. ` +
-        (result.rework?.length ? `(Rework: ${result.rework.length}) ` : '') +
-        (result.not_found?.length ? `(Not Found: ${result.not_found.length})` : '')
-      );
-    } catch (err) {
-      setErrorMsg(`Failed to submit event: ${err.message}`);
-    }
+    } catch (err) { setErrorMsg(`Failed: ${err.message}`); }
   };
 
-
   const openChecklistModal = async () => {
-    if (!skuCode || !operation) return;
-
- //   const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
     const opRecord = operations.find(o => o.label === operation);
-
-    if (!opRecord) {
-      setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
-      return;
-    }
-
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
-    if (!skuObj) {
-      setErrorMsg(`Could not find SKU ID for ${skuCode}`);
-      return;
-    }
+    if (!opRecord || !skuObj) return setErrorMsg("Operation or SKU invalid");
 
-    setLoadingPieces(true);
-    setChecklistPieces([]);
-    setSelectedPieces([]);
-    setPiecesMeta(null);
-    setChecklistError('');
-    setShowChecklistModal(true);
-
+    setLoadingPieces(true); setShowChecklistModal(true);
     try {
       const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
-      const pieces = data.pieces || data || [];
-      setChecklistPieces(Array.isArray(pieces) ? pieces : []);
-      if (data.total !== undefined) {
-        setPiecesMeta({ total: data.total, done: data.done, pending: data.pending });
-      } else if (Array.isArray(pieces)) {
-        const done = pieces.filter(p => p.done_at_op).length;
-        setPiecesMeta({ total: pieces.length, done, pending: pieces.length - done });
-      }
-    } catch (err) {
-      setChecklistError(`Could not load pieces: ${err.message}`);
-    } finally {
-      setLoadingPieces(false);
-    }
+      setChecklistPieces(Array.isArray(data) ? data : (data.pieces || []));
+    } catch (err) { setChecklistError(err.message); }
+    finally { setLoadingPieces(false); }
   };
 
   const submitChecklist = async () => {
-    if (selectedPieces.length === 0) return;
-
- //   const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
     const opRecord = operations.find(o => o.label === operation);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
-
-    if (!opRecord || !skuObj) {
-      setChecklistError('Missing operation or SKU. Please close and re-open.');
-      return;
-    }
-
-    const newEvent = {
-      operation_id: opRecord.id,
-      employee_id: workerId,
-      work_date: date,
-      sku_id: skuObj.sku_id,
-      piece_seqs: selectedPieces,
-    };
-
     setChecklistSubmitting(true);
-    setChecklistError('');
     try {
-      const result = await addScanEvent(newEvent);
-      setSuccessMsg(
-        `✅ Logged ${result.count_logged ?? selectedPieces.length} pieces for ${operation}.` +
-        (result.rework?.length ? ` Rework: ${result.rework.length}.` : '') +
-        (result.not_found?.length ? ` Not Found: ${result.not_found.length}.` : '')
-      );
-      setShowChecklistModal(false);
-      setSelectedPieces([]);
-    } catch (err) {
-      setChecklistError(`Submit failed: ${err.message}`);
-    } finally {
-      setChecklistSubmitting(false);
-    }
+      await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: selectedPieces });
+      setSuccessMsg("Success!"); setShowChecklistModal(false); setSelectedPieces([]);
+    } catch (err) { setChecklistError(err.message); }
+    finally { setChecklistSubmitting(false); }
   };
+
+}
+
 
   if (isReadOnly) {
     return (
@@ -973,4 +754,3 @@ export default function ProductionLogEntry() {
 
     </div>
   );
-}
