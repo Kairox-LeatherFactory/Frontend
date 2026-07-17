@@ -161,7 +161,7 @@ export default function ProductionLogEntry() {
     setUploadLoading(true);
     setUploadError('');
     try {
-      // API அழைப்பு: Preview
+      
       const data = await apiImportPreview(token, file, uploadOrderNumber);
       setPreviewData(data);
       setFileName(file.name);
@@ -179,7 +179,7 @@ export default function ProductionLogEntry() {
     if (!file) return;
     setCommitLoading(true);
     try {
-      // API அழைப்பு: Commit
+      
       await apiImportCommit(token, file, uploadOrderNumber);
       setCommitSuccess('File imported and database updated successfully!');
       setShowPreviewModal(false);
