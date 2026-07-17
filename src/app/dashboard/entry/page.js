@@ -152,9 +152,44 @@ export default function ProductionLogEntry() {
     finally { setChecklistSubmitting(false); }
   };
 
-  // Dummy placeholder functions for your file handlers (replace with real logic)
-  const handleFileUpload = () => {};
-  const handleCommit = () => {};
+ const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file || !uploadOrderNumber) {
+      setUploadOrderNumberError('Please enter an Order Number first');
+      return;
+    }
+    setUploadLoading(true);
+    setUploadError('');
+    try {
+      
+      const data = await apiImportPreview(token, file, uploadOrderNumber);
+      setPreviewData(data);
+      setFileName(file.name);
+      setShowPreviewModal(true);
+      setShowOrderNumModal(false);
+    } catch (err) {
+      setUploadError(`Preview failed: ${err.message}`);
+    } finally {
+      setUploadLoading(false);
+    }
+  };
+
+  const handleCommit = async () => {
+    const file = fileInputRef.current?.files[0];
+    if (!file) return;
+    setCommitLoading(true);
+    try {
+      
+      await apiImportCommit(token, file, uploadOrderNumber);
+      setCommitSuccess('File imported and database updated successfully!');
+      setShowPreviewModal(false);
+      setUploadOrderNumber('');
+    } catch (err) {
+      setUploadError(`Commit failed: ${err.message}`);
+    } finally {
+      setCommitLoading(false);
+    }
+  };
 
   // -- MAIN UI RENDER --
   if (isReadOnly) {
