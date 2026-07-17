@@ -12,7 +12,6 @@ import {
   ArrowRight,
   Loader2,
 } from 'lucide-react';
-import { apiLogin } from '@/lib/api';
 
 /* ─── Animated Gold Text Component ────────────────── */
 function AnimatedGoldText({ text }) {
@@ -61,39 +60,43 @@ function AnimatedGoldText({ text }) {
   );
 }
 
-/* ─── Panel Data ──────────────────────────────────── */
+/* ─── Unified System Dynamic Panels Data Matrix ─────────────────── */
 const PANELS = [
   {
-    role: 'direct_manager',
-    title: 'Direct\nManager',
-    subtitle: 'Full factory oversight & production control',
+    role: 'management_workspace',
+    title: 'Management\nWorkspace',
+    subtitle: 'Directors, Plant Managers, Supervisors & Line In-charge Control Console',
     accent: '#d4915a',
     icon: ShieldCheck,
     img: '/images/roles/manager.png',
+    allowedRoles: ['direct_manager', 'managing_director', 'cutting_manager', 'stitching_manager', 'supervisor']
   },
   {
-    role: 'cutting_manager',
-    title: 'Cutting\nManager',
-    subtitle: 'Cutting floor operations & patterns',
+    role: 'employee_workspace',
+    title: 'Employee\nWorkspace',
+    subtitle: 'Factory Floor Staff, Operators, Fusers & Cutters Attendance Logs Portal',
     accent: '#7b9fc8',
     icon: Scissors,
     img: '/images/roles/cutting.png',
+    allowedRoles: ['employee']
   },
   {
-    role: 'stitching_manager',
-    title: 'Stitching\nManager',
-    subtitle: 'Assembly floor & quality control',
+    role: 'hr_workspace',
+    title: 'HR & Operations\nConsole',
+    subtitle: 'Human Resource Management, Roster Provisions & Administrative Audits',
     accent: '#b07bc8',
     icon: Layers,
     img: '/images/roles/stitching.png',
+    allowedRoles: ['hr']
   },
   {
-    role: 'viewer',
-    title: 'Auditor\nViewer',
-    subtitle: 'Read-only access for compliance & auditing',
+    role: 'client_workspace',
+    title: 'Client & Auditor\nDesk',
+    subtitle: 'External Client Portals, Supply Chain Viewers & Read-only Auditors Access',
     accent: '#a0a0a0',
     icon: Eye,
     img: '/images/roles/auditor.png',
+    allowedRoles: ['client', 'viewer']
   },
 ];
 
@@ -205,7 +208,7 @@ export default function Home() {
     setIsSuccess(false);
   };
 
-  const handleLoginSubmit = async (e) => {
+ const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!username || !password) return;
 
@@ -213,50 +216,66 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      // Direct raw API token context extraction request validation flow pipelines setup
-      const data = await apiLogin(username.trim(), password);
+      // ─── REVERTED TO JSON PAYLOAD ───
+      // Backend STRICTLY expects a valid JSON dictionary as proven by the 422 error trace.
+      const payload = {
+        username: username.trim(),
+        password: password
+      };
 
-      // ─── EXTENDED ROLE HIERARCHY MAPPING OVERRIDE ───
-      let isRoleMatched = false;
+      // Sending strictly as application/json via your Next.js local proxy route
+      const res = await fetch(`/api/v1/auth/login`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload),
+      });
 
-      // Extract unified role parameters context from custom returned backend properties definitions
-      const backendRole = data.role || '';
-      const backendDesg = (data.designation || '').toLowerCase().trim();
-
-      if (backendRole === activePanel.role) {
-        // Direct absolute role parity match strings validation setup parameters execution tracking context system framework
-        isRoleMatched = true;
-      } else if (backendRole === 'employee' || backendDesg) {
-        // If system profile account dynamic payload returns employee context structures validation routing intercept framework setups
-        if (activePanel.role === 'cutting_manager' && backendDesg === 'cutter') {
-          isRoleMatched = true;
-        } else if (activePanel.role === 'stitching_manager' && backendDesg === 'fuser') {
-          isRoleMatched = true;
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        
+        // Pydantic layer validation traces array parameters parsing elements tracking
+        if (errData.detail && Array.isArray(errData.detail)) {
+          const formattedTraceError = errData.detail.map(err => 
+            `Validation error in [${err.loc ? err.loc.join('.') : 'unknown'}]: ${err.msg}`
+          ).join(' | ');
+          throw new Error(formattedTraceError);
         }
+
+        const displayMsg = typeof errData.detail === 'object' 
+          ? JSON.stringify(errData.detail) 
+          : errData.detail;
+          
+        throw new Error(displayMsg || `Validation Processing Failure (${res.status})`);
+      }
+
+      const data = await res.json();
+      const backendRole = (data.role || '').toLowerCase().trim();
+      
+      let isRoleMatched = false;
+      let targetSessionRole = backendRole; 
+
+      // ─── MATRIX VALIDATION CHECK OVERRIDE ───
+      if (activePanel && activePanel.allowedRoles.includes(backendRole)) {
+        isRoleMatched = true;
       }
 
       if (!isRoleMatched) {
-        throw new Error('Access Denied: The credentials provided do not match this dynamic workspace layout card role.');
+        throw new Error(`Access Denied: Your account role "${backendRole}" does not have privileges to access this selected card partition layout console.`);
       }
 
       setIsSuccess(true);
-      login(data.role || 'employee', data.access_token);
+      login(targetSessionRole, data.access_token);
       router.push('/dashboard');
 
     } catch (err) {
       setIsSubmitting(false);
       setIsSuccess(false);
-      
-      // Parse custom stringified JSON exception arrays detail values keys from backend failures mapping response models text handles
-      let displayError = err.message;
-      try {
-        const parsedErr = JSON.parse(err.message);
-        if (parsedErr.detail) displayError = typeof parsedErr.detail === 'string' ? parsedErr.detail : JSON.stringify(parsedErr.detail);
-      } catch (e) {}
-
-      setLoginError(displayError || 'Authentication Failed. Please check credentials.');
+      setLoginError(err.message || 'Authentication Failed. Please check credentials.');
     }
-  }; 
+  };
   return (
     <>
       <AnimatePresence>
@@ -371,18 +390,18 @@ export default function Home() {
                     className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-4"
                   >
                     <activePanel.icon className="w-12 h-12 mb-6" style={{ color: activePanel.accent }} strokeWidth={1} />
-                    <h2 className="text-4xl md:text-7xl font-serif uppercase tracking-[0.2em] text-center" style={{ color: activePanel.accent }}>
-                      {activePanel.title.split('\n').join(' ')}
+                    <h2 className="text-4xl md:text-7xl font-serif uppercase tracking-[0.2em] text-center whitespace-pre-line" style={{ color: activePanel.accent }}>
+                      {activePanel.title}
                     </h2>
                   </motion.div>
 
-                  {/* Corner Accents (Aperture style) */}
+                  {/* Corner Accents */}
                   <div className="absolute top-6 left-6 w-8 h-8 border-t-[1px] border-l-[1px]" style={{ borderColor: activePanel.accent }} />
                   <div className="absolute top-6 right-6 w-8 h-8 border-t-[1px] border-r-[1px]" style={{ borderColor: activePanel.accent }} />
                   <div className="absolute bottom-6 left-6 w-8 h-8 border-b-[1px] border-l-[1px]" style={{ borderColor: activePanel.accent }} />
                   <div className="absolute bottom-6 right-6 w-8 h-8 border-b-[1px] border-r-[1px]" style={{ borderColor: activePanel.accent }} />
 
-                  {/* Hover Arrow Icon (Up Right) */}
+                  {/* Hover Arrow Icon */}
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="w-16 h-16 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300">
                       <ArrowUpRight className="w-6 h-6" style={{ color: activePanel.accent }} />
@@ -436,7 +455,7 @@ export default function Home() {
 
                   return (
                     <>
-                      {/* Previous Panels (Left Side) - Hidden on mobile */}
+                      {/* Previous Panels (Left Side) */}
                       <div className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 pl-2 md:pl-8 gap-2 md:gap-4 z-40">
                         {prevPanels.map(panel => (
                           <motion.div
@@ -459,7 +478,7 @@ export default function Home() {
                         ))}
                       </div>
 
-                      {/* Next Panels (Right Side) - Hidden on mobile */}
+                      {/* Next Panels (Right Side) */}
                       <div className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 pr-2 md:pr-8 gap-2 md:gap-4 z-40">
                         {nextPanels.map(panel => (
                           <motion.div
@@ -499,7 +518,6 @@ export default function Home() {
               transition={{ duration: 0.6 }}
               className="fixed inset-0 z-[150] flex items-center justify-center bg-[#050505]"
             >
-              {/* Fullscreen background image from the active panel */}
               <div
                 className="absolute inset-0 bg-cover bg-center opacity-20"
                 style={{ backgroundImage: `url(${activePanel.img})` }}
@@ -512,13 +530,11 @@ export default function Home() {
                 transition={{ duration: 0.6, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
                 className="relative z-10 w-full max-w-md bg-[#0a0a0a] overflow-hidden shadow-2xl border border-[#222] rounded-2xl"
               >
-                {/* Top Accent Line */}
                 <div
                   className="absolute top-0 left-0 w-full h-[3px]"
                   style={{ backgroundColor: activePanel.accent }}
                 />
 
-                {/* Close Button */}
                 <button
                   onClick={handleClosePanel}
                   className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-white/50 hover:text-white rounded-full transition-colors z-20"
@@ -529,8 +545,8 @@ export default function Home() {
                 <div className="px-8 pb-8 pt-10">
                   <div className="flex flex-col items-center mb-8">
                     <activePanel.icon className="w-10 h-10 mb-4" style={{ color: activePanel.accent }} strokeWidth={1} />
-                    <h2 className="text-3xl font-serif text-white leading-tight text-center">
-                      {activePanel.title.replace('\n', ' ')}
+                    <h2 className="text-3xl font-serif text-white leading-tight text-center whitespace-pre-line">
+                      {activePanel.title}
                     </h2>
                     <p className="text-white/40 text-[10px] tracking-widest uppercase mt-2">
                       Workspace Authentication
