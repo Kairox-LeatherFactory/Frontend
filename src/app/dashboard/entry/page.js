@@ -62,6 +62,7 @@ function DynamicDataViewer({ data }) {
   return <span className="text-slate-700 font-medium">{String(data)}</span>;
 }
 
+
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
   const { orders, workers, addScanEvent, operations } = useData();
@@ -77,7 +78,7 @@ export default function ProductionLogEntry() {
   const [workerId, setWorkerId] = useState('');
   const [skuCode, setSkuCode] = useState('');
   const [pieceSeqs, setPieceSeqs] = useState('');
-  const [cuttingCount, setCuttingCount] = useState(''); // NEW state field for explicit piece count text inputs
+  const [cuttingCount, setCuttingCount] = useState(''); // Text box state for cutting pieces
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [fetchedSkus, setFetchedSkus] = useState([]);
 
@@ -98,11 +99,11 @@ export default function ProductionLogEntry() {
     if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
   }, [workers, workerId]);
 
-  // Alert Success banner state
+  // Alert State
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // ─── Excel Upload States ───
+  // Excel Upload States
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showOrderNumModal, setShowOrderNumModal] = useState(false);
   const [uploadOrderNumber, setUploadOrderNumber] = useState('');
@@ -116,7 +117,7 @@ export default function ProductionLogEntry() {
   const [commitSuccess, setCommitSuccess] = useState('');
   const fileInputRef = useRef(null);
 
-  // Auto fill order qty fallback to custom textbox values whenever SKU choices updates fields
+  // Auto fill cutting count textbox when SKU is selected
   useEffect(() => {
     if (skuCode) {
       const skuObj = fetchedSkus.find(s => s.code === skuCode);
@@ -200,9 +201,12 @@ export default function ProductionLogEntry() {
       return;
     }
 
+    // Fusing -> Pasting mapping logic
+    const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    const opRecord = operations.find(o => o.label === backendOperationLabel);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
-    // ── CUTTING EVENT PROCESSING ──
+    // ── CUTTING SUBMISSION ──
     if (operation === 'Cutting') {
       if (!skuObj) {
         setErrorMsg(`Could not find SKU for ${skuCode}`);
@@ -210,12 +214,12 @@ export default function ProductionLogEntry() {
       }
       const count = parseInt(cuttingCount, 10);
       if (isNaN(count) || count <= 0) {
-        setErrorMsg('Please enter a valid piece count greater than 0 for Cutting.');
+        setErrorMsg('Please enter a valid piece count for Cutting.');
         return;
       }
       try {
         const result = await apiProductionCutting(token, {
-          sku_id: skuObj.sku_id,
+          sku_id: skuObj.sku_id, 
           employee_id: workerId,
           work_date: date,
           count,
@@ -227,7 +231,7 @@ export default function ProductionLogEntry() {
       return;
     }
 
-    // ── OTHER STAGES LOGGING ──
+    // ── OTHER STAGES ──
     if (!pieceSeqs) {
       setErrorMsg('Please enter piece sequences or use the checklist.');
       return;
@@ -254,8 +258,6 @@ export default function ProductionLogEntry() {
       return;
     }
 
-    // CRITICAL OPERATIONS IDENTIFICATION MAPPER: Sync exact UUID tags values without dropping stage keys parameters
-    const opRecord = operations.find(o => o.label === operation);
     if (!opRecord) {
       setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
       return;
@@ -281,12 +283,12 @@ export default function ProductionLogEntry() {
     }
   };
 
-  // Open checklist modal
+
   const openChecklistModal = async () => {
     if (!skuCode || !operation) return;
 
-    // CRITICAL REWRITE FIX: Using direct operational reference tags mapping context
-    const opRecord = operations.find(o => o.label === operation);
+    const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    const opRecord = operations.find(o => o.label === backendOperationLabel);
 
     if (!opRecord) {
       setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
@@ -326,8 +328,8 @@ export default function ProductionLogEntry() {
   const submitChecklist = async () => {
     if (selectedPieces.length === 0) return;
 
-    // CRITICAL REWRITE FIX: Explicit mapping parameters sync execution checks definitions overrides
-    const opRecord = operations.find(o => o.label === operation);
+    const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    const opRecord = operations.find(o => o.label === backendOperationLabel);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
     if (!opRecord || !skuObj) {
@@ -503,6 +505,7 @@ export default function ProductionLogEntry() {
             </div>
           </div>
 
+
           {/* STEP 2: Garment Details */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
@@ -512,25 +515,30 @@ export default function ProductionLogEntry() {
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
+
+              {/* SKU Selection */}
               <div className="flex flex-col gap-3">
                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
                   <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
                 </label>
-                <select
-                  value={skuCode}
-                  onChange={(e) => setSkuCode(e.target.value)}
-                  className="input-field h-14 bg-white font-bold border-2 border-[#c8834a]/20 focus:border-[#c8834a] cursor-pointer shadow-sm text-sm transition-all"
-                  required
-                >
-                  <option value="" disabled>-- Select SKU --</option>
-                  {fetchedSkus.map((s) => (
-                    <option key={s.code} value={s.code}>
-                      [{s.order_number || 'N/A'}] {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex flex-col gap-2">
+                  <select
+                    value={skuCode}
+                    onChange={(e) => setSkuCode(e.target.value)}
+                    className="input-field h-14 bg-white font-bold border-2 border-[#c8834a]/20 focus:border-[#c8834a] cursor-pointer shadow-sm text-sm transition-all"
+                    required
+                  >
+                    <option value="" disabled>-- Select SKU --</option>
+                    {fetchedSkus.map((s) => (
+                      <option key={s.code} value={s.code}>
+                        [{s.order_number || 'N/A'}] {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
+              {/* Operation Pill Buttons */}
               <div className="flex flex-col gap-3">
                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
                   <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
@@ -548,6 +556,7 @@ export default function ProductionLogEntry() {
                   ))}
                 </div>
               </div>
+
             </div>
           </div>
 
@@ -561,7 +570,7 @@ export default function ProductionLogEntry() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
-              {/* DYNAMIC TEXTBOX LOGIC FOR CUTTING VS PIECE SEQUENCE STAGES */}
+              {/* ── CUTTING PIECE COUNT TEXTBOX INPUT ── */}
               {operation === 'Cutting' ? (
                 <div className="flex flex-col gap-3 md:col-span-2">
                   <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -619,6 +628,7 @@ export default function ProductionLogEntry() {
                 </div>
               )}
 
+              {/* Date Selector Row */}
               <div className="flex flex-col gap-2">
                 <label htmlFor="date-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-emerald-500" /> Transaction Date *
@@ -632,6 +642,7 @@ export default function ProductionLogEntry() {
                   required
                 />
               </div>
+
             </div>
           </div>
 
@@ -669,7 +680,9 @@ export default function ProductionLogEntry() {
               </a>
             )}
           </div>
+
         </form>
+
       </SpotlightCard>
 
       {/* EXCEL PREVIEW MODAL */}
@@ -806,6 +819,7 @@ export default function ProductionLogEntry() {
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
 
+            {/* Header */}
             <div className="flex justify-between items-center p-6 border-b border-slate-100">
               <div className="flex items-center gap-3">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
@@ -824,6 +838,7 @@ export default function ProductionLogEntry() {
               </button>
             </div>
 
+            {/* Counts */}
             {piecesMeta && (
               <div className="flex gap-3 px-6 py-3 bg-slate-50 border-b border-slate-100">
                 <span className="text-xs font-bold text-slate-500">Total: <strong className="text-slate-700">{piecesMeta.total}</strong></span>
@@ -833,6 +848,7 @@ export default function ProductionLogEntry() {
               </div>
             )}
 
+            {/* Piece List */}
             <div className="flex-1 overflow-y-auto p-6">
               {loadingPieces ? (
                 <div className="flex flex-col items-center justify-center h-32 gap-3">
@@ -857,6 +873,7 @@ export default function ProductionLogEntry() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {/* Select All / Deselect All */}
                   <div className="col-span-2 sm:col-span-3 flex gap-2 mb-2">
                     <button
                       type="button"
@@ -915,6 +932,7 @@ export default function ProductionLogEntry() {
                     );
                   })}
 
+                  {/* Inline submit error */}
                   {checklistError && (
                     <div className="col-span-2 sm:col-span-3 mt-2 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2">
                       <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
@@ -925,6 +943,7 @@ export default function ProductionLogEntry() {
               )}
             </div>
 
+            {/* Footer Actions */}
             <div className="flex gap-3 p-6 border-t border-slate-100">
               <button
                 type="button"
@@ -955,983 +974,3 @@ export default function ProductionLogEntry() {
     </div>
   );
 }
-// 'use client';
-// import { useState, useMemo, useRef, useEffect } from 'react';
-// import { useAuth } from '@/context/AuthContext';
-// import { useData } from '@/context/DataContext';
-// import { apiImportPreview, apiImportCommit, apiGetSkus, apiGetSkuPieces, apiProductionCutting } from '@/lib/api';
-// import { Lock, CheckCircle2, XCircle, Rocket, ScanBarcode, Ruler, Scissors, Plus, Calendar, FileBox, Users, FileSpreadsheet, X, Upload, Loader2, Info, Lightbulb, ListChecks, BarChart3 } from 'lucide-react';
-// import SpotlightCard from '@/components/SpotlightCard';
-
-// function DynamicDataViewer({ data }) {
-//   if (!data) return null;
-
-//   if (Array.isArray(data)) {
-//     if (data.length === 0) return <div className="text-slate-400 italic">Empty list</div>;
-//     // Check if it's an array of objects to render as a table
-//     if (typeof data[0] === 'object' && data[0] !== null) {
-//       const keys = Array.from(new Set(data.flatMap(Object.keys)));
-//       return (
-//         <div className="overflow-x-auto rounded-lg border border-slate-200">
-//           <table className="min-w-full text-left text-sm bg-white break-words">
-//             <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider">
-//               <tr>
-//                 {keys.map(k => <th key={k} className="px-4 py-3 border-b border-slate-200">{k.replace(/_/g, ' ')}</th>)}
-//               </tr>
-//             </thead>
-//             <tbody className="divide-y divide-slate-100">
-//               {data.map((row, i) => (
-//                 <tr key={i} className="hover:bg-slate-50">
-//                   {keys.map(k => (
-//                     <td key={k} className="px-4 py-2 text-slate-700 max-w-[250px] whitespace-normal break-words">
-//                       {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
-//                     </td>
-//                   ))}
-//                 </tr>
-//               ))}
-//             </tbody>
-//           </table>
-//         </div>
-//       );
-//     }
-//     // Simple array
-//     return (
-//       <ul className="list-disc pl-5 space-y-1 text-slate-700">
-//         {data.map((item, i) => <li key={i}>{String(item)}</li>)}
-//       </ul>
-//     );
-//   }
-
-//   if (typeof data === 'object' && data !== null) {
-//     return (
-//       <div className="space-y-6">
-//         {Object.entries(data).map(([key, val]) => (
-//           <div key={key} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-//             <h4 className="text-md font-black text-slate-800 mb-3 capitalize flex items-center gap-2">
-//               <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-//               {key.replace(/_/g, ' ')}
-//             </h4>
-//             <DynamicDataViewer data={val} />
-//           </div>
-//         ))}
-//       </div>
-//     );
-//   }
-
-//   return <span className="text-slate-700 font-medium">{String(data)}</span>;
-// }
-
-
-// export default function ProductionLogEntry() {
-//   const { user, token, ROLE_OPERATIONS } = useAuth();
-//   const { orders, workers, addScanEvent, operations } = useData();
-
-//   // Role operational permissions — memoized: only recomputes when user role changes
-//   const allowedOperations = useMemo(
-//     () => ROLE_OPERATIONS[user] || [],
-//     [user, ROLE_OPERATIONS]
-//   );
-//   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
-
-//   // Form State
-//   const [operation, setOperation] = useState(allowedOperations[0] || '');
-//   const [workerId, setWorkerId] = useState('');
-//   const [skuCode, setSkuCode] = useState('');
-//   const [pieceSeqs, setPieceSeqs] = useState('');
-//   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-//   const [fetchedSkus, setFetchedSkus] = useState([]);
-
-//   // Modal State for Checklist
-//   const [showChecklistModal, setShowChecklistModal] = useState(false);
-//   const [checklistPieces, setChecklistPieces] = useState([]);
-//   const [selectedPieces, setSelectedPieces] = useState([]);
-//   const [loadingPieces, setLoadingPieces] = useState(false);
-//   const [piecesMeta, setPiecesMeta] = useState(null);
-//   const [checklistError, setChecklistError] = useState('');
-//   const [checklistSubmitting, setChecklistSubmitting] = useState(false);
-
-//   // SKU Filter
-//   const [skuFilter, setSkuFilter] = useState('');
-//   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
-
-//   // Auto-select first worker once backend data loads
-//   useEffect(() => {
-//     if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
-//   }, [workers, workerId]);
-
-//   // Alert Success banner state
-//   const [successMsg, setSuccessMsg] = useState('');
-//   const [errorMsg, setErrorMsg] = useState('');
-
-//   // ─── Excel Upload States ───
-//   const [showPreviewModal, setShowPreviewModal] = useState(false);
-//   const [showOrderNumModal, setShowOrderNumModal] = useState(false);
-//   const [uploadOrderNumber, setUploadOrderNumber] = useState('');
-//   const [uploadOrderNumberError, setUploadOrderNumberError] = useState('');
-//   const [previewData, setPreviewData] = useState(null);
-//   const [selectedFile, setSelectedFile] = useState(null);
-//   const [fileName, setFileName] = useState('');
-//   const [uploadLoading, setUploadLoading] = useState(false);
-//   const [commitLoading, setCommitLoading] = useState(false);
-//   const [uploadError, setUploadError] = useState('');
-//   const [commitSuccess, setCommitSuccess] = useState('');
-//   const fileInputRef = useRef(null);
-
-//   const handleFileUpload = async (e) => {
-//     const file = e.target.files[0];
-//     if (!file) return;
-//     setFileName(file.name);
-//     setSelectedFile(file);
-//     setUploadError('');
-//     setUploadOrderNumberError('');
-//     setCommitSuccess('');
-//     setUploadLoading(true);
-//     setShowOrderNumModal(false);
-
-//     try {
-//       const data = await apiImportPreview(token, file, uploadOrderNumber.trim());
-//       setPreviewData(data);
-//       setShowPreviewModal(true);
-//     } catch (err) {
-//       if (err.status === 404 || err.message?.includes('404') || err.message?.toLowerCase().includes('not found')) {
-//         setUploadOrderNumberError(`Order number "${uploadOrderNumber.trim()}" not found. Verify with the client record.`);
-//         setShowOrderNumModal(true); // re-open so user can fix it
-//       } else {
-//         setUploadError(`Preview failed: ${err.message}`);
-//       }
-//     } finally {
-//       setUploadLoading(false);
-//       e.target.value = null;
-//     }
-//   };
-
-//   const handleCommit = async () => {
-//     if (!selectedFile) return;
-//     setCommitLoading(true);
-//     setUploadError('');
-//     try {
-//       const result = await apiImportCommit(token, selectedFile, uploadOrderNumber.trim());
-//       const orderNum = result?.written?.order_number || uploadOrderNumber.trim();
-//       const styles = result?.written?.styles ?? '';
-//       const skus = result?.written?.skus_created ?? '';
-//       setCommitSuccess(`Imported${styles ? ` ${styles} styles,` : ''} ${skus ? `${skus} new SKUs` : 'data'} into order ${orderNum}. Opening Orders Explorer to verify.`);
-//       setShowPreviewModal(false);
-//       // Auto-filter the SKU dropdown to show only this order's styles
-//       setSkuFilter(orderNum);
-//       // Re-fetch SKUs so newly imported ones appear immediately
-//       setSkuRefreshKey(k => k + 1);
-//       setUploadOrderNumber('');
-//     } catch (err) {
-//       setUploadError(`Commit failed: ${err.message}`);
-//     } finally {
-//       setCommitLoading(false);
-//     }
-//   };
-
-//   // Fetch all SKUs on mount and whenever skuRefreshKey changes (e.g. after import)
-//   useEffect(() => {
-//     let active = true;
-//     apiGetSkus(token).then(skus => {
-//       if (active) {
-//         setFetchedSkus(skus || []);
-//       }
-//     }).catch(err => console.warn('Failed to fetch SKUs:', err));
-//     return () => { active = false; };
-//   }, [token, skuRefreshKey]);
-
-//   const handleSubmit = async (e) => {
-//     e.preventDefault();
-//     setSuccessMsg('');
-//     setErrorMsg('');
-
-//     if (isReadOnly) {
-//       setErrorMsg('Unauthorized: Your active role profile is restricted to read-only viewing.');
-//       return;
-//     }
-
-//     if (!operation || !workerId || !date || !skuCode) {
-//       setErrorMsg('Please ensure all required shop floor logging fields are completed.');
-//       return;
-//     }
-
-//     // FIX: Centralize the operation lookup to happen *before* any branching logic.
-//     // This ensures that whether the operation is 'Cutting' or something else,
-//     // we correctly map the UI label (e.g., "Fusing") to the backend label ("Fusing & Skiving").
-//     const backendOperationLabel = operation === 'Fusing' ? 'Fusing & Skiving' : operation;
-//     const opRecord = operations.find(o => o.label === backendOperationLabel);
-//     const skuObj = fetchedSkus.find(s => s.code === skuCode);
-
-//     // ── CUTTING: Call POST /production/cutting ──────────────────────────────────
-//     if (operation === 'Cutting') {
-//       if (!skuObj) {
-//         setErrorMsg(`Could not find SKU for ${skuCode}`);
-//         return;
-//       }
-//       const count = skuObj.qty_ordered;
-//       if (!count || count <= 0) {
-//         setErrorMsg('SKU has no ordered quantity. Cannot create cutting event.');
-//         return;
-//       }
-//       try {
-//         const result = await apiProductionCutting(token, {
-//           sku_id: skuObj.sku_id, // FIX: Send sku_id instead of sku_code
-//           employee_id: workerId,
-//           work_date: date,
-//           count,
-//         });
-//         setSuccessMsg(`✅ Cut ${result.count} pieces for ${skuCode}. Traveler cards ready.`);
-//       } catch (err) {
-//         setErrorMsg(`Cutting failed: ${err.message}`);
-//       }
-//       return;
-//     }
-
-//     // ── OTHER STAGES: POST /production/scan ─────────────────────────────────────
-//     if (!pieceSeqs) {
-//       setErrorMsg('Please enter piece sequences or use the checklist.');
-//       return;
-//     }
-
-//     // Parse pieceSeqs "1, 2, 3-5" into array of numbers
-//     let parsedSeqs = [];
-//     if (pieceSeqs) {
-//       const parts = pieceSeqs.split(',').map(s => s.trim()).filter(Boolean);
-//       for (const part of parts) {
-//         if (part.includes('-')) {
-//           const [start, end] = part.split('-').map(n => parseInt(n, 10));
-//           if (!isNaN(start) && !isNaN(end) && start <= end) {
-//             for (let i = start; i <= end; i++) parsedSeqs.push(i);
-//           }
-//         } else {
-//           const num = parseInt(part, 10);
-//           if (!isNaN(num)) parsedSeqs.push(num);
-//         }
-//       }
-//     }
-
-//     if (parsedSeqs.length === 0 && pieceSeqs) {
-//       setErrorMsg('Invalid piece numbers format. Use numbers and ranges like "1, 2, 5-8".');
-//       return;
-//     }
-
-//     if (!opRecord) {
-//       setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
-//       return;
-//     }
-
-//     const newEvent = {
-//       operation_id: opRecord.id,
-//       employee_id: workerId,
-//       work_date: date,
-//       sku_id: skuObj.sku_id,
-//       piece_seqs: parsedSeqs,
-//     };
-
-//     try {
-//       const result = await addScanEvent(newEvent);
-//       setPieceSeqs('');
-//       setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${operation}. ` +
-//         (result.rework?.length ? `(Rework: ${result.rework.length}) ` : '') +
-//         (result.not_found?.length ? `(Not Found: ${result.not_found.length})` : '')
-//       );
-//     } catch (err) {
-//       setErrorMsg(`Failed to submit event: ${err.message}`);
-//     }
-//   };
-
-
-//   // Open checklist modal
-//   const openChecklistModal = async () => {
-//     if (!skuCode || !operation) return;
-
-//     // When the UI button is "Fusing", the backend operation is "Fusing & Skiving".
-//     // This maps the UI selection to the correct backend data.
-//     const backendOperationLabel = operation === 'Fusing' ? 'Fusing & Skiving' : operation;
-//     const opRecord = operations.find(o => o.label === backendOperationLabel);
-
-//     if (!opRecord) {
-//       setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
-//       return;
-//     }
-
-//     const skuObj = fetchedSkus.find(s => s.code === skuCode);
-//     if (!skuObj) {
-//       setErrorMsg(`Could not find SKU ID for ${skuCode}`);
-//       return;
-//     }
-
-//     setLoadingPieces(true);
-//     setChecklistPieces([]);
-//     setSelectedPieces([]);
-//     setPiecesMeta(null);
-//     setChecklistError('');
-//     setShowChecklistModal(true);
-
-//     try {
-//       const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
-//       const pieces = data.pieces || data || [];
-//       setChecklistPieces(Array.isArray(pieces) ? pieces : []);
-//       if (data.total !== undefined) {
-//         setPiecesMeta({ total: data.total, done: data.done, pending: data.pending });
-//       } else if (Array.isArray(pieces)) {
-//         const done = pieces.filter(p => p.done_at_op).length;
-//         setPiecesMeta({ total: pieces.length, done, pending: pieces.length - done });
-//       }
-//     } catch (err) {
-//       setChecklistError(`Could not load pieces: ${err.message}`);
-//     } finally {
-//       setLoadingPieces(false);
-//     }
-//   };
-
-//   const submitChecklist = async () => {
-//     if (selectedPieces.length === 0) return;
-
-//     // FIX: Ensure "Fusing" from UI maps to "Fusing & Skiving" in backend data, consistent with openChecklistModal
-//     const backendOperationLabel = operation === 'Fusing' ? 'Fusing & Skiving' : operation;
-//     const opRecord = operations.find(o => o.label === backendOperationLabel);
-//     const skuObj = fetchedSkus.find(s => s.code === skuCode);
-
-//     if (!opRecord || !skuObj) {
-//       setChecklistError('Missing operation or SKU. Please close and re-open.');
-//       return;
-//     }
-
-//     const newEvent = {
-//       operation_id: opRecord.id,
-//       employee_id: workerId,
-//       work_date: date,
-//       sku_id: skuObj.sku_id,
-//       piece_seqs: selectedPieces,
-//     };
-
-//     setChecklistSubmitting(true);
-//     setChecklistError('');
-//     try {
-//       const result = await addScanEvent(newEvent);
-//       setSuccessMsg(
-//         `✅ Logged ${result.count_logged ?? selectedPieces.length} pieces for ${operation}.` +
-//         (result.rework?.length ? ` Rework: ${result.rework.length}.` : '') +
-//         (result.not_found?.length ? ` Not Found: ${result.not_found.length}.` : '')
-//       );
-//       setShowChecklistModal(false);
-//       setSelectedPieces([]);
-//     } catch (err) {
-//       setChecklistError(`Submit failed: ${err.message}`);
-//     } finally {
-//       setChecklistSubmitting(false);
-//     }
-//   };
-
-//   // If the user has a viewer role, display permission error
-//   if (isReadOnly) {
-//     return (
-//       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pt-12 text-center">
-//         <div className="card p-8 bg-white border border-red-100 shadow-xl space-y-4">
-//           <Lock className="w-14 h-14 text-red-400 mx-auto" />
-//           <h1 className="text-2xl font-black text-slate-800">Access Restricted</h1>
-//           <p className="text-slate-500 font-medium">
-//             Your active persona (<strong className="text-slate-700">Auditor / Viewer</strong>) does not have write access to the shop floor ledger.
-//           </p>
-//           <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-xs text-red-800 font-bold">
-//             Switch your profile in the top-bar header to Direct Manager, Cutting Manager, or Stitching Manager to log pieces.
-//           </div>
-//         </div>
-//       </div>
-//     );
-//   }
-
-//   return (
-//     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
-
-//       {/* ─── TITLE SECTION ─── */}
-//       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-//         <div>
-//           <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Shop Floor Production Logger</h1>
-//           <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Record work bundles completed by operators. Touch-friendly screens optimized for fast, accurate floor entry.</p>
-//         </div>
-//         {/* ─── UPLOAD FILE BUTTON ─── */}
-//         <div>
-//           <input
-//             ref={fileInputRef}
-//             type="file"
-//             accept=".xlsx,.xlsm,.xls"
-//             onChange={handleFileUpload}
-//             className="hidden"
-//             id="entry-file-upload"
-//           />
-//           <button
-//             type="button"
-//             onClick={() => {
-//               setUploadOrderNumberError('');
-//               setShowOrderNumModal(true);
-//             }}
-//             disabled={uploadLoading}
-//             className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50"
-//             style={{
-//               background: 'transparent',
-//               border: '1px solid #c8834a',
-//               color: '#c8834a'
-//             }}
-//           >
-//             {uploadLoading ? (
-//               <><Loader2 className="w-4 h-4 animate-spin" /> Previewing...</>
-//             ) : (
-//               <><FileSpreadsheet className="w-4 h-4" /> Upload Breakdown Sheet</>
-//             )}
-//           </button>
-//         </div>
-//       </div>
-
-//       {/* ─── ALERT BANNERS (TOASTS) ─── */}
-//       <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3 w-full max-w-sm pointer-events-none">
-//         {successMsg && (
-//           <div className="bg-emerald-50 border-2 border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-2.5 pointer-events-auto">
-//             <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
-//             <div className="flex-1">
-//               <div className="flex justify-between items-start">
-//                 <p className="font-extrabold">Transaction Confirmed</p>
-//                 <button onClick={() => setSuccessMsg('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
-//               </div>
-//               <p className="text-xs text-emerald-600 mt-0.5 break-words whitespace-pre-wrap">{successMsg}</p>
-//             </div>
-//           </div>
-//         )}
-
-//         {commitSuccess && (
-//           <div className="bg-emerald-50 border-2 border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-2.5 pointer-events-auto">
-//             <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5" />
-//             <div className="flex-1">
-//               <div className="flex justify-between items-start">
-//                 <p className="font-extrabold">Import Successful</p>
-//                 <button onClick={() => setCommitSuccess('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
-//               </div>
-//               <p className="text-xs text-emerald-600 mt-0.5 break-words whitespace-pre-wrap">{commitSuccess}</p>
-//             </div>
-//           </div>
-//         )}
-
-//         {(errorMsg || uploadError) && (
-//           <div className="bg-red-50 border-2 border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-2.5 pointer-events-auto">
-//             <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-600" />
-//             <div className="flex-1">
-//               <div className="flex justify-between items-start">
-//                 <p className="font-extrabold text-red-700">Operation Failed</p>
-//                 <button onClick={() => { setErrorMsg(''); setUploadError(''); }} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
-//               </div>
-//               <p className="text-xs text-red-600 mt-0.5 break-words whitespace-pre-wrap">{errorMsg || uploadError}</p>
-//             </div>
-//           </div>
-//         )}
-//       </div>
-
-//       {/* ─── LOGGING FORM CARD ─── */}
-//       <SpotlightCard className="p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-
-//         {/* Helper context showing details about the active logging environment */}
-//         <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
-//           <div className="text-xs font-bold" style={{ color: '#4a3a2a' }}>
-//             <span>Logged By: </span>
-//             <span className="text-white px-2 py-0.5 rounded font-black uppercase tracking-wider" style={{ background: '#c8834a' }}>{user.replace('_', ' ')}</span>
-//           </div>
-//         </div>
-
-//         <form onSubmit={handleSubmit} className="space-y-8">
-
-//           {/* STEP 1: Core Selection — Worker Only */}
-//           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
-//             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-//             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-//               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
-//               Worker Selection
-//             </h3>
-//             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-//               <div className="flex flex-col gap-2">
-//                 <label htmlFor="worker-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-//                   <Users className="w-4 h-4 text-blue-500" /> Assigned Worker / Operator *
-//                 </label>
-//                 <select
-//                   id="worker-select"
-//                   value={workerId}
-//                   onChange={(e) => setWorkerId(e.target.value)}
-//                   className="input-field h-14 bg-white font-bold border-2 border-slate-200 focus:border-blue-500 cursor-pointer shadow-sm text-sm transition-all"
-//                   required
-//                 >
-//                   <option value="" disabled>-- Select Worker --</option>
-//                   {workers.map((w) => (
-//                     <option key={w.id} value={w.id}>
-//                       {w.name} ({w.id} — {w.role})
-//                     </option>
-//                   ))}
-//                 </select>
-//               </div>
-//             </div>
-//           </div>
-
-
-//           {/* STEP 2: Operation & Size (Visual Cards) */}
-//           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
-//             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-//             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-//               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
-//               Garment Details
-//             </h3>
-
-//             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
-
-//               {/* SKU Selection */}
-//               <div className="flex flex-col gap-3">
-//                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-//                   <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
-//                 </label>
-//                 <div className="flex flex-col gap-2">
-//                   <select
-//                     value={skuCode}
-//                     onChange={(e) => setSkuCode(e.target.value)}
-//                     className="input-field h-14 bg-white font-bold border-2 border-[#c8834a]/20 focus:border-[#c8834a] cursor-pointer shadow-sm text-sm transition-all"
-//                     required
-//                   >
-//                     <option value="" disabled>-- Select SKU --</option>
-//                     {fetchedSkus.map((s) => (
-//                       <option key={s.code} value={s.code}>
-//                         [{s.order_number || 'N/A'}] {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}
-//                       </option>
-//                     ))}
-//                   </select>
-//                 </div>
-//               </div>
-
-//               {/* Operation Pill Buttons */}
-//               <div className="flex flex-col gap-3">
-//                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-//                   <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
-//                 </label>
-//                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 min-h-[56px]">
-//                   {allowedOperations.map((op) => (
-//                     <button
-//                       key={op}
-//                       type="button"
-//                       onClick={() => setOperation(op)}
-//                       className={`py-3 px-2 text-xs font-black rounded-xl border-2 transition-all cursor-pointer ${operation === op ? 'bg-[#c8834a] border-[#c8834a] text-white shadow-md scale-105' : 'bg-white border-[#c8834a]/20 text-[#9a7a5a] hover:border-[#c8834a] hover:text-[#c8834a] hover:bg-[#c8834a]/5 shadow-sm'}`}
-//                     >
-//                       {op}
-//                     </button>
-//                   ))}
-//                 </div>
-//               </div>
-
-//             </div>
-//           </div>
-
-//           {/* STEP 3: Quantity & Logging */}
-//           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
-//             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-//             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-//               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span>
-//               Quantities & Submission
-//             </h3>
-
-//             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-
-//               {/* Piece Sequences Input - hidden for Cutting (automatic) */}
-//               {/* Cutting: info banner | Other stages: piece seq textbox + checklist */}
-//               {operation === 'Cutting' ? (
-//                 <div className="flex flex-col gap-2 md:col-span-2 p-4 rounded-xl border" style={{ background: '#fff8f0', borderColor: 'rgba(200,131,74,0.25)' }}>
-//                   <p className="text-sm font-bold flex items-center gap-2" style={{ color: '#c8834a' }}>
-//                     <Scissors className="w-4 h-4" /> Cutting will mint pieces automatically
-//                   </p>
-//                   <p className="text-xs font-medium" style={{ color: '#9a7a5a' }}>
-//                     Selecting <strong>{skuCode || 'a SKU'}</strong> and clicking Submit will call the cutting endpoint
-//                     and create <strong>{fetchedSkus.find(s => s.code === skuCode)?.qty_ordered ?? '—'} pieces</strong> (qty from order).
-//                   </p>
-//                 </div>
-//               ) : (
-//                 <div className="flex flex-col gap-3 md:col-span-2">
-//                   <div className="flex justify-between items-end">
-//                     <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-//                       <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
-//                     </label>
-//                     <button
-//                       type="button"
-//                       onClick={openChecklistModal}
-//                       className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-//                       style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#fff' }}
-//                     >
-//                       <ListChecks className="w-3.5 h-3.5" /> Select from Checklist
-//                     </button>
-//                   </div>
-//                   <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8), or use the checklist.</p>
-//                   <div className="flex flex-col sm:flex-row items-stretch gap-4">
-//                     <div className="relative flex-1">
-//                       <input
-//                         type="text"
-//                         id="piece-seq-input"
-//                         placeholder="e.g. 1, 2, 5-8"
-//                         value={pieceSeqs}
-//                         onChange={(e) => setPieceSeqs(e.target.value)}
-//                         className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all"
-//                       />
-//                     </div>
-//                     <div className="flex gap-2 w-1/4">
-//                       <button
-//                         type="button"
-//                         onClick={() => setPieceSeqs('')}
-//                         className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
-//                       >
-//                         Clear
-//                       </button>
-//                     </div>
-//                   </div>
-//                 </div>
-//               )}
-
-//               {/* Date Selector Row */}
-//               <div className="flex flex-col gap-2">
-//                 <label htmlFor="date-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-//                   <Calendar className="w-4 h-4 text-emerald-500" /> Transaction Date *
-//                 </label>
-//                 <input
-//                   type="date"
-//                   id="date-input"
-//                   value={date}
-//                   onChange={(e) => setDate(e.target.value)}
-//                   className="input-field h-14 bg-white font-bold border-2 border-slate-200 shadow-sm"
-//                   required
-//                 />
-//               </div>
-
-
-
-
-//             </div>
-//           </div>
-
-//           {/* Form Actions */}
-//           <div className="pt-4 flex flex-col items-center sm:items-end gap-3">
-//             <div className="flex flex-col sm:flex-row gap-4 justify-end w-full">
-//               <button
-//                 type="button"
-//                 onClick={() => {
-//                   setPieceSeqs('');
-//                   setSkuCode('');
-//                 }}
-//                 className="h-14 font-bold rounded-xl text-base px-8 transition-all"
-//                 style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
-//               >
-//                 Reset All
-//               </button>
-//               <button
-//                 type="submit"
-//                 className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 flex-1 sm:flex-none"
-//                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
-//               >
-//                 <Rocket className="w-5 h-5" /> Submit Event
-//               </button>
-//             </div>
-            
-//             {/* Link to Analytics */}
-//             {skuCode && (
-//               <a
-//                 href={`/dashboard/analytics`}
-//                 className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-50 flex items-center gap-1.5"
-//                 style={{ color: '#c8834a' }}
-//               >
-//                 <BarChart3 className="w-3.5 h-3.5" /> View Analytics for Order
-//               </a>
-//             )}
-//           </div>
-
-//         </form>
-
-//       </SpotlightCard>
-
-//       {/* ─── EXCEL PREVIEW MODAL ─── */}
-//       {showPreviewModal && (
-//         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-//           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col">
-//             <div className="flex justify-between items-center p-6 border-b border-slate-100">
-//               <div>
-//                 <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
-//                   <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-//                   Excel Import Preview
-//                 </h3>
-//                 <p className="text-xs text-slate-500 font-medium mt-1">
-//                   File: {fileName} — Review before importing to database
-//                 </p>
-//               </div>
-//               <button
-//                 onClick={() => setShowPreviewModal(false)}
-//                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-//               >
-//                 <X className="w-5 h-5" />
-//               </button>
-//             </div>
-
-//             <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
-//               {previewData ? (
-//                 <DynamicDataViewer data={previewData} />
-//               ) : (
-//                 <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
-//               )}
-//               {uploadError && (
-//                 <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl">
-//                   {uploadError}
-//                 </div>
-//               )}
-//             </div>
-
-//             <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
-//               <button
-//                 onClick={() => setShowPreviewModal(false)}
-//                 className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
-//               >
-//                 Cancel
-//               </button>
-//               <button
-//                 onClick={handleCommit}
-//                 disabled={commitLoading}
-//                 className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
-//               >
-//                 {commitLoading ? (
-//                   <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
-//                 ) : (
-//                   <><Upload className="w-4 h-4" /> Confirm & Import to Database</>
-//                 )}
-//               </button>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-
-//       {/* ─── ORDER NUMBER MODAL (Step 1 before file pick) ─── */}
-//       {showOrderNumModal && (
-//         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-//           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 sm:p-8 space-y-5 relative">
-//             {/* Header */}
-//             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-//               <div className="flex items-center gap-2">
-//                 <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
-//                   <FileSpreadsheet className="w-4 h-4" style={{ color: '#c8834a' }} />
-//                 </div>
-//                 <div>
-//                   <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Upload Breakdown Sheet</h3>
-//                   <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Step 1 of 2 — Enter Order Number</p>
-//                 </div>
-//               </div>
-//               <button
-//                 onClick={() => { setShowOrderNumModal(false); setUploadOrderNumberError(''); }}
-//                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-//               >
-//                 <X className="w-4 h-4" />
-//               </button>
-//             </div>
-
-//             <div className="space-y-1.5">
-//               <label className="text-[11px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>
-//                 Order Number <span className="text-red-500">*</span>
-//               </label>
-//               <input
-//                 type="text"
-//                 autoFocus
-//                 placeholder="e.g. 1001"
-//                 value={uploadOrderNumber}
-//                 onChange={(e) => { setUploadOrderNumber(e.target.value.trim()); setUploadOrderNumberError(''); }}
-//                 onKeyDown={(e) => { if (e.key === 'Enter' && uploadOrderNumber.trim()) { e.preventDefault(); fileInputRef.current?.click(); } }}
-//                 className={`w-full px-4 py-3 rounded-xl border text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 transition-colors ${uploadOrderNumberError
-//                     ? 'border-red-400 bg-red-50 focus:ring-red-400/20'
-//                     : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
-//                   }`}
-//               />
-//               {uploadOrderNumberError ? (
-//                 <p className="text-xs font-bold text-red-600 flex items-start gap-1.5 pt-1">
-//                   <span className="mt-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center shrink-0">!</span>
-//                   {uploadOrderNumberError}
-//                 </p>
-//               ) : (
-//                 <p className="text-[10px] text-slate-400 font-medium">Must match an existing order. The sheet SKUs will be written into this order.</p>
-//               )}
-//             </div>
-
-//             <div className="flex gap-3 pt-2">
-//               <button
-//                 type="button"
-//                 onClick={() => { setShowOrderNumModal(false); setUploadOrderNumberError(''); }}
-//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors"
-//                 style={{ background: '#f1f5f9', color: '#475569' }}
-//               >
-//                 Cancel
-//               </button>
-//               <button
-//                 type="button"
-//                 disabled={!uploadOrderNumber.trim() || uploadLoading}
-//                 onClick={() => fileInputRef.current?.click()}
-//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
-//                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-//               >
-//                 {uploadLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</> : <><FileSpreadsheet className="w-3.5 h-3.5" /> Choose File</>}
-//               </button>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-
-//       {/* ─── PIECE CHECKLIST MODAL ─── */}
-//       {showChecklistModal && (
-//         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
-//           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
-
-//             {/* Header */}
-//             <div className="flex justify-between items-center p-6 border-b border-slate-100">
-//               <div className="flex items-center gap-3">
-//                 <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
-//                   <ListChecks className="w-4 h-4" style={{ color: '#c8834a' }} />
-//                 </div>
-//                 <div>
-//                   <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Select Pieces — {operation}</h3>
-//                   <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{skuCode}</p>
-//                 </div>
-//               </div>
-//               <button
-//                 onClick={() => setShowChecklistModal(false)}
-//                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-//               >
-//                 <X className="w-4 h-4" />
-//               </button>
-//             </div>
-
-//             {/* Counts */}
-//             {piecesMeta && (
-//               <div className="flex gap-3 px-6 py-3 bg-slate-50 border-b border-slate-100">
-//                 <span className="text-xs font-bold text-slate-500">Total: <strong className="text-slate-700">{piecesMeta.total}</strong></span>
-//                 <span className="text-xs font-bold text-emerald-600">Done: <strong>{piecesMeta.done}</strong></span>
-//                 <span className="text-xs font-bold text-amber-600">Pending: <strong>{piecesMeta.pending}</strong></span>
-//                 <span className="text-xs font-bold ml-auto" style={{ color: '#c8834a' }}>Selected: <strong>{selectedPieces.length}</strong></span>
-//               </div>
-//             )}
-
-//             {/* Piece List */}
-//             <div className="flex-1 overflow-y-auto p-6">
-//               {loadingPieces ? (
-//                 <div className="flex flex-col items-center justify-center h-32 gap-3">
-//                   <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
-//                   <p className="text-sm font-bold text-slate-400">Loading pieces...</p>
-//                 </div>
-//               ) : checklistError && checklistPieces.length === 0 ? (
-//                 <div className="flex flex-col items-center justify-center h-32 gap-2 text-center">
-//                   <XCircle className="w-8 h-8 text-red-400" />
-//                   <p className="text-sm font-bold text-red-500">{checklistError}</p>
-//                   <button
-//                     type="button"
-//                     onClick={openChecklistModal}
-//                     className="text-xs font-black px-3 py-1.5 rounded-lg mt-1"
-//                     style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
-//                   >Retry</button>
-//                 </div>
-//               ) : checklistPieces.length === 0 ? (
-//                 <div className="flex flex-col items-center justify-center h-32 gap-2">
-//                   <p className="text-sm font-bold text-slate-400">No pieces found for this SKU/stage.</p>
-//                   <p className="text-xs text-slate-400">Run Cutting first to mint pieces for this SKU.</p>
-//                 </div>
-//               ) : (
-//                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-//                   {/* Select All / Deselect All */}
-//                   <div className="col-span-2 sm:col-span-3 flex gap-2 mb-2">
-//                     <button
-//                       type="button"
-//                       onClick={() => setSelectedPieces(checklistPieces.filter(p => !p.done_at_op).map(p => p.seq))}
-//                       className="text-[10px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-//                       style={{ background: 'rgba(200,131,74,0.12)', color: '#c8834a' }}
-//                     >
-//                       Select All Pending
-//                     </button>
-//                     <button
-//                       type="button"
-//                       onClick={() => setSelectedPieces([])}
-//                       className="text-[10px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-//                       style={{ background: '#f1f5f9', color: '#475569' }}
-//                     >
-//                       Deselect All
-//                     </button>
-//                   </div>
-
-//                   {checklistPieces.map((piece) => {
-//                     const isSelected = selectedPieces.includes(piece.seq);
-//                     const isDone = piece.done_at_op;
-//                     return (
-//                       <button
-//                         key={piece.piece_id || piece.seq}
-//                         type="button"
-//                         onClick={() => {
-//                           setSelectedPieces(prev =>
-//                             prev.includes(piece.seq)
-//                               ? prev.filter(s => s !== piece.seq)
-//                               : [...prev, piece.seq]
-//                           );
-//                         }}
-//                         className={`relative p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${isSelected
-//                             ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
-//                             : isDone
-//                               ? 'border-emerald-200 bg-emerald-50 opacity-70'
-//                               : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
-//                           }`}
-//                       >
-//                         <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : '#2d1f0e' }}>
-//                           #{piece.seq}
-//                         </p>
-//                         <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage || '—'}</p>
-//                         {isDone && !isSelected && (
-//                           <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
-//                             <CheckCircle2 className="w-2.5 h-2.5 text-white" />
-//                           </span>
-//                         )}
-//                         {isSelected && (
-//                           <span className="absolute top-1 right-1 w-3 h-3 rounded-full flex items-center justify-center" style={{ background: '#c8834a' }}>
-//                             <span className="w-1.5 h-1.5 rounded-full bg-white" />
-//                           </span>
-//                         )}
-//                       </button>
-//                     );
-//                   })}
-
-//                   {/* Inline submit error */}
-//                   {checklistError && (
-//                     <div className="col-span-2 sm:col-span-3 mt-2 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2">
-//                       <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-//                       <p className="text-xs font-bold text-red-700">{checklistError}</p>
-//                     </div>
-//                   )}
-//                 </div>
-//               )}
-//             </div>
-
-//             {/* Footer Actions */}
-//             <div className="flex gap-3 p-6 border-t border-slate-100">
-//               <button
-//                 type="button"
-//                 onClick={() => { setShowChecklistModal(false); setChecklistError(''); }}
-//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors"
-//                 style={{ background: '#f1f5f9', color: '#475569' }}
-//               >
-//                 Cancel
-//               </button>
-//               <button
-//                 type="button"
-//                 disabled={selectedPieces.length === 0 || checklistSubmitting}
-//                 onClick={submitChecklist}
-//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
-//                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-//               >
-//                 {checklistSubmitting ? (
-//                   <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Submitting...</>
-//                 ) : (
-//                   <><Rocket className="w-3.5 h-3.5" /> Submit {selectedPieces.length > 0 ? `${selectedPieces.length} Pieces` : 'Event'}</>
-//                 )}
-//               </button>
-//             </div>
-//           </div>
-//         </div>
-//       )}
-
-//     </div>
-//   );
-// }
