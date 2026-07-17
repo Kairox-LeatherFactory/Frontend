@@ -202,8 +202,8 @@ export default function ProductionLogEntry() {
     }
 
     // Fusing -> Pasting mapping logic
-    const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
-    const opRecord = operations.find(o => o.label === backendOperationLabel);
+  //  const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    const opRecord = operations.find(o => o.label === operation);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
     // ── CUTTING SUBMISSION ──
@@ -287,8 +287,8 @@ export default function ProductionLogEntry() {
   const openChecklistModal = async () => {
     if (!skuCode || !operation) return;
 
-    const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
-    const opRecord = operations.find(o => o.label === backendOperationLabel);
+ //   const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    const opRecord = operations.find(o => o.label === operation);
 
     if (!opRecord) {
       setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
@@ -328,8 +328,8 @@ export default function ProductionLogEntry() {
   const submitChecklist = async () => {
     if (selectedPieces.length === 0) return;
 
-    const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
-    const opRecord = operations.find(o => o.label === backendOperationLabel);
+ //   const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    const opRecord = operations.find(o => o.label === operation);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
     if (!opRecord || !skuObj) {

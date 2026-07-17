@@ -376,84 +376,85 @@ export default function AdminDashboard() {
         </SpotlightCard>
       </div>
 
-      {/* ─── USERS DIRECTORY ─── */}
-      <SpotlightCard className="p-0 bg-white shadow-xl rounded-3xl overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.04)">
-        <div className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-          <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
-            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> System Users Directory
-            <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ background: '#faf6f0', color: '#a86022', border: '1px solid rgba(200,131,74,0.2)' }}>
-              {users.length}
-            </span>
-          </h3>
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#9a7a5a' }} />
-            <input
-              type="text" placeholder="Search users…"
-              value={search} onChange={e => setSearch(e.target.value)}
-              className="h-9 w-52 rounded-lg pl-9 pr-3 text-xs font-semibold focus:outline-none"
-              style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
-            />
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="py-16 flex items-center justify-center">
-            <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs font-semibold">
-              <thead>
-                <tr className="font-black uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
-                  <th className="p-3 pl-5">User</th>
-                  <th className="p-3">Role</th>
-                  <th className="p-3">Type</th>
-                  <th className="p-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredUsers.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="py-14 text-center font-semibold" style={{ color: '#9a7a5a' }}>
-                      <User className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                      No users found.
-                    </td>
-                  </tr>
-                ) : filteredUsers.map(u => {
-                  const roleCfg = ROLE_COLORS[u.role] || { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: u.role };
-                  return (
-                    <tr key={u.id} className="border-b hover:bg-[#fcfaf8] transition-colors" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
-                      <td className="p-3 pl-5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
-                            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
-                            {(u.username || '?')[0].toUpperCase()}
-                          </div>
-                          <span className="font-black" style={{ color: '#2d1f0e' }}>{u.username}</span>
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black"
-                          style={{ background: roleCfg.bg, color: roleCfg.color, border: `1px solid ${roleCfg.border}` }}>
-                          {roleCfg.label}
-                        </span>
-                      </td>
-                      <td className="p-3 font-semibold" style={{ color: '#9a7a5a' }}>
-                        {u.client_id ? 'Client Portal' : 'Internal Factory'}
-                      </td>
-                      <td className="p-3">
-                        <span className="inline-flex items-center gap-1 text-[10px] font-black" style={{ color: '#16a34a' }}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block" /> Active
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </SpotlightCard>
+    {/* ─── USERS DIRECTORY ─── */}
+<SpotlightCard className="p-0 bg-white shadow-xl rounded-3xl overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.04)">
+  <div className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+    <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+      <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> System Users Directory
+      <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ background: '#faf6f0', color: '#a86022', border: '1px solid rgba(200,131,74,0.2)' }}>
+        {users.length}
+      </span>
+    </h3>
+    <div className="relative">
+      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#9a7a5a' }} />
+      <input
+        type="text" placeholder="Search users…"
+        value={search} onChange={e => setSearch(e.target.value)}
+        className="h-9 w-52 rounded-lg pl-9 pr-3 text-xs font-semibold focus:outline-none"
+        style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
+      />
     </div>
+  </div>
+
+  {loading ? (
+    <div className="py-16 flex items-center justify-center">
+      <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
+    </div>
+  ) : (
+    <div className="overflow-x-auto">
+      <table className="w-full text-left text-xs font-semibold">
+        <thead>
+          <tr className="font-black uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
+            <th className="p-3 pl-5">User</th>
+            <th className="p-3">Role</th>
+            <th className="p-3">Type</th>
+            <th className="p-3">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredUsers.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="py-14 text-center font-semibold" style={{ color: '#9a7a5a' }}>
+                <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                No users found.
+              </td>
+            </tr>
+          ) : filteredUsers.map(u => {
+            const roleCfg = ROLE_COLORS[u.role] || { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: u.role };
+            return (
+              <tr key={u.id} className="border-b hover:bg-[#fcfaf8] transition-colors" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
+                <td className="p-3 pl-5">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
+                      style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
+                      {(u.name || '?')[0].toUpperCase()}
+                    </div>
+                    <span className="font-black" style={{ color: '#2d1f0e' }}>{u.name}</span>
+                  </div>
+                </td>
+                <td className="p-3">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black"
+                    style={{ background: roleCfg.bg, color: roleCfg.color, border: `1px solid ${roleCfg.border}` }}>
+                    {roleCfg.label}
+                  </span>
+                </td>
+                <td className="p-3 font-semibold" style={{ color: '#9a7a5a' }}>
+                  {u.client_id ? 'Client Portal' : 'Internal Factory'}
+                </td>
+                <td className="p-3">
+                  <span className={`inline-flex items-center gap-1 text-[10px] font-black ${u.is_active ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-green-500' : 'bg-red-500'} inline-block`} /> 
+                    {u.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  )}
+</SpotlightCard>
+</div>
   );
 }
