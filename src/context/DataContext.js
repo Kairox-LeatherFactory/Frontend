@@ -25,7 +25,7 @@ export function DataProvider({ children }) {
   const [operations, setOperations] = useState([]);
   const [events, setEvents] = useState([]);
   const [wageRuns, setWageRuns] = useState([]);
-  const [allSystemUsers, setAllSystemUsers] = useState([]); // மெர்ஜ் செய்த லிஸ்ட்டிற்கான புதிய ஸ்டேட்
+  const [allSystemUsers, setAllSystemUsers] = useState([]); 
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [traceCards, setTraceCards] = useState({});
@@ -35,7 +35,7 @@ export function DataProvider({ children }) {
     setApiLoading(true);
     setApiError(null);
     try {
-      // 1. Parallel Fetching: apiGetUsers-ஐயும் சேர்த்து கால் செய்கிறோம்
+      
       const [clientsData, empData, opsData, evtsData, usersData] = await Promise.all([
         apiGetClients(token).catch(() => []),
         apiGetEmployees(token).catch(() => []),
@@ -44,20 +44,19 @@ export function DataProvider({ children }) {
         apiGetUsers(token).catch(() => []),
       ]);
 
-      // 2. Fetch all orders for all clients
+      // ஆர்டர்களைப் பெறுதல்
       let allOrders = [];
       for (const client of clientsData) {
         const clientOrders = await apiGetClientOrders(token, client.id).catch(() => []);
         allOrders.push(...clientOrders);
       }
 
-      // 3. Data Processing
       setClients(clientsData.map((c) => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—' })));
       
       const mappedWorkers = empData.map((e) => ({ 
         id: e.id, 
         name: e.name, 
-        role: e.designation, 
+        role: e.designation,
         wage_type: e.wage_type, 
         monthly_salary: e.monthly_salary 
       }));
@@ -66,7 +65,7 @@ export function DataProvider({ children }) {
       setOperations(opsData);
       setOrders(allOrders);
 
-      // 4. மெர்ஜ் செய்த லிஸ்ட் (System Directory) உருவாக்கம்
+   
       const mergedUsers = [
         ...usersData.map(u => ({ ...u, listType: 'System User', role: u.role || 'User' })),
         ...mappedWorkers.map(w => ({ ...w, listType: 'Worker', role: w.role }))
@@ -121,11 +120,16 @@ export function DataProvider({ children }) {
     return newRun;
   };
 
+ 
+  const refreshData = useCallback(() => {
+    fetchFromApi();
+  }, [fetchFromApi]);
+
   return (
     <DataContext.Provider value={{
       events, orders, workers, operations, clients, wageRuns, traceCards,
-      allSystemUsers, // அட்மின் பக்கத்தில் இதைப் பயன்படுத்துங்கள்
-      addScanEvent, addWageRun, createClient, addClientOrder,
+      allSystemUsers,
+      addScanEvent, addWageRun, createClient, addClientOrder, refreshData,
       apiLoading, apiError
     }}>
       {children}
