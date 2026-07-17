@@ -2,11 +2,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiGetUsers, apiCreateUser, apiCreateEmployee } from '@/lib/api';
+import { apiGetUsers, apiCreateUser } from '@/lib/api';
 import {
   CheckCircle2, Users, UserPlus, Factory, Loader2,
   ShieldCheck, Lock, AlertCircle, Building2, User,
-  Search, MapPin
+  Search
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
@@ -32,38 +32,8 @@ const ROLE_COLORS = {
   employee:         { bg: '#ecfdf5', color: '#059669', border: 'rgba(5,150,105,0.15)', label: 'Employee' },
 };
 
-// GPS helper hook within component context for Floor/Admin verification
-function useGps() {
-  const [state, setState] = useState({ lat: null, lon: null, error: null, loading: false });
-  const getPosition = () => {
-    return new Promise((resolve, reject) => {
-      setState((s) => ({ ...s, loading: true, error: null }));
-      if (!navigator.geolocation) {
-        const err = 'Geolocation is not supported by this browser.';
-        setState((s) => ({ ...s, loading: false, error: err }));
-        return reject(err);
-      }
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
-          setState({ ...coords, loading: false, error: null });
-          resolve(coords);
-        },
-        (err) => {
-          const msg = 'Location access denied or timed out. Unable to resolve GPS coordinates.';
-          setState({ lat: null, lon: null, loading: false, error: msg });
-          reject(msg);
-        },
-        { timeout: 8000 }
-      );
-    });
-  };
-  return { ...state, getPosition };
-}
-
 export default function AdminDashboard() {
   const { user, token } = useAuth();
-  const gps = useGps();
 
   const isHRAdmin = user === 'hr_admin' || user === 'direct_manager';
 
@@ -72,7 +42,7 @@ export default function AdminDashboard() {
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState('');
 
-  // 1. Corrected Worker Form State matching the Floor Command specification
+  // 1. Worker Form State
   const [workerForm, setWorkerForm] = useState({
     name: '',
     phone: '',
@@ -83,7 +53,7 @@ export default function AdminDashboard() {
   });
   const [isSubmittingWorker, setIsSubmittingWorker] = useState(false);
 
-  // 2. Corrected Add User Form State matching the User specification
+  // 2. User Form State
   const [userForm, setUserForm] = useState({
     name: '',
     phone: '',
@@ -112,7 +82,7 @@ export default function AdminDashboard() {
     })();
   }, [token]);
 
-  // Handle Add Worker Submission (strictly using JSON payload as verified)
+  // Handle Add Worker Submission (Strictly Pure Network Action — NO GPS Triggers)
   const handleCreateWorker = async (e) => {
     e.preventDefault();
     const { name, phone, designation, wage_type, daily_rate, password } = workerForm;
@@ -128,9 +98,6 @@ export default function AdminDashboard() {
 
     setIsSubmittingWorker(true);
     try {
-      // Fetch GPS coordinates to fulfill floor-only location onboarding requirement
-      await gps.getPosition();
-
       const payload = {
         name: name.trim(),
         designation: designation.trim(),
@@ -154,11 +121,11 @@ export default function AdminDashboard() {
         throw new Error(body.detail || `Server error: ${res.status}`);
       }
 
-      showToast('success', `Worker "${name}" successfully registered onto the floor.`);
+      showToast('success', `Worker "${name}" successfully registered onto the system roster.`);
       setWorkerForm({ name: '', phone: '', designation: 'Cutter', wage_type: 'piece_rate', daily_rate: '', password: '' });
       await refreshUsers();
     } catch (err) {
-      showToast('error', err.message || 'Onboarding failed.');
+      showToast('error', err.message || 'Onboarding registration failed.');
     } finally {
       setIsSubmittingWorker(false);
     }
@@ -280,12 +247,14 @@ export default function AdminDashboard() {
                 </Field>
               </div>
 
-              <Field label="Designation *">
-  <input type="text" className={inputCls}
-    value={workerForm.designation}
-    placeholder="e.g. Cutter, Stitcher, Helper" required
-    onChange={e => setWorkerForm({ ...workerForm, designation: e.target.value })} />
-</Field>
+              <div className="sm:col-span-2">
+                <Field label="Designation *">
+                  <input type="text" className={inputCls}
+                    value={workerForm.designation}
+                    placeholder="e.g. Cutter, Stitcher, Helper" required
+                    onChange={e => setWorkerForm({ ...workerForm, designation: e.target.value })} />
+                </Field>
+              </div>
 
               <Field label="Wage Type">
                 <select className={inputCls}
@@ -329,15 +298,10 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            <div className="flex items-center gap-2 text-[10px] font-semibold" style={{ color: '#9a7a5a' }}>
-              <MapPin className="w-3.5 h-3.5" style={{ color: '#c8834a' }} />
-              GPS verification will be performed automatically upon submission.
-            </div>
-
             <button type="submit" disabled={isSubmittingWorker}
               className="w-full h-11 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
               style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
-              {isSubmittingWorker ? <><Loader2 className="w-4 h-4 animate-spin" /> Verifying GPS...</> : <><UserPlus className="w-4 h-4" /> Register Employee</>}
+              {isSubmittingWorker ? <><Loader2 className="w-4 h-4 animate-spin" /> Registering...</> : <><UserPlus className="w-4 h-4" /> Register Employee</>}
             </button>
           </form>
         </SpotlightCard>
