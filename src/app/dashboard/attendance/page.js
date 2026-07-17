@@ -1205,7 +1205,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if ((activeTab === 'proxy' || activeTab === 'admin')) {
-      apiFetch('/api/v1/employees?wage_type=PIECE_RATE', {}, token)
+      apiFetch('/api/v1/employees?active_only=true', {}, token)
         .then(setWorkers)
         .catch(() => { });
     }
