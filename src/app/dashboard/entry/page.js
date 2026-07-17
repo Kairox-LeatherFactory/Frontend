@@ -11,7 +11,6 @@ function DynamicDataViewer({ data }) {
 
   if (Array.isArray(data)) {
     if (data.length === 0) return <div className="text-slate-400 italic">Empty list</div>;
-    // Check if it's an array of objects to render as a table
     if (typeof data[0] === 'object' && data[0] !== null) {
       const keys = Array.from(new Set(data.flatMap(Object.keys)));
       return (
@@ -37,7 +36,6 @@ function DynamicDataViewer({ data }) {
         </div>
       );
     }
-    // Simple array
     return (
       <ul className="list-disc pl-5 space-y-1 text-slate-700">
         {data.map((item, i) => <li key={i}>{String(item)}</li>)}
@@ -69,7 +67,6 @@ export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
   const { orders, workers, addScanEvent, operations } = useData();
 
-  // Role operational permissions — memoized: only recomputes when user role changes
   const allowedOperations = useMemo(
     () => ROLE_OPERATIONS[user] || [],
     [user, ROLE_OPERATIONS]
@@ -81,6 +78,7 @@ export default function ProductionLogEntry() {
   const [workerId, setWorkerId] = useState('');
   const [skuCode, setSkuCode] = useState('');
   const [pieceSeqs, setPieceSeqs] = useState('');
+  const [cuttingCount, setCuttingCount] = useState(''); // Text box state for cutting pieces
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [fetchedSkus, setFetchedSkus] = useState([]);
 
@@ -97,16 +95,15 @@ export default function ProductionLogEntry() {
   const [skuFilter, setSkuFilter] = useState('');
   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
 
-  // Auto-select first worker once backend data loads
   useEffect(() => {
     if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
   }, [workers, workerId]);
 
-  // Alert Success banner state
+  // Alert State
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // ─── Excel Upload States ───
+  // Excel Upload States
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [showOrderNumModal, setShowOrderNumModal] = useState(false);
   const [uploadOrderNumber, setUploadOrderNumber] = useState('');
@@ -119,6 +116,16 @@ export default function ProductionLogEntry() {
   const [uploadError, setUploadError] = useState('');
   const [commitSuccess, setCommitSuccess] = useState('');
   const fileInputRef = useRef(null);
+
+  // Auto fill cutting count textbox when SKU is selected
+  useEffect(() => {
+    if (skuCode) {
+      const skuObj = fetchedSkus.find(s => s.code === skuCode);
+      if (skuObj && skuObj.qty_ordered) {
+        setCuttingCount(skuObj.qty_ordered.toString());
+      }
+    }
+  }, [skuCode, fetchedSkus]);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -138,7 +145,7 @@ export default function ProductionLogEntry() {
     } catch (err) {
       if (err.status === 404 || err.message?.includes('404') || err.message?.toLowerCase().includes('not found')) {
         setUploadOrderNumberError(`Order number "${uploadOrderNumber.trim()}" not found. Verify with the client record.`);
-        setShowOrderNumModal(true); // re-open so user can fix it
+        setShowOrderNumModal(true);
       } else {
         setUploadError(`Preview failed: ${err.message}`);
       }
@@ -159,9 +166,7 @@ export default function ProductionLogEntry() {
       const skus = result?.written?.skus_created ?? '';
       setCommitSuccess(`Imported${styles ? ` ${styles} styles,` : ''} ${skus ? `${skus} new SKUs` : 'data'} into order ${orderNum}. Opening Orders Explorer to verify.`);
       setShowPreviewModal(false);
-      // Auto-filter the SKU dropdown to show only this order's styles
       setSkuFilter(orderNum);
-      // Re-fetch SKUs so newly imported ones appear immediately
       setSkuRefreshKey(k => k + 1);
       setUploadOrderNumber('');
     } catch (err) {
@@ -171,7 +176,6 @@ export default function ProductionLogEntry() {
     }
   };
 
-  // Fetch all SKUs on mount and whenever skuRefreshKey changes (e.g. after import)
   useEffect(() => {
     let active = true;
     apiGetSkus(token).then(skus => {
@@ -197,27 +201,25 @@ export default function ProductionLogEntry() {
       return;
     }
 
-    // FIX: Centralize the operation lookup to happen *before* any branching logic.
-    // This ensures that whether the operation is 'Cutting' or something else,
-    // we correctly map the UI label (e.g., "Fusing") to the backend label ("Fusing & Skiving").
-    const backendOperationLabel = operation === 'Fusing' ? 'Fusing & Skiving' : operation;
-    const opRecord = operations.find(o => o.label === backendOperationLabel);
+    // Fusing -> Pasting mapping logic
+  //  const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    const opRecord = operations.find(o => o.label === operation);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
-    // ── CUTTING: Call POST /production/cutting ──────────────────────────────────
+    // ── CUTTING SUBMISSION ──
     if (operation === 'Cutting') {
       if (!skuObj) {
         setErrorMsg(`Could not find SKU for ${skuCode}`);
         return;
       }
-      const count = skuObj.qty_ordered;
-      if (!count || count <= 0) {
-        setErrorMsg('SKU has no ordered quantity. Cannot create cutting event.');
+      const count = parseInt(cuttingCount, 10);
+      if (isNaN(count) || count <= 0) {
+        setErrorMsg('Please enter a valid piece count for Cutting.');
         return;
       }
       try {
         const result = await apiProductionCutting(token, {
-          sku_id: skuObj.sku_id, // FIX: Send sku_id instead of sku_code
+          sku_id: skuObj.sku_id, 
           employee_id: workerId,
           work_date: date,
           count,
@@ -229,13 +231,12 @@ export default function ProductionLogEntry() {
       return;
     }
 
-    // ── OTHER STAGES: POST /production/scan ─────────────────────────────────────
+    // ── OTHER STAGES ──
     if (!pieceSeqs) {
       setErrorMsg('Please enter piece sequences or use the checklist.');
       return;
     }
 
-    // Parse pieceSeqs "1, 2, 3-5" into array of numbers
     let parsedSeqs = [];
     if (pieceSeqs) {
       const parts = pieceSeqs.split(',').map(s => s.trim()).filter(Boolean);
@@ -283,14 +284,11 @@ export default function ProductionLogEntry() {
   };
 
 
-  // Open checklist modal
   const openChecklistModal = async () => {
     if (!skuCode || !operation) return;
 
-    // When the UI button is "Fusing", the backend operation is "Fusing & Skiving".
-    // This maps the UI selection to the correct backend data.
-    const backendOperationLabel = operation === 'Fusing' ? 'Fusing & Skiving' : operation;
-    const opRecord = operations.find(o => o.label === backendOperationLabel);
+ //   const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    const opRecord = operations.find(o => o.label === operation);
 
     if (!opRecord) {
       setErrorMsg(`Could not find a valid backend UUID for operation: ${operation}`);
@@ -330,9 +328,8 @@ export default function ProductionLogEntry() {
   const submitChecklist = async () => {
     if (selectedPieces.length === 0) return;
 
-    // FIX: Ensure "Fusing" from UI maps to "Fusing & Skiving" in backend data, consistent with openChecklistModal
-    const backendOperationLabel = operation === 'Fusing' ? 'Fusing & Skiving' : operation;
-    const opRecord = operations.find(o => o.label === backendOperationLabel);
+ //   const backendOperationLabel = operation === 'Fusing' ? 'Pasting' : operation;
+    const opRecord = operations.find(o => o.label === operation);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
     if (!opRecord || !skuObj) {
@@ -366,7 +363,6 @@ export default function ProductionLogEntry() {
     }
   };
 
-  // If the user has a viewer role, display permission error
   if (isReadOnly) {
     return (
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pt-12 text-center">
@@ -387,13 +383,12 @@ export default function ProductionLogEntry() {
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
 
-      {/* ─── TITLE SECTION ─── */}
+      {/* TITLE SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Shop Floor Production Logger</h1>
           <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Record work bundles completed by operators. Touch-friendly screens optimized for fast, accurate floor entry.</p>
         </div>
-        {/* ─── UPLOAD FILE BUTTON ─── */}
         <div>
           <input
             ref={fileInputRef}
@@ -426,7 +421,7 @@ export default function ProductionLogEntry() {
         </div>
       </div>
 
-      {/* ─── ALERT BANNERS (TOASTS) ─── */}
+      {/* ALERT BANNERS */}
       <div className="fixed top-6 right-6 z-[9999] flex flex-col gap-3 w-full max-w-sm pointer-events-none">
         {successMsg && (
           <div className="bg-emerald-50 border-2 border-emerald-200 text-emerald-800 p-4 rounded-xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-2.5 pointer-events-auto">
@@ -468,10 +463,9 @@ export default function ProductionLogEntry() {
         )}
       </div>
 
-      {/* ─── LOGGING FORM CARD ─── */}
+      {/* LOGGING FORM CARD */}
       <SpotlightCard className="p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
 
-        {/* Helper context showing details about the active logging environment */}
         <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
           <div className="text-xs font-bold" style={{ color: '#4a3a2a' }}>
             <span>Logged By: </span>
@@ -481,7 +475,7 @@ export default function ProductionLogEntry() {
 
         <form onSubmit={handleSubmit} className="space-y-8">
 
-          {/* STEP 1: Core Selection — Worker Only */}
+          {/* STEP 1: Worker Selection */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
@@ -512,7 +506,7 @@ export default function ProductionLogEntry() {
           </div>
 
 
-          {/* STEP 2: Operation & Size (Visual Cards) */}
+          {/* STEP 2: Garment Details */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
@@ -566,7 +560,7 @@ export default function ProductionLogEntry() {
             </div>
           </div>
 
-          {/* STEP 3: Quantity & Logging */}
+          {/* STEP 3: Quantities & Submission */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
@@ -576,17 +570,23 @@ export default function ProductionLogEntry() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
-              {/* Piece Sequences Input - hidden for Cutting (automatic) */}
-              {/* Cutting: info banner | Other stages: piece seq textbox + checklist */}
+              {/* ── CUTTING PIECE COUNT TEXTBOX INPUT ── */}
               {operation === 'Cutting' ? (
-                <div className="flex flex-col gap-2 md:col-span-2 p-4 rounded-xl border" style={{ background: '#fff8f0', borderColor: 'rgba(200,131,74,0.25)' }}>
-                  <p className="text-sm font-bold flex items-center gap-2" style={{ color: '#c8834a' }}>
-                    <Scissors className="w-4 h-4" /> Cutting will mint pieces automatically
-                  </p>
-                  <p className="text-xs font-medium" style={{ color: '#9a7a5a' }}>
-                    Selecting <strong>{skuCode || 'a SKU'}</strong> and clicking Submit will call the cutting endpoint
-                    and create <strong>{fetchedSkus.find(s => s.code === skuCode)?.qty_ordered ?? '—'} pieces</strong> (qty from order).
-                  </p>
+                <div className="flex flex-col gap-3 md:col-span-2">
+                  <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                    <Scissors className="w-4 h-4 text-amber-600" /> Cut Piece Count (Total Quantity) *
+                  </label>
+                  <p className="text-[10px] text-slate-500 -mt-2">Enter the exact total number of cut pieces for this SKU bundle block creation.</p>
+                  <input
+                    type="number"
+                    id="cutting-count-input"
+                    placeholder="e.g. 50"
+                    value={cuttingCount}
+                    onChange={(e) => setCuttingCount(e.target.value)}
+                    className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm transition-all"
+                    required
+                    min="1"
+                  />
                 </div>
               ) : (
                 <div className="flex flex-col gap-3 md:col-span-2">
@@ -643,9 +643,6 @@ export default function ProductionLogEntry() {
                 />
               </div>
 
-
-
-
             </div>
           </div>
 
@@ -657,6 +654,7 @@ export default function ProductionLogEntry() {
                 onClick={() => {
                   setPieceSeqs('');
                   setSkuCode('');
+                  setCuttingCount('');
                 }}
                 className="h-14 font-bold rounded-xl text-base px-8 transition-all"
                 style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
@@ -672,7 +670,6 @@ export default function ProductionLogEntry() {
               </button>
             </div>
             
-            {/* Link to Analytics */}
             {skuCode && (
               <a
                 href={`/dashboard/analytics`}
@@ -688,7 +685,7 @@ export default function ProductionLogEntry() {
 
       </SpotlightCard>
 
-      {/* ─── EXCEL PREVIEW MODAL ─── */}
+      {/* EXCEL PREVIEW MODAL */}
       {showPreviewModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -746,11 +743,10 @@ export default function ProductionLogEntry() {
         </div>
       )}
 
-      {/* ─── ORDER NUMBER MODAL (Step 1 before file pick) ─── */}
+      {/* ORDER NUMBER MODAL */}
       {showOrderNumModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 sm:p-8 space-y-5 relative">
-            {/* Header */}
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
@@ -818,7 +814,7 @@ export default function ProductionLogEntry() {
         </div>
       )}
 
-      {/* ─── PIECE CHECKLIST MODAL ─── */}
+      {/* PIECE CHECKLIST MODAL */}
       {showChecklistModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
