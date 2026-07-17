@@ -208,7 +208,7 @@ export default function Home() {
     setIsSuccess(false);
   };
 
-  const handleLoginSubmit = async (e) => {
+ const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!username || !password) return;
 
@@ -216,30 +216,39 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', username.trim());
-      formData.append('password', password);
+      // ─── REVERTED TO JSON PAYLOAD ───
+      // Backend STRICTLY expects a valid JSON dictionary as proven by the 422 error trace.
+      const payload = {
+        username: username.trim(),
+        password: password
+      };
 
-      const res = await fetch(`https://api-lf.kairoxaitech.com/api/v1/auth/login`, {
+      // Sending strictly as application/json via your Next.js local proxy route
+      const res = await fetch(`/api/v1/auth/login`, {
         method: 'POST',
         headers: { 
-          'Content-Type': 'application/x-www-form-urlencoded' 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
         },
-        body: formData.toString(),
+        body: JSON.stringify(payload),
       });
 
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
+        
+        // Pydantic layer validation traces array parameters parsing elements tracking
         if (errData.detail && Array.isArray(errData.detail)) {
           const formattedTraceError = errData.detail.map(err => 
-            `Field [${err.loc ? err.loc.join('.') : 'unknown'}]: ${err.msg}`
+            `Validation error in [${err.loc ? err.loc.join('.') : 'unknown'}]: ${err.msg}`
           ).join(' | ');
           throw new Error(formattedTraceError);
         }
+
         const displayMsg = typeof errData.detail === 'object' 
           ? JSON.stringify(errData.detail) 
           : errData.detail;
-        throw new Error(displayMsg || `Validation Failure (${res.status})`);
+          
+        throw new Error(displayMsg || `Validation Processing Failure (${res.status})`);
       }
 
       const data = await res.json();
@@ -248,6 +257,7 @@ export default function Home() {
       let isRoleMatched = false;
       let targetSessionRole = backendRole; 
 
+      // ─── MATRIX VALIDATION CHECK OVERRIDE ───
       if (activePanel && activePanel.allowedRoles.includes(backendRole)) {
         isRoleMatched = true;
       }
@@ -266,7 +276,6 @@ export default function Home() {
       setLoginError(err.message || 'Authentication Failed. Please check credentials.');
     }
   };
-
   return (
     <>
       <AnimatePresence>
