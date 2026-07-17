@@ -94,7 +94,7 @@ export async function apiAddClientOrder(token, clientId, payload) {
  * @returns {Array<{ id, name, designation, wage_type, monthly_salary, is_active }>}
  */
 export async function apiGetEmployees(token) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/employees?active_only=true`, {
+  const res = await fetch(`${API_BASE_URL}/api/v1/employees`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
   });
