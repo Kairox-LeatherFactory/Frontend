@@ -2,7 +2,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiImportPreview, apiImportCommit, apiGetSkus, apiGetSkuPieces, apiProductionCutting } from '@/lib/api';
+import { apiGetSkus, apiGetSkuPieces, apiProductionCutting } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
@@ -56,10 +56,24 @@ export default function ProductionLogEntry() {
   const [piecesMeta, setPiecesMeta] = useState(null);
   const [checklistError, setChecklistError] = useState('');
   const [checklistSubmitting, setChecklistSubmitting] = useState(false);
-
+  
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
+
+  // Note: Handle additional state variables like fileInputRef, uploadLoading, etc. 
+  // if you have them defined elsewhere or need them for imports.
+  const fileInputRef = useRef(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewData, setPreviewData] = useState(null);
+  const [fileName, setFileName] = useState('');
+  const [commitLoading, setCommitLoading] = useState(false);
+  const [commitSuccess, setCommitSuccess] = useState('');
+  const [uploadError, setUploadError] = useState('');
+  const [showOrderNumModal, setShowOrderNumModal] = useState(false);
+  const [uploadOrderNumber, setUploadOrderNumber] = useState('');
+  const [uploadOrderNumberError, setUploadOrderNumberError] = useState('');
 
   useEffect(() => {
     if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
@@ -79,11 +93,9 @@ export default function ProductionLogEntry() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg(''); setErrorMsg('');
-
     if (isReadOnly) return setErrorMsg('Unauthorized');
     if (!operation || !workerId || !date || !skuCode) return setErrorMsg('Missing fields');
 
-    // தப்பான backendOperationLabel லாஜிக் நீக்கப்பட்டு, நேரடியாக operation-ஐ பயன்படுத்தியுள்ளேன்
     const opRecord = operations.find(o => o.label === operation);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
@@ -121,7 +133,6 @@ export default function ProductionLogEntry() {
     const opRecord = operations.find(o => o.label === operation);
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
     if (!opRecord || !skuObj) return setErrorMsg("Operation or SKU invalid");
-
     setLoadingPieces(true); setShowChecklistModal(true);
     try {
       const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
@@ -141,21 +152,18 @@ export default function ProductionLogEntry() {
     finally { setChecklistSubmitting(false); }
   };
 
-}
+  // Dummy placeholder functions for your file handlers (replace with real logic)
+  const handleFileUpload = () => {};
+  const handleCommit = () => {};
 
-
+  // -- MAIN UI RENDER --
   if (isReadOnly) {
     return (
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pt-12 text-center">
         <div className="card p-8 bg-white border border-red-100 shadow-xl space-y-4">
           <Lock className="w-14 h-14 text-red-400 mx-auto" />
           <h1 className="text-2xl font-black text-slate-800">Access Restricted</h1>
-          <p className="text-slate-500 font-medium">
-            Your active persona (<strong className="text-slate-700">Auditor / Viewer</strong>) does not have write access to the shop floor ledger.
-          </p>
-          <div className="p-4 bg-red-50 border border-red-100 rounded-xl text-xs text-red-800 font-bold">
-            Switch your profile in the top-bar header to Direct Manager, Cutting Manager, or Stitching Manager to log pieces.
-          </div>
+          <p className="text-slate-500 font-medium">Your active persona does not have write access to the shop floor ledger.</p>
         </div>
       </div>
     );
@@ -754,3 +762,4 @@ export default function ProductionLogEntry() {
 
     </div>
   );
+}
