@@ -163,7 +163,7 @@ export default function AdminDashboard() {
   };
 
   const filteredUsers = users.filter(u =>
-    !search || u.username?.toLowerCase().includes(search.toLowerCase()) || u.role?.toLowerCase().includes(search.toLowerCase())
+    !search || u.name?.toLowerCase().includes(search.toLowerCase()) || u.role?.toLowerCase().includes(search.toLowerCase())
   );
 
   // ─── ACCESS DENIED ──────────────────────────────────────────────────────────
