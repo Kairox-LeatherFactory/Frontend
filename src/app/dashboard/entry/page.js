@@ -8,20 +8,48 @@ import SpotlightCard from '@/components/SpotlightCard';
 
 function DynamicDataViewer({ data }) {
   if (!data) return null;
+
+  
+  const formatCellValue = (val) => {
+    if (val === null || val === undefined) return '-';
+    if (typeof val === 'object') {
+    
+      if (val.label) return String(val.label);
+      if (val.name) return String(val.name);
+      if (val.code) return String(val.code);
+      if (val.title) return String(val.title);
+     
+      return JSON.stringify(val);
+    }
+    return String(val);
+  };
+
   if (Array.isArray(data)) {
     if (data.length === 0) return <div className="text-slate-400 italic">Empty list</div>;
+    
     if (typeof data[0] === 'object' && data[0] !== null) {
       const keys = Array.from(new Set(data.flatMap(Object.keys)));
       return (
         <div className="overflow-x-auto rounded-lg border border-slate-200">
           <table className="min-w-full text-left text-sm bg-white">
             <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider">
-              <tr>{keys.map(k => <th key={k} className="px-4 py-3 border-b">{k.replace(/_/g, ' ')}</th>)}</tr>
+              <tr>
+                {keys.map(k => (
+                  <th key={k} className="px-4 py-3 border-b">
+                    {k.replace(/_/g, ' ')}
+                  </th>
+                ))}
+              </tr>
             </thead>
             <tbody className="divide-y">
               {data.map((row, i) => (
                 <tr key={i} className="hover:bg-slate-50">
-                  {keys.map(k => <td key={k} className="px-4 py-2 text-slate-700">{String(row[k] ?? '-')}</td>)}
+                  {keys.map(k => (
+                    <td key={k} className="px-4 py-2 text-slate-700 font-medium">
+                      {/*                 */}
+                      {formatCellValue(row[k])}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -29,9 +57,14 @@ function DynamicDataViewer({ data }) {
         </div>
       );
     }
-    return <ul className="list-disc pl-5">{data.map((item, i) => <li key={i}>{String(item)}</li>)}</ul>;
+    return (
+      <ul className="list-disc pl-5">
+        {data.map((item, i) => <li key={i}>{formatCellValue(item)}</li>)}
+      </ul>
+    );
   }
-  return <span className="text-slate-700 font-medium">{String(data)}</span>;
+
+  return <span className="text-slate-700 font-medium">{formatCellValue(data)}</span>;
 }
 
 export default function ProductionLogEntry() {
