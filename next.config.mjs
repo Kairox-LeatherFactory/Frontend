@@ -4,7 +4,7 @@ const nextConfig = {
     return [
       {
         source: '/api/v1/:path*',
-        destination: 'https://frontend-rust-pi-23.vercel.app/api/v1/:path*',
+       destination: 'https://api-lf.kairoxaitech.com/api/v1/:path*',
       },
     ];
   },
