@@ -568,13 +568,10 @@ function FloorCommandView({ workers = [], token }) {
     }
   };
 
-  const dailyWorkers = useMemo(
-    () => workers.filter((w) => {
-      const wt = (w.wage_type || '').toUpperCase();
-      return wt === 'DAILY_WAGE' || wt === 'PIECE_RATE';
-    }),
-    [workers]
-  );
+  const dailyWorkers = useMemo(() => {
+ 
+  return workers; 
+}, [workers]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -695,7 +692,13 @@ function FloorCommandView({ workers = [], token }) {
                       <span className="block text-[10px] font-mono" style={{ color: '#9a7a5a' }}>{String(w.id).slice(0, 8)}…</span>
                     </td>
                     <td className="p-3 font-semibold" style={{ color: '#a86022' }}>{w.designation || '—'}</td>
-                    <td className="p-3"><Badge label="Daily Wage" type="proxy" /></td>
+              
+<td className="p-3">
+  <Badge 
+    label={w.wage_type === 'piece_rate' ? 'Daily Wage' : 'Monthly'} 
+    type={w.wage_type === 'piece_rate' ? 'proxy' : 'active'} 
+  />
+</td>
                   </tr>
                 ))}
               </tbody>
@@ -1205,7 +1208,7 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if ((activeTab === 'proxy' || activeTab === 'admin')) {
-      apiFetch('/api/v1/employees?wage_type=PIECE_RATE', {}, token)
+      apiFetch('/api/v1/employees', {}, token)
         .then(setWorkers)
         .catch(() => { });
     }

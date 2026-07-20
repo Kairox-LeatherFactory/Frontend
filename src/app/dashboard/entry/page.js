@@ -2,38 +2,104 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiGetSkus, apiGetSkuPieces, apiProductionCutting } from '@/lib/api';
+import { apiGetSkus, apiGetSkuPieces, apiProductionCutting, apiImportPreview, apiImportCommit } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 function DynamicDataViewer({ data }) {
-  if (!data) return null;
-  if (Array.isArray(data)) {
-    if (data.length === 0) return <div className="text-slate-400 italic">Empty list</div>;
-    if (typeof data[0] === 'object' && data[0] !== null) {
-      const keys = Array.from(new Set(data.flatMap(Object.keys)));
-      return (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-full text-left text-sm bg-white">
-            <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider">
-              <tr>{keys.map(k => <th key={k} className="px-4 py-3 border-b">{k.replace(/_/g, ' ')}</th>)}</tr>
-            </thead>
-            <tbody className="divide-y">
-              {data.map((row, i) => (
-                <tr key={i} className="hover:bg-slate-50">
-                  {keys.map(k => <td key={k} className="px-4 py-2 text-slate-700">{String(row[k] ?? '-')}</td>)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
-    return <ul className="list-disc pl-5">{data.map((item, i) => <li key={i}>{String(item)}</li>)}</ul>;
-  }
-  return <span className="text-slate-700 font-medium">{String(data)}</span>;
-}
+  if (!data) return <div className="text-slate-400 italic text-center p-4">No data available</div>;
 
+  // 1. Backend response Summary Object-ஆக இருந்தால் (clients ஃபீல்ட் இருந்தால்)
+  if (data.clients) {
+    const clientsData = Object.entries(data.clients);
+
+    return (
+      <div className="space-y-6">
+        {clientsData.map(([clientName, details]) => (
+          <div key={clientName} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+            
+            {/* Header / Client Badge */}
+            <div className="flex items-center justify-between border-b pb-3">
+              <span className="text-xs font-black uppercase text-amber-700 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200">
+                Sheet / Client: {clientName}
+              </span>
+              <span className="text-xs font-bold text-slate-500">
+                Warnings: <strong className="text-emerald-600">{details.warnings?.length || 0}</strong>
+              </span>
+            </div>
+
+            {/* Key Summary Cards */}
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Order Lines</p>
+                <p className="text-lg font-black text-slate-800">{details.order_lines}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Pieces Ordered</p>
+                <p className="text-lg font-black text-amber-600">{details.pieces_ordered?.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Styles Count</p>
+                <p className="text-lg font-black text-slate-800">{details.styles?.length || 0}</p>
+              </div>
+            </div>
+
+            {/* Styles List Table */}
+            {details.styles && details.styles.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Detected Styles</h4>
+                <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-wrap gap-2">
+                    {details.styles.map((style, idx) => (
+                      <span key={idx} className="text-xs font-bold bg-white text-slate-700 px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
+                        {style}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // 2. Normal Table Rows-ஆக இருந்தால் (Fallback Table Viewer)
+  let tableRows = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data).find(Array.isArray) || [data] : []);
+
+  if (tableRows.length === 0) return <div className="text-slate-400 italic text-center p-4">No records found</div>;
+
+  const keys = Array.from(new Set(tableRows.flatMap(row => (row && typeof row === 'object') ? Object.keys(row) : [])));
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
+      <table className="min-w-full text-left text-xs bg-white">
+        <thead className="bg-slate-100 text-slate-700 font-black uppercase tracking-wider">
+          <tr>
+            {keys.map(k => (
+              <th key={k} className="px-4 py-3 border-b border-slate-200 whitespace-nowrap">
+                {k.replace(/_/g, ' ')}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {tableRows.map((row, i) => (
+            <tr key={i} className="hover:bg-slate-50 transition-colors">
+              {keys.map(k => (
+                <td key={k} className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">
+                  {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
   const { workers, addScanEvent, operations } = useData();
@@ -56,7 +122,7 @@ export default function ProductionLogEntry() {
   const [piecesMeta, setPiecesMeta] = useState(null);
   const [checklistError, setChecklistError] = useState('');
   const [checklistSubmitting, setChecklistSubmitting] = useState(false);
-  
+
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
@@ -111,15 +177,15 @@ export default function ProductionLogEntry() {
 
     let parsedSeqs = [];
     if (pieceSeqs) {
-        const parts = pieceSeqs.split(',').map(s => s.trim()).filter(Boolean);
-        parts.forEach(part => {
-            if (part.includes('-')) {
-                const [s, e] = part.split('-').map(n => parseInt(n, 10));
-                for (let i = s; i <= e; i++) parsedSeqs.push(i);
-            } else {
-                parsedSeqs.push(parseInt(part, 10));
-            }
-        });
+      const parts = pieceSeqs.split(',').map(s => s.trim()).filter(Boolean);
+      parts.forEach(part => {
+        if (part.includes('-')) {
+          const [s, e] = part.split('-').map(n => parseInt(n, 10));
+          for (let i = s; i <= e; i++) parsedSeqs.push(i);
+        } else {
+          parsedSeqs.push(parseInt(part, 10));
+        }
+      });
     }
 
     try {
@@ -152,7 +218,7 @@ export default function ProductionLogEntry() {
     finally { setChecklistSubmitting(false); }
   };
 
- const handleFileUpload = async (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !uploadOrderNumber) {
       setUploadOrderNumberError('Please enter an Order Number first');
@@ -161,7 +227,7 @@ export default function ProductionLogEntry() {
     setUploadLoading(true);
     setUploadError('');
     try {
-      
+
       const data = await apiImportPreview(token, file, uploadOrderNumber);
       setPreviewData(data);
       setFileName(file.name);
@@ -179,7 +245,7 @@ export default function ProductionLogEntry() {
     if (!file) return;
     setCommitLoading(true);
     try {
-      
+
       await apiImportCommit(token, file, uploadOrderNumber);
       setCommitSuccess('File imported and database updated successfully!');
       setShowPreviewModal(false);
@@ -253,7 +319,7 @@ export default function ProductionLogEntry() {
             <div className="flex-1">
               <div className="flex justify-between items-start">
                 <p className="font-extrabold">Transaction Confirmed</p>
-                <button onClick={() => setSuccessMsg('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
+                <button onClick={() => setSuccessMsg('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4" /></button>
               </div>
               <p className="text-xs text-emerald-600 mt-0.5 break-words whitespace-pre-wrap">{successMsg}</p>
             </div>
@@ -266,7 +332,7 @@ export default function ProductionLogEntry() {
             <div className="flex-1">
               <div className="flex justify-between items-start">
                 <p className="font-extrabold">Import Successful</p>
-                <button onClick={() => setCommitSuccess('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
+                <button onClick={() => setCommitSuccess('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4" /></button>
               </div>
               <p className="text-xs text-emerald-600 mt-0.5 break-words whitespace-pre-wrap">{commitSuccess}</p>
             </div>
@@ -279,7 +345,7 @@ export default function ProductionLogEntry() {
             <div className="flex-1">
               <div className="flex justify-between items-start">
                 <p className="font-extrabold text-red-700">Operation Failed</p>
-                <button onClick={() => { setErrorMsg(''); setUploadError(''); }} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
+                <button onClick={() => { setErrorMsg(''); setUploadError(''); }} className="opacity-50 hover:opacity-100"><X className="w-4 h-4" /></button>
               </div>
               <p className="text-xs text-red-600 mt-0.5 break-words whitespace-pre-wrap">{errorMsg || uploadError}</p>
             </div>
@@ -493,7 +559,7 @@ export default function ProductionLogEntry() {
                 <Rocket className="w-5 h-5" /> Submit Event
               </button>
             </div>
-            
+
             {skuCode && (
               <a
                 href={`/dashboard/analytics`}
@@ -601,8 +667,8 @@ export default function ProductionLogEntry() {
                 onChange={(e) => { setUploadOrderNumber(e.target.value.trim()); setUploadOrderNumberError(''); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && uploadOrderNumber.trim()) { e.preventDefault(); fileInputRef.current?.click(); } }}
                 className={`w-full px-4 py-3 rounded-xl border text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 transition-colors ${uploadOrderNumberError
-                    ? 'border-red-400 bg-red-50 focus:ring-red-400/20'
-                    : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
+                  ? 'border-red-400 bg-red-50 focus:ring-red-400/20'
+                  : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
                   }`}
               />
               {uploadOrderNumberError ? (
@@ -732,10 +798,10 @@ export default function ProductionLogEntry() {
                           );
                         }}
                         className={`relative p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${isSelected
-                            ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
-                            : isDone
-                              ? 'border-emerald-200 bg-emerald-50 opacity-70'
-                              : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
+                          ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
+                          : isDone
+                            ? 'border-emerald-200 bg-emerald-50 opacity-70'
+                            : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
                           }`}
                       >
                         <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : '#2d1f0e' }}>
