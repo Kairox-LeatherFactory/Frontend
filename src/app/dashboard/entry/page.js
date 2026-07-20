@@ -9,44 +9,57 @@ import SpotlightCard from '@/components/SpotlightCard';
 function DynamicDataViewer({ data }) {
   if (!data) return null;
 
-  
+  // Object மற்றும் Array-களை அழகா Text-ஆக மாற்றுவதற்கான Helper Function
   const formatCellValue = (val) => {
-    if (val === null || val === undefined) return '-';
+    if (val === null || val === undefined || val === '') return '-';
+
+    // 1. Array-ஆக இருந்தால் (எ.கா: Sizes [S, M, L]) -> கமா போட்டுப் பிரித்துக் காட்டும்
+    if (Array.isArray(val)) {
+      return val.map(item => typeof item === 'object' ? formatCellValue(item) : String(item)).join(', ');
+    }
+
+    // 2. Object-ஆக இருந்தால் (எ.கா: { label: "Red", code: "R1" })
     if (typeof val === 'object') {
-    
+      // பிரதான பெயர்கள் இருந்தால் அதை மட்டும் எடுக்கும்
       if (val.label) return String(val.label);
       if (val.name) return String(val.name);
       if (val.code) return String(val.code);
       if (val.title) return String(val.title);
-     
-      return JSON.stringify(val);
+      if (val.sku_code) return String(val.sku_code);
+      
+      // வேறு எந்த கீகள் இருந்தாலும் அவற்றின் மதிப்புகளை மட்டும் கமா போட்டு காட்டும்
+      const values = Object.values(val).filter(v => typeof v !== 'object' && v !== null);
+      if (values.length > 0) return values.join(' - ');
+
+      return '-';
     }
+
+    // 3. சாதாரண Text/Number-ஆக இருந்தால்
     return String(val);
   };
 
   if (Array.isArray(data)) {
-    if (data.length === 0) return <div className="text-slate-400 italic">Empty list</div>;
-    
+    if (data.length === 0) return <div className="text-slate-400 italic text-center p-4">Empty list</div>;
+
     if (typeof data[0] === 'object' && data[0] !== null) {
       const keys = Array.from(new Set(data.flatMap(Object.keys)));
       return (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="min-w-full text-left text-sm bg-white">
-            <thead className="bg-slate-50 text-slate-600 font-bold text-xs uppercase tracking-wider">
+        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
+          <table className="min-w-full text-left text-xs bg-white">
+            <thead className="bg-slate-100 text-slate-700 font-black uppercase tracking-wider">
               <tr>
                 {keys.map(k => (
-                  <th key={k} className="px-4 py-3 border-b">
+                  <th key={k} className="px-4 py-3 border-b border-slate-200 whitespace-nowrap">
                     {k.replace(/_/g, ' ')}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y">
+            <tbody className="divide-y divide-slate-100">
               {data.map((row, i) => (
-                <tr key={i} className="hover:bg-slate-50">
+                <tr key={i} className="hover:bg-slate-50/80 transition-colors">
                   {keys.map(k => (
-                    <td key={k} className="px-4 py-2 text-slate-700 font-medium">
-                      {/*                 */}
+                    <td key={k} className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">
                       {formatCellValue(row[k])}
                     </td>
                   ))}
@@ -58,7 +71,7 @@ function DynamicDataViewer({ data }) {
       );
     }
     return (
-      <ul className="list-disc pl-5">
+      <ul className="list-disc pl-5 text-xs text-slate-700">
         {data.map((item, i) => <li key={i}>{formatCellValue(item)}</li>)}
       </ul>
     );
