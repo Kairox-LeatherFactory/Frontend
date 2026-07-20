@@ -1,7 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Removed rewrites to prevent Turbopack panics.
-  // We use a custom Route Handler proxy in src/app/api/v1/[...path]/route.js instead.
+  async rewrites() {
+    return [
+      {
+        source: '/api/v1/:path*',
+        destination: 'https://frontend-rust-pi-23.vercel.app/api/v1/:path*',
+      },
+    ];
+  },
 };
 
 export default nextConfig;

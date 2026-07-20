@@ -27,20 +27,23 @@ import { useData } from '@/context/DataContext';
 
 function OrdersExplorer() {
   const { orders: realOrders } = useData();
-  const orders = realOrders || [];
+  const orders = useMemo(() => realOrders || [], [realOrders]);
 
   const [expandedOrders, setExpandedOrders] = useState({});
   const [expandedStyles, setExpandedStyles] = useState({});
   const [activeItem, setActiveItem] = useState(null);
 
   const orderGroups = useMemo(() => {
-    if (!orders) return [];
+    if (!orders || orders.length === 0) return [];
     const groups = {};
     orders.forEach((styleOrder) => {
-      const poNum = styleOrder.id.split('-')[1] || 'Unknown';
-      const orderName = `${styleOrder.client} (PO: ${poNum})`;
+      // Safe fallback for PO Number and Client Name
+      const poNum = styleOrder?.po_number || styleOrder?.order_number || (styleOrder?.id ? String(styleOrder.id).slice(0, 8) : 'ORD-101');
+      const clientName = styleOrder?.client || styleOrder?.client_name || 'Client';
+      const orderName = `${clientName} (PO: ${poNum})`;
+
       if (!groups[orderName]) {
-        groups[orderName] = { id: orderName, client: styleOrder.client, po: poNum, styles: [] };
+        groups[orderName] = { id: orderName, client: clientName, po: poNum, styles: [] };
       }
       groups[orderName].styles.push(styleOrder);
     });
@@ -50,7 +53,6 @@ function OrdersExplorer() {
   const toggleOrder = (id) => setExpandedOrders((prev) => ({ ...prev, [id]: !prev[id] }));
   const toggleStyle = (id) => setExpandedStyles((prev) => ({ ...prev, [id]: !prev[id] }));
 
-  // Glass styles for light beige theme
   const glassPanelStyle = {
     background: 'rgba(255,255,255,0.7)',
     backdropFilter: 'blur(20px)',
@@ -76,12 +78,8 @@ function OrdersExplorer() {
               onClick={() => { toggleOrder(group.id); setActiveItem({ type: 'order', data: group }); }}
               className="flex items-center gap-2 p-2.5 rounded-xl cursor-pointer transition-all duration-200 group"
               style={{
-                background: activeItem?.data?.id === group.id
-                  ? 'rgba(200,131,74,0.1)'
-                  : 'transparent',
-                border: activeItem?.data?.id === group.id
-                  ? '1px solid rgba(200,131,74,0.2)'
-                  : '1px solid transparent',
+                background: activeItem?.data?.id === group.id ? 'rgba(200,131,74,0.1)' : 'transparent',
+                border: activeItem?.data?.id === group.id ? '1px solid rgba(200,131,74,0.2)' : '1px solid transparent',
               }}
             >
               {expandedOrders[group.id]
@@ -95,53 +93,57 @@ function OrdersExplorer() {
 
             {expandedOrders[group.id] && (
               <div className="pl-5 flex flex-col gap-0.5 ml-3 border-l border-slate-200/50 mt-0.5">
-                {group.styles.map((style) => (
-                  <div key={style.id} className="flex flex-col gap-0.5">
-                    <div
-                      onClick={() => { toggleStyle(style.id); setActiveItem({ type: 'style', data: style, parent: group }); }}
-                      className="flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all duration-200 group"
-                      style={{
-                        background: activeItem?.data?.id === style.id ? 'rgba(255,255,255,0.6)' : 'transparent',
-                        border: activeItem?.data?.id === style.id ? '1px solid rgba(255,255,255,1)' : '1px solid transparent',
-                      }}
-                    >
-                      {expandedStyles[style.id]
-                        ? <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
-                        : <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-slate-500 shrink-0 transition-colors" />}
-                      <Package className="w-3 h-3 text-amber-500/80 shrink-0" />
-                      <span className={`font-semibold text-[11px] truncate select-none ${activeItem?.data?.id === style.id ? 'text-[#2d1f0e]' : 'text-slate-500 group-hover:text-slate-700'} transition-colors`}>
-                        {style.style}
-                      </span>
-                    </div>
-
-                    {expandedStyles[style.id] && (
-                      <div className="pl-4 flex flex-col gap-0.5 ml-2 border-l border-slate-100 mb-1">
-                        {(style.skus || []).map((sku) =>
-                          [1, 2].map((n) => {
-                            const piece = { id: `${sku.code}-P${n}`, label: `Piece 00${n}`, sku, style, group };
-                            return (
-                              <div
-                                key={piece.id}
-                                onClick={() => setActiveItem({ type: 'piece', data: piece })}
-                                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 group"
-                                style={{
-                                  background: activeItem?.data?.id === piece.id ? 'rgba(52,211,153,0.1)' : 'transparent',
-                                  border: activeItem?.data?.id === piece.id ? '1px solid rgba(52,211,153,0.2)' : '1px solid transparent',
-                                }}
-                              >
-                                <span className="w-1.5 h-1.5 rounded-full shrink-0"
-                                  style={{ background: activeItem?.data?.id === piece.id ? '#10b981' : '#cbd5e1' }} />
-                                <span className={`text-[10px] truncate select-none font-medium ${activeItem?.data?.id === piece.id ? 'text-emerald-700' : 'text-slate-400 group-hover:text-slate-600'} transition-colors`}>
-                                  {sku.color_name} · {sku.size} · {piece.label}
-                                </span>
-                              </div>
-                            );
-                          })
-                        )}
+                {group.styles.map((style, sIdx) => {
+                  const styleId = style.id || style.style_code || `style-${sIdx}`;
+                  const styleName = style.style || style.style_name || style.style_code || 'Standard Style';
+                  return (
+                    <div key={styleId} className="flex flex-col gap-0.5">
+                      <div
+                        onClick={() => { toggleStyle(styleId); setActiveItem({ type: 'style', data: style, parent: group }); }}
+                        className="flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all duration-200 group"
+                        style={{
+                          background: activeItem?.data?.id === styleId ? 'rgba(255,255,255,0.6)' : 'transparent',
+                          border: activeItem?.data?.id === styleId ? '1px solid rgba(255,255,255,1)' : '1px solid transparent',
+                        }}
+                      >
+                        {expandedStyles[styleId]
+                          ? <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                          : <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-slate-500 shrink-0 transition-colors" />}
+                        <Package className="w-3 h-3 text-amber-500/80 shrink-0" />
+                        <span className={`font-semibold text-[11px] truncate select-none ${activeItem?.data?.id === styleId ? 'text-[#2d1f0e]' : 'text-slate-500 group-hover:text-slate-700'} transition-colors`}>
+                          {styleName}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                ))}
+
+                      {expandedStyles[styleId] && (
+                        <div className="pl-4 flex flex-col gap-0.5 ml-2 border-l border-slate-100 mb-1">
+                          {(style.skus || [{ code: 'SKU-01', color_name: 'Default', size: 'M' }]).map((sku, skuIdx) =>
+                            [1, 2].map((n) => {
+                              const piece = { id: `${sku.code || 'SKU'}-P${n}-${skuIdx}`, label: `Piece 00${n}`, sku, style, group };
+                              return (
+                                <div
+                                  key={piece.id}
+                                  onClick={() => setActiveItem({ type: 'piece', data: piece })}
+                                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 group"
+                                  style={{
+                                    background: activeItem?.data?.id === piece.id ? 'rgba(52,211,153,0.1)' : 'transparent',
+                                    border: activeItem?.data?.id === piece.id ? '1px solid rgba(52,211,153,0.2)' : '1px solid transparent',
+                                  }}
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0"
+                                    style={{ background: activeItem?.data?.id === piece.id ? '#10b981' : '#cbd5e1' }} />
+                                  <span className={`text-[10px] truncate select-none font-medium ${activeItem?.data?.id === piece.id ? 'text-emerald-700' : 'text-slate-400 group-hover:text-slate-600'} transition-colors`}>
+                                    {sku.color_name || 'Standard'} · {sku.size || 'Free Size'} · {piece.label}
+                                  </span>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -157,7 +159,6 @@ function OrdersExplorer() {
         className="flex-1 rounded-2xl overflow-hidden flex flex-col min-h-[400px]"
         style={glassPanelStyle}
       >
-        {/* Panel Header */}
         <div className="px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shrink-0 border-b border-white/50 bg-white/40">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center"
@@ -178,7 +179,6 @@ function OrdersExplorer() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 relative">
-          {/* Watermark */}
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden">
             <span className="text-[60px] sm:text-[100px] font-black rotate-[-8deg] tracking-tight"
                   style={{ color: 'rgba(200,131,74,0.03)' }}>response</span>
@@ -199,22 +199,22 @@ function OrdersExplorer() {
                   <tbody className="divide-y divide-slate-100/50">
                     {activeItem.type === 'piece' && (
                       <tr className="hover:bg-white/40 transition-colors">
-                        <td className="p-4 text-slate-700 font-semibold">{activeItem.data.label} ({activeItem.data.sku.size})</td>
-                        <td className="p-4 text-slate-500">{activeItem.data.style.style}</td>
-                        <td className="p-4 text-slate-500">{activeItem.data.group.po}</td>
+                        <td className="p-4 text-slate-700 font-semibold">{activeItem.data.label} ({activeItem.data.sku?.size || 'M'})</td>
+                        <td className="p-4 text-slate-500">{activeItem.data.style?.style || activeItem.data.style?.style_name || 'Style'}</td>
+                        <td className="p-4 text-slate-500">{activeItem.data.group?.po || 'PO'}</td>
                       </tr>
                     )}
-                    {activeItem.type === 'style' && (activeItem.data.skus || []).map((sku, idx) => (
+                    {activeItem.type === 'style' && (activeItem.data.skus || [{ size: 'M' }]).map((sku, idx) => (
                       <tr key={idx} className="hover:bg-white/40 transition-colors">
-                        <td className="p-4 text-slate-400 italic text-sm">All pieces ({sku.size})</td>
-                        <td className="p-4 text-slate-700 font-semibold">{activeItem.data.style}</td>
-                        <td className="p-4 text-slate-500">{activeItem.parent.po}</td>
+                        <td className="p-4 text-slate-400 italic text-sm">All pieces ({sku.size || 'All Sizes'})</td>
+                        <td className="p-4 text-slate-700 font-semibold">{activeItem.data.style || activeItem.data.style_name || 'Style'}</td>
+                        <td className="p-4 text-slate-500">{activeItem.parent?.po || 'PO'}</td>
                       </tr>
                     ))}
-                    {activeItem.type === 'order' && activeItem.data.styles.map((style, idx) => (
+                    {activeItem.type === 'order' && (activeItem.data.styles || []).map((style, idx) => (
                       <tr key={idx} className="hover:bg-white/40 transition-colors">
                         <td className="p-4 text-slate-400 italic text-sm">All pieces</td>
-                        <td className="p-4 text-slate-700 font-semibold">{style.style}</td>
+                        <td className="p-4 text-slate-700 font-semibold">{style.style || style.style_name || 'Style'}</td>
                         <td className="p-4 text-slate-500">{activeItem.data.po}</td>
                       </tr>
                     ))}
@@ -254,9 +254,6 @@ function OrdersExplorer() {
   );
 }
 
-/* ─────────────────────────────────────────────────────
-   STAT CARD COMPONENT
-───────────────────────────────────────────────────── */
 function StatCard({ icon: Icon, label, value, gradient, iconColor }) {
   return (
     <div
@@ -281,9 +278,6 @@ function StatCard({ icon: Icon, label, value, gradient, iconColor }) {
   );
 }
 
-/* ─────────────────────────────────────────────────────
-   MAIN PAGE
-───────────────────────────────────────────────────── */
 export default function AnalyticsDashboard() {
   const { token } = useAuth();
 
@@ -295,6 +289,7 @@ export default function AnalyticsDashboard() {
 
   useEffect(() => {
     if (!token) return;
+    let isMounted = true;
     const fetchAnalytics = async () => {
       setLoading(true);
       try {
@@ -304,16 +299,20 @@ export default function AnalyticsDashboard() {
           apiGetStageSpreadAlerts(token).catch(() => []),
           apiGetFreightRiskAlerts(token, todayDate).catch(() => []),
         ]);
-        setOverview(overviewData);
-        setStageAlerts(Array.isArray(stageData) ? stageData : []);
-        setFreightAlerts(Array.isArray(freightData) ? freightData : []);
+
+        if (isMounted) {
+          setOverview(overviewData);
+          setStageAlerts(Array.isArray(stageData) ? stageData : []);
+          setFreightAlerts(Array.isArray(freightData) ? freightData : []);
+        }
       } catch {
-        setError('Failed to load analytics dashboard');
+        if (isMounted) setError('Failed to load analytics dashboard');
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
     fetchAnalytics();
+    return () => { isMounted = false; };
   }, [token]);
 
   if (loading) {
@@ -333,7 +332,6 @@ export default function AnalyticsDashboard() {
       className="min-h-screen -m-6 p-4 sm:p-8 pb-16"
       style={{ background: 'linear-gradient(135deg, #fdfbf7 0%, #f4efe6 100%)' }}
     >
-      {/* ── HERO HEADER ── */}
       <div className="mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 relative z-10">
         <div>
           <div className="flex items-center gap-3 mb-2">
@@ -360,9 +358,7 @@ export default function AnalyticsDashboard() {
       )}
 
       <div className="space-y-12">
-        {/* ── METRICS & ALERTS ── */}
         <div className="space-y-6 relative z-10">
-          {/* ── STAT CARDS ── */}
           {overview && (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <StatCard
@@ -382,23 +378,21 @@ export default function AnalyticsDashboard() {
               <StatCard
                 icon={Box}
                 label="Pieces Ordered"
-                value={(overview.total_pieces_ordered || 0).toLocaleString()}
+                value={(overview.total_pieces_ordered || overview.total_pieces || 0).toLocaleString()}
                 gradient="linear-gradient(135deg, rgba(59,130,246,0.1), rgba(255,255,255,0.6))"
                 iconColor="#3b82f6"
               />
               <StatCard
                 icon={Zap}
                 label="Events Logged"
-                value={(overview.total_operations_logged || 0).toLocaleString()}
+                value={(overview.total_operations_logged || overview.events_count || 0).toLocaleString()}
                 gradient="linear-gradient(135deg, rgba(16,185,129,0.1), rgba(255,255,255,0.6))"
                 iconColor="#10b981"
               />
             </div>
           )}
 
-          {/* ── ALERTS GRID ── */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
             {/* FREIGHT RISK */}
             <div className="flex flex-col gap-4">
               <div className="flex flex-col sm:flex-row sm:items-center gap-3">
@@ -426,8 +420,8 @@ export default function AnalyticsDashboard() {
                       <div key={i} className="p-4 mb-2 rounded-xl bg-white/80 border border-white shadow-sm transition-transform hover:-translate-y-0.5">
                         <div className="flex justify-between items-start mb-3">
                           <div>
-                            <h4 className="font-black text-slate-800 text-sm">{alert.order_id || 'Unknown Order'}</h4>
-                            <p className="text-slate-500 text-xs font-medium mt-0.5">{alert.style_name || 'N/A'} — {alert.client_name || 'N/A'}</p>
+                            <h4 className="font-black text-slate-800 text-sm">{alert.order_number || alert.order_id || 'Unknown Order'}</h4>
+                            <p className="text-slate-500 text-xs font-medium mt-0.5">{alert.style_name || alert.style || 'N/A'} — {alert.client_name || alert.client || 'N/A'}</p>
                           </div>
                           <span className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[9px] font-black text-red-600 bg-red-50 border border-red-100">
                             <AlertCircle className="w-3 h-3" /> RISK
@@ -441,7 +435,7 @@ export default function AnalyticsDashboard() {
                           <div className="flex items-center gap-1.5 text-amber-700 font-semibold bg-white px-2 py-1 rounded-md shadow-sm">
                             <Box className="w-3.5 h-3.5" />
                             Progress: <span className="font-black text-amber-600">
-                              {Math.round(((alert.completed_qty || 0) / (alert.ordered_qty || 1)) * 100)}%
+                              {Math.round(((alert.completed_qty || alert.completed_pieces || 0) / (alert.ordered_qty || alert.total_pieces || 1)) * 100)}%
                             </span>
                           </div>
                         </div>
@@ -487,8 +481,8 @@ export default function AnalyticsDashboard() {
                       <div key={i} className="p-4 mb-2 rounded-xl bg-white/80 border border-white shadow-sm transition-transform hover:-translate-y-0.5">
                         <div className="flex justify-between items-center mb-3">
                           <div>
-                            <h4 className="font-black text-slate-800 text-sm">{alert.style || 'Unknown Style'}</h4>
-                            <p className="text-slate-500 text-xs mt-0.5">Gap: <span className="text-[#c8834a] font-bold">{alert.gap} pcs</span></p>
+                            <h4 className="font-black text-slate-800 text-sm">{alert.style || alert.style_name || 'Unknown Style'}</h4>
+                            <p className="text-slate-500 text-xs mt-0.5">Gap: <span className="text-[#c8834a] font-bold">{alert.gap || alert.pieces_gap || 0} pcs</span></p>
                           </div>
                           <span className="px-2.5 py-1 rounded-md text-[9px] font-black text-[#c8834a] bg-orange-50 border border-orange-100">
                             Bottleneck
@@ -499,12 +493,12 @@ export default function AnalyticsDashboard() {
                           <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100/50">
                             <p className="text-emerald-600 font-bold mb-1 text-[9px] uppercase tracking-wider">Cutting Done</p>
                             <p className="text-emerald-700 font-black text-base">CUTTING</p>
-                            <p className="text-emerald-600/80 font-semibold">{alert.cut || 0} pcs</p>
+                            <p className="text-emerald-600/80 font-semibold">{alert.cut || alert.cutting_qty || 0} pcs</p>
                           </div>
                           <div className="p-2.5 rounded-xl bg-red-50 border border-red-100/50">
                             <p className="text-red-600 font-bold mb-1 text-[9px] uppercase tracking-wider">Lagging Stage</p>
-                            <p className="text-red-700 font-black text-base truncate">{alert.stage || 'N/A'}</p>
-                            <p className="text-red-600/80 font-semibold">{alert.reached_stage || 0} pcs</p>
+                            <p className="text-red-700 font-black text-base truncate">{alert.stage || alert.lagging_stage || 'N/A'}</p>
+                            <p className="text-red-600/80 font-semibold">{alert.reached_stage || alert.lagging_qty || 0} pcs</p>
                           </div>
                         </div>
                       </div>
@@ -521,11 +515,9 @@ export default function AnalyticsDashboard() {
                 )}
               </div>
             </div>
-
           </div>
         </div>
 
-        {/* ── ORDERS EXPLORER ── */}
         <div className="pt-6 relative z-10" style={{ borderTop: '1px solid rgba(0,0,0,0.05)' }}>
           <div className="flex items-center gap-3 mb-6">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white shadow-sm border border-slate-100">
