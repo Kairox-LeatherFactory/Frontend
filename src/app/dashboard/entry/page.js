@@ -2,39 +2,29 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiGetSkus, apiGetSkuPieces, apiProductionCutting,apiImportPreview,apiImportCommit } from '@/lib/api';
+import { apiGetSkus, apiGetSkuPieces, apiProductionCutting, apiImportPreview, apiImportCommit } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 function DynamicDataViewer({ data }) {
   if (!data) return null;
-
-  // Object மற்றும் Array-களை அழகா Text-ஆக மாற்றுவதற்கான Helper Function
   const formatCellValue = (val) => {
     if (val === null || val === undefined || val === '') return '-';
-
-    // 1. Array-ஆக இருந்தால் (எ.கா: Sizes [S, M, L]) -> கமா போட்டுப் பிரித்துக் காட்டும்
-    if (Array.isArray(val)) {
+      if (Array.isArray(val)) {
       return val.map(item => typeof item === 'object' ? formatCellValue(item) : String(item)).join(', ');
     }
-
-    // 2. Object-ஆக இருந்தால் (எ.கா: { label: "Red", code: "R1" })
-    if (typeof val === 'object') {
-      // பிரதான பெயர்கள் இருந்தால் அதை மட்டும் எடுக்கும்
+      if (typeof val === 'object') {
       if (val.label) return String(val.label);
       if (val.name) return String(val.name);
       if (val.code) return String(val.code);
       if (val.title) return String(val.title);
       if (val.sku_code) return String(val.sku_code);
-      
-      // வேறு எந்த கீகள் இருந்தாலும் அவற்றின் மதிப்புகளை மட்டும் கமா போட்டு காட்டும்
+
+
       const values = Object.values(val).filter(v => typeof v !== 'object' && v !== null);
       if (values.length > 0) return values.join(' - ');
-
       return '-';
     }
-
-    // 3. சாதாரண Text/Number-ஆக இருந்தால்
     return String(val);
   };
 
@@ -77,7 +67,7 @@ function DynamicDataViewer({ data }) {
     );
   }
 
-  return <span className="text-slate-700 font-medium">{formatCellValue(data)}</span>;
+ return <span className="text-slate-700 font-medium">{formatCellValue(data)}</span>;
 }
 
 export default function ProductionLogEntry() {
@@ -102,7 +92,7 @@ export default function ProductionLogEntry() {
   const [piecesMeta, setPiecesMeta] = useState(null);
   const [checklistError, setChecklistError] = useState('');
   const [checklistSubmitting, setChecklistSubmitting] = useState(false);
-  
+
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
@@ -157,15 +147,15 @@ export default function ProductionLogEntry() {
 
     let parsedSeqs = [];
     if (pieceSeqs) {
-        const parts = pieceSeqs.split(',').map(s => s.trim()).filter(Boolean);
-        parts.forEach(part => {
-            if (part.includes('-')) {
-                const [s, e] = part.split('-').map(n => parseInt(n, 10));
-                for (let i = s; i <= e; i++) parsedSeqs.push(i);
-            } else {
-                parsedSeqs.push(parseInt(part, 10));
-            }
-        });
+      const parts = pieceSeqs.split(',').map(s => s.trim()).filter(Boolean);
+      parts.forEach(part => {
+        if (part.includes('-')) {
+          const [s, e] = part.split('-').map(n => parseInt(n, 10));
+          for (let i = s; i <= e; i++) parsedSeqs.push(i);
+        } else {
+          parsedSeqs.push(parseInt(part, 10));
+        }
+      });
     }
 
     try {
@@ -198,7 +188,7 @@ export default function ProductionLogEntry() {
     finally { setChecklistSubmitting(false); }
   };
 
- const handleFileUpload = async (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !uploadOrderNumber) {
       setUploadOrderNumberError('Please enter an Order Number first');
@@ -207,7 +197,7 @@ export default function ProductionLogEntry() {
     setUploadLoading(true);
     setUploadError('');
     try {
-      
+
       const data = await apiImportPreview(token, file, uploadOrderNumber);
       setPreviewData(data);
       setFileName(file.name);
@@ -225,7 +215,7 @@ export default function ProductionLogEntry() {
     if (!file) return;
     setCommitLoading(true);
     try {
-      
+
       await apiImportCommit(token, file, uploadOrderNumber);
       setCommitSuccess('File imported and database updated successfully!');
       setShowPreviewModal(false);
@@ -299,7 +289,7 @@ export default function ProductionLogEntry() {
             <div className="flex-1">
               <div className="flex justify-between items-start">
                 <p className="font-extrabold">Transaction Confirmed</p>
-                <button onClick={() => setSuccessMsg('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
+                <button onClick={() => setSuccessMsg('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4" /></button>
               </div>
               <p className="text-xs text-emerald-600 mt-0.5 break-words whitespace-pre-wrap">{successMsg}</p>
             </div>
@@ -312,7 +302,7 @@ export default function ProductionLogEntry() {
             <div className="flex-1">
               <div className="flex justify-between items-start">
                 <p className="font-extrabold">Import Successful</p>
-                <button onClick={() => setCommitSuccess('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
+                <button onClick={() => setCommitSuccess('')} className="opacity-50 hover:opacity-100"><X className="w-4 h-4" /></button>
               </div>
               <p className="text-xs text-emerald-600 mt-0.5 break-words whitespace-pre-wrap">{commitSuccess}</p>
             </div>
@@ -325,7 +315,7 @@ export default function ProductionLogEntry() {
             <div className="flex-1">
               <div className="flex justify-between items-start">
                 <p className="font-extrabold text-red-700">Operation Failed</p>
-                <button onClick={() => { setErrorMsg(''); setUploadError(''); }} className="opacity-50 hover:opacity-100"><X className="w-4 h-4"/></button>
+                <button onClick={() => { setErrorMsg(''); setUploadError(''); }} className="opacity-50 hover:opacity-100"><X className="w-4 h-4" /></button>
               </div>
               <p className="text-xs text-red-600 mt-0.5 break-words whitespace-pre-wrap">{errorMsg || uploadError}</p>
             </div>
@@ -539,7 +529,7 @@ export default function ProductionLogEntry() {
                 <Rocket className="w-5 h-5" /> Submit Event
               </button>
             </div>
-            
+
             {skuCode && (
               <a
                 href={`/dashboard/analytics`}
@@ -647,8 +637,8 @@ export default function ProductionLogEntry() {
                 onChange={(e) => { setUploadOrderNumber(e.target.value.trim()); setUploadOrderNumberError(''); }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && uploadOrderNumber.trim()) { e.preventDefault(); fileInputRef.current?.click(); } }}
                 className={`w-full px-4 py-3 rounded-xl border text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 transition-colors ${uploadOrderNumberError
-                    ? 'border-red-400 bg-red-50 focus:ring-red-400/20'
-                    : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
+                  ? 'border-red-400 bg-red-50 focus:ring-red-400/20'
+                  : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
                   }`}
               />
               {uploadOrderNumberError ? (
@@ -778,10 +768,10 @@ export default function ProductionLogEntry() {
                           );
                         }}
                         className={`relative p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${isSelected
-                            ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
-                            : isDone
-                              ? 'border-emerald-200 bg-emerald-50 opacity-70'
-                              : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
+                          ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
+                          : isDone
+                            ? 'border-emerald-200 bg-emerald-50 opacity-70'
+                            : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
                           }`}
                       >
                         <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : '#2d1f0e' }}>
