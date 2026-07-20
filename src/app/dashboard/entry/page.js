@@ -7,69 +7,99 @@ import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, U
 import SpotlightCard from '@/components/SpotlightCard';
 
 function DynamicDataViewer({ data }) {
-  if (!data) return null;
-  const formatCellValue = (val) => {
-    if (val === null || val === undefined || val === '') return '-';
-      if (Array.isArray(val)) {
-      return val.map(item => typeof item === 'object' ? formatCellValue(item) : String(item)).join(', ');
-    }
-      if (typeof val === 'object') {
-      if (val.label) return String(val.label);
-      if (val.name) return String(val.name);
-      if (val.code) return String(val.code);
-      if (val.title) return String(val.title);
-      if (val.sku_code) return String(val.sku_code);
+  if (!data) return <div className="text-slate-400 italic text-center p-4">No data available</div>;
 
+  // 1. Backend response Summary Object-ஆக இருந்தால் (clients ஃபீல்ட் இருந்தால்)
+  if (data.clients) {
+    const clientsData = Object.entries(data.clients);
 
-      const values = Object.values(val).filter(v => typeof v !== 'object' && v !== null);
-      if (values.length > 0) return values.join(' - ');
-      return '-';
-    }
-    return String(val);
-  };
-
-  if (Array.isArray(data)) {
-    if (data.length === 0) return <div className="text-slate-400 italic text-center p-4">Empty list</div>;
-
-    if (typeof data[0] === 'object' && data[0] !== null) {
-      const keys = Array.from(new Set(data.flatMap(Object.keys)));
-      return (
-        <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm">
-          <table className="min-w-full text-left text-xs bg-white">
-            <thead className="bg-slate-100 text-slate-700 font-black uppercase tracking-wider">
-              <tr>
-                {keys.map(k => (
-                  <th key={k} className="px-4 py-3 border-b border-slate-200 whitespace-nowrap">
-                    {k.replace(/_/g, ' ')}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {data.map((row, i) => (
-                <tr key={i} className="hover:bg-slate-50/80 transition-colors">
-                  {keys.map(k => (
-                    <td key={k} className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">
-                      {formatCellValue(row[k])}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      );
-    }
     return (
-      <ul className="list-disc pl-5 text-xs text-slate-700">
-        {data.map((item, i) => <li key={i}>{formatCellValue(item)}</li>)}
-      </ul>
+      <div className="space-y-6">
+        {clientsData.map(([clientName, details]) => (
+          <div key={clientName} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+            
+            {/* Header / Client Badge */}
+            <div className="flex items-center justify-between border-b pb-3">
+              <span className="text-xs font-black uppercase text-amber-700 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200">
+                Sheet / Client: {clientName}
+              </span>
+              <span className="text-xs font-bold text-slate-500">
+                Warnings: <strong className="text-emerald-600">{details.warnings?.length || 0}</strong>
+              </span>
+            </div>
+
+            {/* Key Summary Cards */}
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Order Lines</p>
+                <p className="text-lg font-black text-slate-800">{details.order_lines}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Pieces Ordered</p>
+                <p className="text-lg font-black text-amber-600">{details.pieces_ordered?.toLocaleString()}</p>
+              </div>
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Styles Count</p>
+                <p className="text-lg font-black text-slate-800">{details.styles?.length || 0}</p>
+              </div>
+            </div>
+
+            {/* Styles List Table */}
+            {details.styles && details.styles.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Detected Styles</h4>
+                <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-wrap gap-2">
+                    {details.styles.map((style, idx) => (
+                      <span key={idx} className="text-xs font-bold bg-white text-slate-700 px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
+                        {style}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </div>
+        ))}
+      </div>
     );
   }
 
- return <span className="text-slate-700 font-medium">{formatCellValue(data)}</span>;
-}
+  // 2. Normal Table Rows-ஆக இருந்தால் (Fallback Table Viewer)
+  let tableRows = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data).find(Array.isArray) || [data] : []);
 
+  if (tableRows.length === 0) return <div className="text-slate-400 italic text-center p-4">No records found</div>;
+
+  const keys = Array.from(new Set(tableRows.flatMap(row => (row && typeof row === 'object') ? Object.keys(row) : [])));
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
+      <table className="min-w-full text-left text-xs bg-white">
+        <thead className="bg-slate-100 text-slate-700 font-black uppercase tracking-wider">
+          <tr>
+            {keys.map(k => (
+              <th key={k} className="px-4 py-3 border-b border-slate-200 whitespace-nowrap">
+                {k.replace(/_/g, ' ')}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {tableRows.map((row, i) => (
+            <tr key={i} className="hover:bg-slate-50 transition-colors">
+              {keys.map(k => (
+                <td key={k} className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">
+                  {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
   const { workers, addScanEvent, operations } = useData();
