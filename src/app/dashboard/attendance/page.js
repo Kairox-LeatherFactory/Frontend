@@ -9,6 +9,7 @@ import {
   UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
+import { createPortal } from 'react-dom';
 
 // ─── API BASE ────────────────────────────────────────────────────────────────
 const API = '/api/v1/attendance';

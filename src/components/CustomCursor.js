@@ -20,7 +20,7 @@ export default function CustomCursor() {
     let ringX = mouseX;
     let ringY = mouseY;
 
-    // Hide default cursor
+    // Hide default cursor safely
     document.body.classList.add('custom-cursor-active');
 
     const handleMouseMove = (e) => {
@@ -71,18 +71,21 @@ export default function CustomCursor() {
     <>
       <div 
         ref={dotRef}
-        className="cursor-dot pointer-events-none fixed w-2 h-2 -ml-1 -mt-1 rounded-full z-[9999] transition-transform duration-200"
+        className="cursor-dot pointer-events-none fixed w-2 h-2 -ml-1 -mt-1 rounded-full z-[99999] transition-transform duration-200"
         style={{ left: '-20px', top: '-20px', background: '#c8834a' }}
       />
       <div 
         ref={ringRef}
-        className="cursor-ring pointer-events-none fixed w-10 h-10 -ml-5 -mt-5 rounded-full z-[9998] transition-[transform,background-color,border-color] duration-300"
+        className="cursor-ring pointer-events-none fixed w-10 h-10 -ml-5 -mt-5 rounded-full z-[99998] transition-[transform,background-color,border-color] duration-300"
         style={{ left: '-20px', top: '-20px', border: '1.5px solid rgba(200,131,74,0.6)' }}
       />
       <style jsx global>{`
-        /* Hide default cursor */
-        body.custom-cursor-active, 
-        body.custom-cursor-active * {
+        /* Hide default cursor on body and interactive elements except where text selection is strictly needed */
+        body.custom-cursor-active,
+        body.custom-cursor-active a,
+        body.custom-cursor-active button,
+        body.custom-cursor-active input[type="button"],
+        body.custom-cursor-active input[type="submit"] {
           cursor: none !important;
         }
 

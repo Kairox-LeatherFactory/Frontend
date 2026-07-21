@@ -337,18 +337,22 @@ export default function AdminDashboard() {
               </Field>
 
               <div className="sm:col-span-2">
-                <Field label="User Role">
-                  <select className={inputCls}
-                    value={userForm.role}
-                    onChange={e => setUserForm({ ...userForm, role: e.target.value })}>
-                    <option value="viewer">Viewer</option>
-                    <option value="employee">Employee</option>
-                    <option value="cutting_manager">Cutting Manager</option>
-                    <option value="stitching_manager">Stitching Manager</option>
-                    <option value="direct_manager">Direct Manager</option>
-                    <option value="client">Client</option>
-                  </select>
-                </Field>
+           <Field label="User Role">
+  <select
+    className={inputCls}
+    value={userForm.role}
+    onChange={e => setUserForm({ ...userForm, role: e.target.value })}
+  >
+    <option value="viewer">Viewer</option>
+    <option value="supervisor">Supervisor</option>
+    <option value="cutting_manager">Cutting Manager</option>
+    <option value="stitching_manager">Stitching Manager</option>
+    <option value="hr">HR</option>
+    <option value="direct_manager">Direct Manager</option>
+    <option value="managing_director">Managing Director</option>
+    <option value="client">Client</option>
+  </select>
+</Field>
               </div>
                <div className="sm:col-span-2">
               <Field label="Email (Optional)">

@@ -12,6 +12,7 @@ import {
   ArrowRight,
   Loader2,
 } from 'lucide-react';
+import { apiLogin } from '@/lib/api'; // 👈 Centralized API helper பயன்படுத்தப்படுகிறது
 
 /* ─── Animated Gold Text Component ────────────────── */
 function AnimatedGoldText({ text }) {
@@ -87,7 +88,7 @@ const PANELS = [
     accent: '#b07bc8',
     icon: Layers,
     img: '/images/roles/stitching.png',
-    allowedRoles: ['hr']
+    allowedRoles: ['hr', 'hr_admin'] // 👈 HR & HR Admin இரண்டிற்கும் அனுமதி
   },
   {
     role: 'client_workspace',
@@ -162,7 +163,7 @@ function Preloader({ onComplete }) {
 
 /* ─── Main Landing Page ───────────────────────────── */
 export default function Home() {
-  const { user, login } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [loadingComplete, setLoadingComplete] = useState(false);
@@ -208,7 +209,8 @@ export default function Home() {
     setIsSuccess(false);
   };
 
- const handleLoginSubmit = async (e) => {
+  // 🎯 Updated Login Submission using Centralized `apiLogin` Helper
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
     if (!username || !password) return;
 
@@ -216,58 +218,18 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      // ─── REVERTED TO JSON PAYLOAD ───
-      // Backend STRICTLY expects a valid JSON dictionary as proven by the 422 error trace.
-      const payload = {
-        username: username.trim(),
-        password: password
-      };
+      // 1. Centralized apiLogin call (lib/api.js)
+      const data = await apiLogin(username.trim(), password);
 
-      // Sending strictly as application/json via your Next.js local proxy route
-      const res = await fetch(`/api/v1/auth/login`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        
-        // Pydantic layer validation traces array parameters parsing elements tracking
-        if (errData.detail && Array.isArray(errData.detail)) {
-          const formattedTraceError = errData.detail.map(err => 
-            `Validation error in [${err.loc ? err.loc.join('.') : 'unknown'}]: ${err.msg}`
-          ).join(' | ');
-          throw new Error(formattedTraceError);
-        }
-
-        const displayMsg = typeof errData.detail === 'object' 
-          ? JSON.stringify(errData.detail) 
-          : errData.detail;
-          
-        throw new Error(displayMsg || `Validation Processing Failure (${res.status})`);
-      }
-
-      const data = await res.json();
       const backendRole = (data.role || '').toLowerCase().trim();
-      
-      let isRoleMatched = false;
-      let targetSessionRole = backendRole; 
 
-      // ─── MATRIX VALIDATION CHECK OVERRIDE ───
-      if (activePanel && activePanel.allowedRoles.includes(backendRole)) {
-        isRoleMatched = true;
-      }
-
-      if (!isRoleMatched) {
-        throw new Error(`Access Denied: Your account role "${backendRole}" does not have privileges to access this selected card partition layout console.`);
+      // 2. Panel Matrix Privilege Validation Check
+      if (activePanel && !activePanel.allowedRoles.includes(backendRole)) {
+        throw new Error(`Access Denied: Your account role "${backendRole}" does not have privileges for the selected ${activePanel.title.replace('\n', ' ')}.`);
       }
 
       setIsSuccess(true);
-      login(targetSessionRole, data.access_token);
+      login(backendRole, data.access_token);
       router.push('/dashboard');
 
     } catch (err) {
@@ -276,6 +238,7 @@ export default function Home() {
       setLoginError(err.message || 'Authentication Failed. Please check credentials.');
     }
   };
+
   return (
     <>
       <AnimatePresence>
@@ -345,7 +308,7 @@ export default function Home() {
                 animate={loadingComplete ? { opacity: 1 } : { opacity: 0 }}
                 exit={{ opacity: 0 }}
               >
-                {PANELS.map((panel, i) => {
+                {PANELS.map((panel) => {
                   return (
                     <motion.div
                       key={panel.role}
@@ -365,11 +328,10 @@ export default function Home() {
             )}
           </AnimatePresence>
 
-          {/* State 2: Active panel expanded, others on the right */}
+          {/* State 2: Active panel expanded */}
           <AnimatePresence>
             {activePanel && !showLogin && (
               <>
-                {/* Center Expanded Active Panel */}
                 <motion.div
                   key={activePanel.role}
                   layoutId={`panel-bg-${activePanel.role}`}
@@ -382,7 +344,6 @@ export default function Home() {
                   />
                   <div className="absolute inset-0 bg-black/40 transition-colors duration-500 group-hover:bg-black/50" />
 
-                  {/* Title centered inside */}
                   <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
                     animate={{ opacity: 1, scale: 1 }}
@@ -395,37 +356,27 @@ export default function Home() {
                     </h2>
                   </motion.div>
 
-                  {/* Corner Accents */}
                   <div className="absolute top-6 left-6 w-8 h-8 border-t-[1px] border-l-[1px]" style={{ borderColor: activePanel.accent }} />
                   <div className="absolute top-6 right-6 w-8 h-8 border-t-[1px] border-r-[1px]" style={{ borderColor: activePanel.accent }} />
                   <div className="absolute bottom-6 left-6 w-8 h-8 border-b-[1px] border-l-[1px]" style={{ borderColor: activePanel.accent }} />
                   <div className="absolute bottom-6 right-6 w-8 h-8 border-b-[1px] border-r-[1px]" style={{ borderColor: activePanel.accent }} />
 
-                  {/* Hover Arrow Icon */}
                   <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="w-16 h-16 rounded-full bg-black/40 backdrop-blur-md border border-white/20 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300">
                       <ArrowUpRight className="w-6 h-6" style={{ color: activePanel.accent }} />
                     </div>
                   </div>
 
-                  {/* Mobile Navigation Arrows */}
                   <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between px-2 md:hidden z-50 pointer-events-none">
-                    <button
-                      onClick={handlePrev}
-                      className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center pointer-events-auto"
-                    >
+                    <button onClick={handlePrev} className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center pointer-events-auto">
                       <ArrowRight className="w-5 h-5 text-white rotate-180" />
                     </button>
-                    <button
-                      onClick={handleNext}
-                      className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center pointer-events-auto"
-                    >
+                    <button onClick={handleNext} className="w-10 h-10 rounded-full bg-black/60 backdrop-blur-md border border-white/20 flex items-center justify-center pointer-events-auto">
                       <ArrowRight className="w-5 h-5 text-white" />
                     </button>
                   </div>
                 </motion.div>
 
-                {/* Actions below the expanded panel */}
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -446,63 +397,6 @@ export default function Home() {
                     Sign In
                   </button>
                 </motion.div>
-
-                {/* Navigation Panels (Left and Right) */}
-                {(() => {
-                  const currentIndex = PANELS.findIndex(p => p.role === activePanel.role);
-                  const prevPanels = PANELS.slice(0, currentIndex);
-                  const nextPanels = PANELS.slice(currentIndex + 1);
-
-                  return (
-                    <>
-                      {/* Previous Panels (Left Side) */}
-                      <div className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 pl-2 md:pl-8 gap-2 md:gap-4 z-40">
-                        {prevPanels.map(panel => (
-                          <motion.div
-                            key={panel.role}
-                            layoutId={`panel-bg-${panel.role}`}
-                            onClick={() => handlePanelClick(panel)}
-                            className="group w-[40px] md:w-[100px] h-[30vh] md:h-[50vh] cursor-pointer overflow-hidden grayscale hover:grayscale-0 transition-all duration-500 opacity-60 hover:opacity-100 border border-white/10 relative shadow-xl"
-                          >
-                            <div
-                              className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
-                              style={{ backgroundImage: `url(${panel.img})` }}
-                            />
-                            <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors duration-500" />
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300">
-                                <ArrowRight className="w-4 h-4 text-white rotate-180" />
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-
-                      {/* Next Panels (Right Side) */}
-                      <div className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 pr-2 md:pr-8 gap-2 md:gap-4 z-40">
-                        {nextPanels.map(panel => (
-                          <motion.div
-                            key={panel.role}
-                            layoutId={`panel-bg-${panel.role}`}
-                            onClick={() => handlePanelClick(panel)}
-                            className="group w-[40px] md:w-[100px] h-[30vh] md:h-[50vh] cursor-pointer overflow-hidden grayscale hover:grayscale-0 transition-all duration-500 opacity-60 hover:opacity-100 border border-white/10 relative shadow-xl"
-                          >
-                            <div
-                              className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
-                              style={{ backgroundImage: `url(${panel.img})` }}
-                            />
-                            <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors duration-500" />
-                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                              <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300">
-                                <ArrowRight className="w-4 h-4 text-white" />
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))}
-                      </div>
-                    </>
-                  );
-                })()}
               </>
             )}
           </AnimatePresence>
@@ -561,7 +455,7 @@ export default function Home() {
 
                   <form onSubmit={handleLoginSubmit} className="w-full flex flex-col gap-5">
                     <div className="flex flex-col gap-2">
-                      <label className="text-[10px] text-white/50 tracking-[0.2em] uppercase">Username</label>
+                      <label className="text-[10px] text-white/50 tracking-[0.2em] uppercase">Phone / Username</label>
                       <input
                         type="text"
                         value={username}

@@ -25,7 +25,11 @@ import {
 } from 'lucide-react';
 import { useData } from '@/context/DataContext';
 
+/* ── Real API Integrated OrdersExplorer ─────────────────────────────────── */
+import { apiGetOrderTree } from '@/lib/api';
+
 function OrdersExplorer() {
+  const { token } = useAuth();
   const { orders: realOrders } = useData();
   const orders = useMemo(() => realOrders || [], [realOrders]);
 
@@ -33,24 +37,52 @@ function OrdersExplorer() {
   const [expandedStyles, setExpandedStyles] = useState({});
   const [activeItem, setActiveItem] = useState(null);
 
+  // Real Order Tree Cache (API-லிருந்து வரும் Styles & Stage counts)
+  const [orderTrees, setOrderTrees] = useState({});
+  const [loadingTree, setLoadingTree] = useState({});
+
   const orderGroups = useMemo(() => {
     if (!orders || orders.length === 0) return [];
     const groups = {};
     orders.forEach((styleOrder) => {
-      // Safe fallback for PO Number and Client Name
-      const poNum = styleOrder?.po_number || styleOrder?.order_number || (styleOrder?.id ? String(styleOrder.id).slice(0, 8) : 'ORD-101');
+      const poNum = styleOrder?.po_number || styleOrder?.order_number || styleOrder?.id || 'ORD-101';
       const clientName = styleOrder?.client || styleOrder?.client_name || 'Client';
       const orderName = `${clientName} (PO: ${poNum})`;
 
       if (!groups[orderName]) {
-        groups[orderName] = { id: orderName, client: clientName, po: poNum, styles: [] };
+        groups[orderName] = { 
+          id: orderName, 
+          rawId: styleOrder?.id || styleOrder?.order_id || poNum, // 👈 Real Order ID for API
+          client: clientName, 
+          po: poNum, 
+          styles: styleOrder.styles || [] 
+        };
       }
-      groups[orderName].styles.push(styleOrder);
     });
     return Object.values(groups);
   }, [orders]);
 
-  const toggleOrder = (id) => setExpandedOrders((prev) => ({ ...prev, [id]: !prev[id] }));
+  // Order Expand செய்யும்போது Real API-ஐ அழைத்தல் (/analytics/orders/{id}/tree)
+  const toggleOrder = async (group) => {
+    const groupId = group.id;
+    const isExpanding = !expandedOrders[groupId];
+    setExpandedOrders((prev) => ({ ...prev, [groupId]: isExpanding }));
+
+    if (isExpanding && group.rawId && !orderTrees[group.rawId]) {
+      setLoadingTree((prev) => ({ ...prev, [groupId]: true }));
+      try {
+        const treeData = await apiGetOrderTree(token, group.rawId);
+        if (treeData) {
+          setOrderTrees((prev) => ({ ...prev, [group.rawId]: treeData }));
+        }
+      } catch (err) {
+        console.error("Failed to fetch tree for order:", group.rawId, err);
+      } finally {
+        setLoadingTree((prev) => ({ ...prev, [groupId]: false }));
+      }
+    }
+  };
+
   const toggleStyle = (id) => setExpandedStyles((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const glassPanelStyle = {
@@ -72,166 +104,132 @@ function OrdersExplorer() {
           Orders Explorer
         </p>
 
-        {orderGroups.map((group) => (
-          <div key={group.id} className="flex flex-col gap-0.5">
-            <div
-              onClick={() => { toggleOrder(group.id); setActiveItem({ type: 'order', data: group }); }}
-              className="flex items-center gap-2 p-2.5 rounded-xl cursor-pointer transition-all duration-200 group"
-              style={{
-                background: activeItem?.data?.id === group.id ? 'rgba(200,131,74,0.1)' : 'transparent',
-                border: activeItem?.data?.id === group.id ? '1px solid rgba(200,131,74,0.2)' : '1px solid transparent',
-              }}
-            >
-              {expandedOrders[group.id]
-                ? <ChevronDown className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
-                : <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 shrink-0 transition-colors" />}
-              <Warehouse className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
-              <span className={`font-bold text-xs truncate select-none ${activeItem?.data?.id === group.id ? 'text-[#2d1f0e]' : 'text-slate-600 group-hover:text-slate-800'} transition-colors`}>
-                {group.id}
-              </span>
-            </div>
+        {orderGroups.map((group) => {
+          const fetchedTree = orderTrees[group.rawId];
+          // API-லிருந்து வந்த Real Styles அல்லது Fallback
+          const displayStyles = fetchedTree?.styles || group.styles || [];
 
-            {expandedOrders[group.id] && (
-              <div className="pl-5 flex flex-col gap-0.5 ml-3 border-l border-slate-200/50 mt-0.5">
-                {group.styles.map((style, sIdx) => {
-                  const styleId = style.id || style.style_code || `style-${sIdx}`;
-                  const styleName = style.style || style.style_name || style.style_code || 'Standard Style';
-                  return (
-                    <div key={styleId} className="flex flex-col gap-0.5">
-                      <div
-                        onClick={() => { toggleStyle(styleId); setActiveItem({ type: 'style', data: style, parent: group }); }}
-                        className="flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-all duration-200 group"
-                        style={{
-                          background: activeItem?.data?.id === styleId ? 'rgba(255,255,255,0.6)' : 'transparent',
-                          border: activeItem?.data?.id === styleId ? '1px solid rgba(255,255,255,1)' : '1px solid transparent',
-                        }}
-                      >
-                        {expandedStyles[styleId]
-                          ? <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
-                          : <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-slate-500 shrink-0 transition-colors" />}
-                        <Package className="w-3 h-3 text-amber-500/80 shrink-0" />
-                        <span className={`font-semibold text-[11px] truncate select-none ${activeItem?.data?.id === styleId ? 'text-[#2d1f0e]' : 'text-slate-500 group-hover:text-slate-700'} transition-colors`}>
-                          {styleName}
-                        </span>
-                      </div>
+          return (
+            <div key={group.id} className="flex flex-col gap-0.5">
+              <div
+                onClick={() => { toggleOrder(group); setActiveItem({ type: 'order', data: group }); }}
+                className="flex items-center gap-2 p-2.5 rounded-xl cursor-pointer transition-all duration-200 group"
+                style={{
+                  background: activeItem?.data?.id === group.id ? 'rgba(200,131,74,0.1)' : 'transparent',
+                  border: activeItem?.data?.id === group.id ? '1px solid rgba(200,131,74,0.2)' : '1px solid transparent',
+                }}
+              >
+                {expandedOrders[group.id]
+                  ? <ChevronDown className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
+                  : <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-600 shrink-0 transition-colors" />}
+                <Warehouse className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
+                <span className={`font-bold text-xs truncate select-none ${activeItem?.data?.id === group.id ? 'text-[#2d1f0e]' : 'text-slate-600 group-hover:text-slate-800'} transition-colors`}>
+                  {group.id}
+                </span>
+                {loadingTree[group.id] && <Loader2 className="w-3 h-3 animate-spin text-[#c8834a] ml-auto" />}
+              </div>
 
-                      {expandedStyles[styleId] && (
-                        <div className="pl-4 flex flex-col gap-0.5 ml-2 border-l border-slate-100 mb-1">
-                          {(style.skus || [{ code: 'SKU-01', color_name: 'Default', size: 'M' }]).map((sku, skuIdx) =>
-                            [1, 2].map((n) => {
-                              const piece = { id: `${sku.code || 'SKU'}-P${n}-${skuIdx}`, label: `Piece 00${n}`, sku, style, group };
-                              return (
-                                <div
-                                  key={piece.id}
-                                  onClick={() => setActiveItem({ type: 'piece', data: piece })}
-                                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all duration-150 group"
-                                  style={{
-                                    background: activeItem?.data?.id === piece.id ? 'rgba(52,211,153,0.1)' : 'transparent',
-                                    border: activeItem?.data?.id === piece.id ? '1px solid rgba(52,211,153,0.2)' : '1px solid transparent',
-                                  }}
-                                >
-                                  <span className="w-1.5 h-1.5 rounded-full shrink-0"
-                                    style={{ background: activeItem?.data?.id === piece.id ? '#10b981' : '#cbd5e1' }} />
-                                  <span className={`text-[10px] truncate select-none font-medium ${activeItem?.data?.id === piece.id ? 'text-emerald-700' : 'text-slate-400 group-hover:text-slate-600'} transition-colors`}>
-                                    {sku.color_name || 'Standard'} · {sku.size || 'Free Size'} · {piece.label}
-                                  </span>
-                                </div>
-                              );
-                            })
+              {expandedOrders[group.id] && (
+                <div className="pl-5 flex flex-col gap-0.5 ml-3 border-l border-slate-200/50 mt-0.5">
+                  {displayStyles.length === 0 && !loadingTree[group.id] && (
+                    <span className="text-[10px] text-slate-400 p-2 italic">No styles found</span>
+                  )}
+                  {displayStyles.map((style, sIdx) => {
+                    const styleId = style.style_id || style.id || `style-${sIdx}`;
+                    const styleName = style.style_name || style.style || style.style_code || 'Unknown Style';
+                    
+                    return (
+                      <div key={styleId} className="flex flex-col gap-0.5">
+                        <div
+                          onClick={() => { toggleStyle(styleId); setActiveItem({ type: 'style', data: style, parent: group }); }}
+                          className="flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 group"
+                          style={{
+                            background: activeItem?.data?.style_id === styleId || activeItem?.data?.id === styleId ? 'rgba(255,255,255,0.6)' : 'transparent',
+                            border: activeItem?.data?.style_id === styleId || activeItem?.data?.id === styleId ? '1px solid rgba(255,255,255,1)' : '1px solid transparent',
+                          }}
+                        >
+                          <div className="flex items-center gap-2 truncate">
+                            {expandedStyles[styleId]
+                              ? <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+                              : <ArrowRight className="w-3 h-3 text-slate-300 group-hover:text-slate-500 shrink-0 transition-colors" />}
+                            <Package className="w-3 h-3 text-amber-500/80 shrink-0" />
+                            <span className="font-semibold text-[11px] truncate text-slate-700">
+                              {styleName}
+                            </span>
+                          </div>
+                          {style.piece_count && (
+                            <span className="text-[9px] font-black bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded shrink-0">
+                              {style.piece_count} pcs
+                            </span>
                           )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        ))}
+
+                        {/* Stage Distribution Chips */}
+                        {expandedStyles[styleId] && style.stage_counts && (
+                          <div className="pl-5 pr-2 py-1.5 flex flex-wrap gap-1 bg-white/40 rounded-lg ml-2 border border-white/60 my-1">
+                            {Object.entries(style.stage_counts).map(([stage, count]) => (
+                              <span key={stage} className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                {stage}: {count}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
         {orderGroups.length === 0 && (
           <div className="text-center py-12 text-slate-300 text-xs font-bold">No Orders Available</div>
         )}
       </div>
 
-      {/* ── Right Panel ── */}
-      <div
-        className="flex-1 rounded-2xl overflow-hidden flex flex-col min-h-[400px]"
-        style={glassPanelStyle}
-      >
-        <div className="px-6 py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shrink-0 border-b border-white/50 bg-white/40">
+      {/* ── Right Panel (Response Data Viewer) ── */}
+      <div className="flex-1 rounded-2xl overflow-hidden flex flex-col min-h-[400px]" style={glassPanelStyle}>
+        <div className="px-6 py-4 flex justify-between items-center shrink-0 border-b border-white/50 bg-white/40">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center"
-                 style={{ background: 'rgba(200,131,74,0.1)', border: '1px solid rgba(200,131,74,0.2)' }}>
+            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#c8834a]/10 border border-[#c8834a]/20">
               <Activity className="w-4 h-4 text-[#c8834a]" />
             </div>
             <div>
-              <p className="font-black text-[#2d1f0e] text-sm">Response Data</p>
-              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Live Data Viewer</p>
+              <p className="font-black text-[#2d1f0e] text-sm">Response Data Viewer</p>
+              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Real-time Object Tree</p>
             </div>
           </div>
           {activeItem && (
-            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider text-[#c8834a]"
-                  style={{ background: 'rgba(200,131,74,0.1)', border: '1px solid rgba(200,131,74,0.2)' }}>
+            <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase text-[#c8834a] bg-[#c8834a]/10 border border-[#c8834a]/20">
               {activeItem.type} Selected
             </span>
           )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 relative">
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none overflow-hidden">
-            <span className="text-[60px] sm:text-[100px] font-black rotate-[-8deg] tracking-tight"
-                  style={{ color: 'rgba(200,131,74,0.03)' }}>response</span>
-          </div>
-
           {activeItem ? (
             <div className="relative z-10 space-y-4">
-              {/* Table */}
-              <div className="overflow-hidden rounded-2xl bg-white/50 border border-white/80">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-white/60 border-b border-slate-100">
-                    <tr>
-                      {['Piece', 'Style', 'Order'].map((h) => (
-                        <th key={h} className="p-4 text-[10px] font-black uppercase tracking-widest text-slate-400">{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100/50">
-                    {activeItem.type === 'piece' && (
-                      <tr className="hover:bg-white/40 transition-colors">
-                        <td className="p-4 text-slate-700 font-semibold">{activeItem.data.label} ({activeItem.data.sku?.size || 'M'})</td>
-                        <td className="p-4 text-slate-500">{activeItem.data.style?.style || activeItem.data.style?.style_name || 'Style'}</td>
-                        <td className="p-4 text-slate-500">{activeItem.data.group?.po || 'PO'}</td>
-                      </tr>
-                    )}
-                    {activeItem.type === 'style' && (activeItem.data.skus || [{ size: 'M' }]).map((sku, idx) => (
-                      <tr key={idx} className="hover:bg-white/40 transition-colors">
-                        <td className="p-4 text-slate-400 italic text-sm">All pieces ({sku.size || 'All Sizes'})</td>
-                        <td className="p-4 text-slate-700 font-semibold">{activeItem.data.style || activeItem.data.style_name || 'Style'}</td>
-                        <td className="p-4 text-slate-500">{activeItem.parent?.po || 'PO'}</td>
-                      </tr>
-                    ))}
-                    {activeItem.type === 'order' && (activeItem.data.styles || []).map((style, idx) => (
-                      <tr key={idx} className="hover:bg-white/40 transition-colors">
-                        <td className="p-4 text-slate-400 italic text-sm">All pieces</td>
-                        <td className="p-4 text-slate-700 font-semibold">{style.style || style.style_name || 'Style'}</td>
-                        <td className="p-4 text-slate-500">{activeItem.data.po}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Detail Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {Object.entries(activeItem.data).map(([key, value]) => {
-                  if (typeof value === 'object' && value !== null) return null;
+                  if (typeof value === 'object' && value !== null) {
+                    return (
+                      <div key={key} className="col-span-full p-4 rounded-xl bg-white/50 border border-white/80">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-[#c8834a]">
+                          {key.replace(/_/g, ' ')}
+                        </span>
+                        <pre className="text-xs font-mono text-slate-700 mt-2 overflow-x-auto p-2 bg-slate-50/50 rounded-lg">
+                          {JSON.stringify(value, null, 2)}
+                        </pre>
+                      </div>
+                    );
+                  }
                   return (
-                    <div key={key} className="p-4 rounded-xl flex flex-col gap-1.5 transition-colors bg-white/40 hover:bg-white/60 border border-white/60">
+                    <div key={key} className="p-4 rounded-xl bg-white/40 border border-white/60">
                       <span className="text-[9px] font-black uppercase tracking-widest text-[#c8834a]/80">
                         {key.replace(/_/g, ' ')}
                       </span>
-                      <span className="text-slate-700 font-medium text-sm truncate" title={value?.toString()}>
+                      <span className="block text-slate-700 font-medium text-sm truncate mt-0.5">
                         {value?.toString() || '—'}
                       </span>
                     </div>
@@ -240,12 +238,10 @@ function OrdersExplorer() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center h-full text-center relative z-10 py-16">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4 bg-white/50 border border-white/80">
-                <Warehouse className="w-8 h-8 text-slate-300" />
-              </div>
-              <p className="font-black text-slate-400 text-base">Select an item</p>
-              <p className="text-slate-400/60 text-xs mt-1 font-medium">Click any Order, Style, or Piece to view data</p>
+            <div className="flex-1 flex flex-col items-center justify-center h-full text-center py-16">
+              <Warehouse className="w-10 h-10 text-slate-300 mb-2" />
+              <p className="font-black text-slate-400 text-base">Select an Item</p>
+              <p className="text-slate-400/60 text-xs mt-1">Click an Order or Style to view real backend response</p>
             </div>
           )}
         </div>
@@ -266,7 +262,7 @@ function StatCard({ icon: Icon, label, value, gradient, iconColor }) {
       }}
     >
       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-           style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.4) 0%, transparent 60%)' }} />
+        style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.4) 0%, transparent 60%)' }} />
       <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-white/60 border border-white/80">
         <Icon className="w-5 h-5" style={{ color: iconColor }} />
       </div>
@@ -318,7 +314,7 @@ export default function AnalyticsDashboard() {
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-4"
-           style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #fdfbf7 0%, #f4efe6 100%)' }}>
+        style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #fdfbf7 0%, #f4efe6 100%)' }}>
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-white/60 border border-white/80 shadow-sm">
           <Loader2 className="w-8 h-8 animate-spin text-[#c8834a]" />
         </div>
@@ -336,7 +332,7 @@ export default function AnalyticsDashboard() {
         <div>
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md shadow-[#c8834a]/20"
-                 style={{ background: 'linear-gradient(135deg, #c8834a, #a0622e)' }}>
+              style={{ background: 'linear-gradient(135deg, #c8834a, #a0622e)' }}>
               <TrendingUp className="w-5 h-5 text-white" />
             </div>
             <div className="flex items-center gap-2">
@@ -413,7 +409,7 @@ export default function AnalyticsDashboard() {
               </div>
 
               <div className="rounded-2xl overflow-hidden h-[300px] flex flex-col shadow-sm"
-                   style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.9)', backdropFilter: 'blur(20px)' }}>
+                style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.9)', backdropFilter: 'blur(20px)' }}>
                 {freightAlerts.length > 0 ? (
                   <div className="overflow-y-auto flex-1 p-2">
                     {freightAlerts.map((alert, i) => (
@@ -474,7 +470,7 @@ export default function AnalyticsDashboard() {
               </div>
 
               <div className="rounded-2xl overflow-hidden h-[300px] flex flex-col shadow-sm"
-                   style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.9)', backdropFilter: 'blur(20px)' }}>
+                style={{ background: 'rgba(255,255,255,0.6)', border: '1px solid rgba(255,255,255,0.9)', backdropFilter: 'blur(20px)' }}>
                 {stageAlerts.length > 0 ? (
                   <div className="overflow-y-auto flex-1 p-2">
                     {stageAlerts.map((alert, i) => (
@@ -528,7 +524,7 @@ export default function AnalyticsDashboard() {
               <p className="text-slate-500 text-xs sm:text-sm font-medium">Drill down into order quantities and view structured data.</p>
             </div>
           </div>
-          
+
           <OrdersExplorer />
         </div>
       </div>
