@@ -358,13 +358,7 @@ export default function AdminDashboard() {
                   onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
               </Field>
               </div>
-              {/* <Field label="Employee ID (Optional)">
-                <input type="text" className={inputCls}
-                  value={userForm.employee_id}
-                  placeholder="e.g. emp_123"
-                  onChange={e => setUserForm({ ...userForm, employee_id: e.target.value })} />
-              </Field> */}
-            </div>
+              </div>
 
             <button type="submit" disabled={isSubmittingUser}
               className="w-full h-11 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
