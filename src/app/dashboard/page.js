@@ -49,7 +49,7 @@ function StatCard({ title, value, sub, icon: Icon, accent = '#c8834a', danger = 
 
       <div>
         <p className="text-[11px] text-[#8a7a6a] font-bold uppercase tracking-widest mb-1">{title}</p>
-        <p className="text-4xl font-black text-white leading-none">{value}</p>
+        <p className="text-4xl font-black text-[#2d1f0e]">{value}</p>
         {sub && <p className="text-xs mt-2 font-semibold" style={{ color: danger ? '#f87171' : '#c8834a' }}>{sub}</p>}
       </div>
     </div>

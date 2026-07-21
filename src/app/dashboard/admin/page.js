@@ -350,20 +350,20 @@ export default function AdminDashboard() {
                   </select>
                 </Field>
               </div>
-
+               <div className="sm:col-span-2">
               <Field label="Email (Optional)">
                 <input type="email" className={inputCls}
                   value={userForm.email}
                   placeholder="e.g. priya@factory.local"
                   onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
               </Field>
-
-              <Field label="Employee ID (Optional)">
+              </div>
+              {/* <Field label="Employee ID (Optional)">
                 <input type="text" className={inputCls}
                   value={userForm.employee_id}
                   placeholder="e.g. emp_123"
                   onChange={e => setUserForm({ ...userForm, employee_id: e.target.value })} />
-              </Field>
+              </Field> */}
             </div>
 
             <button type="submit" disabled={isSubmittingUser}
