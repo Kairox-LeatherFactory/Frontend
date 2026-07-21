@@ -387,8 +387,12 @@ export async function apiInventoryCommit(token, file) {
   return res.json();
 }
 
-// ─── ANALYTICS ───
+// ─── ANALYTICS MODULE (READ-ONLY INTELLIGENCE) ───
 
+/**
+ * 1. GET /api/v1/analytics/overview
+ * Top-level factory KPIs for the dashboard header.
+ */
 export async function apiGetAnalyticsOverview(token) {
   const res = await fetch(`${API_BASE_URL}/api/v1/analytics/overview`, {
     headers: { Authorization: `Bearer ${token}` }
@@ -397,6 +401,54 @@ export async function apiGetAnalyticsOverview(token) {
   return res.json();
 }
 
+/**
+ * 2. GET /api/v1/analytics/orders/{order_id}/tree
+ * Drill-down level 1 — Order with styles and stage distributions.
+ */
+export async function apiGetOrderTree(token, orderId) {
+  if (!orderId) return null;
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/orders/${encodeURIComponent(orderId)}/tree`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error(`Failed to fetch order tree for ${orderId}`);
+  return res.json();
+}
+
+/**
+ * 3. GET /api/v1/analytics/styles/{style_id}/detail
+ * Drill-down level 2 — Style with all pieces & full stage history.
+ */
+export async function apiGetStyleDetail(token, styleId) {
+  if (!styleId) return null;
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/styles/${encodeURIComponent(styleId)}/detail`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error(`Failed to fetch style details for ${styleId}`);
+  return res.json();
+}
+
+/**
+ * 4. GET /api/v1/analytics/pieces/detail
+ * Drill-down level 3 — Single piece view (QR / Scan lookup).
+ * Params: piece_code OR (sku_code + seq)
+ */
+export async function apiGetPieceDetail(token, { piece_code, sku_code, seq }) {
+  const params = new URLSearchParams();
+  if (piece_code) params.append('piece_code', piece_code);
+  if (sku_code) params.append('sku_code', sku_code);
+  if (seq !== undefined && seq !== null) params.append('seq', seq);
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/pieces/detail?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch piece detail');
+  return res.json();
+}
+
+/**
+ * 5. GET /api/v1/analytics/alerts/stage-spread
+ * Bottleneck detector.
+ */
 export async function apiGetStageSpreadAlerts(token) {
   const res = await fetch(`${API_BASE_URL}/api/v1/analytics/alerts/stage-spread`, {
     headers: { Authorization: `Bearer ${token}` }
@@ -405,17 +457,21 @@ export async function apiGetStageSpreadAlerts(token) {
   return res.json();
 }
 
+/**
+ * 6. GET /api/v1/analytics/alerts/freight-risk
+ * Sea-freight cutoff risk.
+ */
 export async function apiGetFreightRiskAlerts(token, todayDate = null) {
   const url = todayDate
     ? `${API_BASE_URL}/api/v1/analytics/alerts/freight-risk?today=${todayDate}`
     : `${API_BASE_URL}/api/v1/analytics/alerts/freight-risk`;
+
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` }
   });
   if (!res.ok) throw new Error('Failed to fetch freight risk alerts');
   return res.json();
 }
-
 /**
  * Fetch all users
  */

@@ -22,7 +22,6 @@ function StatCard({ title, value, sub, icon: Icon, accent = '#c8834a', danger = 
           : '0 1px 6px rgba(180,130,80,0.08)',
       }}
     >
-      {/* Ambient top accent */}
       <div
         className="absolute top-0 left-0 w-full h-[3px] rounded-t-2xl"
         style={{ background: danger ? '#ef4444' : accent }}
@@ -49,7 +48,7 @@ function StatCard({ title, value, sub, icon: Icon, accent = '#c8834a', danger = 
 
       <div>
         <p className="text-[11px] text-[#8a7a6a] font-bold uppercase tracking-widest mb-1">{title}</p>
-        <p className="text-4xl font-black text-[#2d1f0e]">{value}</p>
+        <p className="text-4xl font-black text-[#2d1f0e] leading-none">{value ?? 0}</p>
         {sub && <p className="text-xs mt-2 font-semibold" style={{ color: danger ? '#f87171' : '#c8834a' }}>{sub}</p>}
       </div>
     </div>
@@ -58,9 +57,14 @@ function StatCard({ title, value, sub, icon: Icon, accent = '#c8834a', danger = 
 
 /* ── Order Row ─────────────────────────────────────────────────────── */
 function OrderRow({ order }) {
-  const hasRisk = order.freight_mode?.includes('RISK');
-  const isDelayed = order.delay_days > 0;
-  const prog = Math.min(order.progress, 100);
+  // Safe Fallback Mapping for Backend Keys vs UI
+  const orderId = order?.order_number || order?.id || 'N/A';
+  const clientName = order?.client_name || order?.client || 'Client';
+  const freightMode = order?.ship_mode || order?.freight_mode || 'SEA';
+  const hasRisk = freightMode.includes('RISK') || order?.risk === 'high' || order?.risk === 'critical';
+  const delayDays = order?.delay_days || 0;
+  const isDelayed = delayDays > 0;
+  const prog = Math.min(Math.max(order?.pct_complete ?? order?.progress ?? 0, 0), 100);
 
   return (
     <div
@@ -75,8 +79,8 @@ function OrderRow({ order }) {
       <div className="flex-1 space-y-3">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <span className="text-[10px] text-[#9a7a5a] font-bold uppercase tracking-widest">{order.type}</span>
-            <h3 className="text-base font-black mt-0.5" style={{ color: '#2d1f0e' }}>{order.id} — {order.client}</h3>
+            <span className="text-[10px] text-[#9a7a5a] font-bold uppercase tracking-widest">{order?.type || 'BATCH'}</span>
+            <h3 className="text-base font-black mt-0.5" style={{ color: '#2d1f0e' }}>{orderId} — {clientName}</h3>
           </div>
           <span
             className="text-[10px] font-black px-2.5 py-1 rounded-full shrink-0"
@@ -86,17 +90,17 @@ function OrderRow({ order }) {
               border: `1px solid ${hasRisk ? 'rgba(239,68,68,0.3)' : isDelayed ? 'rgba(217,119,6,0.3)' : 'rgba(34,197,94,0.2)'}`,
             }}
           >
-            {order.freight_mode}
+            {freightMode}
           </span>
         </div>
 
         {/* Grid of meta values */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { label: 'Style SKU', val: `${order.style} (${order.colorway})` },
-            { label: 'Qty', val: `${order.quantity} pcs` },
-            { label: 'Ship Cutoff', val: order.sea_cutoff },
-            { label: 'Lag', val: `${order.delay_days}d`, danger: isDelayed },
+            { label: 'Style SKU', val: `${order?.style || order?.style_name || 'Style'} (${order?.colorway || order?.colour || 'STD'})` },
+            { label: 'Qty', val: `${order?.ordered || order?.quantity || 0} pcs` },
+            { label: 'Ship Cutoff', val: order?.sea_cutoff || order?.sea_cutoff_date || 'N/A' },
+            { label: 'Lag', val: `${delayDays}d`, danger: isDelayed },
           ].map(({ label, val, danger: d }) => (
             <div key={label}>
               <span className="block text-[9px] text-[#b09070] font-bold uppercase tracking-wider">{label}</span>
@@ -108,7 +112,7 @@ function OrderRow({ order }) {
         {/* Progress bar */}
         <div>
           <div className="flex justify-between text-[10px] font-bold mb-1">
-            <span className="text-[#9a8070]">{order.status}</span>
+            <span className="text-[#9a8070]">{order?.status || 'In Production'}</span>
             <span style={{ color: '#c8834a' }}>{prog}%</span>
           </div>
           <div className="h-1.5 rounded-full overflow-hidden" style={{ background: '#f0e6d8' }}>
@@ -131,11 +135,11 @@ function OrderRow({ order }) {
           <span className="text-[9px] text-[#b09070] font-bold uppercase tracking-wider block">Active Stage</span>
           <p className="text-sm font-black mt-1 flex items-center gap-1.5" style={{ color: '#c8834a' }}>
             <Settings className="w-3.5 h-3.5" />
-            {order.status}
+            {order?.status || 'Processing'}
           </p>
         </div>
         <Link
-          href={`/dashboard/progress?order=${order.id}`}
+          href={`/dashboard/analytics`}
           className="flex items-center justify-center gap-1.5 text-xs font-black rounded-xl py-2.5 px-3 transition-all duration-200 border group-hover:border-[#c8834a]/60"
           style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a', border: '1px solid rgba(200,131,74,0.2)' }}
         >
@@ -149,19 +153,21 @@ function OrderRow({ order }) {
 
 /* ── Event Feed Item ────────────────────────────────────────────────── */
 function FeedItem({ evt, workerName }) {
+  const pieceCode = evt?.bundle_id || evt?.piece_code || evt?.size || 'N/A';
+
   return (
     <div className="relative pl-5">
       <span className="absolute left-0 top-1.5 w-2 h-2 rounded-full ring-4" style={{ background: '#c8834a', ringColor: '#f2ece4' }} />
       <div className="space-y-0.5">
         <div className="flex items-center justify-between gap-2">
-          <span className="text-xs font-black" style={{ color: '#2d1f0e' }}>{evt.operation}</span>
-          <span className="text-[10px] font-bold shrink-0" style={{ color: '#b09070' }}>{evt.date}</span>
+          <span className="text-xs font-black" style={{ color: '#2d1f0e' }}>{evt?.operation || evt?.stage_label || 'Event'}</span>
+          <span className="text-[10px] font-bold shrink-0" style={{ color: '#b09070' }}>{evt?.date || evt?.work_date || 'Today'}</span>
         </div>
         <p className="text-[11px] leading-relaxed" style={{ color: '#7a6050' }}>
           <span className="font-bold" style={{ color: '#c8834a' }}>{workerName}</span> logged{' '}
-          <span className="font-black" style={{ color: '#3d2b1a' }}>{evt.qty} pcs</span> — {evt.style} ({evt.colorway})
+          <span className="font-black" style={{ color: '#3d2b1a' }}>{evt?.qty || 1} pcs</span> — {evt?.style || evt?.style_name || 'Garment'} ({evt?.colorway || 'STD'})
         </p>
-        <p className="text-[10px]" style={{ color: '#b09070' }}>Order {evt.order_id} · Size {evt.size}</p>
+        <p className="text-[10px]" style={{ color: '#b09070' }}>Order {evt?.order_id || evt?.order_number || 'N/A'} · Code {pieceCode}</p>
       </div>
     </div>
   );
@@ -190,18 +196,22 @@ function QuickNav({ href, icon: Icon, label, sub, accent = '#c8834a' }) {
 /* ── Main Page ──────────────────────────────────────────────────────── */
 export default function DashboardHome() {
   const { user } = useAuth();
-  const { orders, events, workers } = useData();
+  const { orders: rawOrders, events: rawEvents, workers: rawWorkers } = useData();
+
+  const orders = rawOrders || [];
+  const events = rawEvents || [];
+  const workers = rawWorkers || [];
 
   const totalOrders   = orders.length;
-  const airRiskOrders = orders.filter(o => o.freight_mode?.includes('RISK')).length;
-  const delayedOrders = orders.filter(o => o.delay_days > 0).length;
+  const airRiskOrders = orders.filter(o => o?.freight_mode?.includes('RISK') || o?.risk === 'high' || o?.risk === 'critical').length;
+  const delayedOrders = orders.filter(o => (o?.delay_days || 0) > 0).length;
   const avgProgress   = totalOrders > 0
-    ? Math.round(orders.reduce((a, c) => a + c.progress, 0) / totalOrders)
+    ? Math.round(orders.reduce((a, c) => a + (c?.pct_complete ?? c?.progress ?? 0), 0) / totalOrders)
     : 0;
   const onTimeOrders  = totalOrders - delayedOrders;
 
   const recentEvents = [...events].reverse().slice(0, 6);
-  const getWorkerName = id => workers.find(w => w.id === id)?.name || id;
+  const getWorkerName = id => workers.find(w => w.id === id || w.worker_id === id)?.name || id || 'Operator';
 
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -211,16 +221,17 @@ export default function DashboardHome() {
       {/* ── HEADER ── */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-        <p className="text-[11px] font-bold tracking-widest uppercase mb-1" style={{ color: '#c8834a' }}>
-          {today}
-        </p>
-        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>
-          Intelligence Dashboard
-        </h1>
-        <p className="text-sm mt-1" style={{ color: '#9a7a5a' }}>
-          Real-time factory floor intelligence — orders, delays &amp; freight risk.
-        </p>
-      </div>
+          <p className="text-[11px] font-bold tracking-widest uppercase mb-1" style={{ color: '#c8834a' }}>
+            {today}
+          </p>
+          <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>
+            Intelligence Dashboard
+          </h1>
+          <p className="text-sm mt-1" style={{ color: '#9a7a5a' }}>
+            Real-time factory floor intelligence — orders, delays &amp; freight risk.
+          </p>
+        </div>
+        {/* ✅ ORIGINAL ROUTE KEPT: /dashboard/entry */}
         <Link
           href="/dashboard/entry"
           className="inline-flex items-center gap-2 font-black text-sm px-5 py-3 rounded-xl transition-all duration-200 hover:-translate-y-0.5 shrink-0"
@@ -254,7 +265,7 @@ export default function DashboardHome() {
               Order Batch Statuses
             </h2>
             <Link
-              href="/dashboard/orders"
+              href="/dashboard/analytics"
               className="text-xs font-bold flex items-center gap-1 hover:underline"
               style={{ color: '#c8834a' }}
             >
@@ -263,7 +274,13 @@ export default function DashboardHome() {
           </div>
 
           <div className="space-y-4">
-            {orders.map(order => <OrderRow key={order.id} order={order} />)}
+            {orders.length === 0 ? (
+              <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center text-slate-400 text-xs font-bold">
+                No Active Orders Found
+              </div>
+            ) : (
+              orders.map((order, idx) => <OrderRow key={order.id || order.order_number || idx} order={order} />)
+            )}
           </div>
         </div>
 
@@ -287,13 +304,14 @@ export default function DashboardHome() {
               {recentEvents.length === 0 ? (
                 <p className="text-xs text-center py-4" style={{ color: '#b09070' }}>No events logged yet.</p>
               ) : (
-                recentEvents.map(evt => (
-                  <FeedItem key={evt.id} evt={evt} workerName={getWorkerName(evt.worker_id)} />
+                recentEvents.map((evt, idx) => (
+                  <FeedItem key={evt.id || idx} evt={evt} workerName={getWorkerName(evt.worker_id || evt.employee_id)} />
                 ))
               )}
             </div>
 
             <div className="px-5 pb-5">
+              {/* ✅ ORIGINAL ROUTE KEPT: /dashboard/entry */}
               <Link
                 href="/dashboard/entry"
                 className="flex items-center justify-center gap-2 w-full py-3 rounded-xl text-xs font-black transition-all border hover:bg-amber-50"
@@ -313,11 +331,11 @@ export default function DashboardHome() {
               </h2>
             </div>
             <div className="p-3 space-y-2">
-              <QuickNav href="/dashboard/analytics"  icon={BarChart3}   label="Analytics & Alerts"     sub="Charts, trends, KPIs" />
-              <QuickNav href="/dashboard/progress"   icon={TrendingUp}  label="Stage Progress"         sub="Spread & cut tracking" />
-              <QuickNav href="/dashboard/wages"      icon={Users}       label="Payroll & Rates"        sub="Worker wage ledger" />
-              <QuickNav href="/dashboard/attendance" icon={CheckCircle2} label="Attendance"            sub="Daily floor check-in" />
-              <QuickNav href="/dashboard/simulator"  icon={Activity}    label="Delay Simulator"        sub="Freight impact model" />
+              <QuickNav href="/dashboard/analytics"   icon={BarChart3}   label="Analytics & Alerts"    sub="Charts, trends, KPIs" />
+              <QuickNav href="/dashboard/progress"    icon={TrendingUp}  label="Stage Progress"        sub="Spread & cut tracking" />
+              <QuickNav href="/dashboard/wages"       icon={Users}       label="Payroll & Rates"        sub="Worker wage ledger" />
+              <QuickNav href="/dashboard/attendance"  icon={CheckCircle2} label="Attendance"            sub="Daily floor check-in" />
+              <QuickNav href="/dashboard/simulator"   icon={Activity}    label="Delay Simulator"        sub="Freight impact model" />
             </div>
           </div>
 
