@@ -387,8 +387,12 @@ export async function apiInventoryCommit(token, file) {
   return res.json();
 }
 
-// ─── ANALYTICS ───
+// ─── ANALYTICS MODULE (READ-ONLY INTELLIGENCE) ───
 
+/**
+ * 1. GET /api/v1/analytics/overview
+ * Top-level factory KPIs for the dashboard header.
+ */
 export async function apiGetAnalyticsOverview(token) {
   const res = await fetch(`${API_BASE_URL}/api/v1/analytics/overview`, {
     headers: { Authorization: `Bearer ${token}` }
@@ -397,6 +401,66 @@ export async function apiGetAnalyticsOverview(token) {
   return res.json();
 }
 
+/**
+ * GET /api/v1/analytics/explorer
+ * Hierarchical exploration of clients, orders, and styles.
+ */
+export async function apiGetAnalyticsExplore(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/explorer`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch analytics explorer data');
+  return res.json();
+}
+
+/**
+ * 2. GET /api/v1/analytics/orders/{order_id}/tree
+ * Drill-down level 1 — Order with styles and stage distributions.
+ */
+export async function apiGetOrderTree(token, orderId) {
+  if (!orderId) return null;
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/orders/${encodeURIComponent(orderId)}/tree`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error(`Failed to fetch order tree for ${orderId}`);
+  return res.json();
+}
+
+/**
+ * 3. GET /api/v1/analytics/styles/{style_id}/detail
+ * Drill-down level 2 — Style with all pieces & full stage history.
+ */
+export async function apiGetStyleDetail(token, styleId) {
+  if (!styleId) return null;
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/styles/${encodeURIComponent(styleId)}/detail`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error(`Failed to fetch style details for ${styleId}`);
+  return res.json();
+}
+
+/**
+ * 4. GET /api/v1/analytics/pieces/detail
+ * Drill-down level 3 — Single piece view (QR / Scan lookup).
+ * Params: piece_code OR (sku_code + seq)
+ */
+export async function apiGetPieceDetail(token, { piece_code, sku_code, seq }) {
+  const params = new URLSearchParams();
+  if (piece_code) params.append('piece_code', piece_code);
+  if (sku_code) params.append('sku_code', sku_code);
+  if (seq !== undefined && seq !== null) params.append('seq', seq);
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/pieces/detail?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch piece detail');
+  return res.json();
+}
+
+/**
+ * 5. GET /api/v1/analytics/alerts/stage-spread
+ * Bottleneck detector.
+ */
 export async function apiGetStageSpreadAlerts(token) {
   const res = await fetch(`${API_BASE_URL}/api/v1/analytics/alerts/stage-spread`, {
     headers: { Authorization: `Bearer ${token}` }
@@ -405,17 +469,21 @@ export async function apiGetStageSpreadAlerts(token) {
   return res.json();
 }
 
+/**
+ * 6. GET /api/v1/analytics/alerts/freight-risk
+ * Sea-freight cutoff risk.
+ */
 export async function apiGetFreightRiskAlerts(token, todayDate = null) {
   const url = todayDate
     ? `${API_BASE_URL}/api/v1/analytics/alerts/freight-risk?today=${todayDate}`
     : `${API_BASE_URL}/api/v1/analytics/alerts/freight-risk`;
+
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` }
   });
   if (!res.ok) throw new Error('Failed to fetch freight risk alerts');
   return res.json();
 }
-
 /**
  * Fetch all users
  */
@@ -631,217 +699,126 @@ export async function apiSendPO(token, poId) {
   if (!res.ok) throw new Error('Failed to send PO');
   return res.json();
 }
-  // ─── MOCK API ENDPOINTS (FOR UI DEVELOPMENT) ─────────────────────────────────
 
-// ─── COMPLETE 8 MOCK API ENDPOINTS ───────────────────────────────────────────
 
-// 1. GET /wages/styles
+
+// ─── WAGES API ENDPOINTS ──────────────────────────────────────────────────────
+/*
+ * 1. GET /wages/styles - List of styles with pricing coverage
+ */
 export async function apiGetWageStyles(token, queryParams = {}) {
-  console.log("Mock: Fetching Wage Styles...");
-  return [
-    { style_code: "JP-CLERMONT_VEST", style_name: "CLERMONT + VEST", rated_operations: 3, total_operations: 7, fully_rated: false },
-    { style_code: "REGAL-001", style_name: "REGAL JACKET", rated_operations: 5, total_operations: 5, fully_rated: true },
-    { style_code: "KAI-VEST-02", style_name: "BASIC VEST", rated_operations: 0, total_operations: 4, fully_rated: false },
-    { style_code: "KAI-VEST-002", style_name: "BASIC JACKET", rated_operations: 0, total_operations: 8, fully_rated: false },
-    { style_code: "KAI-VEST-003", style_name: "BASIC JACKET", rated_operations: 0, total_operations: 12, fully_rated: false }
-  ];
+    console.log(token)
+  const params = new URLSearchParams(queryParams);
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/styles?${params.toString()}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage styles (${res.status})`);
+
+  return res.json();
 }
 
-// 2. GET /wages/rate-sheet
+/**
+ * 2. GET /wages/rate-sheet - Edit screen for one style
+ */
 export async function apiGetRateSheet(token, styleCode, onDate = null) {
-  console.log("Mock: Fetching Rate Sheet for:", styleCode);
-  return {
-    style_code: styleCode,
-    operations: [
-      { operation_code: "CUTTING", label: "Cutting", sequence: 1, rate: 12.50 },
-      { operation_code: "FUSING", label: "Fusing", sequence: 2, rate: null }
-    ],
-    missing_rate_count: 1
-  };
-}
-
-// 3. POST /wages/rates/bulk
-export async function apiSetWageRatesBulk(token, payload) {
-  console.log("Mock: Saving Bulk Rates:", payload);
-  return { saved: payload.lines.length };
-}
-
-// 4. POST /wages/rates (Single update - இதுதான் விடுபட்டது!)
-export async function apiSetWageRateSingle(token, payload) {
-  console.log("Mock: Saving Single Rate:", payload);
-  return { success: true, updated: payload };
-}
-
-// 5. GET /wages/rate-history
-export async function apiGetRateHistory(token, styleCode, operationCode) {
-  console.log("Mock: Fetching Rate History...");
-  return {
-    style_code: styleCode,
-    operation_code: operationCode,
-    history: [
-      { rate: 13.00, effective_from: "2026-08-01" },
-      { rate: 12.50, effective_from: "2026-04-01" }
-    ]
-  };
-}
-
-// 6. GET /wages/runs
-export async function apiGetWageRuns(token, limit = 50, offset = 0) {
-  console.log("Mock: Fetching Wage Runs...");
-  return [
-    { id: "run-uuid-12345", period_start: "2026-05-01", period_end: "2026-05-31", status: "closed", total_amount: 482300.00 }
-  ];
-}
-
-// 7. POST /wages/runs
-export async function apiComputeWageRun(token, period_start, period_end) {
-  console.log("Mock: Computing Wage Run...");
-  return {
-    id: "run-uuid-12345",
-    period_start: period_start,
-    period_end: period_end,
-    status: "closed",
-    total_amount: 482300.00,
-    total_pieces: 15400,
-    employee_count: 61,
-    lines: [
-      { employee_name: "Ravi Kumar", wage_type: "piece_rate", total_pieces: 120, amount_calculated: 1560 },
-      { employee_name: "Anita S", wage_type: "monthly", total_pieces: 0, amount_calculated: 18000 }
-    ]
-  };
-}
-
-// 8. GET /wages/runs/{run_id}
-export async function apiGetWageRunDetails(token, runId) {
-  console.log("Mock: Fetching Wage Run Details...");
-  return {
-    id: runId,
-    lines: [
-      { employee_name: "Ravi Kumar", wage_type: "piece_rate", total_pieces: 120, amount_calculated: 1560 }
-    ]
-  };
-}
-
-
-
-// // ─── WAGES API ENDPOINTS ──────────────────────────────────────────────────────
-
-// /**
-//  * 1. GET /wages/styles - List of styles with pricing coverage
-//  */
-// export async function apiGetWageStyles(token, queryParams = {}) {
-//     console.log(token)
-//   const params = new URLSearchParams(queryParams);
-//   const res = await fetch(`${API_BASE_URL}/api/v1/wages/styles?${params.toString()}`, {
-//     method: 'GET',
-//     headers: { Authorization: `Bearer ${token}` },
-//   });
-//   if (!res.ok) throw new Error(`Failed to fetch wage styles (${res.status})`);
-
-//   return res.json();
-// }
-
-// /**
-//  * 2. GET /wages/rate-sheet - Edit screen for one style
-//  */
-// export async function apiGetRateSheet(token, styleCode, onDate = null) {
-//   let url = `${API_BASE_URL}/api/v1/wages/rate-sheet?style_code=${encodeURIComponent(styleCode)}`;
-//   if (onDate) url += `&on=${onDate}`;
+  let url = `${API_BASE_URL}/api/v1/wages/rate-sheet?style_code=${encodeURIComponent(styleCode)}`;
+  if (onDate) url += `&on=${onDate}`;
   
-//   const res = await fetch(url, {
-//     method: 'GET',
-//     headers: { Authorization: `Bearer ${token}` },
-//   });
-//   if (!res.ok) throw new Error(`Failed to fetch rate sheet (${res.status})`);
-//   return res.json();
-// }
+  const res = await fetch(url, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch rate sheet (${res.status})`);
+  return res.json();
+}
 
-// /**
-//  * 3. POST /wages/rates/bulk - Save edited sheet
-//  */
-// export async function apiSetWageRatesBulk(token, payload) {
-//   const res = await fetch(`${API_BASE_URL}/api/v1/wages/rates/bulk`, {
-//     method: 'POST',
-//     headers: { 
-//       'Content-Type': 'application/json',
-//       Authorization: `Bearer ${token}` 
-//     },
-//     body: JSON.stringify(payload),
-//   });
-//   if (!res.ok) {
-//     const errText = await res.text().catch(() => 'Failed to save bulk rates');
-//     throw new Error(errText || `Failed to save bulk rates (${res.status})`);
-//   }
-//   return res.json();
-// }
+/**
+ * 3. POST /wages/rates/bulk - Save edited sheet
+ */
+export async function apiSetWageRatesBulk(token, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/rates/bulk`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}` 
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to save bulk rates');
+    throw new Error(errText || `Failed to save bulk rates (${res.status})`);
+  }
+  return res.json();
+}
 
-// /**
-//  * 4. POST /wages/rates - Single cell update (Optional)
-//  */
-// export async function apiSetWageRateSingle(token, payload) {
-//   const res = await fetch(`${API_BASE_URL}/api/v1/wages/rates`, {
-//     method: 'POST',
-//     headers: { 
-//       'Content-Type': 'application/json',
-//       Authorization: `Bearer ${token}` 
-//     },
-//     body: JSON.stringify(payload),
-//   });
-//   if (!res.ok) throw new Error(`Failed to set wage rate (${res.status})`);
-//   return res.json();
-// }
+/**
+ * 4. POST /wages/rates - Single cell update (Optional)
+ */
+export async function apiSetWageRateSingle(token, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/rates`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}` 
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Failed to set wage rate (${res.status})`);
+  return res.json();
+}
 
-// /**
-//  * 5. GET /wages/rate-history - Audit logs
-//  */
-// export async function apiGetRateHistory(token, styleCode, operationCode) {
-//   const res = await fetch(`${API_BASE_URL}/api/v1/wages/rate-history?style_code=${encodeURIComponent(styleCode)}&operation_code=${encodeURIComponent(operationCode)}`, {
-//     method: 'GET',
-//     headers: { Authorization: `Bearer ${token}` },
-//   });
-//   if (!res.ok) throw new Error(`Failed to fetch rate history (${res.status})`);
-//   return res.json();
-// }
+/**
+ * 5. GET /wages/rate-history - Audit logs
+ */
+export async function apiGetRateHistory(token, styleCode, operationCode) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/rate-history?style_code=${encodeURIComponent(styleCode)}&operation_code=${encodeURIComponent(operationCode)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch rate history (${res.status})`);
+  return res.json();
+}
 
-// /**
-//  * 6. GET /wages/runs - Payroll history list
-//  */
-// export async function apiGetWageRuns(token, limit = 50, offset = 0) {
-//   const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs?limit=${limit}&offset=${offset}`, {
-//     method: 'GET',
-//     headers: { Authorization: `Bearer ${token}` },
-//   });
-//   if (!res.ok) throw new Error(`Failed to fetch wage runs (${res.status})`);
-//   return res.json();
-// }
+/**
+ * 6. GET /wages/runs - Payroll history list
+ */
+export async function apiGetWageRuns(token, limit = 50, offset = 0) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs?limit=${limit}&offset=${offset}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage runs (${res.status})`);
+  return res.json();
+}
 
-// /**
-//  * 7. POST /wages/runs - Compute & Freeze payroll
-//  */
-// export async function apiComputeWageRun(token, period_start, period_end) {
-//   const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
-//     method: 'POST',
-//     headers: { 
-//       'Content-Type': 'application/json',
-//       Authorization: `Bearer ${token}` 
-//     },
-//     body: JSON.stringify({ period_start, period_end }),
-//   });
-//   if (!res.ok) {
-//     const errText = await res.text().catch(() => 'Failed to compute wage run');
-//     throw new Error(errText || `Failed to compute wage run (${res.status})`);
-//   }
-//   return res.json();
-// }
+/**
+ * 7. POST /wages/runs - Compute & Freeze payroll
+ */
+export async function apiComputeWageRun(token, period_start, period_end) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}` 
+    },
+    body: JSON.stringify({ period_start, period_end }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to compute wage run');
+    throw new Error(errText || `Failed to compute wage run (${res.status})`);
+  }
+  return res.json();
+}
 
-// /**
-//  * 8. GET /wages/runs/{run_id} - Payslip details
-//  */
-// export async function apiGetWageRunDetails(token, runId) {
-//   const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}`, {
-//     method: 'GET',
-//     headers: { Authorization: `Bearer ${token}` },
-//   });
-//   if (!res.ok) throw new Error(`Failed to fetch wage run details (${res.status})`);
-//   return res.json();
-
+/**
+ * 8. GET /wages/runs/{run_id} - Payslip details
+ */
+export async function apiGetWageRunDetails(token, runId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage run details (${res.status})`);
+  return res.json();
+}

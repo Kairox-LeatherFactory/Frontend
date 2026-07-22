@@ -337,34 +337,32 @@ export default function AdminDashboard() {
               </Field>
 
               <div className="sm:col-span-2">
-                <Field label="User Role">
-                  <select className={inputCls}
-                    value={userForm.role}
-                    onChange={e => setUserForm({ ...userForm, role: e.target.value })}>
-                    <option value="viewer">Viewer</option>
-                    <option value="employee">Employee</option>
-                    <option value="cutting_manager">Cutting Manager</option>
-                    <option value="stitching_manager">Stitching Manager</option>
-                    <option value="direct_manager">Direct Manager</option>
-                    <option value="client">Client</option>
-                  </select>
-                </Field>
+           <Field label="User Role">
+  <select
+    className={inputCls}
+    value={userForm.role}
+    onChange={e => setUserForm({ ...userForm, role: e.target.value })}
+  >
+    <option value="viewer">Viewer</option>
+    <option value="supervisor">Supervisor</option>
+    <option value="cutting_manager">Cutting Manager</option>
+    <option value="stitching_manager">Stitching Manager</option>
+    <option value="hr">HR</option>
+    <option value="direct_manager">Direct Manager</option>
+    <option value="managing_director">Managing Director</option>
+    <option value="client">Client</option>
+  </select>
+</Field>
               </div>
-
+               <div className="sm:col-span-2">
               <Field label="Email (Optional)">
                 <input type="email" className={inputCls}
                   value={userForm.email}
                   placeholder="e.g. priya@factory.local"
                   onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
               </Field>
-
-              <Field label="Employee ID (Optional)">
-                <input type="text" className={inputCls}
-                  value={userForm.employee_id}
-                  placeholder="e.g. emp_123"
-                  onChange={e => setUserForm({ ...userForm, employee_id: e.target.value })} />
-              </Field>
-            </div>
+              </div>
+              </div>
 
             <button type="submit" disabled={isSubmittingUser}
               className="w-full h-11 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"

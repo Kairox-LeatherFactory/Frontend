@@ -44,7 +44,6 @@ export function DataProvider({ children }) {
         apiGetUsers(token).catch(() => []),
       ]);
 
-      // ஆர்டர்களைப் பெறுதல்
       let allOrders = [];
       for (const client of clientsData) {
         const clientOrders = await apiGetClientOrders(token, client.id).catch(() => []);
