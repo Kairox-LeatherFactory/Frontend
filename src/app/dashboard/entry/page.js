@@ -757,8 +757,8 @@ export default function ProductionLogEntry() {
           </div>
 
           {/* Form Actions */}
-          <div className="pt-4 flex flex-col items-center sm:items-end gap-3">
-            <div className="flex flex-col sm:flex-row gap-4 justify-end w-full">
+          <div className="pt-4 flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 w-full">
               <button
                 type="button"
                 onClick={() => {
@@ -766,7 +766,7 @@ export default function ProductionLogEntry() {
                   setSkuCode('');
                   setCuttingCount('');
                 }}
-                className="h-14 font-bold rounded-xl text-base px-8 transition-all cursor-pointer"
+                className="w-full sm:w-auto h-14 font-bold rounded-xl text-base px-8 transition-all cursor-pointer active:scale-95"
                 style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
               >
                 Reset All
@@ -774,7 +774,7 @@ export default function ProductionLogEntry() {
 
               <button
                 type="submit"
-                className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 flex-1 sm:flex-none cursor-pointer"
+                className="w-full sm:flex-1 h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
               >
                 <Rocket className="w-5 h-5" /> Submit Event
@@ -783,7 +783,7 @@ export default function ProductionLogEntry() {
 
             <Link
               href={skuCode ? `/dashboard/analytics?sku=${encodeURIComponent(skuCode)}` : '/dashboard/analytics'}
-              className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center gap-1.5 mt-2"
+              className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
               style={{ color: '#c8834a' }}
             >
               <BarChart3 className="w-4 h-4" />
