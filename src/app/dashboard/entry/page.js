@@ -622,10 +622,7 @@ export default function ProductionLogEntry() {
                                 }`}
                             >
                               <div>
-                                <span className={`text-[10px] px-2 py-0.5 rounded font-black mr-2 ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                                  Order #{s.order_number || 'N/A'}
-                                </span>
-                                <span>{s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
+                                <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
                               </div>
                               {isSelected && <span className="font-black text-sm">✓</span>}
                             </button>
