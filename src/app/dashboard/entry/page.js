@@ -109,11 +109,16 @@ export default function ProductionLogEntry() {
   const [cuttingCount, setCuttingCount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [fetchedSkus, setFetchedSkus] = useState([]);
+  const [skusLoading, setSkusLoading] = useState(false);
 
   // 🎯 Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
   const skuModalRef = useRef(null);
+
+  const [isWorkerOpen, setIsWorkerOpen] = useState(false);
+  const [workerSearchQuery, setWorkerSearchQuery] = useState('');
+  const workerModalRef = useRef(null);
 
   const [showChecklistModal, setShowChecklistModal] = useState(false);
   const [checklistPieces, setChecklistPieces] = useState([]);
@@ -145,6 +150,9 @@ export default function ProductionLogEntry() {
       if (skuModalRef.current && !skuModalRef.current.contains(e.target)) {
         setIsSkuOpen(false);
       }
+      if (workerModalRef.current && !workerModalRef.current.contains(e.target)) {
+        setIsWorkerOpen(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
@@ -155,7 +163,8 @@ export default function ProductionLogEntry() {
   }, [workers, workerId]);
 
   useEffect(() => {
-    apiGetSkus(token).then(setFetchedSkus).catch(console.warn);
+    setSkusLoading(true);
+    apiGetSkus(token).then(setFetchedSkus).catch(console.warn).finally(() => setSkusLoading(false));
   }, [token, skuRefreshKey]);
 
   useEffect(() => {
@@ -206,6 +215,17 @@ export default function ProductionLogEntry() {
   }, [fetchedSkus, skuSearchQuery]);
 
   const currentSelectedSku = fetchedSkus.find(s => s.code === skuCode);
+
+  const searchFilteredWorkers = useMemo(() => {
+    if (!workerSearchQuery.trim()) return workers;
+    const searchTerms = workerSearchQuery.toLowerCase().trim().split(/\s+/);
+    return workers.filter((w) => {
+      const fullText = `${w.name || ''} ${w.designation || ''} ${w.id || ''}`.toLowerCase();
+      return searchTerms.every(term => fullText.includes(term));
+    });
+  }, [workers, workerSearchQuery]);
+
+  const currentSelectedWorker = workers.find(w => w.id === workerId);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -444,31 +464,86 @@ export default function ProductionLogEntry() {
         <form onSubmit={handleSubmit} className="space-y-8">
 
           {/* STEP 1: Worker Selection */}
-          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
               Worker Selection
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="worker-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-blue-500" /> Assigned Worker / Operator *
+              <div className="flex flex-col gap-2 relative z-40 self-start" ref={workerModalRef}>
+                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                  <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker / Operator *
                 </label>
-                <select
-                  id="worker-select"
-                  value={workerId}
-                  onChange={(e) => setWorkerId(e.target.value)}
-                  className="input-field h-14 bg-white font-bold border-2 border-slate-200 focus:border-blue-500 cursor-pointer shadow-sm text-sm transition-all px-4 rounded-xl outline-none"
-                  required
+
+                {/* Main Select Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsWorkerOpen(!isWorkerOpen);
+                    setWorkerSearchQuery('');
+                  }}
+                  className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
                 >
-                  <option value="" disabled>-- Select Worker --</option>
-                  {workers.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} {w.designation ? `(${w.designation})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  <span className={currentSelectedWorker ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
+                    {currentSelectedWorker
+                      ? `${currentSelectedWorker.name} ${currentSelectedWorker.designation ? `(${currentSelectedWorker.designation})` : ''}`
+                      : "-- Select / Search Worker --"
+                    }
+                  </span>
+                  <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isWorkerOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Floating Menu with Search Input */}
+                {isWorkerOpen && (
+                  <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl z-[99999] p-3 space-y-3 animate-fade-in">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Search Worker Name, Role..."
+                        value={workerSearchQuery}
+                        onChange={(e) => setWorkerSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                        className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+                      />
+                    </div>
+                    
+                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
+                      {searchFilteredWorkers.length > 0 ? (
+                        searchFilteredWorkers.map((w) => {
+                          const isSelected = workerId === w.id;
+                          return (
+                            <button
+                              key={w.id}
+                              type="button"
+                              onClick={() => {
+                                setWorkerId(w.id);
+                                setIsWorkerOpen(false);
+                              }}
+                              className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+                            >
+                              <div>
+                                <span>{w.name}</span>
+                                {w.designation && (
+                                  <span className={`ml-2 text-[10px] px-2 py-0.5 rounded font-black ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                    {w.designation}
+                                  </span>
+                                )}
+                              </div>
+                              {isSelected && <span className="font-black text-sm">✓</span>}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="p-4 text-center text-xs font-bold text-slate-400">
+                          No workers match "{workerSearchQuery}"
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -527,7 +602,12 @@ export default function ProductionLogEntry() {
 
                     {/* Filtered SKU Options List */}
                     <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
-                      {searchFilteredSkus.length > 0 ? (
+                      {skusLoading ? (
+                        <div className="p-6 flex flex-col items-center gap-2">
+                          <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
+                          <span className="text-xs font-bold text-slate-400">Loading SKUs...</span>
+                        </div>
+                      ) : searchFilteredSkus.length > 0 ? (
                         searchFilteredSkus.map((s) => {
                           const isSelected = skuCode === s.code;
                           return (
