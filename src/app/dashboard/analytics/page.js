@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import {
   apiGetAnalyticsOverview,
+  apiGetAnalyticsExplore,
   apiGetStageSpreadAlerts,
   apiGetFreightRiskAlerts,
   apiGetOrderTree,
@@ -208,6 +209,24 @@ function OrdersExplorer() {
   const { orders: realOrders } = useData();
   const orders = useMemo(() => realOrders || [], [realOrders]);
 
+  const [exploreData, setExploreData] = useState(null);
+  const [loadingExplore, setLoadingExplore] = useState(true);
+
+  useEffect(() => {
+    async function loadExploreData() {
+      if (!token) return;
+      try {
+        const data = await apiGetAnalyticsExplore(token);
+        setExploreData(data);
+      } catch (err) {
+        console.error("Failed to load analytics explore data:", err);
+      } finally {
+        setLoadingExplore(false);
+      }
+    }
+    loadExploreData();
+  }, [token]);
+
   const [expandedOrders, setExpandedOrders] = useState({});
   const [expandedStyles, setExpandedStyles] = useState({});
   const [activeItem, setActiveItem] = useState(null);
@@ -225,6 +244,23 @@ function OrdersExplorer() {
   const [loadingPiece, setLoadingPiece] = useState(false);
 
   const orderGroups = useMemo(() => {
+    if (exploreData && exploreData.clients) {
+      const groups = [];
+      exploreData.clients.forEach(client => {
+         client.orders?.forEach(order => {
+            const orderName = `${client.client_name} (PO: ${order.order_number})`;
+            groups.push({
+               id: orderName,
+               rawId: order.order_id,
+               client: client.client_name,
+               po: order.order_number,
+               styles: order.styles || []
+            });
+         });
+      });
+      return groups;
+    }
+
     if (!orders || orders.length === 0) return [];
     const groups = {};
     orders.forEach((styleOrder) => {
@@ -243,7 +279,7 @@ function OrdersExplorer() {
       }
     });
     return Object.values(groups);
-  }, [orders]);
+  }, [orders, exploreData]);
 
   const toggleOrder = async (group) => {
     const groupId = group.id;

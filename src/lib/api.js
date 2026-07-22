@@ -402,6 +402,18 @@ export async function apiGetAnalyticsOverview(token) {
 }
 
 /**
+ * GET /api/v1/analytics/explorer
+ * Hierarchical exploration of clients, orders, and styles.
+ */
+export async function apiGetAnalyticsExplore(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/explorer`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
+  if (!res.ok) throw new Error('Failed to fetch analytics explorer data');
+  return res.json();
+}
+
+/**
  * 2. GET /api/v1/analytics/orders/{order_id}/tree
  * Drill-down level 1 — Order with styles and stage distributions.
  */
