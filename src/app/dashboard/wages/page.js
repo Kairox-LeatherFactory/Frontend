@@ -347,7 +347,20 @@ function ComputationView({ token }) {
       const data = await apiGetWageRuns(token);
       setRuns(data);
     } catch (err) { 
-      setErrorMsg(err.message || 'Failed to compute payroll');
+      let msg = err.message || 'Failed to compute payroll';
+      try {
+        const parsed = JSON.parse(msg);
+        if (parsed.detail) msg = parsed.detail;
+      } catch(e) {}
+      
+      // Shorten specific backend messages
+      if (msg.includes('Period overlaps closed run')) {
+        const match = msg.match(/\((.*?)\)/);
+        const dates = match ? match[1] : 'an existing run';
+        msg = `Selected dates overlap with a previous payroll run (${dates}).`;
+      }
+      
+      setErrorMsg(msg);
     } finally { 
       setLoading(false); 
     }
@@ -415,6 +428,8 @@ function ComputationView({ token }) {
               <thead className="bg-white">
                 <tr className="border-b uppercase text-[10px] font-black tracking-wider text-left" style={{ borderColor: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
                   <th className="p-4 pl-6">Run Period</th>
+                  <th className="p-4">Employees / Pieces</th>
+                  <th className="p-4 text-center">Unrated Ops</th>
                   <th className="p-4">Disbursement Amount</th>
                   <th className="p-4">Status</th>
                   <th className="p-4 pr-6 text-right">View Ledger</th>
@@ -423,8 +438,24 @@ function ComputationView({ token }) {
               <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
                 {latestRun.map(r => (
                   <tr key={r.id} className="hover:bg-[#fcfaf8] transition-colors">
-                    <td className="p-4 pl-6 font-bold" style={{ color: '#4a3a2a' }}>{r.period_start} <span className="text-slate-300 font-normal mx-1">to</span> {r.period_end}</td>
-                    <td className="p-4 font-black text-lg" style={{ color: '#2d1f0e' }}>₹{r.total_amount.toLocaleString()}</td>
+                    <td className="p-4 pl-6 font-bold" style={{ color: '#4a3a2a' }}>
+                      {r.period_start} <span className="text-slate-300 font-normal mx-1">to</span> {r.period_end}
+                      {r.gap_days > 0 && <span className="block text-[10px] text-red-500 font-black mt-1">⚠️ {r.gap_days} Days Gap</span>}
+                    </td>
+                    <td className="p-4 font-bold" style={{ color: '#9a7a5a' }}>
+                      <div className="flex items-center gap-2">
+                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px]">{r.employee_count || 0} Emp</span>
+                        <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[10px]">{r.total_pieces || 0} Pcs</span>
+                      </div>
+                    </td>
+                    <td className="p-4 text-center">
+                      {r.unrated_operations && r.unrated_operations.length > 0 ? (
+                        <span className="bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full text-[10px] font-black">{r.unrated_operations.length} Unrated</span>
+                      ) : (
+                        <span className="text-slate-400 text-[10px] font-bold">-</span>
+                      )}
+                    </td>
+                    <td className="p-4 font-black text-lg" style={{ color: '#2d1f0e' }}>₹{r.total_amount?.toLocaleString() || 0}</td>
                     <td className="p-4">
                       <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[10px] uppercase font-black tracking-wider">
                         {r.status}
@@ -486,6 +517,8 @@ function LedgerView({ token }) {
               <thead className="bg-white">
                 <tr className="border-b uppercase text-[10px] font-black tracking-wider text-left" style={{ borderColor: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
                   <th className="p-4 pl-6">Run Period</th>
+                  <th className="p-4">Employees / Pieces</th>
+                  <th className="p-4 text-center">Unrated Ops</th>
                   <th className="p-4">Disbursement Amount</th>
                   <th className="p-4">Status</th>
                   <th className="p-4 pr-6 text-right">View Ledger</th>
@@ -494,8 +527,24 @@ function LedgerView({ token }) {
               <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
                 {runs.map(r => (
                   <tr key={r.id} className="hover:bg-[#fcfaf8] transition-colors">
-                    <td className="p-4 pl-6 font-bold" style={{ color: '#4a3a2a' }}>{r.period_start} <span className="text-slate-300 font-normal mx-1">to</span> {r.period_end}</td>
-                    <td className="p-4 font-black text-lg" style={{ color: '#2d1f0e' }}>₹{r.total_amount.toLocaleString()}</td>
+                    <td className="p-4 pl-6 font-bold" style={{ color: '#4a3a2a' }}>
+                      {r.period_start} <span className="text-slate-300 font-normal mx-1">to</span> {r.period_end}
+                      {r.gap_days > 0 && <span className="block text-[10px] text-red-500 font-black mt-1">⚠️ {r.gap_days} Days Gap</span>}
+                    </td>
+                    <td className="p-4 font-bold" style={{ color: '#9a7a5a' }}>
+                      <div className="flex items-center gap-2">
+                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px]">{r.employee_count || 0} Emp</span>
+                        <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[10px]">{r.total_pieces || 0} Pcs</span>
+                      </div>
+                    </td>
+                    <td className="p-4 text-center">
+                      {r.unrated_operations && r.unrated_operations.length > 0 ? (
+                        <span className="bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full text-[10px] font-black">{r.unrated_operations.length} Unrated</span>
+                      ) : (
+                        <span className="text-slate-400 text-[10px] font-bold">-</span>
+                      )}
+                    </td>
+                    <td className="p-4 font-black text-lg" style={{ color: '#2d1f0e' }}>₹{r.total_amount?.toLocaleString() || 0}</td>
                     <td className="p-4">
                       <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[10px] uppercase font-black tracking-wider">
                         {r.status}
@@ -559,7 +608,7 @@ function WageRunDetailsModal({ details, onClose }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)', background: 'white' }}>
-                  {selectedRunDetails.lines.map((line, idx) => (
+                  {details.lines.map((line, idx) => (
                     <tr key={idx} className="hover:bg-[#fcfaf8] transition-colors">
                       <td className="p-4 font-bold" style={{ color: '#2d1f0e' }}>{line.employee_name}</td>
                       <td className="p-4">
@@ -571,7 +620,7 @@ function WageRunDetailsModal({ details, onClose }) {
                       <td className="p-4 text-right font-black text-lg" style={{ color: '#c8834a' }}>₹{line.amount_calculated?.toLocaleString() ?? 0}</td>
                     </tr>
                   ))}
-                  {(!selectedRunDetails.lines || selectedRunDetails.lines.length === 0) && (
+                  {(!details.lines || details.lines.length === 0) && (
                     <tr>
                       <td colSpan={4} className="p-8 text-center text-slate-400 font-bold">No wage records generated in this ledger run.</td>
                     </tr>
