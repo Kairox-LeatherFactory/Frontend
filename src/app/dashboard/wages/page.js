@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { 
   apiGetWageStyles, 
@@ -10,7 +11,7 @@ import {
   apiGetRateHistory,
   apiGetWageRunDetails 
 } from '@/lib/api';
-import { Loader2, History, Eye, X } from 'lucide-react';
+import { Loader2, History, Eye, X, Save, Activity } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 export default function PieceRatesAndWages() {
@@ -55,7 +56,7 @@ function StylesView({ token }) {
   const [rates, setRates] = useState([]);
   const [historyModal, setHistoryModal] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingOps, setSavingOps] = useState({});
 
   useEffect(() => {
     apiGetWageStyles(token).then(setStyles).finally(() => setLoading(false));
@@ -72,19 +73,20 @@ function StylesView({ token }) {
     setHistoryModal(data);
   };
 
-  const handleSaveRates = async () => {
-    setSaving(true);
+  const handleSaveSingleRate = async (op) => {
+    setSavingOps(prev => ({ ...prev, [op.operation_code]: true }));
     try {
       const payload = {
         style_code: selectedStyle.style_code,
         effective_from: new Date().toISOString().split('T')[0],
-        lines: rates.map(r => ({ operation_code: r.operation_code, rate: parseFloat(r.rate || 0) }))
+        lines: [{ operation_code: op.operation_code, rate: parseFloat(op.rate || 0) }]
       };
       await apiSetWageRatesBulk(token, payload);
-      alert("Rates saved successfully!");
-      setSelectedStyle(null);
-    } catch (e) { alert("Error saving: " + e.message); }
-    finally { setSaving(false); }
+    } catch (e) { 
+      alert("Error saving: " + e.message); 
+    } finally { 
+      setSavingOps(prev => ({ ...prev, [op.operation_code]: false })); 
+    }
   };
 
   if (loading) {
@@ -120,101 +122,131 @@ function StylesView({ token }) {
                 <tr className="uppercase text-[10px] font-black tracking-wider" style={{ color: '#9a7a5a' }}>
                   <th className="p-4">Operation Phase</th>
                   <th className="p-4 w-40">Rate Per Piece (₹)</th>
-                  <th className="p-4 w-24 text-right">Audit</th>
+                  <th className="p-4 w-32 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
-                {rates.map((op, idx) => (
-                  <tr key={op.operation_code} className="hover:bg-[#fcfaf8] transition-colors">
-                    <td className="p-4 font-extrabold" style={{ color: '#2d1f0e' }}>
-                      {op.label}
-                      <span className="block text-[10px] font-bold mt-0.5 text-slate-400">{op.operation_code}</span>
-                    </td>
-                    <td className="p-4">
-                      <div className="relative flex items-center">
-                        <span className="absolute left-3 text-slate-400 font-bold text-xs">₹</span>
-                        <input 
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          className="w-full h-11 pl-7 pr-3 bg-white font-black text-sm border-2 rounded-xl outline-none transition-all shadow-sm focus:bg-white"
-                          style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
-                          value={op.rate ?? ''} 
-                          onChange={(e) => {
-                            const newRates = [...rates];
-                            newRates[idx].rate = e.target.value;
-                            setRates(newRates);
-                          }}
-                          placeholder="0.00"
-                        />
-                      </div>
-                    </td>
-                    <td className="p-4 text-right">
-                      <button 
-                        onClick={() => handleShowHistory(op.operation_code)} 
-                        className="p-2 rounded-lg bg-white shadow-sm border transition-all hover:shadow-md group flex items-center justify-center ml-auto"
-                        style={{ borderColor: 'rgba(200,131,74,0.2)' }}
-                        title="View Rate History"
-                      >
-                        <History className="w-4 h-4 text-slate-400 group-hover:text-[#c8834a] transition-colors" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {rates.map((op, idx) => {
+                  const isSaving = savingOps[op.operation_code];
+                  return (
+                    <tr key={op.operation_code} className="hover:bg-[#fcfaf8] transition-colors">
+                      <td className="p-4 font-extrabold" style={{ color: '#2d1f0e' }}>
+                        {op.label}
+                        <span className="block text-[10px] font-bold mt-0.5 text-slate-400">{op.operation_code}</span>
+                      </td>
+                      <td className="p-4">
+                        <div className="relative flex items-center">
+                          <span className="absolute left-3 text-slate-400 font-bold text-xs">₹</span>
+                          <input 
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className="w-full h-11 pl-7 pr-3 bg-white font-black text-sm border-2 rounded-xl outline-none transition-all shadow-sm focus:bg-white"
+                            style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
+                            value={op.rate ?? ''} 
+                            onChange={(e) => {
+                              const newRates = [...rates];
+                              newRates[idx].rate = e.target.value;
+                              setRates(newRates);
+                            }}
+                            placeholder="0.00"
+                          />
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={() => handleSaveSingleRate(op)} 
+                            disabled={isSaving}
+                            className="p-2.5 rounded-xl font-bold text-white shadow-sm transition-all hover:shadow-md disabled:opacity-50 flex items-center justify-center active:scale-95"
+                            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                            title="Save Rate"
+                          >
+                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                          </button>
+                          <button 
+                            onClick={() => handleShowHistory(op.operation_code)} 
+                            className="p-2.5 rounded-xl bg-white shadow-sm border transition-all hover:shadow-md group flex items-center justify-center"
+                            style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                            title="View Rate History"
+                          >
+                            <History className="w-4 h-4 text-slate-400 group-hover:text-[#c8834a] transition-colors" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
-          </div>
-
-          <div className="pt-4 flex justify-end">
-            <button 
-              onClick={handleSaveRates} 
-              disabled={saving} 
-              className="h-12 px-8 rounded-xl text-white font-black text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 hover:shadow-lg disabled:opacity-50"
-              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-            >
-              {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Save New Rates'}
-            </button>
           </div>
         </SpotlightCard>
 
         {/* Audit History Modal */}
-        {historyModal && (
+        {historyModal && typeof document !== 'undefined' && createPortal(
           <div 
-            className="fixed inset-0 flex items-center justify-center p-4 z-[99999]"
+            className="fixed inset-0 flex items-center justify-center p-4 z-[99999] animate-fade-in"
             style={{ background: 'rgba(15, 23, 42, 0.6)' }}
             onClick={(e) => { if(e.target === e.currentTarget) setHistoryModal(null); }}
           >
-            <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-md relative shadow-2xl animate-scale-up border" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-              <button 
-                onClick={() => setHistoryModal(null)} 
-                className="absolute top-6 right-6 p-2 bg-slate-50 text-slate-400 hover:text-slate-800 rounded-xl transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+            <div className="bg-white rounded-3xl w-full max-w-md relative shadow-2xl animate-scale-up border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
               
-              <h3 className="font-black text-lg mb-1" style={{ color: '#2d1f0e' }}>Rate Audit History</h3>
-              <p className="text-xs font-bold text-[#c8834a] uppercase tracking-wider mb-6">OP: {historyModal.operation_code}</p>
+              <div className="p-6 sm:p-8" style={{ background: 'linear-gradient(135deg, #fdfbf9, #faf6f0)' }}>
+                <button 
+                  onClick={() => setHistoryModal(null)} 
+                  className="absolute top-6 right-6 p-2 bg-white border text-slate-400 hover:text-[#c8834a] rounded-xl transition-all shadow-sm"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+                
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border" style={{ background: 'white', borderColor: 'rgba(200,131,74,0.15)' }}>
+                    <Activity className="w-5 h-5" style={{ color: '#c8834a' }} />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-xl tracking-tight" style={{ color: '#2d1f0e' }}>Rate Audit Trail</h3>
+                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: '#c8834a' }}>OP: {historyModal.operation_code}</p>
+                  </div>
+                </div>
+              </div>
               
-              <div className="space-y-3 max-h-96 overflow-y-auto pr-2">
+              <div className="p-6 sm:p-8 pt-4 max-h-[60vh] overflow-y-auto">
                 {historyModal.history.length === 0 ? (
-                  <p className="text-sm font-medium text-slate-400 text-center py-4">No history recorded for this operation.</p>
+                  <div className="flex flex-col items-center justify-center py-10 opacity-60">
+                    <History className="w-10 h-10 mb-3 text-slate-300" />
+                    <p className="text-sm font-bold text-slate-400 text-center">No history recorded yet.</p>
+                  </div>
                 ) : (
-                  historyModal.history.map((h, i) => (
-                    <div key={i} className="flex justify-between items-center p-4 rounded-2xl border" style={{ background: i === 0 ? '#fff9f0' : '#faf6f0', borderColor: i === 0 ? 'rgba(200,131,74,0.3)' : 'rgba(200,131,74,0.1)' }}>
-                      <div>
-                        <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Effective From</p>
-                        <p className="font-bold text-sm" style={{ color: '#4a3a2a' }}>{h.effective_from}</p>
+                  <div className="relative border-l-2 ml-4 space-y-8" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+                    {historyModal.history.map((h, i) => (
+                      <div key={i} className="relative pl-6 animate-fade-in" style={{ animationDelay: `${i * 50}ms` }}>
+                        <div className="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full border-[3px] border-white shadow-sm" style={{ background: i === 0 ? '#10b981' : '#c8834a' }}></div>
+                        
+                        <div className="p-4 rounded-2xl border shadow-sm transition-all hover:shadow-md" style={{ background: i === 0 ? '#f0fdf4' : 'white', borderColor: i === 0 ? '#bbf7d0' : 'rgba(200,131,74,0.1)' }}>
+                          {i === 0 && (
+                            <span className="inline-block mb-2 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-100">
+                              Current Active Rate
+                            </span>
+                          )}
+                          <div className="flex justify-between items-end">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: i === 0 ? '#166534' : '#9a7a5a' }}>Effective From</p>
+                              <p className="font-bold text-sm" style={{ color: i === 0 ? '#14532d' : '#2d1f0e' }}>{h.effective_from}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: i === 0 ? '#166534' : '#9a7a5a' }}>Rate</p>
+                              <p className="font-black text-xl" style={{ color: i === 0 ? '#059669' : '#c8834a' }}>₹{h.rate}</p>
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-[10px] font-black uppercase text-slate-500 tracking-wider">Rate</p>
-                        <p className="font-black text-lg" style={{ color: '#c8834a' }}>₹{h.rate}</p>
-                      </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </div>
     );
