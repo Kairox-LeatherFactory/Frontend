@@ -208,13 +208,13 @@ export default function ProductionLogEntry() {
   // 🎯 Search Filter Logic for SKU Dropdown
   const searchFilteredSkus = useMemo(() => {
     if (!skuSearchQuery.trim()) return fetchedSkus;
-    
+
     // Split the search query into separate terms (e.g., "shirt black" -> ["shirt", "black"])
     const searchTerms = skuSearchQuery.toLowerCase().trim().split(/\s+/);
-    
+
     return fetchedSkus.filter((s) => {
       const fullText = `[${s.order_number || ''}] ${s.label || ''} ${s.style_name || ''} ${s.color_code || ''} ${s.size || ''} ${s.code || ''}`.toLowerCase();
-      
+
       // Match if ALL search terms are found in the fullText
       return searchTerms.every(term => fullText.includes(term));
     });
@@ -345,7 +345,7 @@ export default function ProductionLogEntry() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+    <div className="max-w-4xl mx-auto px-4 sm:px-0 space-y-8 animate-fade-in pb-12">
 
       {/* TITLE SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -384,81 +384,81 @@ export default function ProductionLogEntry() {
           </button>
         </div>
       </div>
-{/* 🎯 EXACT SCREEN CENTER FLOATING POPUP (RESPONSIVE & CLEAN) */}
-<div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 pointer-events-none transition-all duration-300">
-  <div className="w-full max-w-sm flex flex-col gap-3">
+      {/* 🎯 EXACT SCREEN CENTER FLOATING POPUP (RESPONSIVE & CLEAN) */}
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 pointer-events-none transition-all duration-300">
+        <div className="w-full max-w-sm flex flex-col gap-3">
 
-    {/* Success Toast */}
-    {successMsg && (
-      <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
-            <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
-          </div>
+          {/* Success Toast */}
+          {successMsg && (
+            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSuccessMsg('')}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Commit Success Toast */}
+          {commitSuccess && (
+            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCommitSuccess('')}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Error Toast */}
+          {(errorMsg || uploadError) && (
+            <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+                  <XCircle className="w-6 h-6 text-rose-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setErrorMsg(''); setUploadError(''); }}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
         </div>
-        <button 
-          type="button"
-          onClick={() => setSuccessMsg('')} 
-          className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
       </div>
-    )}
-
-    {/* Commit Success Toast */}
-    {commitSuccess && (
-      <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
-            <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
-          </div>
-        </div>
-        <button 
-          type="button"
-          onClick={() => setCommitSuccess('')} 
-          className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-    )}
-
-    {/* Error Toast */}
-    {(errorMsg || uploadError) && (
-      <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
-            <XCircle className="w-6 h-6 text-rose-400" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
-            <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
-          </div>
-        </div>
-        <button 
-          type="button"
-          onClick={() => { setErrorMsg(''); setUploadError(''); }} 
-          className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-    )}
-
-  </div>
-</div>
 
       {/* LOGGING FORM CARD */}
-      <SpotlightCard className="p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
 
         <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
           <div className="text-xs font-bold" style={{ color: '#4a3a2a' }}>
@@ -515,7 +515,7 @@ export default function ProductionLogEntry() {
                         className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
                       />
                     </div>
-                    
+
                     <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
                       {searchFilteredWorkers.length > 0 ? (
                         searchFilteredWorkers.map((w) => {
@@ -764,7 +764,7 @@ export default function ProductionLogEntry() {
 
           {/* Form Actions */}
           <div className="pt-4 flex flex-col gap-3">
-            <div className="flex flex-col sm:flex-row gap-3 w-full">
+            <div className="flex gap-3 w-full">
               <button
                 type="button"
                 onClick={() => {
@@ -772,7 +772,7 @@ export default function ProductionLogEntry() {
                   setSkuCode('');
                   setCuttingCount('');
                 }}
-                className="w-full sm:w-auto h-14 font-bold rounded-xl text-base px-8 transition-all cursor-pointer active:scale-95"
+                className="flex-1 h-14 font-bold rounded-xl text-base transition-all cursor-pointer active:scale-95"
                 style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
               >
                 Reset All
@@ -780,7 +780,7 @@ export default function ProductionLogEntry() {
 
               <button
                 type="submit"
-                className="w-full sm:flex-1 h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
               >
                 <Rocket className="w-5 h-5" /> Submit Event

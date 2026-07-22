@@ -12,7 +12,7 @@ import {
   TreePine,
   Wallet,
   Gamepad2,
-  ScanSearch, 
+  ScanSearch,
   X,
   Menu,
   LogOut,
@@ -79,7 +79,7 @@ export default function DashboardLayout({ children }) {
         } else {
           setPendingPoCount(0);
         }
-      } catch (e) {}
+      } catch (e) { }
     };
 
     checkPendingPOs();
@@ -132,10 +132,10 @@ export default function DashboardLayout({ children }) {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row" style={{ background: '#faf6f0' }}>
-      
+
       {/* ─── SIDEBAR (Desktop & Mobile) ─── */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 transform ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:static md:inset-auto md:z-auto transition-transform duration-300 ease-in-out flex flex-col shadow-2xl`} style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
-        
+
         {/* Sidebar Brand Logo */}
         <div className="h-20 flex items-center justify-between px-6 border-b" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
           <div className="flex items-center gap-2">
@@ -197,7 +197,7 @@ export default function DashboardLayout({ children }) {
 
       {/* ─── MAIN CONTENT CONTAINER ─── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
-        
+
         {/* ─── TOP BAR HEADER ─── */}
         <header className="h-20 flex items-center justify-between px-6 sticky top-0 z-30" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', boxShadow: '0 4px 20px rgba(0,0,0,0.02)' }}>
           <div className="flex items-center gap-4">
