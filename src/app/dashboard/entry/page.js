@@ -193,10 +193,15 @@ export default function ProductionLogEntry() {
   // 🎯 Search Filter Logic for SKU Dropdown
   const searchFilteredSkus = useMemo(() => {
     if (!skuSearchQuery.trim()) return fetchedSkus;
-    const q = skuSearchQuery.toLowerCase().trim();
+    
+    // Split the search query into separate terms (e.g., "shirt black" -> ["shirt", "black"])
+    const searchTerms = skuSearchQuery.toLowerCase().trim().split(/\s+/);
+    
     return fetchedSkus.filter((s) => {
-      const fullText = `[${s.order_number || ''}] ${s.label || ''} ${s.style_name || ''} ${s.color_code || ''} ${s.size} ${s.code}`.toLowerCase();
-      return fullText.includes(q);
+      const fullText = `[${s.order_number || ''}] ${s.label || ''} ${s.style_name || ''} ${s.color_code || ''} ${s.size || ''} ${s.code || ''}`.toLowerCase();
+      
+      // Match if ALL search terms are found in the fullText
+      return searchTerms.every(term => fullText.includes(term));
     });
   }, [fetchedSkus, skuSearchQuery]);
 
@@ -479,7 +484,7 @@ export default function ProductionLogEntry() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
 
               {/* 🎯 UI-SAFE SEARCHABLE DROPDOWN MENU */}
-              <div className="flex flex-col gap-2 relative z-30" ref={skuModalRef}>
+              <div className="flex flex-col gap-2 relative z-30 self-start" ref={skuModalRef}>
                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
                   <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
                 </label>
@@ -515,6 +520,7 @@ export default function ProductionLogEntry() {
                         placeholder="Type Style, SKU, Order No, or Color..."
                         value={skuSearchQuery}
                         onChange={(e) => setSkuSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                         className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
                       />
                     </div>
@@ -552,6 +558,16 @@ export default function ProductionLogEntry() {
                       )}
                     </div>
 
+                  </div>
+                )}
+
+                {/* 🎯 Target Quantity Display */}
+                {currentSelectedSku && (
+                  <div className="mt-1 px-4 py-2.5 bg-[#faf6f0] border border-[#c8834a]/20 rounded-xl flex items-center justify-between shadow-sm animate-fade-in">
+                    <span className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider flex items-center gap-1.5">
+                      Target Quantity
+                    </span>
+                    <span className="text-sm font-black text-[#c8834a]">{currentSelectedSku.qty_ordered || 0} pcs</span>
                   </div>
                 )}
               </div>
