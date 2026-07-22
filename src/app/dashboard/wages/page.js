@@ -27,24 +27,33 @@ export default function PieceRatesAndWages() {
       </div>
 
       {/* ─── TABS ─── */}
-      <div className="flex gap-3 p-1.5 rounded-2xl w-max" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
+      <div className="flex gap-3 p-1.5 rounded-2xl w-max overflow-x-auto" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
         <button 
           onClick={() => setActiveTab('styles')} 
-          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${activeTab === 'styles' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
+          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'styles' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
           style={activeTab === 'styles' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
         >
           Styles & Rates
         </button>
         <button 
-          onClick={() => setActiveTab('payroll')} 
-          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all ${activeTab === 'payroll' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
-          style={activeTab === 'payroll' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
+          onClick={() => setActiveTab('computation')} 
+          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'computation' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
+          style={activeTab === 'computation' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
         >
-          Payroll Runs
+          Computation Engine
+        </button>
+        <button 
+          onClick={() => setActiveTab('ledger')} 
+          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'ledger' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
+          style={activeTab === 'ledger' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
+        >
+          Ledger History
         </button>
       </div>
       
-      {activeTab === 'styles' ? <StylesView token={token} /> : <PayrollView token={token} />}
+      {activeTab === 'styles' && <StylesView token={token} />}
+      {activeTab === 'computation' && <ComputationView token={token} />}
+      {activeTab === 'ledger' && <LedgerView token={token} />}
     </div>
   );
 }
@@ -57,6 +66,12 @@ function StylesView({ token }) {
   const [historyModal, setHistoryModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [savingOps, setSavingOps] = useState({});
+  const [toastMsg, setToastMsg] = useState(null);
+
+  const showToast = (msg) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
 
   useEffect(() => {
     apiGetWageStyles(token).then(setStyles).finally(() => setLoading(false));
@@ -82,6 +97,7 @@ function StylesView({ token }) {
         lines: [{ operation_code: op.operation_code, rate: parseFloat(op.rate || 0) }]
       };
       await apiSetWageRatesBulk(token, payload);
+      showToast(`${op.label} rate saved!`);
     } catch (e) { 
       alert("Error saving: " + e.message); 
     } finally { 
@@ -115,6 +131,16 @@ function StylesView({ token }) {
               ← Back to Styles
             </button>
           </div>
+          
+          {/* Toast Notification */}
+          {toastMsg && (
+            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[999999] animate-fade-in">
+              <div className="bg-[#10b981] text-white px-6 py-3 rounded-2xl shadow-xl font-bold flex items-center gap-3">
+                <Activity className="w-5 h-5" />
+                {toastMsg}
+              </div>
+            </div>
+          )}
 
           <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
             <table className="w-full text-sm text-left">
@@ -141,7 +167,7 @@ function StylesView({ token }) {
                             type="number"
                             step="0.01"
                             min="0"
-                            className="w-full h-11 pl-7 pr-3 bg-white font-black text-sm border-2 rounded-xl outline-none transition-all shadow-sm focus:bg-white"
+                            className="w-full h-11 pl-7 pr-3 bg-white font-black text-sm border-2 rounded-xl outline-none transition-all shadow-sm focus:bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
                             value={op.rate ?? ''} 
                             onChange={(e) => {
@@ -290,8 +316,8 @@ function StylesView({ token }) {
   );
 }
 
-// ─── PAYROLL VIEW ────────────────────────────────────────────────────────────
-function PayrollView({ token }) {
+// ─── COMPUTATION ENGINE VIEW ───────────────────────────────────────────────────
+function ComputationView({ token }) {
   const [runs, setRuns] = useState([]);
   const [selectedRunDetails, setSelectedRunDetails] = useState(null);
   
@@ -299,6 +325,7 @@ function PayrollView({ token }) {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState(null);
 
   useEffect(() => {
     // Set default dates to first and 15th of current month
@@ -308,23 +335,30 @@ function PayrollView({ token }) {
     setStartDate(`${y}-${m}-01`);
     setEndDate(`${y}-${m}-15`);
     
-    apiGetWageRuns(token).then(setRuns);
+    apiGetWageRuns(token).then(setRuns).catch(() => {});
   }, [token]);
 
   const handleRunPayroll = async () => {
     if (!startDate || !endDate) return alert("Select dates");
     setLoading(true);
+    setErrorMsg(null);
     try {
       await apiComputeWageRun(token, startDate, endDate);
       const data = await apiGetWageRuns(token);
       setRuns(data);
-    } catch (err) { alert(err.message); } finally { setLoading(false); }
+    } catch (err) { 
+      setErrorMsg(err.message || 'Failed to compute payroll');
+    } finally { 
+      setLoading(false); 
+    }
   };
 
   const handleViewDetails = async (runId) => {
     const details = await apiGetWageRunDetails(token, runId);
     setSelectedRunDetails(details);
   };
+
+  const latestRun = runs.length > 0 ? [runs[0]] : [];
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -361,11 +395,85 @@ function PayrollView({ token }) {
             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Compute & Freeze Pay'}
           </button>
         </div>
+        
+        {/* Error Notification */}
+        {errorMsg && (
+          <div className="mt-4 p-4 rounded-xl border flex items-center gap-3 animate-fade-in bg-red-50" style={{ borderColor: 'rgba(239,68,68,0.2)' }}>
+            <Activity className="w-5 h-5 text-red-500 shrink-0" />
+            <p className="text-sm font-bold text-red-700">{errorMsg}</p>
+          </div>
+        )}
       </SpotlightCard>
       
+      {latestRun.length > 0 && (
+        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)', background: '#faf6f0' }}>
+            <h3 className="font-black text-sm uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Latest Computed Run</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-white">
+                <tr className="border-b uppercase text-[10px] font-black tracking-wider text-left" style={{ borderColor: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
+                  <th className="p-4 pl-6">Run Period</th>
+                  <th className="p-4">Disbursement Amount</th>
+                  <th className="p-4">Status</th>
+                  <th className="p-4 pr-6 text-right">View Ledger</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
+                {latestRun.map(r => (
+                  <tr key={r.id} className="hover:bg-[#fcfaf8] transition-colors">
+                    <td className="p-4 pl-6 font-bold" style={{ color: '#4a3a2a' }}>{r.period_start} <span className="text-slate-300 font-normal mx-1">to</span> {r.period_end}</td>
+                    <td className="p-4 font-black text-lg" style={{ color: '#2d1f0e' }}>₹{r.total_amount.toLocaleString()}</td>
+                    <td className="p-4">
+                      <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[10px] uppercase font-black tracking-wider">
+                        {r.status}
+                      </span>
+                    </td>
+                    <td className="p-4 pr-6 text-right">
+                      <button 
+                        onClick={() => handleViewDetails(r.id)} 
+                        className="px-4 py-2 bg-white border rounded-xl font-bold text-xs hover:bg-[#faf6f0] transition-colors shadow-sm ml-auto flex items-center gap-2"
+                        style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
+                      >
+                        <Eye className="w-4 h-4" /> Details
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Wage Run Breakdown Modal */}
+      {selectedRunDetails && (
+        <WageRunDetailsModal details={selectedRunDetails} onClose={() => setSelectedRunDetails(null)} />
+      )}
+    </div>
+  );
+}
+
+// ─── LEDGER HISTORY VIEW ─────────────────────────────────────────────────────
+function LedgerView({ token }) {
+  const [runs, setRuns] = useState([]);
+  const [selectedRunDetails, setSelectedRunDetails] = useState(null);
+  
+  useEffect(() => {
+    apiGetWageRuns(token).then(setRuns).catch(() => {});
+  }, [token]);
+
+  const handleViewDetails = async (runId) => {
+    const details = await apiGetWageRunDetails(token, runId);
+    setSelectedRunDetails(details);
+  };
+
+  return (
+    <div className="space-y-6 animate-fade-in">
       <div className="bg-white rounded-3xl border shadow-sm overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)', background: '#faf6f0' }}>
-          <h3 className="font-black text-sm uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Payroll Ledger History</h3>
+          <h3 className="font-black text-sm uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Complete Ledger History</h3>
         </div>
         
         {runs.length === 0 ? (
@@ -412,25 +520,35 @@ function PayrollView({ token }) {
 
       {/* Wage Run Breakdown Modal */}
       {selectedRunDetails && (
-        <div 
-          className="fixed inset-0 flex items-center justify-center p-4 z-[99999]"
-          style={{ background: 'rgba(15, 23, 42, 0.6)' }}
-          onClick={(e) => { if(e.target === e.currentTarget) setSelectedRunDetails(null); }}
+        <WageRunDetailsModal details={selectedRunDetails} onClose={() => setSelectedRunDetails(null)} />
+      )}
+    </div>
+  );
+}
+
+// ─── WAGE RUN DETAILS MODAL (Shared) ─────────────────────────────────────────
+function WageRunDetailsModal({ details, onClose }) {
+  return (
+    <div 
+      className="fixed inset-0 flex items-center justify-center p-4 z-[99999]"
+      style={{ background: 'rgba(15, 23, 42, 0.6)' }}
+      onClick={(e) => { if(e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-2xl relative max-h-[90vh] flex flex-col shadow-2xl animate-scale-up border" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+        <button 
+          onClick={onClose} 
+          className="absolute top-6 right-6 p-2 bg-slate-50 text-slate-400 hover:text-slate-800 rounded-xl transition-colors z-10"
         >
-          <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-2xl relative max-h-[90vh] flex flex-col shadow-2xl animate-scale-up border" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-            <button 
-              onClick={() => setSelectedRunDetails(null)} 
-              className="absolute top-6 right-6 p-2 bg-slate-50 text-slate-400 hover:text-slate-800 rounded-xl transition-colors z-10"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            
-            <div className="mb-6 pr-12 shrink-0">
-              <h3 className="font-black text-xl" style={{ color: '#2d1f0e' }}>Run Breakdown</h3>
-              <p className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider mt-1">ID: {selectedRunDetails.id}</p>
-            </div>
-            
-            <div className="overflow-y-auto flex-1 rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          <X className="w-5 h-5" />
+        </button>
+        
+        <div className="mb-6 pr-12 shrink-0">
+          <h3 className="font-black text-xl" style={{ color: '#2d1f0e' }}>Run Breakdown</h3>
+          <p className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider mt-1">ID: {details.id}</p>
+        </div>
+        
+        <div className="overflow-y-auto flex-1 rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+
               <table className="w-full text-sm relative">
                 <thead className="sticky top-0 z-10 shadow-sm" style={{ background: '#faf6f0' }}>
                   <tr className="border-b text-left uppercase text-[10px] font-black tracking-wider" style={{ borderColor: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
@@ -463,17 +581,15 @@ function PayrollView({ token }) {
             </div>
             
             <div className="mt-6 pt-6 border-t flex justify-between items-center shrink-0" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-              <div className="text-xs font-bold text-slate-400">Total Records: {selectedRunDetails.lines.length}</div>
+              <div className="text-xs font-bold text-slate-400">Total Records: {details.lines.length}</div>
               <button 
-                onClick={() => setSelectedRunDetails(null)}
+                onClick={onClose}
                 className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-colors"
               >
                 Close View
               </button>
             </div>
           </div>
-        </div>
-      )}
     </div>
   );
 }

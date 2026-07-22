@@ -327,9 +327,6 @@ function OrdersExplorer() {
       try {
         const detailData = await apiGetStyleDetail(token, styleId);
         if (detailData) {
-          console.log('[StyleDetail] response keys:', Object.keys(detailData));
-          console.log('[StyleDetail] pieces field:', detailData.pieces);
-          console.log('[StyleDetail] full data:', detailData);
           setStyleDetails((prev) => ({ ...prev, [styleId]: detailData }));
         }
       } catch (err) {
