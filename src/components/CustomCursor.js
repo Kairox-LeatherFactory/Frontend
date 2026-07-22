@@ -71,22 +71,29 @@ export default function CustomCursor() {
     <>
       <div 
         ref={dotRef}
-        className="cursor-dot pointer-events-none fixed w-2 h-2 -ml-1 -mt-1 rounded-full z-[9999999] transition-transform duration-200"
-        style={{ left: '-20px', top: '-20px', background: '#c8834a' }}
+        className="cursor-dot pointer-events-none fixed w-2 h-2 -ml-1 -mt-1 rounded-full transition-transform duration-200"
+        style={{ left: '-20px', top: '-20px', background: '#c8834a', zIndex: 9999999 }}
       />
       <div 
         ref={ringRef}
-        className="cursor-ring pointer-events-none fixed w-10 h-10 -ml-5 -mt-5 rounded-full z-[9999998] transition-[transform,background-color,border-color] duration-300"
-        style={{ left: '-20px', top: '-20px', border: '1.5px solid rgba(200,131,74,0.6)' }}
+        className="cursor-ring pointer-events-none fixed w-10 h-10 -ml-5 -mt-5 rounded-full transition-[transform,background-color,border-color] duration-300"
+        style={{ left: '-20px', top: '-20px', border: '1.5px solid rgba(200,131,74,0.6)', zIndex: 9999998 }}
       />
       <style jsx global>{`
-        /* Hide default cursor on body and interactive elements except where text selection is strictly needed */
+        /* Hide default cursor universally on interactive and non-interactive elements */
         body.custom-cursor-active,
-        body.custom-cursor-active a,
-        body.custom-cursor-active button,
-        body.custom-cursor-active input[type="button"],
-        body.custom-cursor-active input[type="submit"] {
+        body.custom-cursor-active * {
           cursor: none !important;
+        }
+
+        /* Explicitly keep the text cursor for input and textarea so users know they can type */
+        body.custom-cursor-active input[type="text"],
+        body.custom-cursor-active input[type="password"],
+        body.custom-cursor-active input[type="number"],
+        body.custom-cursor-active input[type="tel"],
+        body.custom-cursor-active input[type="email"],
+        body.custom-cursor-active textarea {
+          cursor: text !important;
         }
 
         /* Hover states */

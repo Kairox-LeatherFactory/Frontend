@@ -1019,7 +1019,7 @@ function OperationsHRView({ token }) {
                 {filter.charAt(0).toUpperCase() + filter.slice(1)}
               </button>
               {filterOpen && (
-                <div className="absolute right-0 mt-1 w-36 bg-white rounded-xl shadow-lg z-20 overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
+                <div className="absolute left-0 sm:left-auto sm:right-0 mt-1 w-36 bg-white rounded-xl shadow-lg z-20 overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
                   {['all', 'active', 'late'].map((f) => (
                     <button key={f} onClick={() => { setFilter(f); setPage(1); setFilterOpen(false); }}
                       className="w-full text-left px-4 py-2.5 text-xs font-black transition-colors flex items-center justify-between"

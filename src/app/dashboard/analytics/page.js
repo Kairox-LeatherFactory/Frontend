@@ -28,6 +28,181 @@ import {
 } from 'lucide-react';
 import { useData } from '@/context/DataContext';
 
+function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCode, pieceDetail, onSelectPiece }) {
+  if (!activeItem) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center h-full text-center py-16 animate-fade-in">
+        <Warehouse className="w-10 h-10 text-slate-300 mb-2" />
+        <p className="font-black text-slate-400 text-base">Select a Client / Order</p>
+        <p className="text-slate-400/60 text-xs mt-1">Click a group on the left to start exploring.</p>
+      </div>
+    );
+  }
+
+  const group = activeItem.type === 'order' ? activeItem.data : activeItem.parentGroup;
+  const treeData = group ? orderTrees[group.rawId] : null;
+
+  const style = activeItem.type === 'style' ? activeItem.data : null;
+  const sDetail = style ? styleDetails[style.style_id || style.id] : null;
+
+  return (
+    <div className="space-y-6 pb-20">
+      {/* LEVEL 1: Client / Order Data */}
+      {group && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden animate-fade-in">
+          <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 flex items-center gap-2">
+            <Warehouse className="w-4 h-4 text-slate-500" />
+            <span className="text-[11px] font-black uppercase tracking-widest text-slate-500">Level 1: Client / Order</span>
+          </div>
+          <div className="p-4">
+            <table className="w-full text-left text-xs">
+              <tbody>
+                <tr className="border-b border-slate-100">
+                  <td className="p-3 text-slate-500 font-bold w-1/3">Client ID / PO</td>
+                  <td className="p-3 text-slate-800 font-mono text-[10px]">{group.rawId}</td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="p-3 text-slate-500 font-bold">Client Name</td>
+                  <td className="p-3 text-[#c8834a] font-black text-sm">{group.client}</td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="p-3 text-slate-500 font-bold">PO Number</td>
+                  <td className="p-3 text-slate-800 font-bold">{group.po}</td>
+                </tr>
+                <tr>
+                  <td className="p-3 text-slate-500 font-bold">Total Styles / Pieces</td>
+                  <td className="p-3 text-slate-800 font-bold">
+                     <span className="bg-slate-100 px-2 py-1 rounded-md">{treeData?.style_count || 0}</span> / <span className="bg-slate-100 px-2 py-1 rounded-md">{treeData?.piece_count || 0}</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* LEVEL 2: Style Data */}
+      {style && sDetail && (
+        <div className="bg-white rounded-xl border border-[#c8834a]/30 shadow-md overflow-hidden animate-fade-in relative mt-4">
+          <div className="bg-[#c8834a]/10 border-b border-[#c8834a]/20 px-4 py-3 flex justify-between items-center gap-2">
+            <div className="flex items-center gap-2">
+               <Package className="w-4 h-4 text-[#c8834a]" />
+               <span className="text-[11px] font-black uppercase tracking-widest text-[#c8834a]">Level 2: Style Data</span>
+            </div>
+            {!selectedPieceCode && (
+               <span className="text-[10px] bg-white text-[#c8834a] px-2 py-1 rounded-lg font-bold">Select a piece below ↓</span>
+            )}
+          </div>
+          <div className="p-4">
+            <table className="w-full text-left text-xs mb-4">
+              <tbody>
+                <tr className="border-b border-slate-100">
+                  <td className="p-3 text-slate-500 font-bold w-1/3">Style ID</td>
+                  <td className="p-3 text-slate-800 font-mono text-[10px]">{style.style_id || style.id}</td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="p-3 text-slate-500 font-bold">Style Name / Article</td>
+                  <td className="p-3 text-slate-800 font-black text-sm">{style.style_name || style.style} <span className="text-slate-400 font-normal">({style.article || sDetail.article})</span></td>
+                </tr>
+                <tr>
+                  <td className="p-3 text-slate-500 font-bold">Total Pieces</td>
+                  <td className="p-3 text-slate-800 font-bold"><span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md">{sDetail.pieces?.length || 0}</span></td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Pieces Table inside Level 2 */}
+            <div className={`mt-4 border border-slate-200 rounded-lg overflow-x-auto transition-all duration-300 ${selectedPieceCode ? 'opacity-50 h-32 overflow-hidden' : ''}`}>
+               <table className="w-full text-left text-xs">
+                 <thead className="bg-slate-50 sticky top-0">
+                   <tr>
+                     <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Seq</th>
+                     <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Piece Code</th>
+                     <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Colour</th>
+                     <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Size</th>
+                     <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Status</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-100">
+                   {sDetail.pieces?.map(p => (
+                     <tr key={p.bundle_id} onClick={() => onSelectPiece(p.bundle_id)} className={`cursor-pointer transition-colors ${selectedPieceCode === p.bundle_id ? 'bg-[#c8834a]/10' : 'hover:bg-slate-50'}`}>
+                       <td className="p-3 font-bold text-slate-400">#{p.seq}</td>
+                       <td className="p-3 font-bold text-slate-700">{p.bundle_id}</td>
+                       <td className="p-3">{p.colour}</td>
+                       <td className="p-3">{p.size}</td>
+                       <td className="p-3"><span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[9px] font-black">{p.current_stage}</span></td>
+                     </tr>
+                   ))}
+                   {(!sDetail.pieces || sDetail.pieces.length === 0) && (
+                     <tr>
+                        <td colSpan="5" className="p-6 text-center text-slate-400 italic">No pieces found for this style.</td>
+                     </tr>
+                   )}
+                 </tbody>
+               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* LEVEL 3: Piece Data */}
+      {selectedPieceCode && pieceDetail && (
+        <div className="bg-white rounded-xl border border-emerald-500/30 shadow-lg overflow-hidden animate-fade-in relative mt-4">
+          <div className="bg-emerald-50 border-b border-emerald-200 px-4 py-3 flex justify-between items-center gap-2">
+            <div className="flex items-center gap-2">
+               <Activity className="w-4 h-4 text-emerald-600" />
+               <span className="text-[11px] font-black uppercase tracking-widest text-emerald-700">Level 3: Piece Data</span>
+            </div>
+            <button onClick={() => onSelectPiece(null)} className="text-[10px] font-black bg-white border border-emerald-200 text-emerald-700 px-3 py-1 rounded-lg hover:bg-emerald-100 transition-colors">Close View</button>
+          </div>
+          <div className="p-4 space-y-4">
+             <table className="w-full text-left text-xs">
+              <tbody>
+                <tr className="border-b border-slate-100">
+                  <td className="p-3 text-slate-500 font-bold w-1/3">Piece Code</td>
+                  <td className="p-3 text-slate-800 font-mono text-[10px] font-bold">{pieceDetail.bundle_id}</td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="p-3 text-slate-500 font-bold">Colour / Size</td>
+                  <td className="p-3 text-slate-800 font-bold">{pieceDetail.colour} / {pieceDetail.size}</td>
+                </tr>
+                <tr className="border-b border-slate-100">
+                  <td className="p-3 text-slate-500 font-bold">Current Stage</td>
+                  <td className="p-3 text-emerald-700 font-black text-sm">{pieceDetail.current_stage}</td>
+                </tr>
+              </tbody>
+             </table>
+
+             <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+                <p className="text-[10px] font-black uppercase text-slate-400 mb-3 tracking-widest">Stage History Details</p>
+                <div className="space-y-2">
+                  {pieceDetail.stages?.map((st, idx) => (
+                    <div key={idx} className="p-3 rounded-lg bg-white border border-slate-200 text-[10px] flex justify-between items-center shadow-sm">
+                       <div>
+                         <div className="flex items-center gap-2">
+                           <span className="font-black text-slate-700">{st.stage_label || st.stage_code}</span>
+                           {st.is_rework && <span className="bg-red-100 text-red-600 px-1 py-0.5 rounded-[4px] font-bold text-[8px]">REWORK</span>}
+                         </div>
+                         <div className="text-slate-500 mt-1 font-medium">By: {st.employee_name || 'N/A'}</div>
+                       </div>
+                       <div className="text-right text-slate-400">
+                         <div className="font-bold">{st.work_date}</div>
+                         <div className="text-[9px] mt-0.5">{st.logged_at ? new Date(st.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</div>
+                       </div>
+                    </div>
+                  ))}
+                  {(!pieceDetail.stages || pieceDetail.stages.length === 0) && (
+                     <div className="p-3 text-center text-slate-400 italic text-xs">No stage history logged yet.</div>
+                  )}
+                </div>
+             </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OrdersExplorer() {
   const { token } = useAuth();
   const { orders: realOrders } = useData();
@@ -90,7 +265,7 @@ function OrdersExplorer() {
     }
   };
 
-  const toggleStyle = async (style) => {
+  const toggleStyle = async (style, parentGroup) => {
     const styleId = style.style_id || style.id;
     const isExpanding = !expandedStyles[styleId];
     setExpandedStyles((prev) => ({ ...prev, [styleId]: isExpanding }));
@@ -98,7 +273,7 @@ function OrdersExplorer() {
     // Reset Level 3 piece view when switching style
     setSelectedPieceCode(null);
     setPieceDetail(null);
-    setActiveItem({ type: 'style', data: style });
+    setActiveItem({ type: 'style', data: style, parentGroup });
 
     // Call Level 2 API (/api/v1/analytics/styles/{style_id}/detail)
     if (isExpanding && styleId && !styleDetails[styleId]) {
@@ -187,7 +362,7 @@ function OrdersExplorer() {
                     return (
                       <div key={styleId} className="flex flex-col gap-0.5">
                         <div
-                          onClick={() => toggleStyle(style)}
+                          onClick={() => toggleStyle(style, group)}
                           className="flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all duration-200 group"
                           style={{
                             background: activeItem?.data?.style_id === styleId ? 'rgba(255,255,255,0.8)' : 'transparent',
@@ -215,7 +390,7 @@ function OrdersExplorer() {
         })}
       </div>
 
-      {/* ── Right Panel (Level 2 Table & Level 3 Response Viewer) ── */}
+      {/* ── Right Panel (Hierarchy Viewer) ── */}
       <div className="flex-1 rounded-2xl overflow-hidden flex flex-col min-h-[400px]" style={glassPanelStyle}>
         <div className="px-6 py-4 flex justify-between items-center shrink-0 border-b border-white/50 bg-white/40">
           <div className="flex items-center gap-3">
@@ -223,153 +398,26 @@ function OrdersExplorer() {
               <Activity className="w-4 h-4 text-[#c8834a]" />
             </div>
             <div>
-              <p className="font-black text-[#2d1f0e] text-sm">
-                {activeItem?.type === 'style' 
-                  ? `Style Detail: ${activeItem.data.style_name || activeItem.data.style}` 
-                  : 'Response Data Viewer'}
-              </p>
+              <p className="font-black text-[#2d1f0e] text-sm">Response Data Viewer</p>
               <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
-                {selectedPieceCode ? 'Level 3 Piece Traveler View (API Called)' : 'Level 2 Pieces Table Grid'}
+                Hierarchical Stacked Tables
               </p>
             </div>
           </div>
-          {selectedPieceCode && (
-            <button 
-              onClick={() => { setSelectedPieceCode(null); setPieceDetail(null); }}
-              className="px-3 py-1 bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black hover:bg-slate-300 transition-colors cursor-pointer"
-            >
-              ← Back to Pieces Table
-            </button>
-          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 relative">
-          {activeItem?.type === 'style' ? (
-            <div>
-              {loadingStyleDetail[activeItem.data.style_id || activeItem.data.id] ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-3">
-                  <Loader2 className="w-8 h-8 animate-spin text-[#c8834a]" />
-                  <p className="text-xs font-bold text-slate-400">Loading level 2 style data...</p>
-                </div>
-              ) : styleDetails[activeItem.data.style_id || activeItem.data.id] ? (
-                <div>
-                  {selectedPieceCode ? (
-                    // Level 3 Response Viewer (Inline in Right Panel)
-                    <div>
-                      {loadingPiece ? (
-                        <div className="flex flex-col items-center justify-center py-20 gap-3">
-                          <Loader2 className="w-8 h-8 animate-spin text-[#c8834a]" />
-                          <p className="text-xs font-bold text-slate-400">Fetching Level 3 piece details...</p>
-                        </div>
-                      ) : pieceDetail ? (
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-amber-50 p-4 rounded-2xl border border-amber-100 text-xs">
-                            <div>
-                              <span className="text-[10px] font-black uppercase text-amber-700 block">Piece / Bundle Code</span>
-                              <span className="font-bold text-slate-800">{pieceDetail.bundle_id}</span>
-                            </div>
-                            <div>
-                              <span className="text-[10px] font-black uppercase text-amber-700 block">Sequence</span>
-                              <span className="font-bold text-slate-800">#{pieceDetail.seq}</span>
-                            </div>
-                            <div>
-                              <span className="text-[10px] font-black uppercase text-amber-700 block">Current Stage</span>
-                              <span className="font-bold text-emerald-700">{pieceDetail.current_stage}</span>
-                            </div>
-                            <div>
-                              <span className="text-[10px] font-black uppercase text-amber-700 block">Colour / Size</span>
-                              <span className="font-bold text-slate-800">{pieceDetail.colour} / {pieceDetail.size}</span>
-                            </div>
-                          </div>
-
-                          <div className="space-y-3">
-                            <p className="text-xs font-black uppercase text-slate-500">Official Stage History (Level 3 Endpoint Response)</p>
-                            <div className="space-y-2">
-                              {pieceDetail.stages?.map((st, idx) => (
-                                <div key={idx} className="p-3 rounded-xl bg-white border border-slate-200 flex justify-between items-center text-xs shadow-sm">
-                                  <div>
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-black text-slate-800">{st.stage_label || st.stage_code}</span>
-                                      {st.is_rework && <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-500 text-white animate-pulse">REWORK</span>}
-                                    </div>
-                                    <p className="text-[11px] text-slate-500">Employee: <span className="font-bold text-slate-700">{st.employee_name || 'N/A'}</span> (By: {st.entered_by || 'N/A'})</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <span className="text-[10px] font-bold text-slate-500 block">{st.work_date}</span>
-                                    <span className="text-[9px] text-slate-400">{st.logged_at ? new Date(st.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-center py-12 text-red-500 text-xs font-bold">Failed to load piece details.</div>
-                      )}
-                    </div>
-                  ) : (
-                    // Level 2 Table View
-                    <div className="space-y-4">
-                      <div className="p-4 rounded-xl bg-white/60 border border-white flex flex-wrap gap-4 justify-between items-center text-xs">
-                        <div>
-                          <p className="text-slate-400 font-bold uppercase">Article: {styleDetails[activeItem.data.style_id || activeItem.data.id].article}</p>
-                          <p className="text-sm font-black text-slate-800">Client: {styleDetails[activeItem.data.style_id || activeItem.data.id].client} (PO: {styleDetails[activeItem.data.style_id || activeItem.data.id].order_number})</p>
-                        </div>
-                        <span className="px-3 py-1 bg-amber-100 text-amber-900 font-black rounded-lg">
-                          Total Pieces: {styleDetails[activeItem.data.style_id || activeItem.data.id].pieces?.length || 0}
-                        </span>
-                      </div>
-
-                      <div className="overflow-x-auto rounded-xl border border-white/80 bg-white/60 shadow-sm">
-                        <table className="w-full text-left border-collapse text-xs">
-                          <thead>
-                            <tr className="bg-slate-100/80 text-slate-500 font-black uppercase text-[10px] border-b border-slate-200">
-                              <th className="p-3">Seq</th>
-                              <th className="p-3">Piece / Bundle Code</th>
-                              <th className="p-3">Colour</th>
-                              <th className="p-3">Size</th>
-                              <th className="p-3">Current Stage</th>
-                              <th className="p-3 text-right">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                            {styleDetails[activeItem.data.style_id || activeItem.data.id].pieces?.map((piece) => (
-                              <tr 
-                                key={piece.piece_id} 
-                                onClick={() => handleSelectPiece(piece.bundle_id)}
-                                className="hover:bg-amber-50/50 transition-colors cursor-pointer group"
-                              >
-                                <td className="p-3 font-black text-[#c8834a]">#{piece.seq}</td>
-                                <td className="p-3 font-bold text-slate-800">{piece.bundle_id}</td>
-                                <td className="p-3">{piece.colour}</td>
-                                <td className="p-3">{piece.size}</td>
-                                <td className="p-3">
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    {piece.current_stage}
-                                  </span>
-                                </td>
-                                <td className="p-3 text-right">
-                                  <span className="text-[#c8834a] font-bold group-hover:underline">View History →</span>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="text-center py-12 text-slate-400 text-xs font-bold">No style details found.</div>
-              )}
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col items-center justify-center h-full text-center py-16">
-              <Warehouse className="w-10 h-10 text-slate-300 mb-2" />
-              <p className="font-black text-slate-400 text-base">Select a Style from Left Sidebar</p>
-              <p className="text-slate-400/60 text-xs mt-1">Click any style to view its pieces table and inspect history</p>
-            </div>
-          )}
+          <HierarchyViewer 
+             activeItem={activeItem} 
+             orderTrees={orderTrees} 
+             styleDetails={styleDetails} 
+             selectedPieceCode={selectedPieceCode} 
+             pieceDetail={pieceDetail} 
+             onSelectPiece={handleSelectPiece} 
+             loadingStyleDetail={loadingStyleDetail}
+             loadingTree={loadingTree}
+             loadingPiece={loadingPiece}
+          />
         </div>
       </div>
     </div>
