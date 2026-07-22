@@ -29,6 +29,16 @@ import {
 } from 'lucide-react';
 import { useData } from '@/context/DataContext';
 
+// Safely extract pieces array from style detail API response
+// Handles: direct array, nested object with .pieces array, or empty
+function getPieces(sDetail) {
+  if (!sDetail) return [];
+  const p = sDetail.pieces;
+  if (Array.isArray(p)) return p;
+  if (p && Array.isArray(p.pieces)) return p.pieces;
+  return [];
+}
+
 function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCode, pieceDetail, onSelectPiece }) {
   if (!activeItem) {
     return (
@@ -107,7 +117,7 @@ function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCo
                 </tr>
                 <tr>
                   <td className="p-3 text-slate-500 font-bold">Total Pieces</td>
-                  <td className="p-3 text-slate-800 font-bold"><span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md">{sDetail.pieces?.length || 0}</span></td>
+                  <td className="p-3 text-slate-800 font-bold"><span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md">{getPieces(sDetail).length}</span></td>
                 </tr>
               </tbody>
             </table>
@@ -125,7 +135,7 @@ function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCo
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-100">
-                   {sDetail.pieces?.map(p => (
+                   {getPieces(sDetail).map(p => (
                      <tr key={p.bundle_id} onClick={() => onSelectPiece(p.bundle_id)} className={`cursor-pointer transition-colors ${selectedPieceCode === p.bundle_id ? 'bg-[#c8834a]/10' : 'hover:bg-slate-50'}`}>
                        <td className="p-3 font-bold text-slate-400">#{p.seq}</td>
                        <td className="p-3 font-bold text-slate-700">{p.bundle_id}</td>
@@ -134,7 +144,7 @@ function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCo
                        <td className="p-3"><span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[9px] font-black">{p.current_stage}</span></td>
                      </tr>
                    ))}
-                   {(!sDetail.pieces || sDetail.pieces.length === 0) && (
+                   {getPieces(sDetail).length === 0 && (
                      <tr>
                         <td colSpan="5" className="p-6 text-center text-slate-400 italic">No pieces found for this style.</td>
                      </tr>
@@ -317,6 +327,9 @@ function OrdersExplorer() {
       try {
         const detailData = await apiGetStyleDetail(token, styleId);
         if (detailData) {
+          console.log('[StyleDetail] response keys:', Object.keys(detailData));
+          console.log('[StyleDetail] pieces field:', detailData.pieces);
+          console.log('[StyleDetail] full data:', detailData);
           setStyleDetails((prev) => ({ ...prev, [styleId]: detailData }));
         }
       } catch (err) {
@@ -416,6 +429,41 @@ function OrdersExplorer() {
                           </div>
                           {loadingStyleDetail[styleId] && <Loader2 className="w-3 h-3 animate-spin text-[#c8834a] shrink-0" />}
                         </div>
+
+                        {/* Level 3: Pieces list under this style in sidebar */}
+                        {expandedStyles[styleId] && styleDetails[styleId] && (
+                          <div className="pl-4 flex flex-col gap-0.5 ml-3 border-l border-amber-200/60 mt-0.5">
+                            {getPieces(styleDetails[styleId]).length === 0 && (
+                              <span className="text-[10px] text-slate-400 p-2 italic">No pieces found</span>
+                            )}
+                            {getPieces(styleDetails[styleId]).map((piece) => {
+                              const pieceCode = piece.bundle_id || piece.piece_code || piece.piece_id;
+                              const isActivePiece = selectedPieceCode === pieceCode;
+                              return (
+                                <div
+                                  key={pieceCode}
+                                  onClick={() => {
+                                    setActiveItem({ type: 'piece', data: piece, parentStyle: style, parentGroup: group });
+                                    handleSelectPiece(pieceCode);
+                                  }}
+                                  className="flex items-center gap-2 p-1.5 rounded-md cursor-pointer transition-all duration-150 group"
+                                  style={{
+                                    background: isActivePiece ? 'rgba(16,185,129,0.08)' : 'transparent',
+                                    border: isActivePiece ? '1px solid rgba(16,185,129,0.3)' : '1px solid transparent',
+                                  }}
+                                >
+                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: isActivePiece ? '#10b981' : '#cbd5e1' }} />
+                                  <span className={`text-[10px] font-mono truncate ${isActivePiece ? 'text-emerald-700 font-bold' : 'text-slate-500 group-hover:text-slate-700'}`}>
+                                    {pieceCode}
+                                  </span>
+                                  <span className="ml-auto text-[9px] font-bold shrink-0" style={{ color: '#c8834a' }}>
+                                    #{piece.seq}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
