@@ -116,9 +116,6 @@ export default function ProductionLogEntry() {
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
   const skuModalRef = useRef(null);
-  const skuButtonRef = useRef(null);
-  const skuSearchInputRef = useRef(null);
-  const skuDropdownRectRef = useRef(null);
 
   const [isWorkerOpen, setIsWorkerOpen] = useState(false);
   const [workerSearchQuery, setWorkerSearchQuery] = useState('');
@@ -156,10 +153,7 @@ export default function ProductionLogEntry() {
   // Close Dropdown Menu on click outside
   useEffect(() => {
     function handleClickOutside(e) {
-      if (
-        skuModalRef.current && !skuModalRef.current.contains(e.target) &&
-        skuButtonRef.current && !skuButtonRef.current.contains(e.target)
-      ) {
+      if (skuModalRef.current && !skuModalRef.current.contains(e.target)) {
         setIsSkuOpen(false);
       }
       if (workerModalRef.current && !workerModalRef.current.contains(e.target)) {
@@ -169,15 +163,6 @@ export default function ProductionLogEntry() {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  // Focus SKU search input without causing scroll-lock hang
-  useEffect(() => {
-    if (isSkuOpen && skuSearchInputRef.current) {
-      requestAnimationFrame(() => {
-        skuSearchInputRef.current?.focus({ preventScroll: true });
-      });
-    }
-  }, [isSkuOpen]);
 
   useEffect(() => {
     if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
@@ -585,13 +570,10 @@ export default function ProductionLogEntry() {
 
                 {/* Main Select Button */}
                 <button
-                  ref={skuButtonRef}
                   type="button"
                   onClick={() => {
-                    const rect = skuButtonRef.current?.getBoundingClientRect();
-                    skuDropdownRectRef.current = rect;
                     setIsSkuOpen(!isSkuOpen);
-                    setSkuSearchQuery('');
+                    if (!isSkuOpen) setSkuSearchQuery('');
                   }}
                   className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
                 >
@@ -604,34 +586,25 @@ export default function ProductionLogEntry() {
                   <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isSkuOpen ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Portal Dropdown */}
-                {mounted && isSkuOpen && createPortal(
-                  <div
-                    style={{
-                      position: 'fixed',
-                      top: (skuDropdownRectRef.current?.bottom ?? 0) + 8,
-                      left: skuDropdownRectRef.current?.left ?? 0,
-                      width: skuDropdownRectRef.current?.width ?? 300,
-                      zIndex: 99999,
-                    }}
-                    className="bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl p-3 space-y-3 animate-fade-in"
-                  >
+                {/* Normal Absolute Dropdown */}
+                {isSkuOpen && (
+                  <div className="absolute z-[999] top-full mt-2 left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl p-3 space-y-3 animate-fade-in">
                     {/* Search Field */}
                     <div className="relative">
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
-                        ref={skuSearchInputRef}
                         type="text"
                         placeholder="Type Style, SKU, Order No, or Color..."
                         value={skuSearchQuery}
                         onChange={(e) => setSkuSearchQuery(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                         className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+                        autoFocus
                       />
                     </div>
 
                     {/* Filtered SKU Options List */}
-                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
+                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1 custom-scrollbar">
                       {skusLoading ? (
                         <div className="p-6 flex flex-col items-center gap-2">
                           <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
@@ -663,8 +636,7 @@ export default function ProductionLogEntry() {
                         </div>
                       )}
                     </div>
-                  </div>,
-                  document.body
+                  </div>
                 )}
 
                 {/* 🎯 Target Quantity Display */}
