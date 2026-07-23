@@ -527,14 +527,31 @@ function ComputationView({ token }) {
 function LedgerView({ token }) {
   const [runs, setRuns] = useState([]);
   const [selectedRunDetails, setSelectedRunDetails] = useState(null);
+  const [detailsLoading, setDetailsLoading] = useState(null); // stores runId being loaded
+  const [detailsError, setDetailsError] = useState(null);
   
   useEffect(() => {
     apiGetWageRuns(token).then(setRuns).catch(() => {});
   }, [token]);
 
   const handleViewDetails = async (runId) => {
-    const details = await apiGetWageRunDetails(token, runId);
-    setSelectedRunDetails(details);
+    console.log('[LedgerView] handleViewDetails called with runId:', runId);
+    if (!runId) {
+      setDetailsError('Run ID is missing — backend may be returning a different field name.');
+      return;
+    }
+    setDetailsLoading(runId);
+    setDetailsError(null);
+    try {
+      const details = await apiGetWageRunDetails(token, runId);
+      console.log('[LedgerView] details received:', details);
+      setSelectedRunDetails(details);
+    } catch (err) {
+      console.error('[LedgerView] Error fetching details:', err);
+      setDetailsError(err.message || 'Failed to load run details.');
+    } finally {
+      setDetailsLoading(null);
+    }
   };
 
   return (
@@ -543,6 +560,12 @@ function LedgerView({ token }) {
         <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)', background: '#faf6f0' }}>
           <h3 className="font-black text-sm uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Complete Ledger History</h3>
         </div>
+
+        {detailsError && (
+          <div className="mx-4 mb-0 mt-4 p-3.5 rounded-xl text-xs font-bold border text-red-800 bg-red-50 border-red-200 animate-fade-in">
+            ⚠️ {detailsError}
+          </div>
+        )}
         
         {runs.length === 0 ? (
           <div className="p-12 text-center">
@@ -590,10 +613,13 @@ function LedgerView({ token }) {
                     <td className="p-4 pr-6 text-right">
                       <button 
                         onClick={() => handleViewDetails(r.id)} 
-                        className="px-4 py-2 bg-white border rounded-xl font-bold text-xs hover:bg-[#faf6f0] transition-colors shadow-sm ml-auto flex items-center gap-2"
+                        disabled={detailsLoading === r.id}
+                        className="px-4 py-2 bg-white border rounded-xl font-bold text-xs hover:bg-[#faf6f0] transition-colors shadow-sm ml-auto flex items-center gap-2 disabled:opacity-50"
                         style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
                       >
-                        <Eye className="w-4 h-4" /> Details
+                        {detailsLoading === r.id
+                          ? <><Loader2 className="w-4 h-4 animate-spin" /> Loading...</>
+                          : <><Eye className="w-4 h-4" /> Details</>}
                       </button>
                     </td>
                   </tr>
@@ -653,8 +679,8 @@ function WageRunDetailsModal({ details, onClose }) {
                           {line.wage_type}
                         </span>
                       </td>
-                      <td className="p-4 font-bold text-center" style={{ color: '#9a7a5a' }}>{line.total_pieces}</td>
-                      <td className="p-4 text-right font-black text-lg" style={{ color: '#c8834a' }}>₹{line.amount_calculated?.toLocaleString() ?? 0}</td>
+                      <td className="p-4 font-bold text-center" style={{ color: '#9a7a5a' }}>{line.pieces ?? line.total_pieces ?? 0}</td>
+                      <td className="p-4 text-right font-black text-lg" style={{ color: '#c8834a' }}>₹{(line.amount ?? line.amount_calculated)?.toLocaleString() ?? 0}</td>
                     </tr>
                   ))}
                   {(!details.lines || details.lines.length === 0) && (
