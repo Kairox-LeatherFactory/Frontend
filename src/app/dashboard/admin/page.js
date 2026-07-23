@@ -23,13 +23,13 @@ function Field({ label, children }) {
 const inputCls = "w-full h-11 px-4 rounded-xl text-sm font-semibold outline-none transition-all focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a] hover:border-[#c8834a]/50 bg-[#faf6f0] text-[#2d1f0e] border-[1.5px] border-[#c8834a]/20";
 
 const ROLE_COLORS = {
-  direct_manager:   { bg: '#fff9f0', color: '#c8834a', border: 'rgba(200,131,74,0.3)', label: 'Direct Manager' },
-  cutting_manager:  { bg: '#eff6ff', color: '#2563eb', border: 'rgba(37,99,235,0.2)',  label: 'Cutting Manager' },
-  stitching_manager:{ bg: '#f5f3ff', color: '#7c3aed', border: 'rgba(124,58,237,0.2)', label: 'Stitching Manager' },
-  hr_admin:         { bg: '#f0fdf4', color: '#16a34a', border: 'rgba(22,163,74,0.2)',  label: 'HR Admin' },
-  client_viewer:    { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)',label: 'Client Viewer' },
-  viewer:           { bg: '#f1f5f9', color: '#64748b', border: 'rgba(100,116,139,0.15)',label: 'Viewer' },
-  employee:         { bg: '#ecfdf5', color: '#059669', border: 'rgba(5,150,105,0.15)', label: 'Employee' },
+  direct_manager: { bg: '#fff9f0', color: '#c8834a', border: 'rgba(200,131,74,0.3)', label: 'Direct Manager' },
+  cutting_manager: { bg: '#eff6ff', color: '#2563eb', border: 'rgba(37,99,235,0.2)', label: 'Cutting Manager' },
+  stitching_manager: { bg: '#f5f3ff', color: '#7c3aed', border: 'rgba(124,58,237,0.2)', label: 'Stitching Manager' },
+  hr_admin: { bg: '#f0fdf4', color: '#16a34a', border: 'rgba(22,163,74,0.2)', label: 'HR Admin' },
+  client_viewer: { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: 'Client Viewer' },
+  viewer: { bg: '#f1f5f9', color: '#64748b', border: 'rgba(100,116,139,0.15)', label: 'Viewer' },
+  employee: { bg: '#ecfdf5', color: '#059669', border: 'rgba(5,150,105,0.15)', label: 'Employee' },
 };
 
 export default function AdminDashboard() {
@@ -46,13 +46,20 @@ export default function AdminDashboard() {
   const [workerForm, setWorkerForm] = useState({
     name: '',
     phone: '',
-    designation: 'Cutter',
+    designation: '',
     wage_type: 'piece_rate',
     daily_rate: '',
     password: ''
   });
+  const[isOther,setIsOther]=useState(false)
   const [isSubmittingWorker, setIsSubmittingWorker] = useState(false);
-
+const handleChange = (e) => {
+    const { name, value } = e.target;
+    setWorkerForm((prev) => ({
+      ...prev,
+      [name]: value
+    }));
+  };
   // 2. User Form State
   const [userForm, setUserForm] = useState({
     name: '',
@@ -64,20 +71,20 @@ export default function AdminDashboard() {
   });
   const [isSubmittingUser, setIsSubmittingUser] = useState(false);
 
-  const showToast = (type, msg) => {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 5000);
+  const showToast = (form, type, msg) => {
+    setToast({ form, type, msg });
+    setTimeout(() => setToast(null), 2500);
   };
 
   const refreshUsers = async () => {
-    try { setUsers(await apiGetUsers(token)); } catch {}
+    try { setUsers(await apiGetUsers(token)); } catch { }
   };
 
   useEffect(() => {
     if (!token) return;
     (async () => {
       try { setUsers(await apiGetUsers(token)); }
-      catch { showToast('error', 'Failed to load users.'); }
+      catch { showToast('global', 'error', 'Failed to load users.'); }
       finally { setLoading(false); }
     })();
   }, [token]);
@@ -86,13 +93,17 @@ export default function AdminDashboard() {
   const handleCreateWorker = async (e) => {
     e.preventDefault();
     const { name, phone, designation, wage_type, daily_rate, password } = workerForm;
-    
+
     if (!name.trim() || !designation.trim()) {
-      showToast('error', 'Name and designation are required.');
+      showToast('worker', 'error', 'Name and designation are required.');
       return;
     }
     if (wage_type === 'monthly' && (!phone.trim() || !password.trim())) {
-      showToast('error', 'Phone number and password are required for monthly employees.');
+      showToast('worker', 'error', 'Phone number and password are required for monthly employees.');
+      return;
+    }
+    if (phone.trim() && phone.trim().length !== 10) {
+      showToast('worker', 'error', 'Phone number must be exactly 10 digits.');
       return;
     }
 
@@ -121,11 +132,11 @@ export default function AdminDashboard() {
         throw new Error(body.detail || `Server error: ${res.status}`);
       }
 
-      showToast('success', `Worker "${name}" successfully registered onto the system roster.`);
-      setWorkerForm({ name: '', phone: '', designation: 'Cutter', wage_type: 'piece_rate', daily_rate: '', password: '' });
+      showToast('worker', 'success', `Worker "${name}" successfully registered onto the system roster.`);
+      setWorkerForm({ name: '', phone: '', designation: 'Cutting', wage_type: 'piece_rate', daily_rate: '', password: '' });
       await refreshUsers();
     } catch (err) {
-      showToast('error', err.message || 'Onboarding registration failed.');
+      showToast('worker', 'error', err.message || 'Onboarding registration failed.');
     } finally {
       setIsSubmittingWorker(false);
     }
@@ -136,7 +147,11 @@ export default function AdminDashboard() {
     e.preventDefault();
     const { name, phone, password, role, email, employee_id } = userForm;
     if (!name.trim() || !phone.trim() || !password.trim()) {
-      showToast('error', 'Name, Phone, and Password are required.');
+      showToast('user', 'error', 'Name, Phone, and Password are required.');
+      return;
+    }
+    if (phone.trim().length !== 10) {
+      showToast('user', 'error', 'Phone number must be exactly 10 digits.');
       return;
     }
 
@@ -152,11 +167,11 @@ export default function AdminDashboard() {
       };
 
       await apiCreateUser(token, payload);
-      showToast('success', `User account login for "${name}" created successfully.`);
+      showToast('user', 'success', `User account login for "${name}" created successfully.`);
       setUserForm({ name: '', phone: '', email: '', role: 'viewer', password: '', employee_id: '' });
       await refreshUsers();
     } catch (err) {
-      showToast('error', err.message || 'Failed to create user login.');
+      showToast('user', 'error', err.message || 'Failed to create user login.');
     } finally {
       setIsSubmittingUser(false);
     }
@@ -182,13 +197,13 @@ export default function AdminDashboard() {
   return (
     <div className="space-y-8 animate-fade-in pb-12">
 
-      {/* ─── TOAST ─── */}
-      {toast && (
-        <div className="fixed top-6 right-6 z-[999] max-w-sm animate-fade-in">
-          <div className="flex items-center gap-3 p-4 rounded-2xl shadow-xl font-semibold text-sm"
+      {/* ─── GLOBAL TOAST (fallback) ─── */}
+      {toast && toast.form === 'global' && (
+        <div className="fixed bottom-6 right-4 sm:right-6 z-[999999] max-w-sm w-full animate-fade-in">
+          <div className="flex items-center gap-3 p-4 rounded-2xl shadow-2xl font-semibold text-sm backdrop-blur-md border"
             style={{
-              background: toast.type === 'success' ? '#f0fdf4' : '#fef2f2',
-              border: `1px solid ${toast.type === 'success' ? 'rgba(22,163,74,0.25)' : 'rgba(220,38,38,0.2)'}`,
+              background: toast.type === 'success' ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
+              borderColor: toast.type === 'success' ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.2)',
               color: toast.type === 'success' ? '#166534' : '#991b1b',
             }}>
             {toast.type === 'success'
@@ -214,9 +229,9 @@ export default function AdminDashboard() {
       {/* ─── STATS STRIP ─── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         {[
-          { label: 'Total Accounts',  value: users.length,                                      icon: Users },
-          { label: 'Internal Staff',  value: users.filter(u => !u.client_id).length,           icon: Factory },
-          { label: 'Client Portals',  value: users.filter(u => !!u.client_id).length,          icon: Building2 },
+          { label: 'Total Accounts', value: users.length, icon: Users },
+          { label: 'Internal Staff', value: users.filter(u => !u.client_id).length, icon: Factory },
+          { label: 'Client Portals', value: users.filter(u => !!u.client_id).length, icon: Building2 },
         ].map(({ label, value, icon: Icon }) => (
           <SpotlightCard key={label} className="p-4 bg-white rounded-2xl shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.12)' }} spotlightColor="rgba(200,131,74,0.05)">
             <div className="flex items-center justify-between mb-1">
@@ -249,12 +264,47 @@ export default function AdminDashboard() {
 
               <div className="sm:col-span-2">
                 <Field label="Designation *">
-                  <input type="text" className={inputCls}
-                    value={workerForm.designation}
-                    placeholder="e.g. Cutter, Stitcher, Helper" required
-                    onChange={e => setWorkerForm({ ...workerForm, designation: e.target.value })} />
+                  <select
+                    className={inputCls}
+                    value={isOther ? 'Other' : workerForm.designation}
+                    onChange={e => {
+                      const val = e.target.value;
+                      if (val === 'Other') {
+                        setIsOther(true);
+                        setWorkerForm({ ...workerForm, designation: '' });
+                      } else {
+                        setIsOther(false);
+                        setWorkerForm({ ...workerForm, designation: val });
+                      }
+                    }}
+                  >
+                    <option value="Cutting">Cutting</option>
+                    <option value="Fusing">Fusing</option>
+                    <option value="Pasting">Pasting</option>
+                    <option value="Shell stitch">Shell stitch</option>
+                    <option value="Lining attach">Lining attach</option>
+                    <option value="Lining stitch">Lining stitch</option>
+                    <option value="Final finish">Final finish</option>
+                    <option value="Supervisor">Supervisor</option>
+                    <option value="Other">Other (Custom)</option>
+                  </select>
                 </Field>
               </div>
+
+              {isOther && (
+                <div className="sm:col-span-2 animate-fade-in">
+                  <Field label="Custom Designation *">
+                    <input
+                      type="text"
+                      className={inputCls}
+                      value={workerForm.designation}
+                      placeholder="Type here"
+                      required
+                      onChange={e => setWorkerForm({ ...workerForm, designation: e.target.value })}
+                    />
+                  </Field>
+                </div>
+              )}
 
               <Field label="Wage Type">
                 <select className={inputCls}
@@ -271,7 +321,8 @@ export default function AdminDashboard() {
                     <input type="tel" inputMode="numeric" pattern="[0-9]*" className={inputCls}
                       value={workerForm.phone}
                       placeholder="10-digit mobile number"
-                      onChange={e => setWorkerForm({ ...workerForm, phone: e.target.value.replace(/\D/g, '') })} required />
+                      maxLength={10}
+                      onChange={e => setWorkerForm({ ...workerForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} required />
                   </Field>
                   <Field label="Set Password *">
                     <input type="password" className={inputCls}
@@ -286,7 +337,8 @@ export default function AdminDashboard() {
                     <input type="tel" inputMode="numeric" pattern="[0-9]*" className={inputCls}
                       value={workerForm.phone}
                       placeholder="Optional for daily wage"
-                      onChange={e => setWorkerForm({ ...workerForm, phone: e.target.value.replace(/\D/g, '') })} />
+                      maxLength={10}
+                      onChange={e => setWorkerForm({ ...workerForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
                   </Field>
                   <Field label="Daily Rate (₹)">
                     <input type="number" className={inputCls}
@@ -303,6 +355,17 @@ export default function AdminDashboard() {
               style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
               {isSubmittingWorker ? <><Loader2 className="w-4 h-4 animate-spin" /> Registering...</> : <><UserPlus className="w-4 h-4" /> Register Employee</>}
             </button>
+
+            {toast && toast.form === 'worker' && (
+              <div className="mt-3 p-3.5 rounded-xl text-xs font-bold border text-center animate-fade-in backdrop-blur-sm"
+                style={{
+                  background: toast.type === 'success' ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
+                  borderColor: toast.type === 'success' ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.2)',
+                  color: toast.type === 'success' ? '#166534' : '#991b1b',
+                }}>
+                {toast.msg}
+              </div>
+            )}
           </form>
         </SpotlightCard>
 
@@ -326,7 +389,8 @@ export default function AdminDashboard() {
                 <input type="tel" inputMode="numeric" pattern="[0-9]*" className={inputCls}
                   value={userForm.phone}
                   placeholder="10-digit mobile number" required
-                  onChange={e => setUserForm({ ...userForm, phone: e.target.value.replace(/\D/g, '') })} />
+                  maxLength={10}
+                  onChange={e => setUserForm({ ...userForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
               </Field>
 
               <Field label="Password *">
@@ -337,32 +401,32 @@ export default function AdminDashboard() {
               </Field>
 
               <div className="sm:col-span-2">
-           <Field label="User Role">
-  <select
-    className={inputCls}
-    value={userForm.role}
-    onChange={e => setUserForm({ ...userForm, role: e.target.value })}
-  >
-    <option value="viewer">Viewer</option>
-    <option value="supervisor">Supervisor</option>
-    <option value="cutting_manager">Cutting Manager</option>
-    <option value="stitching_manager">Stitching Manager</option>
-    <option value="hr">HR</option>
-    <option value="direct_manager">Direct Manager</option>
-    <option value="managing_director">Managing Director</option>
-    <option value="client">Client</option>
-  </select>
-</Field>
+                <Field label="User Role">
+                  <select
+                    className={inputCls}
+                    value={userForm.role}
+                    onChange={e => setUserForm({ ...userForm, role: e.target.value })}
+                  >
+                    <option value="viewer">Viewer</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="cutting_manager">Cutting Manager</option>
+                    <option value="stitching_manager">Stitching Manager</option>
+                    <option value="hr">HR</option>
+                    <option value="direct_manager">Direct Manager</option>
+                    <option value="managing_director">Managing Director</option>
+                    <option value="client">Client</option>
+                  </select>
+                </Field>
               </div>
-               <div className="sm:col-span-2">
-              <Field label="Email (Optional)">
-                <input type="email" className={inputCls}
-                  value={userForm.email}
-                  placeholder="e.g. priya@factory.local"
-                  onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
-              </Field>
+              <div className="sm:col-span-2">
+                <Field label="Email (Optional)">
+                  <input type="email" className={inputCls}
+                    value={userForm.email}
+                    placeholder="e.g. priya@factory.local"
+                    onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
+                </Field>
               </div>
-              </div>
+            </div>
 
             <button type="submit" disabled={isSubmittingUser}
               className="w-full h-11 rounded-xl font-black text-sm text-white flex items-center justify-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
@@ -370,89 +434,100 @@ export default function AdminDashboard() {
               {isSubmittingUser ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
               Create User Account
             </button>
+
+            {toast && toast.form === 'user' && (
+              <div className="mt-3 p-3.5 rounded-xl text-xs font-bold border text-center animate-fade-in backdrop-blur-sm"
+                style={{
+                  background: toast.type === 'success' ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
+                  borderColor: toast.type === 'success' ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.2)',
+                  color: toast.type === 'success' ? '#166534' : '#991b1b',
+                }}>
+                {toast.msg}
+              </div>
+            )}
           </form>
         </SpotlightCard>
       </div>
 
-    {/* ─── USERS DIRECTORY ─── */}
-<SpotlightCard className="p-0 bg-white shadow-xl rounded-3xl overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.04)">
-  <div className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-    <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
-      <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> System Users Directory
-      <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ background: '#faf6f0', color: '#a86022', border: '1px solid rgba(200,131,74,0.2)' }}>
-        {users.length}
-      </span>
-    </h3>
-    <div className="relative">
-      <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#9a7a5a' }} />
-      <input
-        type="text" placeholder="Search users…"
-        value={search} onChange={e => setSearch(e.target.value)}
-        className="h-9 w-52 rounded-lg pl-9 pr-3 text-xs font-semibold focus:outline-none"
-        style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
-      />
-    </div>
-  </div>
+      {/* ─── USERS DIRECTORY ─── */}
+      <SpotlightCard className="p-0 bg-white shadow-xl rounded-3xl overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.04)">
+        <div className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+          <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> System Users Directory
+            <span className="text-xs font-black px-2 py-0.5 rounded-full" style={{ background: '#faf6f0', color: '#a86022', border: '1px solid rgba(200,131,74,0.2)' }}>
+              {users.length}
+            </span>
+          </h3>
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#9a7a5a' }} />
+            <input
+              type="text" placeholder="Search users…"
+              value={search} onChange={e => setSearch(e.target.value)}
+              className="h-9 w-52 rounded-lg pl-9 pr-3 text-xs font-semibold focus:outline-none"
+              style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
+            />
+          </div>
+        </div>
 
-  {loading ? (
-    <div className="py-16 flex items-center justify-center">
-      <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
+        {loading ? (
+          <div className="py-16 flex items-center justify-center">
+            <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs font-semibold">
+              <thead>
+                <tr className="font-black uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
+                  <th className="p-3 pl-5">User</th>
+                  <th className="p-3">Role</th>
+                  <th className="p-3">Type</th>
+                  <th className="p-3">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="py-14 text-center font-semibold" style={{ color: '#9a7a5a' }}>
+                      <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
+                      No users found.
+                    </td>
+                  </tr>
+                ) : filteredUsers.map(u => {
+                  const roleCfg = ROLE_COLORS[u.role] || { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: u.role };
+                  return (
+                    <tr key={u.id} className="border-b hover:bg-[#fcfaf8] transition-colors" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
+                      <td className="p-3 pl-5">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
+                            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
+                            {(u.name || '?')[0].toUpperCase()}
+                          </div>
+                          <span className="font-black" style={{ color: '#2d1f0e' }}>{u.name}</span>
+                        </div>
+                      </td>
+                      <td className="p-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black"
+                          style={{ background: roleCfg.bg, color: roleCfg.color, border: `1px solid ${roleCfg.border}` }}>
+                          {roleCfg.label}
+                        </span>
+                      </td>
+                      <td className="p-3 font-semibold" style={{ color: '#9a7a5a' }}>
+                        {u.client_id ? 'Client Portal' : 'Internal Factory'}
+                      </td>
+                      <td className="p-3">
+                        <span className={`inline-flex items-center gap-1 text-[10px] font-black ${u.is_active ? 'text-green-600' : 'text-red-600'}`}>
+                          <span className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-green-500' : 'bg-red-500'} inline-block`} />
+                          {u.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </SpotlightCard>
     </div>
-  ) : (
-    <div className="overflow-x-auto">
-      <table className="w-full text-left text-xs font-semibold">
-        <thead>
-          <tr className="font-black uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
-            <th className="p-3 pl-5">User</th>
-            <th className="p-3">Role</th>
-            <th className="p-3">Type</th>
-            <th className="p-3">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredUsers.length === 0 ? (
-            <tr>
-              <td colSpan={4} className="py-14 text-center font-semibold" style={{ color: '#9a7a5a' }}>
-                <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
-                No users found.
-              </td>
-            </tr>
-          ) : filteredUsers.map(u => {
-            const roleCfg = ROLE_COLORS[u.role] || { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: u.role };
-            return (
-              <tr key={u.id} className="border-b hover:bg-[#fcfaf8] transition-colors" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
-                <td className="p-3 pl-5">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
-                      style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
-                      {(u.name || '?')[0].toUpperCase()}
-                    </div>
-                    <span className="font-black" style={{ color: '#2d1f0e' }}>{u.name}</span>
-                  </div>
-                </td>
-                <td className="p-3">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black"
-                    style={{ background: roleCfg.bg, color: roleCfg.color, border: `1px solid ${roleCfg.border}` }}>
-                    {roleCfg.label}
-                  </span>
-                </td>
-                <td className="p-3 font-semibold" style={{ color: '#9a7a5a' }}>
-                  {u.client_id ? 'Client Portal' : 'Internal Factory'}
-                </td>
-                <td className="p-3">
-                  <span className={`inline-flex items-center gap-1 text-[10px] font-black ${u.is_active ? 'text-green-600' : 'text-red-600'}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-green-500' : 'bg-red-500'} inline-block`} /> 
-                    {u.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  )}
-</SpotlightCard>
-</div>
   );
 }
