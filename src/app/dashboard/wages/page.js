@@ -27,27 +27,27 @@ export default function PieceRatesAndWages() {
       </div>
 
       {/* ─── TABS ─── */}
-      <div className="flex gap-3 p-1.5 rounded-2xl w-max overflow-x-auto" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
+      <div className="grid grid-cols-3 sm:flex sm:w-max gap-2 sm:gap-3 p-1.5 rounded-2xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
         <button 
           onClick={() => setActiveTab('styles')} 
-          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'styles' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
+          className={`px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap text-center ${activeTab === 'styles' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
           style={activeTab === 'styles' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
         >
           Styles & Rates
         </button>
         <button 
           onClick={() => setActiveTab('computation')} 
-          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'computation' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
+          className={`px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap text-center ${activeTab === 'computation' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
           style={activeTab === 'computation' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
         >
-          Computation Engine
+          Computation
         </button>
         <button 
           onClick={() => setActiveTab('ledger')} 
-          className={`px-6 py-2.5 rounded-xl font-bold text-sm transition-all whitespace-nowrap ${activeTab === 'ledger' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
+          className={`px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap text-center ${activeTab === 'ledger' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
           style={activeTab === 'ledger' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
         >
-          Ledger History
+          Ledger
         </button>
       </div>
       
@@ -381,20 +381,20 @@ function ComputationView({ token }) {
             <h3 className="font-extrabold text-base uppercase tracking-wider" style={{ color: '#2d1f0e' }}>Active Computation Engine</h3>
             <p className="text-xs font-bold text-[#9a7a5a]">Select a period to parse floor logs and distribute wages.</p>
             
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
               <input 
                 type="date" 
                 value={startDate} 
                 onChange={e => setStartDate(e.target.value)} 
-                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-auto"
+                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full"
                 style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
               />
-              <span className="font-bold text-slate-300">to</span>
+              <span className="font-bold text-slate-300 text-center sm:text-left">to</span>
               <input 
                 type="date" 
                 value={endDate} 
                 onChange={e => setEndDate(e.target.value)} 
-                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-auto"
+                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full"
                 style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
               />
             </div>

@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiGetSkus, apiGetSkuPieces, apiProductionCutting, apiImportPreview, apiImportCommit } from '@/lib/api';
@@ -109,11 +110,16 @@ export default function ProductionLogEntry() {
   const [cuttingCount, setCuttingCount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [fetchedSkus, setFetchedSkus] = useState([]);
+  const [skusLoading, setSkusLoading] = useState(false);
 
   // 🎯 Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
   const skuModalRef = useRef(null);
+
+  const [isWorkerOpen, setIsWorkerOpen] = useState(false);
+  const [workerSearchQuery, setWorkerSearchQuery] = useState('');
+  const workerModalRef = useRef(null);
 
   const [showChecklistModal, setShowChecklistModal] = useState(false);
   const [checklistPieces, setChecklistPieces] = useState([]);
@@ -138,12 +144,20 @@ export default function ProductionLogEntry() {
   const [showOrderNumModal, setShowOrderNumModal] = useState(false);
   const [uploadOrderNumber, setUploadOrderNumber] = useState('');
   const [uploadOrderNumberError, setUploadOrderNumberError] = useState('');
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Close Dropdown Menu on click outside
   useEffect(() => {
     function handleClickOutside(e) {
       if (skuModalRef.current && !skuModalRef.current.contains(e.target)) {
         setIsSkuOpen(false);
+      }
+      if (workerModalRef.current && !workerModalRef.current.contains(e.target)) {
+        setIsWorkerOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
@@ -155,7 +169,8 @@ export default function ProductionLogEntry() {
   }, [workers, workerId]);
 
   useEffect(() => {
-    apiGetSkus(token).then(setFetchedSkus).catch(console.warn);
+    setSkusLoading(true);
+    apiGetSkus(token).then(setFetchedSkus).catch(console.warn).finally(() => setSkusLoading(false));
   }, [token, skuRefreshKey]);
 
   useEffect(() => {
@@ -193,19 +208,30 @@ export default function ProductionLogEntry() {
   // 🎯 Search Filter Logic for SKU Dropdown
   const searchFilteredSkus = useMemo(() => {
     if (!skuSearchQuery.trim()) return fetchedSkus;
-    
+
     // Split the search query into separate terms (e.g., "shirt black" -> ["shirt", "black"])
     const searchTerms = skuSearchQuery.toLowerCase().trim().split(/\s+/);
-    
+
     return fetchedSkus.filter((s) => {
       const fullText = `[${s.order_number || ''}] ${s.label || ''} ${s.style_name || ''} ${s.color_code || ''} ${s.size || ''} ${s.code || ''}`.toLowerCase();
-      
+
       // Match if ALL search terms are found in the fullText
       return searchTerms.every(term => fullText.includes(term));
     });
   }, [fetchedSkus, skuSearchQuery]);
 
   const currentSelectedSku = fetchedSkus.find(s => s.code === skuCode);
+
+  const searchFilteredWorkers = useMemo(() => {
+    if (!workerSearchQuery.trim()) return workers;
+    const searchTerms = workerSearchQuery.toLowerCase().trim().split(/\s+/);
+    return workers.filter((w) => {
+      const fullText = `${w.name || ''} ${w.designation || ''} ${w.id || ''}`.toLowerCase();
+      return searchTerms.every(term => fullText.includes(term));
+    });
+  }, [workers, workerSearchQuery]);
+
+  const currentSelectedWorker = workers.find(w => w.id === workerId);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -319,7 +345,7 @@ export default function ProductionLogEntry() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+    <div className="max-w-4xl mx-auto px-4 sm:px-0 space-y-8 animate-fade-in pb-12">
 
       {/* TITLE SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -358,81 +384,81 @@ export default function ProductionLogEntry() {
           </button>
         </div>
       </div>
-{/* 🎯 EXACT SCREEN CENTER FLOATING POPUP (RESPONSIVE & CLEAN) */}
-<div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 pointer-events-none transition-all duration-300">
-  <div className="w-full max-w-sm flex flex-col gap-3">
+      {/* 🎯 EXACT SCREEN CENTER FLOATING POPUP (RESPONSIVE & CLEAN) */}
+      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 pointer-events-none transition-all duration-300">
+        <div className="w-full max-w-sm flex flex-col gap-3">
 
-    {/* Success Toast */}
-    {successMsg && (
-      <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
-            <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
-          </div>
+          {/* Success Toast */}
+          {successMsg && (
+            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSuccessMsg('')}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Commit Success Toast */}
+          {commitSuccess && (
+            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCommitSuccess('')}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Error Toast */}
+          {(errorMsg || uploadError) && (
+            <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+                  <XCircle className="w-6 h-6 text-rose-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setErrorMsg(''); setUploadError(''); }}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
         </div>
-        <button 
-          type="button"
-          onClick={() => setSuccessMsg('')} 
-          className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
       </div>
-    )}
-
-    {/* Commit Success Toast */}
-    {commitSuccess && (
-      <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-            <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
-            <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
-          </div>
-        </div>
-        <button 
-          type="button"
-          onClick={() => setCommitSuccess('')} 
-          className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-    )}
-
-    {/* Error Toast */}
-    {(errorMsg || uploadError) && (
-      <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
-            <XCircle className="w-6 h-6 text-rose-400" />
-          </div>
-          <div className="min-w-0">
-            <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
-            <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
-          </div>
-        </div>
-        <button 
-          type="button"
-          onClick={() => { setErrorMsg(''); setUploadError(''); }} 
-          className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-    )}
-
-  </div>
-</div>
 
       {/* LOGGING FORM CARD */}
-      <SpotlightCard className="p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
 
         <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
           <div className="text-xs font-bold" style={{ color: '#4a3a2a' }}>
@@ -444,31 +470,86 @@ export default function ProductionLogEntry() {
         <form onSubmit={handleSubmit} className="space-y-8">
 
           {/* STEP 1: Worker Selection */}
-          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
               Worker Selection
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="worker-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Users className="w-4 h-4 text-blue-500" /> Assigned Worker / Operator *
+              <div className="flex flex-col gap-2 relative z-40 self-start" ref={workerModalRef}>
+                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                  <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker / Operator *
                 </label>
-                <select
-                  id="worker-select"
-                  value={workerId}
-                  onChange={(e) => setWorkerId(e.target.value)}
-                  className="input-field h-14 bg-white font-bold border-2 border-slate-200 focus:border-blue-500 cursor-pointer shadow-sm text-sm transition-all px-4 rounded-xl outline-none"
-                  required
+
+                {/* Main Select Button */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsWorkerOpen(!isWorkerOpen);
+                    setWorkerSearchQuery('');
+                  }}
+                  className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
                 >
-                  <option value="" disabled>-- Select Worker --</option>
-                  {workers.map((w) => (
-                    <option key={w.id} value={w.id}>
-                      {w.name} {w.designation ? `(${w.designation})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  <span className={currentSelectedWorker ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
+                    {currentSelectedWorker
+                      ? `${currentSelectedWorker.name} ${currentSelectedWorker.designation ? `(${currentSelectedWorker.designation})` : ''}`
+                      : "-- Select / Search Worker --"
+                    }
+                  </span>
+                  <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isWorkerOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Floating Menu with Search Input */}
+                {isWorkerOpen && (
+                  <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl z-[99999] p-3 space-y-3 animate-fade-in">
+                    <div className="relative">
+                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        autoFocus
+                        placeholder="Search Worker Name, Role..."
+                        value={workerSearchQuery}
+                        onChange={(e) => setWorkerSearchQuery(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                        className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+                      />
+                    </div>
+
+                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
+                      {searchFilteredWorkers.length > 0 ? (
+                        searchFilteredWorkers.map((w) => {
+                          const isSelected = workerId === w.id;
+                          return (
+                            <button
+                              key={w.id}
+                              type="button"
+                              onClick={() => {
+                                setWorkerId(w.id);
+                                setIsWorkerOpen(false);
+                              }}
+                              className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+                            >
+                              <div>
+                                <span>{w.name}</span>
+                                {w.designation && (
+                                  <span className={`ml-2 text-[10px] px-2 py-0.5 rounded font-black ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                                    {w.designation}
+                                  </span>
+                                )}
+                              </div>
+                              {isSelected && <span className="font-black text-sm">✓</span>}
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="p-4 text-center text-xs font-bold text-slate-400">
+                          No workers match "{workerSearchQuery}"
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -527,7 +608,12 @@ export default function ProductionLogEntry() {
 
                     {/* Filtered SKU Options List */}
                     <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
-                      {searchFilteredSkus.length > 0 ? (
+                      {skusLoading ? (
+                        <div className="p-6 flex flex-col items-center gap-2">
+                          <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
+                          <span className="text-xs font-bold text-slate-400">Loading SKUs...</span>
+                        </div>
+                      ) : searchFilteredSkus.length > 0 ? (
                         searchFilteredSkus.map((s) => {
                           const isSelected = skuCode === s.code;
                           return (
@@ -542,10 +628,7 @@ export default function ProductionLogEntry() {
                                 }`}
                             >
                               <div>
-                                <span className={`text-[10px] px-2 py-0.5 rounded font-black mr-2 ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                                  Order #{s.order_number || 'N/A'}
-                                </span>
-                                <span>{s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
+                                <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
                               </div>
                               {isSelected && <span className="font-black text-sm">✓</span>}
                             </button>
@@ -680,8 +763,8 @@ export default function ProductionLogEntry() {
           </div>
 
           {/* Form Actions */}
-          <div className="pt-4 flex flex-col items-center sm:items-end gap-3">
-            <div className="flex flex-col sm:flex-row gap-4 justify-end w-full">
+          <div className="pt-4 flex flex-col gap-3">
+            <div className="flex gap-3 w-full">
               <button
                 type="button"
                 onClick={() => {
@@ -689,7 +772,7 @@ export default function ProductionLogEntry() {
                   setSkuCode('');
                   setCuttingCount('');
                 }}
-                className="h-14 font-bold rounded-xl text-base px-8 transition-all cursor-pointer"
+                className="flex-1 h-14 font-bold rounded-xl text-base transition-all cursor-pointer active:scale-95"
                 style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
               >
                 Reset All
@@ -697,7 +780,7 @@ export default function ProductionLogEntry() {
 
               <button
                 type="submit"
-                className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 flex-1 sm:flex-none cursor-pointer"
+                className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
               >
                 <Rocket className="w-5 h-5" /> Submit Event
@@ -706,7 +789,7 @@ export default function ProductionLogEntry() {
 
             <Link
               href={skuCode ? `/dashboard/analytics?sku=${encodeURIComponent(skuCode)}` : '/dashboard/analytics'}
-              className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center gap-1.5 mt-2"
+              className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
               style={{ color: '#c8834a' }}
             >
               <BarChart3 className="w-4 h-4" />
@@ -719,8 +802,8 @@ export default function ProductionLogEntry() {
       </SpotlightCard>
 
       {/* EXCEL PREVIEW MODAL */}
-      {showPreviewModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+      {mounted && showPreviewModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center p-6 border-b border-slate-100">
               <div>
@@ -773,12 +856,13 @@ export default function ProductionLogEntry() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* ORDER NUMBER MODAL */}
-      {showOrderNumModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+      {mounted && showOrderNumModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 sm:p-8 space-y-5 relative">
             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
@@ -844,12 +928,13 @@ export default function ProductionLogEntry() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* PIECE CHECKLIST MODAL */}
-      {showChecklistModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
+      {mounted && showChecklistModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
 
             <div className="flex justify-between items-center p-6 border-b border-slate-100">
@@ -995,7 +1080,8 @@ export default function ProductionLogEntry() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
