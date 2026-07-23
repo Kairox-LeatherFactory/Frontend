@@ -8,6 +8,7 @@ import {
   Scissors,
   Layers,
   Eye,
+  EyeOff,
   ArrowUpRight,
   ArrowRight,
   Loader2,
@@ -174,6 +175,7 @@ export default function Home() {
   // Login Form States
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -525,14 +527,24 @@ export default function Home() {
 
                     <div className="flex flex-col gap-2">
                       <label className="text-[10px] text-white/50 tracking-[0.2em] uppercase">Password</label>
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        placeholder="Enter password"
-                        className="w-full bg-[#111] border border-[#222] text-white p-4 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                          placeholder="Enter password"
+                          className="w-full bg-[#111] border border-[#222] text-white p-4 pr-12 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(prev => !prev)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
 
                     <button

@@ -113,25 +113,31 @@ function Badge({ label, type }) {
 }
 
 function AlertBanner({ type, message, onClose }) {
-  if (!message) return null;
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!message || !mounted) return null;
   const styles = {
-    success: 'bg-emerald-50 border-emerald-200 text-emerald-800',
-    error: 'bg-red-50 border-red-200 text-red-800',
-    warning: 'bg-amber-50 border-amber-200 text-amber-800',
-    info: 'bg-blue-50 border-blue-200 text-blue-800',
+    success: 'bg-emerald-50/95 border-emerald-500/30 text-emerald-900 backdrop-blur-md',
+    error: 'bg-red-50/95 border-red-500/30 text-red-900 backdrop-blur-md',
+    warning: 'bg-amber-50/95 border-amber-500/30 text-amber-900 backdrop-blur-md',
+    info: 'bg-blue-50/95 border-blue-500/30 text-blue-900 backdrop-blur-md',
   };
   const icons = { success: CheckCircle2, error: AlertCircle, warning: AlertTriangle, info: Activity };
   const Icon = icons[type] || AlertCircle;
-  return (
-    <div className={`flex items-start gap-2.5 p-4 rounded-xl border text-sm font-semibold shadow-sm animate-fade-in ${styles[type] || styles.info}`}>
+  return createPortal(
+    <div className={`fixed bottom-6 right-4 sm:right-6 z-[999999] flex items-start gap-2.5 p-4 rounded-2xl border text-sm font-semibold shadow-2xl max-w-sm w-full animate-fade-in ${styles[type] || styles.info}`}>
       <Icon className="w-4 h-4 mt-0.5 flex-shrink-0" />
       <p className="flex-1">{message}</p>
       {onClose && (
-        <button onClick={onClose} className="opacity-60 hover:opacity-100">
+        <button onClick={onClose} className="opacity-60 hover:opacity-100 cursor-pointer">
           <X className="w-4 h-4" />
         </button>
       )}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -522,8 +528,9 @@ function FloorCommandView({ workers = [], token }) {
 
   // Unified State for Add Worker
   const [addModal, setAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '', password: '' });
+  const [addForm, setAddForm] = useState({ name: '', phone: '', designation: 'Cutting', wage_type: 'piece_rate', daily_rate: '', password: '' });
   const [addLoading, setAddLoading] = useState(false);
+  const [isOther, setIsOther] = useState(false);
 
   const showAlert = (type, message) => {
     setAlert({ type, message });
@@ -538,6 +545,10 @@ function FloorCommandView({ workers = [], token }) {
     }
     if (wage_type === 'monthly' && (!phone.trim() || !password.trim())) {
       showAlert('warning', 'Phone number and password are required for monthly employees.');
+      return;
+    }
+    if (phone.trim() && phone.trim().length !== 10) {
+      showAlert('warning', 'Phone number must be exactly 10 digits.');
       return;
     }
     setAddLoading(true);
@@ -560,7 +571,8 @@ function FloorCommandView({ workers = [], token }) {
 
       showAlert('success', `Worker "${name}" onboarded to floor roster.`);
       setAddModal(false);
-      setAddForm({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '', password: '' });
+      setAddForm({ name: '', phone: '', designation: 'Cutting', wage_type: 'piece_rate', daily_rate: '', password: '' });
+      setIsOther(false);
     } catch (e) {
       if (e.status === 403) showAlert('error', `Geofence check failed: ${e.message}`);
       else showAlert('error', typeof e === 'string' ? e : e.message || 'Failed to add worker.');
@@ -825,10 +837,45 @@ function FloorCommandView({ workers = [], token }) {
                 </div>
                 <div>
                   <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Designation *</label>
-                  <input type="text" value={addForm.designation} placeholder="e.g. Cutter, Stitcher, Helper"
-                    onChange={(e) => setAddForm((f) => ({ ...f, designation: e.target.value }))}
-                    className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text" />
+                  <select
+                    value={isOther ? 'Other' : addForm.designation}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'Other') {
+                        setIsOther(true);
+                        setAddForm((f) => ({ ...f, designation: '' }));
+                      } else {
+                        setIsOther(false);
+                        setAddForm((f) => ({ ...f, designation: val }));
+                      }
+                    }}
+                    className="input-field w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a] relative z-20 cursor-pointer"
+                  >
+                    <option value="Cutting">Cutting</option>
+                    <option value="Fusing">Fusing</option>
+                    <option value="Pasting">Pasting</option>
+                    <option value="Shell stitch">Shell stitch</option>
+                    <option value="Lining attach">Lining attach</option>
+                    <option value="Lining stitch">Lining stitch</option>
+                    <option value="Final finish">Final finish</option>
+                    <option value="Supervisor">Supervisor</option>
+                    <option value="Other">Other (Custom)</option>
+                  </select>
                 </div>
+
+                {isOther && (
+                  <div className="sm:col-span-2 animate-fade-in">
+                    <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Custom Designation *</label>
+                    <input
+                      type="text"
+                      value={addForm.designation}
+                      placeholder="Type here"
+                      required
+                      onChange={(e) => setAddForm((f) => ({ ...f, designation: e.target.value }))}
+                      className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text"
+                    />
+                  </div>
+                )}
                 <div>
                   <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Wage Type</label>
                   <select value={addForm.wage_type}
@@ -843,7 +890,8 @@ function FloorCommandView({ workers = [], token }) {
                     <div>
                       <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Phone Number *</label>
                       <input type="tel" inputMode="numeric" pattern="[0-9]*" value={addForm.phone} placeholder="10-digit mobile number"
-                        onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '') }))}
+                        maxLength={10}
+                        onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
                         className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text" />
                     </div>
                     <div>
@@ -858,7 +906,8 @@ function FloorCommandView({ workers = [], token }) {
                     <div>
                       <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Phone Number (Optional)</label>
                       <input type="tel" inputMode="numeric" pattern="[0-9]*" value={addForm.phone} placeholder="Optional for daily workers"
-                        onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '') }))}
+                        maxLength={10}
+                        onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
                         className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text" />
                     </div>
                     <div>
