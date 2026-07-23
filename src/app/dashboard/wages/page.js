@@ -66,10 +66,13 @@ function StylesView({ token }) {
   const [historyModal, setHistoryModal] = useState(null);
   const [loading, setLoading] = useState(true);
   const [savingOps, setSavingOps] = useState({});
+  const [savingAll, setSavingAll] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
+  const [toastType, setToastType] = useState('success');
 
-  const showToast = (msg) => {
+  const showToast = (msg, type = 'success') => {
     setToastMsg(msg);
+    setToastType(type);
     setTimeout(() => setToastMsg(null), 3000);
   };
 
@@ -97,11 +100,28 @@ function StylesView({ token }) {
         lines: [{ operation_code: op.operation_code, rate: parseFloat(op.rate || 0) }]
       };
       await apiSetWageRatesBulk(token, payload);
-      showToast(`${op.label} rate saved!`);
+      showToast(`${op.label} rate saved!`, 'success');
     } catch (e) { 
-      alert("Error saving: " + e.message); 
+      showToast('Error saving rate: ' + e.message, 'error');
     } finally { 
       setSavingOps(prev => ({ ...prev, [op.operation_code]: false })); 
+    }
+  };
+
+  const handleSaveAllRates = async () => {
+    setSavingAll(true);
+    try {
+      const payload = {
+        style_code: selectedStyle.style_code,
+        effective_from: new Date().toISOString().split('T')[0],
+        lines: rates.map(op => ({ operation_code: op.operation_code, rate: parseFloat(op.rate || 0) }))
+      };
+      await apiSetWageRatesBulk(token, payload);
+      showToast('All rates saved successfully!', 'success');
+    } catch (e) {
+      showToast('Error saving all rates: ' + e.message, 'error');
+    } finally {
+      setSavingAll(false);
     }
   };
 
@@ -132,14 +152,19 @@ function StylesView({ token }) {
             </button>
           </div>
           
-          {/* Toast Notification */}
-          {toastMsg && (
-            <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[999999] animate-fade-in">
-              <div className="bg-[#10b981] text-white px-6 py-3 rounded-2xl shadow-xl font-bold flex items-center gap-3">
-                <Activity className="w-5 h-5" />
+          {/* Toast — bottom-right portal */}
+          {toastMsg && typeof document !== 'undefined' && createPortal(
+            <div className="fixed bottom-6 right-4 sm:right-6 z-[999999] animate-fade-in">
+              <div className={`px-5 py-3.5 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 backdrop-blur-md border ${
+                toastType === 'success'
+                  ? 'bg-emerald-50/95 border-emerald-300/40 text-emerald-900'
+                  : 'bg-red-50/95 border-red-300/40 text-red-900'
+              }`}>
+                <Activity className="w-4 h-4 shrink-0" />
                 {toastMsg}
               </div>
-            </div>
+            </div>,
+            document.body
           )}
 
           <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
@@ -205,6 +230,18 @@ function StylesView({ token }) {
                 })}
               </tbody>
             </table>
+          </div>
+
+          {/* ── Save All Rates Button ── */}
+          <div className="flex justify-end pt-4" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
+            <button
+              onClick={handleSaveAllRates}
+              disabled={savingAll}
+              className="h-11 px-8 rounded-xl font-black text-sm text-white shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 flex items-center gap-2"
+              style={{ background: 'linear-gradient(135deg, #2d6a4f, #40916c)' }}
+            >
+              {savingAll ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving All...</> : <><Save className="w-4 h-4" /> Save All Rates</>}
+            </button>
           </div>
         </SpotlightCard>
 
