@@ -11,7 +11,11 @@ import Link from 'next/link';
 function DynamicDataViewer({ data }) {
   if (!data) return <div className="text-slate-400 italic text-center p-4">No data available</div>;
 
-  if (data.clients) {
+  if (typeof data === 'string') {
+    return <div className="p-4 text-slate-700 bg-slate-50 rounded-xl">{data}</div>;
+  }
+
+  if (data.clients && typeof data.clients === 'object') {
     const clientsData = Object.entries(data.clients);
 
     return (
@@ -75,7 +79,7 @@ function DynamicDataViewer({ data }) {
           <tr>
             {keys.map(k => (
               <th key={k} className="px-4 py-3 border-b border-slate-200 whitespace-nowrap">
-                {k.replace(/_/g, ' ')}
+                {String(k).replace(/_/g, ' ')}
               </th>
             ))}
           </tr>
@@ -83,11 +87,14 @@ function DynamicDataViewer({ data }) {
         <tbody className="divide-y divide-slate-100">
           {tableRows.map((row, i) => (
             <tr key={i} className="hover:bg-slate-50 transition-colors">
-              {keys.map(k => (
-                <td key={k} className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">
-                  {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
-                </td>
-              ))}
+              {keys.map(k => {
+                const val = row ? row[k] : '-';
+                return (
+                  <td key={k} className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">
+                    {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val ?? '-')}
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>
@@ -111,6 +118,8 @@ export default function ProductionLogEntry() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [fetchedSkus, setFetchedSkus] = useState([]);
   const [skusLoading, setSkusLoading] = useState(false);
+  const [cuttingPieces, setCuttingPieces] = useState([]);
+const [showPrintModal, setShowPrintModal] = useState(false);
 
   // 🎯 Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
@@ -246,6 +255,12 @@ export default function ProductionLogEntry() {
       try {
         const result = await apiProductionCutting(token, { sku_id: skuObj.sku_id, employee_id: workerId, work_date: date, count: parseInt(cuttingCount) });
         setSuccessMsg(`✅ Cut ${result.count} pieces.`);
+        
+      
+        if (result && result.pieces) {
+          setCuttingPieces(result.pieces);
+          setShowPrintModal(true);
+        }
       } catch (err) { setErrorMsg(`Cutting failed: ${err.message}`); }
       return;
     }
@@ -387,71 +402,71 @@ export default function ProductionLogEntry() {
       {/* 🎯 BOTTOM-RIGHT TOAST NOTIFICATION */}
       <div className="fixed bottom-6 right-4 sm:right-6 z-[99999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
 
-          {/* Success Toast */}
-          {successMsg && (
-            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
-                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
-                </div>
+        {/* Success Toast */}
+        {successMsg && (
+          <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
               </div>
-              <button
-                type="button"
-                onClick={() => setSuccessMsg('')}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="min-w-0">
+                <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
+                <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
+              </div>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => setSuccessMsg('')}
+              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
-          {/* Commit Success Toast */}
-          {commitSuccess && (
-            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
-                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
-                </div>
+        {/* Commit Success Toast */}
+        {commitSuccess && (
+          <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
               </div>
-              <button
-                type="button"
-                onClick={() => setCommitSuccess('')}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="min-w-0">
+                <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
+                <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
+              </div>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => setCommitSuccess('')}
+              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
-          {/* Error Toast */}
-          {(errorMsg || uploadError) && (
-            <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
-                  <XCircle className="w-6 h-6 text-rose-400" />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
-                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
-                </div>
+        {/* Error Toast */}
+        {(errorMsg || uploadError) && (
+          <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+                <XCircle className="w-6 h-6 text-rose-400" />
               </div>
-              <button
-                type="button"
-                onClick={() => { setErrorMsg(''); setUploadError(''); }}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
+              <div className="min-w-0">
+                <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
+                <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
+              </div>
             </div>
-          )}
+            <button
+              type="button"
+              onClick={() => { setErrorMsg(''); setUploadError(''); }}
+              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
       </div>
 
@@ -604,32 +619,39 @@ export default function ProductionLogEntry() {
                     </div>
 
                     {/* Filtered SKU Options List */}
-                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1 custom-scrollbar">
+                    <div className="max-h-56 overflow-y-auto pr-1">
                       {skusLoading ? (
                         <div className="p-6 flex flex-col items-center gap-2">
                           <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
                           <span className="text-xs font-bold text-slate-400">Loading SKUs...</span>
                         </div>
                       ) : searchFilteredSkus.length > 0 ? (
-                        searchFilteredSkus.map((s) => {
-                          const isSelected = skuCode === s.code;
-                          return (
-                            <button
-                              key={s.code}
-                              type="button"
-                              onClick={() => {
-                                setSkuCode(s.code);
-                                setIsSkuOpen(false);
-                              }}
-                              className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
-                            >
-                              <div>
-                                <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
-                              </div>
-                              {isSelected && <span className="font-black text-sm">✓</span>}
-                            </button>
-                          );
-                        })
+                        <>
+                          {searchFilteredSkus.slice(0, 60).map((s) => {
+                            const isSelected = skuCode === s.code;
+                            return (
+                              <button
+                                key={s.code}
+                                type="button"
+                                onClick={() => {
+                                  setSkuCode(s.code);
+                                  setIsSkuOpen(false);
+                                }}
+                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+                              >
+                                <div className="truncate pr-2">
+                                  <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
+                                </div>
+                                {isSelected && <span className="font-black text-sm shrink-0">✓</span>}
+                              </button>
+                            );
+                          })}
+                          {searchFilteredSkus.length > 60 && (
+                            <div className="p-2.5 text-center text-[10px] font-bold text-slate-400 border-t border-slate-100 mt-1">
+                              Showing 60 of {searchFilteredSkus.length} — type to filter
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <div className="p-4 text-center text-xs font-bold text-slate-400">
                           No SKU matches "{skuSearchQuery}"
@@ -854,7 +876,61 @@ export default function ProductionLogEntry() {
         </div>,
         document.body
       )}
+{/* TRAVELER CARD PRINT MODAL */}
+      {mounted && showPrintModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-50">
+                  <Scissors className="w-4 h-4 text-[#c8834a]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Traveler Cards / Barcodes Minted</h3>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces: {cuttingPieces.length}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowPrintModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
 
+            <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
+              {cuttingPieces.map((piece) => (
+                <div key={piece.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-2xs">
+                  <div>
+                    <p className="text-xs font-mono font-black text-slate-800">{piece.code}</p>
+                    <p className="text-[10px] font-bold text-slate-400">Sequence: #{piece.seq}</p>
+                  </div>
+                  <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
+                    Ready to Print
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
+              <button
+                onClick={() => setShowPrintModal(false)}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+              >
+                <Rocket className="w-3.5 h-3.5" /> Print Traveler Cards
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
       {/* ORDER NUMBER MODAL */}
       {mounted && showOrderNumModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
@@ -1211,7 +1287,7 @@ export default function ProductionLogEntry() {
 //   const [errorMsg, setErrorMsg] = useState('');
 //   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
 
-//   // Note: Handle additional state variables like fileInputRef, uploadLoading, etc. 
+//   // Note: Handle additional state variables like fileInputRef, uploadLoading, etc.
 //   // if you have them defined elsewhere or need them for imports.
 //   const fileInputRef = useRef(null);
 //   const [uploadLoading, setUploadLoading] = useState(false);

@@ -230,11 +230,11 @@ export default function OrdersTreeBrowser() {
           </h3>
 
           <div className="space-y-4 text-sm font-semibold">
-            {treeClients.map(({ name: clientName, orders: clientOrders }) => {
+            {treeClients.map(({ name: clientName, orders: clientOrders }, index) => {
               const isClientOpen = !!openedClients[clientName];
 
               return (
-                <div key={clientName} className="rounded-xl overflow-hidden shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
+                <div key={`${clientName}-${index}`} className="rounded-xl overflow-hidden shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
 
                   {/* LEVEL 1: CLIENT */}
                   <button
@@ -389,11 +389,11 @@ export default function OrdersTreeBrowser() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {allClients.map((client) => {
+            {allClients.map((client,index) => {
               const activePOs = orders.filter((o) => o.client === client.name).length;
               return (
                 <SpotlightCard
-                  key={client.id}
+                  key={`${client.id}-${index}`}
                   className="rounded-2xl p-5 transition-all shadow-sm hover:shadow-md flex flex-col justify-between min-h-[160px] bg-white hover:-translate-y-1"
                   style={{ border: '1px solid rgba(200,131,74,0.15)' }}
                   spotlightColor="rgba(200,131,74,0.06)"
@@ -471,10 +471,10 @@ export default function OrdersTreeBrowser() {
             justifyContent: 'center',
             backgroundColor: 'rgba(15, 23, 42, 0.65)',
             padding: '16px',
-            pointerEvents: 'auto' 
+            pointerEvents: 'auto'
           }}
           onClick={() => {
-           
+
           }}
         >
           <div
@@ -488,7 +488,7 @@ export default function OrdersTreeBrowser() {
               padding: '24px',
               position: 'relative',
               zIndex: 1000000,
-              pointerEvents: 'auto' 
+              pointerEvents: 'auto'
             }}
             className="space-y-4 animate-scale-up"
             onClick={(e) => e.stopPropagation()}
@@ -607,8 +607,8 @@ export default function OrdersTreeBrowser() {
                   onChange={(e) => { setNewOrderNumber(e.target.value.trim()); setOrderNumberError(''); }}
                   disabled={isCreating}
                   className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-semibold text-slate-900 bg-white shadow-sm focus:outline-none focus:ring-2 disabled:opacity-50 transition-colors cursor-text relative z-25 ${orderNumberError
-                      ? 'border-red-500 focus:ring-red-500 bg-red-50'
-                      : 'border-slate-300 focus:ring-[#c8834a] focus:border-[#c8834a]'
+                    ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                    : 'border-slate-300 focus:ring-[#c8834a] focus:border-[#c8834a]'
                     }`}
                 />
                 {orderNumberError && (

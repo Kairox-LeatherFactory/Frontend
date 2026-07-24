@@ -8,6 +8,7 @@ import {
   apiGetWageRuns, 
   apiGetRateSheet, 
   apiSetWageRatesBulk,
+  apiSetWageRateSingle,
   apiGetRateHistory,
   apiGetWageRunDetails 
 } from '@/lib/api';
@@ -96,10 +97,11 @@ function StylesView({ token }) {
     try {
       const payload = {
         style_code: selectedStyle.style_code,
-        effective_from: new Date().toISOString().split('T')[0],
-        lines: [{ operation_code: op.operation_code, rate: parseFloat(op.rate || 0) }]
+        operation_code: op.operation_code,
+        rate: parseFloat(op.rate || 0),
+        effective_from: new Date().toISOString().split('T')[0]
       };
-      await apiSetWageRatesBulk(token, payload);
+      await apiSetWageRateSingle(token, payload);
       showToast(`${op.label} rate saved!`, 'success');
     } catch (e) { 
       showToast('Error saving rate: ' + e.message, 'error');
