@@ -11,7 +11,6 @@ import {
   apiGetEvents,
   apiProductionScan,
   apiComputeWageRun,
-  apiGetUsers, 
 } from '@/lib/api';
 
 const DataContext = createContext(null);
@@ -25,7 +24,6 @@ export function DataProvider({ children }) {
   const [operations, setOperations] = useState([]);
   const [events, setEvents] = useState([]);
   const [wageRuns, setWageRuns] = useState([]);
-  const [allSystemUsers, setAllSystemUsers] = useState([]); 
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [traceCards, setTraceCards] = useState({});
@@ -36,12 +34,11 @@ export function DataProvider({ children }) {
     setApiError(null);
     try {
       
-      const [clientsData, empData, opsData, evtsData, usersData] = await Promise.all([
+      const [clientsData, empData, opsData, evtsData] = await Promise.all([
         apiGetClients(token).catch(() => []),
         apiGetEmployees(token).catch(() => []),
         apiGetOperations(token).catch(() => []),
         apiGetEvents(token).catch(() => []),
-        apiGetUsers(token).catch(() => []),
       ]);
 
       let allOrders = [];
@@ -63,13 +60,6 @@ export function DataProvider({ children }) {
       
       setOperations(opsData);
       setOrders(allOrders);
-
-   
-      const mergedUsers = [
-        ...usersData.map(u => ({ ...u, listType: 'System User', role: u.role || 'User' })),
-        ...mappedWorkers.map(w => ({ ...w, listType: 'Worker', role: w.role }))
-      ];
-      setAllSystemUsers(mergedUsers);
 
       const mappedEvents = evtsData.map((apiE) => {
         const op = opsData.find((o) => o.id === apiE.operation_id);
@@ -127,7 +117,6 @@ export function DataProvider({ children }) {
   return (
     <DataContext.Provider value={{
       events, orders, workers, operations, clients, wageRuns, traceCards,
-      allSystemUsers,
       addScanEvent, addWageRun, createClient, addClientOrder, refreshData,
       apiLoading, apiError
     }}>

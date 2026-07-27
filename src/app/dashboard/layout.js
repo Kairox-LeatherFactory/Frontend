@@ -119,12 +119,12 @@ export default function DashboardLayout({ children }) {
     []
   );
 
-  if (!user) {
+ if (!user) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gradient-brand">
-        <div className="text-center text-white">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-          <p className="font-semibold">Securing Session...</p>
+      <div className="flex min-h-screen items-center justify-center bg-[#050505]">
+        <div className="text-center text-[#c8834a]">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8834a] mx-auto mb-4"></div>
+          <p className="font-semibold text-xs tracking-widest uppercase">Securing Session...</p>
         </div>
       </div>
     );

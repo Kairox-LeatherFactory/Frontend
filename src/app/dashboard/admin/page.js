@@ -51,9 +51,9 @@ export default function AdminDashboard() {
     daily_rate: '',
     password: ''
   });
-  const[isOther,setIsOther]=useState(false)
+  const [isOther, setIsOther] = useState(false)
   const [isSubmittingWorker, setIsSubmittingWorker] = useState(false);
-const handleChange = (e) => {
+  const handleChange = (e) => {
     const { name, value } = e.target;
     setWorkerForm((prev) => ({
       ...prev,
@@ -474,20 +474,24 @@ const handleChange = (e) => {
             <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs font-semibold">
+  <div className="w-full overflow-x-auto rounded-2xl border bg-white shadow-sm" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+  
+  {/*                                                                           */}
+  <table className="w-full min-w-[700px] text-left text-xs whitespace-nowrap">
               <thead>
-                <tr className="font-black uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
+                <tr className="font-black uppercase tracking-wider text-[10px]" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
                   <th className="p-3 pl-5">User</th>
                   <th className="p-3">Role</th>
-                  <th className="p-3">Type</th>
+                  <th className="p-3">Phone</th>
+                  <th className="p-3">Email</th>
                   <th className="p-3">Status</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="py-14 text-center font-semibold" style={{ color: '#9a7a5a' }}>
+                    {/*                                               */}
+                    <td colSpan={5} className="py-14 text-center font-semibold" style={{ color: '#9a7a5a' }}>
                       <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
                       No users found.
                     </td>
@@ -495,7 +499,9 @@ const handleChange = (e) => {
                 ) : filteredUsers.map(u => {
                   const roleCfg = ROLE_COLORS[u.role] || { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: u.role };
                   return (
-                    <tr key={u.id} className="border-b hover:bg-[#fcfaf8] transition-colors" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
+                    <tr key={u.id} className="border-b hover:bg-[#fcfaf8] transition-colors text-xs" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
+
+                      {/* User Name & Avatar */}
                       <td className="p-3 pl-5">
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
@@ -505,21 +511,42 @@ const handleChange = (e) => {
                           <span className="font-black" style={{ color: '#2d1f0e' }}>{u.name}</span>
                         </div>
                       </td>
+
+                      {/* Role Badge */}
                       <td className="p-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black"
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase"
                           style={{ background: roleCfg.bg, color: roleCfg.color, border: `1px solid ${roleCfg.border}` }}>
                           {roleCfg.label}
                         </span>
                       </td>
-                      <td className="p-3 font-semibold" style={{ color: '#9a7a5a' }}>
-                        {u.client_id ? 'Client Portal' : 'Internal Factory'}
+
+                      {/* Phone */}
+                      <td className="p-3 font-mono text-slate-600">
+                         <span className="font-black" style={{ color: '#2d1f0e' }}>{u.phone || 'N/A'}</span>
+                      
                       </td>
+
+                      {/* Email */}
+                      <td className="p-3 text-slate-600">
+                         <span className="font-black" style={{ color: '#2d1f0e' }}>{u.email|| 'N/A'}</span>
+                      
+                      </td>
+
+                      {/* Beautiful Status Badge UI */}
                       <td className="p-3">
-                        <span className={`inline-flex items-center gap-1 text-[10px] font-black ${u.is_active ? 'text-green-600' : 'text-red-600'}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${u.is_active ? 'bg-green-500' : 'bg-red-500'} inline-block`} />
-                          {u.is_active ? 'Active' : 'Inactive'}
-                        </span>
+                        {u.is_active ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200/80 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                            Inactive
+                          </span>
+                        )}
                       </td>
+
                     </tr>
                   );
                 })}
