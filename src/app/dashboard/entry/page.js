@@ -218,8 +218,6 @@ export default function ProductionLogEntry() {
     }
   }, [errorMsg, uploadError]);
 
-  // 🎯 Filter Workers by Selected Stage
-
  // 🎯 Clean mapping object for all stage variations
   const filteredWorkersByStage = useMemo(() => {
     if (!selectedStage || selectedStage === 'Others') return workers;
