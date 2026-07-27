@@ -25,7 +25,8 @@ import {
   Warehouse,
   Package,
   Activity,
-  Zap
+  Zap,
+  Search
 } from 'lucide-react';
 import { useData } from '@/context/DataContext';
 
@@ -252,10 +253,48 @@ function OrdersExplorer() {
   const [selectedPieceCode, setSelectedPieceCode] = useState(null);
   const [pieceDetail, setPieceDetail] = useState(null);
   const [loadingPiece, setLoadingPiece] = useState(false);
+ const [searchQuery, setSearchQuery] = useState('');
 
+const filteredOrders = useMemo(() => {
+  const dataList = orders || []; 
+  const q = searchQuery.trim().toLowerCase();
+  if (!q) return dataList;
+
+  
+  return dataList.map((clientGroup) => {
+    const clientName = String(clientGroup?.client_name || '').toLowerCase();
+
+  
+    const matchingOrders = (clientGroup?.orders || []).filter((ord) => {
+      const orderNum = String(ord?.order_number || '').toLowerCase();
+      
+      
+      const matchingStyles = (ord?.styles || []).some((sty) => 
+        String(sty?.style_name || '').toLowerCase().includes(q) ||
+        String(sty?.article || '').toLowerCase().includes(q)
+      );
+
+      return (
+        clientName.includes(q) ||
+        orderNum.includes(q) ||
+        matchingStyles
+      );
+    });
+
+ 
+    if (clientName.includes(q) || matchingOrders.length > 0) {
+      return {
+        ...clientGroup,
+        orders: matchingOrders.length > 0 ? matchingOrders : clientGroup.orders
+      };
+    }
+    return null;
+  }).filter(Boolean); 
+}, [orders, searchQuery]);
   const orderGroups = useMemo(() => {
+    let groups = [];
+
     if (exploreData && exploreData.clients) {
-      const groups = [];
       exploreData.clients.forEach(client => {
          client.orders?.forEach(order => {
             const orderName = `${client.client_name} (PO: ${order.order_number})`;
@@ -268,28 +307,45 @@ function OrdersExplorer() {
             });
          });
       });
-      return groups;
+    } else if (orders && orders.length > 0) {
+      const mapGroups = {};
+      orders.forEach((styleOrder) => {
+        const poNum = styleOrder?.po_number || styleOrder?.order_number || styleOrder?.id || 'ORD-101';
+        const clientName = styleOrder?.client || styleOrder?.client_name || 'Client';
+        const orderName = `${clientName} (PO: ${poNum})`;
+
+        if (!mapGroups[orderName]) {
+          mapGroups[orderName] = { 
+            id: orderName, 
+            rawId: styleOrder?.id || styleOrder?.order_id || poNum,
+            client: clientName, 
+            po: poNum, 
+            styles: styleOrder.styles || [] 
+          };
+        }
+      });
+      groups = Object.values(mapGroups);
     }
 
-    if (!orders || orders.length === 0) return [];
-    const groups = {};
-    orders.forEach((styleOrder) => {
-      const poNum = styleOrder?.po_number || styleOrder?.order_number || styleOrder?.id || 'ORD-101';
-      const clientName = styleOrder?.client || styleOrder?.client_name || 'Client';
-      const orderName = `${clientName} (PO: ${poNum})`;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return groups;
 
-      if (!groups[orderName]) {
-        groups[orderName] = { 
-          id: orderName, 
-          rawId: styleOrder?.id || styleOrder?.order_id || poNum,
-          client: clientName, 
-          po: poNum, 
-          styles: styleOrder.styles || [] 
-        };
-      }
+    return [...groups].sort((a, b) => {
+      const matchA = 
+        String(a.client).toLowerCase().includes(q) || 
+        String(a.po).toLowerCase().includes(q) ||
+        a.styles.some(s => String(s.style_name || s.style || '').toLowerCase().includes(q));
+
+      const matchB = 
+        String(b.client).toLowerCase().includes(q) || 
+        String(b.po).toLowerCase().includes(q) ||
+        b.styles.some(s => String(s.style_name || s.style || '').toLowerCase().includes(q));
+
+      if (matchA && !matchB) return -1; 
+      if (!matchA && matchB) return 1; 
+      return 0;
     });
-    return Object.values(groups);
-  }, [orders, exploreData]);
+  }, [orders, exploreData, searchQuery]);
 
   const toggleOrder = async (group) => {
     const groupId = group.id;
@@ -361,17 +417,36 @@ function OrdersExplorer() {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row gap-5 lg:min-h-[72vh]">
+  <div className="flex flex-col lg:flex-row gap-5 lg:min-h-[72vh]">
       {/* ── Left Sidebar ── */}
       <div
         className="w-full lg:w-[35%] rounded-2xl p-4 overflow-y-auto flex flex-col gap-1 max-h-[75vh]"
         style={glassPanelStyle}
       >
-        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3 px-2 sticky top-0 pt-1 pb-2"
-           style={{ background: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(10px)', zIndex: 10 }}>
-          Orders Explorer
-        </p>
+        {/*                 */}
+        <div className="sticky top-0 z-10 pb-3 mb-2" style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(10px)' }}>
+          <div className="flex items-center justify-between px-2 mb-2">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Orders Explorer
+            </p>
+            <span className="text-[10px] font-black px-2 py-0.5 rounded-full" style={{ background: '#faf6f0', color: '#a86022', border: '1px solid rgba(200,131,74,0.2)' }}>
+              {filteredOrders.length} orders
+            </span>
+          </div>
 
+          {/* 🎯 Search Input Bar */}
+          <div className="relative flex items-center px-1">
+            <Search className="w-3.5 h-3.5 absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none z-10" style={{ color: '#9a7a5a' }} />
+            <input
+              type="text"
+              placeholder="Search orders..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 w-full rounded-lg pl-9 pr-3 text-xs font-semibold focus:outline-none transition-colors"
+              style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
+            />
+          </div>
+        </div>
         {orderGroups.map((group) => {
           const fetchedTree = orderTrees[group.rawId];
           const displayStyles = fetchedTree?.styles || group.styles || [];

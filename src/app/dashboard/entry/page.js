@@ -119,7 +119,11 @@ export default function ProductionLogEntry() {
   const [fetchedSkus, setFetchedSkus] = useState([]);
   const [skusLoading, setSkusLoading] = useState(false);
   const [cuttingPieces, setCuttingPieces] = useState([]);
-const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+
+  // 🎯 Operation Stage & Worker States
+  const [selectedStage, setSelectedStage] = useState('Cutting');
+  const [customDesignation, setCustomDesignation] = useState('');
 
   // 🎯 Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
@@ -214,17 +218,22 @@ const [showPrintModal, setShowPrintModal] = useState(false);
     }
   }, [errorMsg, uploadError]);
 
+  // 🎯 Filter Workers by Selected Stage
+  const filteredWorkersByStage = useMemo(() => {
+    if (!selectedStage || selectedStage === 'Others') return workers;
+    return workers.filter(w => 
+      String(w.designation || w.role || '').toLowerCase().includes(selectedStage.toLowerCase())
+    );
+  }, [workers, selectedStage]);
+
   // 🎯 Search Filter Logic for SKU Dropdown
   const searchFilteredSkus = useMemo(() => {
     if (!skuSearchQuery.trim()) return fetchedSkus;
 
-    // Split the search query into separate terms (e.g., "shirt black" -> ["shirt", "black"])
     const searchTerms = skuSearchQuery.toLowerCase().trim().split(/\s+/);
 
     return fetchedSkus.filter((s) => {
       const fullText = `[${s.order_number || ''}] ${s.label || ''} ${s.style_name || ''} ${s.color_code || ''} ${s.size || ''} ${s.code || ''}`.toLowerCase();
-
-      // Match if ALL search terms are found in the fullText
       return searchTerms.every(term => fullText.includes(term));
     });
   }, [fetchedSkus, skuSearchQuery]);
@@ -232,17 +241,17 @@ const [showPrintModal, setShowPrintModal] = useState(false);
   const currentSelectedSku = fetchedSkus.find(s => s.code === skuCode);
 
   const searchFilteredWorkers = useMemo(() => {
-    if (!workerSearchQuery.trim()) return workers;
+    const list = filteredWorkersByStage;
+    if (!workerSearchQuery.trim()) return list;
     const searchTerms = workerSearchQuery.toLowerCase().trim().split(/\s+/);
-    return workers.filter((w) => {
+    return list.filter((w) => {
       const fullText = `${w.name || ''} ${w.designation || ''} ${w.id || ''}`.toLowerCase();
       return searchTerms.every(term => fullText.includes(term));
     });
-  }, [workers, workerSearchQuery]);
+  }, [filteredWorkersByStage, workerSearchQuery]);
 
   const currentSelectedWorker = workers.find(w => w.id === workerId);
-
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg(''); setErrorMsg('');
     if (isReadOnly) return setErrorMsg('Unauthorized');
@@ -256,7 +265,11 @@ const [showPrintModal, setShowPrintModal] = useState(false);
         const result = await apiProductionCutting(token, { sku_id: skuObj.sku_id, employee_id: workerId, work_date: date, count: parseInt(cuttingCount) });
         setSuccessMsg(`✅ Cut ${result.count} pieces.`);
         
-      
+        // 🎯 கட்டிங் வெற்றிகரமாக முடிந்ததும் ஃபார்மை எம்டி செய்வது
+        setSkuCode('');
+        setCuttingCount('');
+        setWorkerId('');
+        
         if (result && result.pieces) {
           setCuttingPieces(result.pieces);
           setShowPrintModal(true);
@@ -283,7 +296,13 @@ const [showPrintModal, setShowPrintModal] = useState(false);
     try {
       const result = await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: parsedSeqs });
       setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${operation}.`);
+      
+     
       setPieceSeqs('');
+      setSkuCode('');
+      setWorkerId('');
+      setCuttingCount('');
+
     } catch (err) { setErrorMsg(`Failed: ${err.message}`); }
   };
 
@@ -482,17 +501,62 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 
         <form onSubmit={handleSubmit} className="space-y-8">
 
-          {/* STEP 1: Worker Selection */}
+          {/* STEP 1: Worker Selection with Operation Stage Banners */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
-              Worker Selection
+              Worker Selection &amp; Stage
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-              <div className="flex flex-col gap-2 relative z-40 self-start" ref={workerModalRef}>
+            
+            <div className="space-y-4 pt-2">
+              <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
+              </label>
+
+              {/* 7 Operation Stage Banners */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {['Cutting', 'Fusing', 'Pasting', 'Self Stitch', 'Line Stitch', 'Final Finishing', 'Others'].map((stage) => {
+                  const isSelected = selectedStage === stage;
+                  return (
+                    <button
+                      key={stage}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStage(stage);
+                        setWorkerId('');
+                      }}
+                      className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border ${
+                        isSelected 
+                          ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]' 
+                          : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
+                      }`}
+                    >
+                      {stage}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Custom Stage Input if Others is selected */}
+              {selectedStage === 'Others' && (
+                <div className="flex flex-col gap-1.5 pt-1">
+                  <label className="text-[10px] font-black uppercase text-slate-500">Custom Stage / Designation Name</label>
+                  <input
+                    type="text"
+                    placeholder="Enter custom role here..."
+                    value={customDesignation}
+                    onChange={(e) => setCustomDesignation(e.target.value)}
+                    className="h-10 w-full rounded-xl px-3 text-xs font-semibold bg-white border border-slate-200 focus:outline-none"
+                    style={{ borderColor: 'rgba(200,131,74,0.3)', color: '#2d1f0e' }}
+                  />
+                </div>
+              )}
+
+              {/* Assigned Worker Searchable Dropdown */}
+              <div className="flex flex-col gap-2 relative z-40 self-start pt-2" ref={workerModalRef}>
                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                  <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker / Operator *
+                  <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker for {selectedStage} *
                 </label>
 
                 {/* Main Select Button */}
@@ -507,7 +571,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
                   <span className={currentSelectedWorker ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
                     {currentSelectedWorker
                       ? `${currentSelectedWorker.name} ${currentSelectedWorker.designation ? `(${currentSelectedWorker.designation})` : ''}`
-                      : "-- Select / Search Worker --"
+                      : `-- Select / Search ${selectedStage} Worker --`
                     }
                   </span>
                   <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isWorkerOpen ? 'rotate-180' : ''}`} />
@@ -521,7 +585,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
                       <input
                         type="text"
                         autoFocus
-                        placeholder="Search Worker Name, Role..."
+                        placeholder={`Search ${selectedStage} Worker...`}
                         value={workerSearchQuery}
                         onChange={(e) => setWorkerSearchQuery(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
@@ -567,7 +631,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
             </div>
           </div>
 
-          {/* STEP 2: Garment Details */}
+          {/* STEP 2: Garment Details (Operation Stage dropdown removed from here) */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
@@ -575,7 +639,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
               Garment Details
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
+            <div className="grid grid-cols-1 gap-8 pt-2">
 
               {/* 🎯 UI-SAFE SEARCHABLE DROPDOWN MENU */}
               <div className="flex flex-col gap-2 relative self-start" ref={skuModalRef}>
@@ -672,25 +736,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
                 )}
               </div>
 
-              {/* Operation Pill Buttons */}
-              <div className="flex flex-col gap-3">
-                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                  <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 min-h-[56px]">
-                  {allowedOperations.map((op) => (
-                    <button
-                      key={op}
-                      type="button"
-                      onClick={() => setOperation(op)}
-                      className={`py-3 px-2 text-xs font-black rounded-xl border-2 transition-all cursor-pointer ${operation === op ? 'bg-[#c8834a] border-[#c8834a] text-white shadow-md scale-105' : 'bg-white border-[#c8834a]/20 text-[#9a7a5a] hover:border-[#c8834a] hover:text-[#c8834a] hover:bg-[#c8834a]/5 shadow-sm'}`}
-                    >
-                      {op}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
             </div>
           </div>
 
@@ -699,7 +744,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span>
-              Quantities & Submission
+              Quantities &amp; Submission
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
@@ -868,7 +913,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
                 {commitLoading ? (
                   <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
                 ) : (
-                  <><Upload className="w-4 h-4" /> Confirm & Import to Database</>
+                  <><Upload className="w-4 h-4" /> Confirm &amp; Import to Database</>
                 )}
               </button>
             </div>
@@ -877,60 +922,73 @@ const [showPrintModal, setShowPrintModal] = useState(false);
         document.body
       )}
 {/* TRAVELER CARD PRINT MODAL */}
-      {mounted && showPrintModal && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-50">
-                  <Scissors className="w-4 h-4 text-[#c8834a]" />
-                </div>
-                <div>
-                  <h3 className="text-base font-black text-slate-900">Traveler Cards / Barcodes Minted</h3>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces: {cuttingPieces.length}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowPrintModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
-              {cuttingPieces.map((piece) => (
-                <div key={piece.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-2xs">
-                  <div>
-                    <p className="text-xs font-mono font-black text-slate-800">{piece.code}</p>
-                    <p className="text-[10px] font-bold text-slate-400">Sequence: #{piece.seq}</p>
-                  </div>
-                  <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
-                    Ready to Print
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
-              <button
-                onClick={() => setShowPrintModal(false)}
-                className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => window.print()}
-                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
-                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-              >
-                <Rocket className="w-3.5 h-3.5" /> Print Traveler Cards
-              </button>
-            </div>
+{mounted && showPrintModal && createPortal(
+  <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
+    <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+      <div className="flex justify-between items-center p-6 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-50">
+            <Scissors className="w-4 h-4 text-[#c8834a]" />
           </div>
-        </div>,
-        document.body
-      )}
+          <div>
+            <h3 className="text-base font-black text-slate-900">Traveler Cards / Barcodes Minted</h3>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces: {cuttingPieces.length}</p>
+          </div>
+        </div>
+        {/* 🎯 மேே உள்ள X பட்டன் */}
+        <button
+          onClick={() => {
+            setShowPrintModal(false);
+            setCuttingPieces([]); // டேட்டாவை க்ளியர் செய்தல்
+          }}
+          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
+        {cuttingPieces.map((piece) => (
+          <div key={piece.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-2xs">
+            <div>
+              <p className="text-xs font-mono font-black text-slate-800">{piece.code}</p>
+              <p className="text-[10px] font-bold text-slate-400">Sequence: #{piece.seq}</p>
+            </div>
+            <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
+              Ready to Print
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
+        {/* 🎯 கீழே உள்ள Close பட்டன் */}
+        <button
+          onClick={() => {
+            setShowPrintModal(false);
+            setCuttingPieces([]);
+          }}
+          className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+        >
+          Close
+        </button>
+        <button
+          onClick={() => {
+            window.print();
+            setShowPrintModal(false); // பிரிண்ட் ஆனவுடன் மோடலை மூடுவது
+            setCuttingPieces();
+          }}
+          className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
+          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+        >
+          <Rocket className="w-3.5 h-3.5" /> Print Traveler Cards
+        </button>
+      </div>
+    </div>
+  </div>,
+  document.body
+)}
+
       {/* ORDER NUMBER MODAL */}
       {mounted && showOrderNumModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
@@ -1160,25 +1218,28 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 }
 // 'use client';
 // import { useState, useMemo, useRef, useEffect } from 'react';
+// import { createPortal } from 'react-dom';
 // import { useAuth } from '@/context/AuthContext';
 // import { useData } from '@/context/DataContext';
 // import { apiGetSkus, apiGetSkuPieces, apiProductionCutting, apiImportPreview, apiImportCommit } from '@/lib/api';
-// import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3 } from 'lucide-react';
+// import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown } from 'lucide-react';
 // import SpotlightCard from '@/components/SpotlightCard';
 // import Link from 'next/link';
 
 // function DynamicDataViewer({ data }) {
 //   if (!data) return <div className="text-slate-400 italic text-center p-4">No data available</div>;
 
-//   if (data.clients) {
+//   if (typeof data === 'string') {
+//     return <div className="p-4 text-slate-700 bg-slate-50 rounded-xl">{data}</div>;
+//   }
+
+//   if (data.clients && typeof data.clients === 'object') {
 //     const clientsData = Object.entries(data.clients);
 
 //     return (
 //       <div className="space-y-6">
 //         {clientsData.map(([clientName, details]) => (
 //           <div key={clientName} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
-
-//             {/* Header / Client Badge */}
 //             <div className="flex items-center justify-between border-b pb-3">
 //               <span className="text-xs font-black uppercase text-amber-700 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200">
 //                 Sheet / Client: {clientName}
@@ -1188,7 +1249,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //               </span>
 //             </div>
 
-//             {/* Key Summary Cards */}
 //             <div className="grid grid-cols-3 gap-3 text-center">
 //               <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
 //                 <p className="text-[10px] font-bold text-slate-400 uppercase">Order Lines</p>
@@ -1204,7 +1264,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //               </div>
 //             </div>
 
-//             {/* Styles List Table */}
 //             {details.styles && details.styles.length > 0 && (
 //               <div className="space-y-2 pt-2">
 //                 <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Detected Styles</h4>
@@ -1219,14 +1278,12 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                 </div>
 //               </div>
 //             )}
-
 //           </div>
 //         ))}
 //       </div>
 //     );
 //   }
 
-//   // 2. Normal Table Rows-ஆக இருந்தால் (Fallback Table Viewer)
 //   let tableRows = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data).find(Array.isArray) || [data] : []);
 
 //   if (tableRows.length === 0) return <div className="text-slate-400 italic text-center p-4">No records found</div>;
@@ -1240,7 +1297,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //           <tr>
 //             {keys.map(k => (
 //               <th key={k} className="px-4 py-3 border-b border-slate-200 whitespace-nowrap">
-//                 {k.replace(/_/g, ' ')}
+//                 {String(k).replace(/_/g, ' ')}
 //               </th>
 //             ))}
 //           </tr>
@@ -1248,11 +1305,14 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //         <tbody className="divide-y divide-slate-100">
 //           {tableRows.map((row, i) => (
 //             <tr key={i} className="hover:bg-slate-50 transition-colors">
-//               {keys.map(k => (
-//                 <td key={k} className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">
-//                   {typeof row[k] === 'object' ? JSON.stringify(row[k]) : String(row[k] ?? '-')}
-//                 </td>
-//               ))}
+//               {keys.map(k => {
+//                 const val = row ? row[k] : '-';
+//                 return (
+//                   <td key={k} className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">
+//                     {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val ?? '-')}
+//                   </td>
+//                 );
+//               })}
 //             </tr>
 //           ))}
 //         </tbody>
@@ -1260,6 +1320,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //     </div>
 //   );
 // }
+
 // export default function ProductionLogEntry() {
 //   const { user, token, ROLE_OPERATIONS } = useAuth();
 //   const { workers, addScanEvent, operations } = useData();
@@ -1274,6 +1335,18 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //   const [cuttingCount, setCuttingCount] = useState('');
 //   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
 //   const [fetchedSkus, setFetchedSkus] = useState([]);
+//   const [skusLoading, setSkusLoading] = useState(false);
+//   const [cuttingPieces, setCuttingPieces] = useState([]);
+// const [showPrintModal, setShowPrintModal] = useState(false);
+
+//   // 🎯 Searchable Dropdown States
+//   const [isSkuOpen, setIsSkuOpen] = useState(false);
+//   const [skuSearchQuery, setSkuSearchQuery] = useState('');
+//   const skuModalRef = useRef(null);
+
+//   const [isWorkerOpen, setIsWorkerOpen] = useState(false);
+//   const [workerSearchQuery, setWorkerSearchQuery] = useState('');
+//   const workerModalRef = useRef(null);
 
 //   const [showChecklistModal, setShowChecklistModal] = useState(false);
 //   const [checklistPieces, setChecklistPieces] = useState([]);
@@ -1287,8 +1360,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //   const [errorMsg, setErrorMsg] = useState('');
 //   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
 
-//   // Note: Handle additional state variables like fileInputRef, uploadLoading, etc.
-//   // if you have them defined elsewhere or need them for imports.
 //   const fileInputRef = useRef(null);
 //   const [uploadLoading, setUploadLoading] = useState(false);
 //   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -1300,13 +1371,33 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //   const [showOrderNumModal, setShowOrderNumModal] = useState(false);
 //   const [uploadOrderNumber, setUploadOrderNumber] = useState('');
 //   const [uploadOrderNumberError, setUploadOrderNumberError] = useState('');
+//   const [mounted, setMounted] = useState(false);
+
+//   useEffect(() => {
+//     setMounted(true);
+//   }, []);
+
+//   // Close Dropdown Menu on click outside
+//   useEffect(() => {
+//     function handleClickOutside(e) {
+//       if (skuModalRef.current && !skuModalRef.current.contains(e.target)) {
+//         setIsSkuOpen(false);
+//       }
+//       if (workerModalRef.current && !workerModalRef.current.contains(e.target)) {
+//         setIsWorkerOpen(false);
+//       }
+//     }
+//     document.addEventListener('mousedown', handleClickOutside);
+//     return () => document.removeEventListener('mousedown', handleClickOutside);
+//   }, []);
 
 //   useEffect(() => {
 //     if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
 //   }, [workers, workerId]);
 
 //   useEffect(() => {
-//     apiGetSkus(token).then(setFetchedSkus).catch(console.warn);
+//     setSkusLoading(true);
+//     apiGetSkus(token).then(setFetchedSkus).catch(console.warn).finally(() => setSkusLoading(false));
 //   }, [token, skuRefreshKey]);
 
 //   useEffect(() => {
@@ -1315,36 +1406,60 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //       if (skuObj?.qty_ordered) setCuttingCount(skuObj.qty_ordered.toString());
 //     }
 //   }, [skuCode, fetchedSkus]);
-// // ⏱️ Auto-dismiss Success Message after 5 seconds
-// useEffect(() => {
-//   if (successMsg) {
-//     const timer = setTimeout(() => {
-//       setSuccessMsg('');
-//     }, 5000); // 5000ms = 5 seconds
-//     return () => clearTimeout(timer);
-//   }
-// }, [successMsg]);
 
-// // ⏱️ Auto-dismiss Excel Import Success Message after 5 seconds
-// useEffect(() => {
-//   if (commitSuccess) {
-//     const timer = setTimeout(() => {
-//       setCommitSuccess('');
-//     }, 5000);
-//     return () => clearTimeout(timer);
-//   }
-// }, [commitSuccess]);
+//   // ⏱️ Auto-dismiss Toast Messages
+//   useEffect(() => {
+//     if (successMsg) {
+//       const timer = setTimeout(() => setSuccessMsg(''), 2000);
+//       return () => clearTimeout(timer);
+//     }
+//   }, [successMsg]);
 
-// // ⏱️ Auto-dismiss Error Message after 6 seconds
-// useEffect(() => {
-//   if (errorMsg || uploadError) {
-//     const timer = setTimeout(() => {
-//       setErrorMsg('');
-//       setUploadError('');
-//     }, 6000);
-//     return () => clearTimeout(timer);
-//   }
-// }, [errorMsg, uploadError]);
+//   useEffect(() => {
+//     if (commitSuccess) {
+//       const timer = setTimeout(() => setCommitSuccess(''), 2000);
+//       return () => clearTimeout(timer);
+//     }
+//   }, [commitSuccess]);
+
+//   useEffect(() => {
+//     if (errorMsg || uploadError) {
+//       const timer = setTimeout(() => {
+//         setErrorMsg('');
+//         setUploadError('');
+//       }, 6000);
+//       return () => clearTimeout(timer);
+//     }
+//   }, [errorMsg, uploadError]);
+
+//   // 🎯 Search Filter Logic for SKU Dropdown
+//   const searchFilteredSkus = useMemo(() => {
+//     if (!skuSearchQuery.trim()) return fetchedSkus;
+
+//     // Split the search query into separate terms (e.g., "shirt black" -> ["shirt", "black"])
+//     const searchTerms = skuSearchQuery.toLowerCase().trim().split(/\s+/);
+
+//     return fetchedSkus.filter((s) => {
+//       const fullText = `[${s.order_number || ''}] ${s.label || ''} ${s.style_name || ''} ${s.color_code || ''} ${s.size || ''} ${s.code || ''}`.toLowerCase();
+
+//       // Match if ALL search terms are found in the fullText
+//       return searchTerms.every(term => fullText.includes(term));
+//     });
+//   }, [fetchedSkus, skuSearchQuery]);
+
+//   const currentSelectedSku = fetchedSkus.find(s => s.code === skuCode);
+
+//   const searchFilteredWorkers = useMemo(() => {
+//     if (!workerSearchQuery.trim()) return workers;
+//     const searchTerms = workerSearchQuery.toLowerCase().trim().split(/\s+/);
+//     return workers.filter((w) => {
+//       const fullText = `${w.name || ''} ${w.designation || ''} ${w.id || ''}`.toLowerCase();
+//       return searchTerms.every(term => fullText.includes(term));
+//     });
+//   }, [workers, workerSearchQuery]);
+
+//   const currentSelectedWorker = workers.find(w => w.id === workerId);
+
 //   const handleSubmit = async (e) => {
 //     e.preventDefault();
 //     setSuccessMsg(''); setErrorMsg('');
@@ -1358,6 +1473,12 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //       try {
 //         const result = await apiProductionCutting(token, { sku_id: skuObj.sku_id, employee_id: workerId, work_date: date, count: parseInt(cuttingCount) });
 //         setSuccessMsg(`✅ Cut ${result.count} pieces.`);
+        
+      
+//         if (result && result.pieces) {
+//           setCuttingPieces(result.pieces);
+//           setShowPrintModal(true);
+//         }
 //       } catch (err) { setErrorMsg(`Cutting failed: ${err.message}`); }
 //       return;
 //     }
@@ -1416,7 +1537,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //     setUploadLoading(true);
 //     setUploadError('');
 //     try {
-
 //       const data = await apiImportPreview(token, file, uploadOrderNumber);
 //       setPreviewData(data);
 //       setFileName(file.name);
@@ -1434,7 +1554,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //     if (!file) return;
 //     setCommitLoading(true);
 //     try {
-
 //       await apiImportCommit(token, file, uploadOrderNumber);
 //       setCommitSuccess('File imported and database updated successfully!');
 //       setShowPreviewModal(false);
@@ -1446,7 +1565,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //     }
 //   };
 
-//   // -- MAIN UI RENDER --
 //   if (isReadOnly) {
 //     return (
 //       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pt-12 text-center">
@@ -1460,7 +1578,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //   }
 
 //   return (
-//     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
+//     <div className="max-w-4xl mx-auto px-4 sm:px-0 space-y-8 animate-fade-in pb-12">
 
 //       {/* TITLE SECTION */}
 //       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -1484,7 +1602,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //               setShowOrderNumModal(true);
 //             }}
 //             disabled={uploadLoading}
-//             className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50"
+//             className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
 //             style={{
 //               background: 'transparent',
 //               border: '1px solid #c8834a',
@@ -1499,56 +1617,79 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //           </button>
 //         </div>
 //       </div>
-//       {/* ALERT BANNERS - Top Floating Center Toast */}
-//       <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999] flex flex-col gap-3 w-[90%] max-w-md pointer-events-none transition-all">
+//       {/* 🎯 BOTTOM-RIGHT TOAST NOTIFICATION */}
+//       <div className="fixed bottom-6 right-4 sm:right-6 z-[99999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
+
+//         {/* Success Toast */}
 //         {successMsg && (
-//           <div className="bg-slate-900/95 text-white border border-emerald-500/40 p-4 rounded-2xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-3 pointer-events-auto backdrop-blur-md">
-//             <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5 text-emerald-400" />
-//             <div className="flex-1">
-//               <div className="flex justify-between items-start">
-//                 <p className="font-extrabold text-emerald-400">Transaction Confirmed</p>
-//                 <button onClick={() => setSuccessMsg('')} className="text-slate-400 hover:text-white p-0.5 transition-colors">
-//                   <X className="w-4 h-4" />
-//                 </button>
+//           <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+//             <div className="flex items-center gap-3 min-w-0">
+//               <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+//                 <CheckCircle2 className="w-6 h-6 text-emerald-400" />
 //               </div>
-//               <p className="text-xs text-slate-300 mt-0.5 break-words whitespace-pre-wrap">{successMsg}</p>
+//               <div className="min-w-0">
+//                 <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
+//                 <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
+//               </div>
 //             </div>
+//             <button
+//               type="button"
+//               onClick={() => setSuccessMsg('')}
+//               className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+//             >
+//               <X className="w-4 h-4" />
+//             </button>
 //           </div>
 //         )}
 
+//         {/* Commit Success Toast */}
 //         {commitSuccess && (
-//           <div className="bg-slate-900/95 text-white border border-emerald-500/40 p-4 rounded-2xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-3 pointer-events-auto backdrop-blur-md">
-//             <CheckCircle2 className="w-5 h-5 flex-shrink-0 mt-0.5 text-emerald-400" />
-//             <div className="flex-1">
-//               <div className="flex justify-between items-start">
-//                 <p className="font-extrabold text-emerald-400">Import Successful</p>
-//                 <button onClick={() => setCommitSuccess('')} className="text-slate-400 hover:text-white p-0.5 transition-colors">
-//                   <X className="w-4 h-4" />
-//                 </button>
+//           <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+//             <div className="flex items-center gap-3 min-w-0">
+//               <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+//                 <CheckCircle2 className="w-6 h-6 text-emerald-400" />
 //               </div>
-//               <p className="text-xs text-slate-300 mt-0.5 break-words whitespace-pre-wrap">{commitSuccess}</p>
+//               <div className="min-w-0">
+//                 <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
+//                 <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
+//               </div>
 //             </div>
+//             <button
+//               type="button"
+//               onClick={() => setCommitSuccess('')}
+//               className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+//             >
+//               <X className="w-4 h-4" />
+//             </button>
 //           </div>
 //         )}
 
+//         {/* Error Toast */}
 //         {(errorMsg || uploadError) && (
-//           <div className="bg-slate-900/95 text-white border border-rose-500/40 p-4 rounded-2xl font-bold text-sm shadow-2xl animate-fade-in flex items-start gap-3 pointer-events-auto backdrop-blur-md">
-//             <XCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-rose-400" />
-//             <div className="flex-1">
-//               <div className="flex justify-between items-start">
-//                 <p className="font-extrabold text-rose-400">Operation Failed</p>
-//                 <button onClick={() => { setErrorMsg(''); setUploadError(''); }} className="text-slate-400 hover:text-white p-0.5 transition-colors">
-//                   <X className="w-4 h-4" />
-//                 </button>
+//           <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+//             <div className="flex items-center gap-3 min-w-0">
+//               <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+//                 <XCircle className="w-6 h-6 text-rose-400" />
 //               </div>
-//               <p className="text-xs text-slate-300 mt-0.5 break-words whitespace-pre-wrap">{errorMsg || uploadError}</p>
+//               <div className="min-w-0">
+//                 <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
+//                 <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
+//               </div>
 //             </div>
+//             <button
+//               type="button"
+//               onClick={() => { setErrorMsg(''); setUploadError(''); }}
+//               className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+//             >
+//               <X className="w-4 h-4" />
+//             </button>
 //           </div>
 //         )}
+
 //       </div>
 
 //       {/* LOGGING FORM CARD */}
-//       <SpotlightCard className="p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+//       <SpotlightCard className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
 
 //         <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
 //           <div className="text-xs font-bold" style={{ color: '#4a3a2a' }}>
@@ -1560,38 +1701,92 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //         <form onSubmit={handleSubmit} className="space-y-8">
 
 //           {/* STEP 1: Worker Selection */}
-//           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+//           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
 //             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
 //             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
 //               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
 //               Worker Selection
 //             </h3>
 //             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-//               <div className="flex flex-col gap-2">
-//                 <label htmlFor="worker-select" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-//                   <Users className="w-4 h-4 text-blue-500" /> Assigned Worker / Operator *
+//               <div className="flex flex-col gap-2 relative z-40 self-start" ref={workerModalRef}>
+//                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+//                   <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker / Operator *
 //                 </label>
-//                 <select
-//                   id="worker-select"
-//                   value={workerId}
-//                   onChange={(e) => setWorkerId(e.target.value)}
-//                   className="input-field h-14 bg-white font-bold border-2 border-slate-200 focus:border-blue-500 cursor-pointer shadow-sm text-sm transition-all"
-//                   required
+
+//                 {/* Main Select Button */}
+//                 <button
+//                   type="button"
+//                   onClick={() => {
+//                     setIsWorkerOpen(!isWorkerOpen);
+//                     setWorkerSearchQuery('');
+//                   }}
+//                   className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
 //                 >
-//                   <option value="" disabled>-- Select Worker --</option>
-//                   {workers.map((w) => (
-//                     <option key={w.id} value={w.id}>
-//                       {w.name} ( {w.role})
-//                     </option>
-//                   ))}
-//                 </select>
+//                   <span className={currentSelectedWorker ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
+//                     {currentSelectedWorker
+//                       ? `${currentSelectedWorker.name} ${currentSelectedWorker.designation ? `(${currentSelectedWorker.designation})` : ''}`
+//                       : "-- Select / Search Worker --"
+//                     }
+//                   </span>
+//                   <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isWorkerOpen ? 'rotate-180' : ''}`} />
+//                 </button>
+
+//                 {/* Floating Menu with Search Input */}
+//                 {isWorkerOpen && (
+//                   <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl z-[99999] p-3 space-y-3 animate-fade-in">
+//                     <div className="relative">
+//                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+//                       <input
+//                         type="text"
+//                         autoFocus
+//                         placeholder="Search Worker Name, Role..."
+//                         value={workerSearchQuery}
+//                         onChange={(e) => setWorkerSearchQuery(e.target.value)}
+//                         onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+//                         className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+//                       />
+//                     </div>
+
+//                     <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
+//                       {searchFilteredWorkers.length > 0 ? (
+//                         searchFilteredWorkers.map((w) => {
+//                           const isSelected = workerId === w.id;
+//                           return (
+//                             <button
+//                               key={w.id}
+//                               type="button"
+//                               onClick={() => {
+//                                 setWorkerId(w.id);
+//                                 setIsWorkerOpen(false);
+//                               }}
+//                               className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+//                             >
+//                               <div>
+//                                 <span>{w.name}</span>
+//                                 {w.designation && (
+//                                   <span className={`ml-2 text-[10px] px-2 py-0.5 rounded font-black ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
+//                                     {w.designation}
+//                                   </span>
+//                                 )}
+//                               </div>
+//                               {isSelected && <span className="font-black text-sm">✓</span>}
+//                             </button>
+//                           );
+//                         })
+//                       ) : (
+//                         <div className="p-4 text-center text-xs font-bold text-slate-400">
+//                           No workers match "{workerSearchQuery}"
+//                         </div>
+//                       )}
+//                     </div>
+//                   </div>
+//                 )}
 //               </div>
 //             </div>
 //           </div>
 
-
 //           {/* STEP 2: Garment Details */}
-//           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+//           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
 //             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
 //             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
 //               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
@@ -1600,26 +1795,99 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 
 //             <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-2">
 
-//               {/* SKU Selection */}
-//               <div className="flex flex-col gap-3">
+//               {/* 🎯 UI-SAFE SEARCHABLE DROPDOWN MENU */}
+//               <div className="flex flex-col gap-2 relative self-start" ref={skuModalRef}>
 //                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
 //                   <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
 //                 </label>
-//                 <div className="flex flex-col gap-2">
-//                   <select
-//                     value={skuCode}
-//                     onChange={(e) => setSkuCode(e.target.value)}
-//                     className="input-field h-14 bg-white font-bold border-2 border-[#c8834a]/20 focus:border-[#c8834a] cursor-pointer shadow-sm text-sm transition-all"
-//                     required
-//                   >
-//                     <option value="" disabled>-- Select SKU --</option>
-//                     {fetchedSkus.map((s) => (
-//                       <option key={s.code} value={s.code}>
-//                         [{s.order_number || 'N/A'}] {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}
-//                       </option>
-//                     ))}
-//                   </select>
-//                 </div>
+
+//                 {/* Main Select Button */}
+//                 <button
+//                   type="button"
+//                   onClick={() => {
+//                     setIsSkuOpen(!isSkuOpen);
+//                     if (!isSkuOpen) setSkuSearchQuery('');
+//                   }}
+//                   className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
+//                 >
+//                   <span className={currentSelectedSku ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
+//                     {currentSelectedSku
+//                       ? `[Order #${currentSelectedSku.order_number || 'N/A'}] ${currentSelectedSku.label || `${currentSelectedSku.style_name || ''} · ${currentSelectedSku.color_code || ''} · ${currentSelectedSku.size}`}`
+//                       : "-- Select / Search Garment SKU --"
+//                     }
+//                   </span>
+//                   <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isSkuOpen ? 'rotate-180' : ''}`} />
+//                 </button>
+
+//                 {/* Normal Absolute Dropdown */}
+//                 {isSkuOpen && (
+//                   <div className="absolute z-[999] top-full mt-2 left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl p-3 space-y-3 animate-fade-in">
+//                     {/* Search Field */}
+//                     <div className="relative">
+//                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+//                       <input
+//                         type="text"
+//                         placeholder="Type Style, SKU, Order No, or Color..."
+//                         value={skuSearchQuery}
+//                         onChange={(e) => setSkuSearchQuery(e.target.value)}
+//                         onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+//                         className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+//                         autoFocus
+//                       />
+//                     </div>
+
+//                     {/* Filtered SKU Options List */}
+//                     <div className="max-h-56 overflow-y-auto pr-1">
+//                       {skusLoading ? (
+//                         <div className="p-6 flex flex-col items-center gap-2">
+//                           <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
+//                           <span className="text-xs font-bold text-slate-400">Loading SKUs...</span>
+//                         </div>
+//                       ) : searchFilteredSkus.length > 0 ? (
+//                         <>
+//                           {searchFilteredSkus.slice(0, 60).map((s) => {
+//                             const isSelected = skuCode === s.code;
+//                             return (
+//                               <button
+//                                 key={s.code}
+//                                 type="button"
+//                                 onClick={() => {
+//                                   setSkuCode(s.code);
+//                                   setIsSkuOpen(false);
+//                                 }}
+//                                 className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+//                               >
+//                                 <div className="truncate pr-2">
+//                                   <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
+//                                 </div>
+//                                 {isSelected && <span className="font-black text-sm shrink-0">✓</span>}
+//                               </button>
+//                             );
+//                           })}
+//                           {searchFilteredSkus.length > 60 && (
+//                             <div className="p-2.5 text-center text-[10px] font-bold text-slate-400 border-t border-slate-100 mt-1">
+//                               Showing 60 of {searchFilteredSkus.length} — type to filter
+//                             </div>
+//                           )}
+//                         </>
+//                       ) : (
+//                         <div className="p-4 text-center text-xs font-bold text-slate-400">
+//                           No SKU matches "{skuSearchQuery}"
+//                         </div>
+//                       )}
+//                     </div>
+//                   </div>
+//                 )}
+
+//                 {/* 🎯 Target Quantity Display */}
+//                 {currentSelectedSku && (
+//                   <div className="mt-1 px-4 py-2.5 bg-[#faf6f0] border border-[#c8834a]/20 rounded-xl flex items-center justify-between shadow-sm animate-fade-in">
+//                     <span className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider flex items-center gap-1.5">
+//                       Target Quantity
+//                     </span>
+//                     <span className="text-sm font-black text-[#c8834a]">{currentSelectedSku.qty_ordered || 0} pcs</span>
+//                   </div>
+//                 )}
 //               </div>
 
 //               {/* Operation Pill Buttons */}
@@ -1654,7 +1922,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 
 //             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
-//               {/* ── CUTTING PIECE COUNT TEXTBOX INPUT ── */}
 //               {operation === 'Cutting' ? (
 //                 <div className="flex flex-col gap-3 md:col-span-2">
 //                   <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -1667,7 +1934,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                     placeholder="e.g. 50"
 //                     value={cuttingCount}
 //                     onChange={(e) => setCuttingCount(e.target.value)}
-//                     className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm transition-all"
+//                     className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm transition-all rounded-xl outline-none"
 //                     required
 //                     min="1"
 //                   />
@@ -1696,7 +1963,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                         placeholder="e.g. 1, 2, 5-8"
 //                         value={pieceSeqs}
 //                         onChange={(e) => setPieceSeqs(e.target.value)}
-//                         className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all"
+//                         className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all rounded-xl outline-none"
 //                       />
 //                     </div>
 //                     <div className="flex gap-2 w-1/4">
@@ -1722,16 +1989,17 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                   id="date-input"
 //                   value={date}
 //                   onChange={(e) => setDate(e.target.value)}
-//                   className="input-field h-14 bg-white font-bold border-2 border-slate-200 shadow-sm"
+//                   className="input-field h-14 bg-white font-bold border-2 border-slate-200 shadow-sm px-4 rounded-xl outline-none"
 //                   required
 //                 />
 //               </div>
 
 //             </div>
 //           </div>
+
 //           {/* Form Actions */}
-//           <div className="pt-4 flex flex-col items-center sm:items-end gap-3">
-//             <div className="flex flex-col sm:flex-row gap-4 justify-end w-full">
+//           <div className="pt-4 flex flex-col gap-3">
+//             <div className="flex gap-3 w-full">
 //               <button
 //                 type="button"
 //                 onClick={() => {
@@ -1739,7 +2007,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                   setSkuCode('');
 //                   setCuttingCount('');
 //                 }}
-//                 className="h-14 font-bold rounded-xl text-base px-8 transition-all"
+//                 className="flex-1 h-14 font-bold rounded-xl text-base transition-all cursor-pointer active:scale-95"
 //                 style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
 //               >
 //                 Reset All
@@ -1747,17 +2015,16 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 
 //               <button
 //                 type="submit"
-//                 className="h-14 font-black rounded-xl text-base px-10 shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 flex-1 sm:flex-none"
+//                 className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
 //                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
 //               >
 //                 <Rocket className="w-5 h-5" /> Submit Event
 //               </button>
 //             </div>
 
-//             {/* 🎯 Always Visible Analytics Link */}
 //             <Link
 //               href={skuCode ? `/dashboard/analytics?sku=${encodeURIComponent(skuCode)}` : '/dashboard/analytics'}
-//               className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center gap-1.5 mt-2"
+//               className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
 //               style={{ color: '#c8834a' }}
 //             >
 //               <BarChart3 className="w-4 h-4" />
@@ -1770,8 +2037,8 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //       </SpotlightCard>
 
 //       {/* EXCEL PREVIEW MODAL */}
-//       {showPreviewModal && (
-//         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+//       {mounted && showPreviewModal && createPortal(
+//         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
 //           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col">
 //             <div className="flex justify-between items-center p-6 border-b border-slate-100">
 //               <div>
@@ -1824,12 +2091,67 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //               </button>
 //             </div>
 //           </div>
-//         </div>
+//         </div>,
+//         document.body
 //       )}
+// {/* TRAVELER CARD PRINT MODAL */}
+//       {mounted && showPrintModal && createPortal(
+//         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
+//           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+//             <div className="flex justify-between items-center p-6 border-b border-slate-100">
+//               <div className="flex items-center gap-3">
+//                 <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-50">
+//                   <Scissors className="w-4 h-4 text-[#c8834a]" />
+//                 </div>
+//                 <div>
+//                   <h3 className="text-base font-black text-slate-900">Traveler Cards / Barcodes Minted</h3>
+//                   <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces: {cuttingPieces.length}</p>
+//                 </div>
+//               </div>
+//               <button
+//                 onClick={() => setShowPrintModal(false)}
+//                 className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+//               >
+//                 <X className="w-4 h-4" />
+//               </button>
+//             </div>
 
+//             <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
+//               {cuttingPieces.map((piece) => (
+//                 <div key={piece.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-2xs">
+//                   <div>
+//                     <p className="text-xs font-mono font-black text-slate-800">{piece.code}</p>
+//                     <p className="text-[10px] font-bold text-slate-400">Sequence: #{piece.seq}</p>
+//                   </div>
+//                   <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
+//                     Ready to Print
+//                   </span>
+//                 </div>
+//               ))}
+//             </div>
+
+//             <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
+//               <button
+//                 onClick={() => setShowPrintModal(false)}
+//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+//               >
+//                 Close
+//               </button>
+//               <button
+//                 onClick={() => window.print()}
+//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
+//                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+//               >
+//                 <Rocket className="w-3.5 h-3.5" /> Print Traveler Cards
+//               </button>
+//             </div>
+//           </div>
+//         </div>,
+//         document.body
+//       )}
 //       {/* ORDER NUMBER MODAL */}
-//       {showOrderNumModal && (
-//         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+//       {mounted && showOrderNumModal && createPortal(
+//         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
 //           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 sm:p-8 space-y-5 relative">
 //             <div className="flex justify-between items-center pb-3 border-b border-slate-100">
 //               <div className="flex items-center gap-2">
@@ -1879,7 +2201,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //               <button
 //                 type="button"
 //                 onClick={() => { setShowOrderNumModal(false); setUploadOrderNumberError(''); }}
-//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors"
+//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
 //                 style={{ background: '#f1f5f9', color: '#475569' }}
 //               >
 //                 Cancel
@@ -1888,22 +2210,22 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                 type="button"
 //                 disabled={!uploadOrderNumber.trim() || uploadLoading}
 //                 onClick={() => fileInputRef.current?.click()}
-//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
+//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0 cursor-pointer"
 //                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
 //               >
 //                 {uploadLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</> : <><FileSpreadsheet className="w-3.5 h-3.5" /> Choose File</>}
 //               </button>
 //             </div>
 //           </div>
-//         </div>
+//         </div>,
+//         document.body
 //       )}
 
 //       {/* PIECE CHECKLIST MODAL */}
-//       {showChecklistModal && (
-//         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
+//       {mounted && showChecklistModal && createPortal(
+//         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
 //           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
 
-//             {/* Header */}
 //             <div className="flex justify-between items-center p-6 border-b border-slate-100">
 //               <div className="flex items-center gap-3">
 //                 <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
@@ -1922,7 +2244,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //               </button>
 //             </div>
 
-//             {/* Counts */}
 //             {piecesMeta && (
 //               <div className="flex gap-3 px-6 py-3 bg-slate-50 border-b border-slate-100">
 //                 <span className="text-xs font-bold text-slate-500">Total: <strong className="text-slate-700">{piecesMeta.total}</strong></span>
@@ -1932,7 +2253,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //               </div>
 //             )}
 
-//             {/* Piece List */}
 //             <div className="flex-1 overflow-y-auto p-6">
 //               {loadingPieces ? (
 //                 <div className="flex flex-col items-center justify-center h-32 gap-3">
@@ -1946,7 +2266,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                   <button
 //                     type="button"
 //                     onClick={openChecklistModal}
-//                     className="text-xs font-black px-3 py-1.5 rounded-lg mt-1"
+//                     className="text-xs font-black px-3 py-1.5 rounded-lg mt-1 cursor-pointer"
 //                     style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
 //                   >Retry</button>
 //                 </div>
@@ -1957,7 +2277,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                 </div>
 //               ) : (
 //                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-//                   {/* Select All / Deselect All */}
 //                   <div className="col-span-2 sm:col-span-3 flex gap-2 mb-2">
 //                     <button
 //                       type="button"
@@ -2016,7 +2335,6 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                     );
 //                   })}
 
-//                   {/* Inline submit error */}
 //                   {checklistError && (
 //                     <div className="col-span-2 sm:col-span-3 mt-2 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2">
 //                       <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
@@ -2027,12 +2345,11 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //               )}
 //             </div>
 
-//             {/* Footer Actions */}
 //             <div className="flex gap-3 p-6 border-t border-slate-100">
 //               <button
 //                 type="button"
 //                 onClick={() => { setShowChecklistModal(false); setChecklistError(''); }}
-//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors"
+//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
 //                 style={{ background: '#f1f5f9', color: '#475569' }}
 //               >
 //                 Cancel
@@ -2041,7 +2358,7 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //                 type="button"
 //                 disabled={selectedPieces.length === 0 || checklistSubmitting}
 //                 onClick={submitChecklist}
-//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0"
+//                 className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0 cursor-pointer"
 //                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
 //               >
 //                 {checklistSubmitting ? (
@@ -2052,7 +2369,8 @@ const [showPrintModal, setShowPrintModal] = useState(false);
 //               </button>
 //             </div>
 //           </div>
-//         </div>
+//         </div>,
+//         document.body
 //       )}
 
 //     </div>

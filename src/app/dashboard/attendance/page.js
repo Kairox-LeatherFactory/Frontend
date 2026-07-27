@@ -178,21 +178,13 @@ function Paginator({ page, totalPages, setPage, total, perPage }) {
   );
 }
 
-function LockedView({ title, description }) {
-  return (
-    <SpotlightCard className="p-12 shadow text-center space-y-3 rounded-3xl" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)' }} spotlightColor="rgba(200,131,74,0.1)">
-      <Lock className="w-12 h-12 mx-auto" style={{ color: '#c8834a' }} />
-      <h3 className="font-black uppercase tracking-wide" style={{ color: '#9c4221' }}>{title}</h3>
-      <p className="text-xs font-semibold max-w-md mx-auto" style={{ color: '#a86022' }}>{description}</p>
-    </SpotlightCard>
-  );
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
 // VIEW A — MY ATTENDANCE
 // ═══════════════════════════════════════════════════════════════════════════════
 function MyAttendanceView({ token }) {
   const gps = useGps();
+  const { user } = useAuth();
+  const isManagingDirector = user === 'managing_director';
 
   const [status, setStatus] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -329,77 +321,78 @@ function MyAttendanceView({ token }) {
       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
       <GpsWarning error={gps.error} />
 
-      {/* Hero row */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Shift Timer */}
-        <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-          <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
-            <Timer className="w-4 h-4" style={{ color: '#c8834a' }} /> Shift Timer
-          </h3>
-          {statusLoading ? (
-            <div className="flex items-center justify-center h-24">
-              <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
-            </div>
-          ) : (
-            <>
-              <div className={`text-5xl font-black tabular-nums tracking-tight`} style={{ color: checkedIn && !checkedOut ? '#c8834a' : '#d1d5db' }}>
-                {checkedIn && !checkedOut ? padTime(countdown) : '—:—:—'}
+      {/* Hero row — Managing Director-க்கு மட்டும் இந்த ஷீல்ட் / டைமர் பேனர்கள் மறைக்கப்படும் */}
+      {!isManagingDirector && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Shift Timer */}
+          <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+            <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
+              <Timer className="w-4 h-4" style={{ color: '#c8834a' }} /> Shift Timer
+            </h3>
+            {statusLoading ? (
+              <div className="flex items-center justify-center h-24">
+                <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
               </div>
-              <div className="text-xs font-bold" style={{ color: '#9a7a5a' }}>
-                {!checkedIn && 'Not checked in today'}
-                {checkedIn && !checkedOut && status?.shift_end_at && (
-                  <span>Ends at <strong style={{ color: '#2d1f0e' }}>{fmtTime(status.shift_end_at)}</strong></span>
-                )}
-                {checkedOut && <span className="font-black" style={{ color: '#38a169' }}>✓ Shift complete</span>}
-              </div>
-              {status?.check_in_at && (
-                <div className="text-[11px] font-semibold pt-3" style={{ borderTop: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
-                  Clocked in: <strong style={{ color: '#2d1f0e' }}>{fmtTime(status.check_in_at)}</strong>
+            ) : (
+              <>
+                <div className={`text-5xl font-black tabular-nums tracking-tight`} style={{ color: checkedIn && !checkedOut ? '#c8834a' : '#d1d5db' }}>
+                  {checkedIn && !checkedOut ? padTime(countdown) : '—:—:—'}
                 </div>
-              )}
-            </>
-          )}
-        </SpotlightCard>
+                <div className="text-xs font-bold" style={{ color: '#9a7a5a' }}>
+                  {!checkedIn && 'Not checked in today'}
+                  {checkedIn && !checkedOut && status?.shift_end_at && (
+                    <span>Ends at <strong style={{ color: '#2d1f0e' }}>{fmtTime(status.shift_end_at)}</strong></span>
+                  )}
+                  {checkedOut && <span className="font-black" style={{ color: '#38a169' }}>✓ Shift complete</span>}
+                </div>
+                {status?.check_in_at && (
+                  <div className="text-[11px] font-semibold pt-3" style={{ borderTop: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
+                    Clocked in: <strong style={{ color: '#2d1f0e' }}>{fmtTime(status.check_in_at)}</strong>
+                  </div>
+                )}
+              </>
+            )}
+          </SpotlightCard>
 
-        {/* Action Terminal */}
-        <SpotlightCard className="lg:col-span-2 p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-          <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
-            <Zap className="w-4 h-4" style={{ color: '#c8834a' }} /> Action Terminal
-          </h3>
-          <div className="flex flex-col gap-3">
-            <button onClick={handleCheckIn}
-              disabled={checkedIn || gpsBlocked || busy}
-              className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm text-white transition-all shadow-lg shadow-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation hover:-translate-y-0.5 active:translate-y-0"
-              style={{ background: 'linear-gradient(135deg, #38a169, #48bb78)' }}>
-              {busy && !checkedIn
-                ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
-                : <><LogIn className="w-5 h-5" /> Check In</>}
-            </button>
-            <button onClick={handleCheckOut}
-              disabled={!checkedIn || checkedOut || gpsBlocked || busy}
-              className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm text-white transition-all shadow-lg shadow-red-200 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation hover:-translate-y-0.5 active:translate-y-0"
-              style={{ background: 'linear-gradient(135deg, #e53e3e, #f56565)' }}>
-              {busy && checkedIn && !checkedOut
-                ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
-                : <><LogOut className="w-5 h-5" /> Check Out</>}
-            </button>
-          </div>
-          <div className="flex items-center gap-2 text-[11px] font-semibold" style={{ color: '#9a7a5a' }}>
-            {gps.lat
-              ? <><MapPin className="w-3.5 h-3.5" style={{ color: '#38a169' }} /> GPS active — {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</>
-              : <><MapPin className="w-3.5 h-3.5" style={{ color: '#d1d5db' }} /> GPS coordinates resolved on action</>}
-          </div>
-          {checkedIn && (
-            <div className="flex flex-wrap gap-2 pt-4" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
-              {status?.is_late && <Badge label="Late" type="late" />}
-              {status?.is_short && <Badge label="Short Shift" type="short" />}
-              {status?.is_overtime && <Badge label="Overtime" type="overtime" />}
-              {!status?.is_late && <Badge label="On Time" type="active" />}
+          {/* Action Terminal */}
+          <SpotlightCard className="lg:col-span-2 p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+            <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
+              <Zap className="w-4 h-4" style={{ color: '#c8834a' }} /> Action Terminal
+            </h3>
+            <div className="flex flex-col gap-3">
+              <button onClick={handleCheckIn}
+                disabled={checkedIn || gpsBlocked || busy}
+                className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm text-white transition-all shadow-lg shadow-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation hover:-translate-y-0.5 active:translate-y-0"
+                style={{ background: 'linear-gradient(135deg, #38a169, #48bb78)' }}>
+                {busy && !checkedIn
+                  ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
+                  : <><LogIn className="w-5 h-5" /> Check In</>}
+              </button>
+              <button onClick={handleCheckOut}
+                disabled={!checkedIn || checkedOut || gpsBlocked || busy}
+                className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm text-white transition-all shadow-lg shadow-red-200 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation hover:-translate-y-0.5 active:translate-y-0"
+                style={{ background: 'linear-gradient(135deg, #e53e3e, #f56565)' }}>
+                {busy && checkedIn && !checkedOut
+                  ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
+                  : <><LogOut className="w-5 h-5" /> Check Out</>}
+              </button>
             </div>
-          )}
-        </SpotlightCard>
-      </div>
+            <div className="flex items-center gap-2 text-[11px] font-semibold" style={{ color: '#9a7a5a' }}>
+              {gps.lat
+                ? <><MapPin className="w-3.5 h-3.5" style={{ color: '#38a169' }} /> GPS active — {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</>
+                : <><MapPin className="w-3.5 h-3.5" style={{ color: '#d1d5db' }} /> GPS coordinates resolved on action</>}
+            </div>
+            {checkedIn && (
+              <div className="flex flex-wrap gap-2 pt-4" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
+                {status?.is_late && <Badge label="Late" type="late" />}
+                {status?.is_short && <Badge label="Short Shift" type="short" />}
+                {status?.is_overtime && <Badge label="Overtime" type="overtime" />}
+                {!status?.is_late && <Badge label="On Time" type="active" />}
+              </div>
+            )}
+          </SpotlightCard>
+        </div>
+      )}
 
       {/* Personal History */}
       <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
@@ -517,7 +510,7 @@ function MyAttendanceView({ token }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // VIEW B — FLOOR COMMAND
 // ═══════════════════════════════════════════════════════════════════════════════
-function FloorCommandView({ workers = [], token }) {
+function FloorCommandView({ workers = [], token, onWorkerAdded }) {
   const gps = useGps();
 
   const [search, setSearch] = useState('');
@@ -526,7 +519,6 @@ function FloorCommandView({ workers = [], token }) {
   const [alert, setAlert] = useState(null);
   const [diffModal, setDiffModal] = useState(null);
 
-  // Unified State for Add Worker
   const [addModal, setAddModal] = useState(false);
   const [addForm, setAddForm] = useState({ name: '', phone: '', designation: 'Cutting', wage_type: 'piece_rate', daily_rate: '', password: '' });
   const [addLoading, setAddLoading] = useState(false);
@@ -573,6 +565,8 @@ function FloorCommandView({ workers = [], token }) {
       setAddModal(false);
       setAddForm({ name: '', phone: '', designation: 'Cutting', wage_type: 'piece_rate', daily_rate: '', password: '' });
       setIsOther(false);
+      if (onWorkerAdded)
+        onWorkerAdded();
     } catch (e) {
       if (e.status === 403) showAlert('error', `Geofence check failed: ${e.message}`);
       else showAlert('error', typeof e === 'string' ? e : e.message || 'Failed to add worker.');
@@ -582,7 +576,7 @@ function FloorCommandView({ workers = [], token }) {
   };
 
   const dailyWorkers = useMemo(() => {
-    return workers; 
+    return workers;
   }, [workers]);
 
   const filtered = useMemo(() => {
@@ -646,7 +640,6 @@ function FloorCommandView({ workers = [], token }) {
       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
       <GpsWarning error={gps.error} />
 
-      {/* Roster table */}
       <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 relative overflow-hidden rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2 flex-1" style={{ color: '#2d1f0e' }}>
@@ -691,73 +684,54 @@ function FloorCommandView({ workers = [], token }) {
                 </tr>
               </thead>
               <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
-                {filtered.map((w) => (
-                  <tr key={w.id} onClick={() => toggleSelect(w.id)}
-                    className="cursor-pointer transition-colors" style={{ background: selected.has(w.id) ? '#fff9f0' : 'transparent' }}>
-                    <td className="p-3">
-                      {selected.has(w.id)
-                        ? <CheckSquare className="w-4 h-4" style={{ color: '#c8834a' }} />
-                        : <Square className="w-4 h-4" style={{ color: '#d1d5db' }} />}
-                    </td>
-                    <td className="p-3">
-                      <span className="block font-black" style={{ color: '#2d1f0e' }}>{w.name}</span>
-                      <span className="block text-[10px] font-mono" style={{ color: '#9a7a5a' }}>{String(w.id).slice(0, 8)}…</span>
-                    </td>
-                    <td className="p-3 font-semibold" style={{ color: '#a86022' }}>{w.designation || '—'}</td>
-                    <td className="p-3">
-                      <Badge 
-                        label={w.wage_type === 'piece_rate' ? 'Daily Wage' : 'Monthly'} 
-                        type={w.wage_type === 'piece_rate' ? 'proxy' : 'active'} 
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((w) => {
+                  const isSelected = selected.has(w.id);
+                  const isPieceRate = w.wage_type === 'piece_rate';
+                  return (
+                    <tr key={w.id} onClick={() => toggleSelect(w.id)}
+                      className="cursor-pointer transition-colors relative" style={{ background: isSelected ? '#fff9f0' : 'transparent' }}>
+                      <td className="p-3">
+                        {isSelected
+                          ? <CheckSquare className="w-4 h-4" style={{ color: '#c8834a' }} />
+                          : <Square className="w-4 h-4" style={{ color: '#d1d5db' }} />}
+                      </td>
+                      <td className="p-3">
+                        <span className="block font-black" style={{ color: '#2d1f0e' }}>{w.name}</span>
+                        <span className="block text-[10px] font-mono" style={{ color: '#9a7a5a' }}>{String(w.id).slice(0, 8)}…</span>
+                      </td>
+                      <td className="p-3 font-semibold" style={{ color: '#a86022' }}>{w.designation || '—'}</td>
+                      <td className="p-3 relative">
+                        <Badge 
+                          label={isPieceRate ? 'Daily Wage' : 'Monthly'} 
+                          type={isPieceRate ? 'proxy' : 'active'} 
+                        />
+                        {isSelected && isPieceRate && (
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-20" onClick={(e) => e.stopPropagation()}>
+                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-in'); }} disabled={actionLoading || !!gps.error}
+                              className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer">
+                              Check-In
+                            </button>
+                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-out'); }} disabled={actionLoading || !!gps.error}
+                              className="bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer">
+                              Check-Out
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         )}
       </SpotlightCard>
 
-      {/* Floating batch action bar */}
-      {selected.size > 0 && (
-        <div className="fixed sm:absolute bottom-4 left-4 right-4 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-40 flex flex-wrap sm:flex-nowrap items-center justify-center gap-2 sm:gap-3 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-2xl animate-fade-in border border-slate-700">
-          <span className="text-xs font-black text-slate-300">{selected.size} selected</span>
-          <div className="w-px h-5 bg-slate-700" />
-          <button onClick={() => batchAction('check-in')} disabled={actionLoading || !!gps.error}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-black px-4 py-2 rounded-xl disabled:opacity-50 transition-colors">
-            {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogIn className="w-4 h-4" />}
-            Batch Check-In
-          </button>
-          <button onClick={() => batchAction('check-out')} disabled={actionLoading || !!gps.error}
-            className="flex items-center gap-2 border border-slate-600 text-slate-200 hover:bg-slate-800 text-xs font-black px-4 py-2 rounded-xl disabled:opacity-50 transition-colors">
-            {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
-            Batch Check-Out
-          </button>
-          <button onClick={() => setSelected(new Set())} className="text-slate-500 hover:text-slate-300 ml-1">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
       {/* Diff result modal */}
       {diffModal && typeof window !== 'undefined' && createPortal(
-        <div 
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backgroundColor: 'rgba(15, 23, 42, 0.65)', padding: '16px', pointerEvents: 'auto'
-          }}
-        >
-          <div 
-            style={{
-              backgroundColor: '#ffffff', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
-              border: '1px solid #e2e8f0', width: '100%', maxWidth: '448px', padding: '24px',
-              position: 'relative', zIndex: 1000000, pointerEvents: 'auto'
-            }}
-            className="space-y-4 animate-scale-up"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15, 23, 42, 0.65)', padding: '16px', pointerEvents: 'auto' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', width: '100%', maxWidth: '448px', padding: '24px', position: 'relative', zIndex: 1000000, pointerEvents: 'auto' }}
+            className="space-y-4 animate-scale-up" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-black text-slate-900 text-base sm:text-lg">
                 {diffModal.type === 'check-in' ? 'Check-In' : 'Check-Out'} Results
@@ -768,9 +742,7 @@ function FloorCommandView({ workers = [], token }) {
               <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl">
                 <p className="text-xs font-black text-emerald-700 mb-1">✓ Succeeded ({diffModal.succeeded.length})</p>
                 <p className="text-[11px] text-emerald-600 font-semibold">
-                  {diffModal.succeeded.length > 0
-                    ? `${diffModal.succeeded.length} worker(s) marked successfully.`
-                    : 'None succeeded.'}
+                  {diffModal.succeeded.length > 0 ? `${diffModal.succeeded.length} worker(s) marked successfully.` : 'None succeeded.'}
                 </p>
               </div>
               {diffModal.failed.length > 0 && (
@@ -781,9 +753,6 @@ function FloorCommandView({ workers = [], token }) {
                       <p key={id} className="text-[11px] text-red-600 font-semibold font-mono">{id}</p>
                     ))}
                   </div>
-                  <p className="text-[10px] text-red-400 mt-2 font-semibold">
-                    These workers may already be checked in/out, or IDs are invalid.
-                  </p>
                 </div>
               )}
             </div>
@@ -793,28 +762,11 @@ function FloorCommandView({ workers = [], token }) {
         document.body
       )}
 
-      {/* Add floor worker modal — FIXED WITH createPortal & Center Alignment */}
+      {/* Add floor worker modal */}
       {addModal && typeof window !== 'undefined' && createPortal(
-        <div 
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backgroundColor: 'rgba(15, 23, 42, 0.65)', padding: '16px', pointerEvents: 'auto'
-          }}
-        >
-          <div 
-            style={{
-              backgroundColor: '#ffffff', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
-              border: '1px solid #e2e8f0', width: '100%', maxWidth: '448px', maxHeight: '90vh',
-              overflowY: 'auto', padding: '24px', position: 'relative', zIndex: 1000000, pointerEvents: 'auto'
-            }}
-            className="space-y-4 animate-scale-up"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-            role="dialog" 
-            aria-modal="true" 
-            aria-labelledby="add-worker-title"
-          >
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15, 23, 42, 0.65)', padding: '16px', pointerEvents: 'auto' }}>
+          <div style={{ backgroundColor: '#ffffff', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', width: '100%', maxWidth: '448px', maxHeight: '90vh', overflowY: 'auto', padding: '24px', position: 'relative', zIndex: 1000000, pointerEvents: 'auto' }}
+            className="space-y-4 animate-scale-up" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-worker-title">
             <div className="flex-shrink-0 flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 id="add-worker-title" className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" /> Add Floor Worker
@@ -1045,7 +997,6 @@ function OperationsHRView({ token }) {
 
       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
 
-      {/* Live Daily Roster */}
       <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
@@ -1055,7 +1006,6 @@ function OperationsHRView({ token }) {
             </span>
           </h3>
           <div className="flex items-center gap-2">
-            {/* Filter dropdown */}
             <div className="relative filter-dropdown">
               <button onClick={() => setFilterOpen((o) => !o)}
                 className="flex items-center gap-2 h-8 px-3 rounded-lg text-xs font-black transition-colors border"
@@ -1084,7 +1034,6 @@ function OperationsHRView({ token }) {
               )}
             </div>
 
-            {/* Refresh button */}
             <button onClick={fetchRoster} title="Refresh roster"
               className="h-8 w-8 p-0 flex items-center justify-center rounded-lg transition-all duration-200 hover:rotate-180"
               style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
@@ -1150,7 +1099,6 @@ function OperationsHRView({ token }) {
         )}
       </SpotlightCard>
 
-      {/* Shift & Geofence Config */}
       <SpotlightCard className="p-6 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
           <Settings className="w-5 h-5" style={{ color: '#c8834a' }} /> Shift &amp; Geofence Configuration
@@ -1162,8 +1110,6 @@ function OperationsHRView({ token }) {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-
-            {/* Shift Policy */}
             <div className="space-y-4">
               <h4 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
                 <Clock className="w-3.5 h-3.5" /> Shift Policy
@@ -1177,9 +1123,6 @@ function OperationsHRView({ token }) {
                   onChange={(e) => setConfigForm((f) => ({ ...f, shift_start: e.target.value }))}
                   className="w-full h-11 sm:h-10 text-base sm:text-sm font-black font-mono px-3 rounded-lg focus:outline-none transition-colors"
                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
-                <p className="text-[10px] mt-1 font-semibold" style={{ color: '#c8834a' }}>
-                  Strict format — e.g. 09:00, 14:30. Malformed values break check-in for all workers.
-                </p>
               </div>
               <div>
                 <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Shift Length (hours)</label>
@@ -1197,12 +1140,8 @@ function OperationsHRView({ token }) {
                   className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
               </div>
-              <div className="p-3 rounded-xl text-[10px] font-semibold leading-relaxed" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)', color: '#a86022' }}>
-                <strong>Timezone:</strong> Managed automatically by the backend (Asia/Kolkata). Intentionally excluded from the save payload.
-              </div>
             </div>
 
-            {/* Geofence */}
             <div className="space-y-4">
               <h4 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
                 <Shield className="w-3.5 h-3.5" /> Geofence Parameters
@@ -1230,22 +1169,6 @@ function OperationsHRView({ token }) {
                   onChange={(e) => setConfigForm((f) => ({ ...f, radius_m: e.target.value }))}
                   className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
-              </div>
-              <div className="rounded-xl overflow-hidden h-40 flex items-center justify-center" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
-                {configForm.factory_lat && configForm.factory_lon ? (
-                  <div className="text-center" style={{ color: '#9a7a5a' }}>
-                    <MapPin className="w-8 h-8 mx-auto mb-1" style={{ color: '#c8834a' }} />
-                    <p className="text-[11px] font-bold" style={{ color: '#2d1f0e' }}>
-                      {parseFloat(configForm.factory_lat).toFixed(5)}, {parseFloat(configForm.factory_lon).toFixed(5)}
-                    </p>
-                    <p className="text-[10px] mt-0.5">Radius: {configForm.radius_m} m</p>
-                    <p className="text-[9px] mt-2 font-semibold max-w-[180px] mx-auto opacity-70">
-                      Mount Leaflet here — L.map() + L.circle() with radius_m
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-[11px] font-semibold opacity-70" style={{ color: '#9a7a5a' }}>Enter coordinates to preview geofence</p>
-                )}
               </div>
             </div>
           </div>
@@ -1300,7 +1223,6 @@ export default function AttendancePage() {
 
   return (
     <div className="space-y-6">
-      {/* Tab bar */}
       <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
         {tabs.map(({ key, label, icon: Icon }) => (
           <button key={key} onClick={() => setActiveTab(key)}
@@ -1315,12 +1237,11 @@ export default function AttendancePage() {
         ))}
       </div>
 
-      {/* Views */}
       {activeTab === 'me' && <MyAttendanceView token={token} />}
 
       {activeTab === 'proxy' && (
         isSupervisor
-          ? <FloorCommandView workers={workers} token={token} />
+          ? <FloorCommandView workers={workers} token={token} onWorkerAdded={refreshWorkers} />
           : <LockedView
             title="Supervisor Authorization Required"
             description="Floor Command is restricted to Supervisors and Direct Managers." />
