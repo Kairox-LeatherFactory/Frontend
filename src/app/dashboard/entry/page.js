@@ -219,13 +219,27 @@ export default function ProductionLogEntry() {
   }, [errorMsg, uploadError]);
 
   // 🎯 Filter Workers by Selected Stage
+
+ // 🎯 Clean mapping object for all stage variations
   const filteredWorkersByStage = useMemo(() => {
     if (!selectedStage || selectedStage === 'Others') return workers;
-    return workers.filter(w => 
-      String(w.designation || w.role || '').toLowerCase().includes(selectedStage.toLowerCase())
-    );
-  }, [workers, selectedStage]);
 
+    const stageKeywords = {
+      'cutting': ['cutting', 'cutter'],
+      'fusing': ['fusing', 'fuser'],
+      'pasting': ['pasting', 'paster'],
+      'self stitch': ['self stitch', 'tailor', 'stitcher', 'operator'],
+      'line stitch': ['line stitch', 'tailor', 'stitcher', 'operator', 'supervisor','lining stich','Lining attach'],
+      'final finishing': ['finishing', 'trimming', 'packing', 'quality', 'checker', 'finisher','final finish'],
+    };
+
+    const keywords = stageKeywords[selectedStage.toLowerCase()] || [selectedStage.toLowerCase()];
+
+    return workers.filter(w => {
+      const designation = String(w.designation || w.role || '').toLowerCase();
+      return keywords.some(keyword => designation.includes(keyword));
+    });
+  }, [workers, selectedStage]);
   // 🎯 Search Filter Logic for SKU Dropdown
   const searchFilteredSkus = useMemo(() => {
     if (!skuSearchQuery.trim()) return fetchedSkus;
@@ -935,11 +949,11 @@ const handleSubmit = async (e) => {
             <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces: {cuttingPieces.length}</p>
           </div>
         </div>
-        {/* 🎯 மேே உள்ள X பட்டன் */}
+        {/*   top button */}
         <button
           onClick={() => {
             setShowPrintModal(false);
-            setCuttingPieces([]); // டேட்டாவை க்ளியர் செய்தல்
+            setCuttingPieces([]);
           }}
           className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
         >
@@ -962,7 +976,7 @@ const handleSubmit = async (e) => {
       </div>
 
       <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
-        {/* 🎯 கீழே உள்ள Close பட்டன் */}
+        {/*                         */}
         <button
           onClick={() => {
             setShowPrintModal(false);
@@ -975,7 +989,7 @@ const handleSubmit = async (e) => {
         <button
           onClick={() => {
             window.print();
-            setShowPrintModal(false); // பிரிண்ட் ஆனவுடன் மோடலை மூடுவது
+            setShowPrintModal(false); 
             setCuttingPieces();
           }}
           className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
