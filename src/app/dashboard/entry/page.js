@@ -218,12 +218,25 @@ export default function ProductionLogEntry() {
     }
   }, [errorMsg, uploadError]);
 
-  // 🎯 Filter Workers by Selected Stage
+  // 🎯 Clean mapping object for all stage variations
   const filteredWorkersByStage = useMemo(() => {
     if (!selectedStage || selectedStage === 'Others') return workers;
-    return workers.filter(w => 
-      String(w.designation || w.role || '').toLowerCase().includes(selectedStage.toLowerCase())
-    );
+
+    const stageKeywords = {
+      'cutting': ['cutting', 'cutter'],
+      'fusing': ['fusing', 'fuser'],
+      'pasting': ['pasting', 'paster'],
+      'self stitch': ['self stitch', 'tailor', 'stitcher', 'operator'],
+      'line stitch': ['line stitch', 'tailor', 'stitcher', 'operator', 'supervisor','lining stich','Lining attach'],
+      'final finishing': ['finishing', 'trimming', 'packing', 'quality', 'checker', 'finisher','final finish'],
+    };
+
+    const keywords = stageKeywords[selectedStage.toLowerCase()] || [selectedStage.toLowerCase()];
+
+    return workers.filter(w => {
+      const designation = String(w.designation || w.role || '').toLowerCase();
+      return keywords.some(keyword => designation.includes(keyword));
+    });
   }, [workers, selectedStage]);
 
   // 🎯 Search Filter Logic for SKU Dropdown
@@ -251,7 +264,8 @@ export default function ProductionLogEntry() {
   }, [filteredWorkersByStage, workerSearchQuery]);
 
   const currentSelectedWorker = workers.find(w => w.id === workerId);
-const handleSubmit = async (e) => {
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg(''); setErrorMsg('');
     if (isReadOnly) return setErrorMsg('Unauthorized');
@@ -265,7 +279,6 @@ const handleSubmit = async (e) => {
         const result = await apiProductionCutting(token, { sku_id: skuObj.sku_id, employee_id: workerId, work_date: date, count: parseInt(cuttingCount) });
         setSuccessMsg(`✅ Cut ${result.count} pieces.`);
         
-        // 🎯 கட்டிங் வெற்றிகரமாக முடிந்ததும் ஃபார்மை எம்டி செய்வது
         setSkuCode('');
         setCuttingCount('');
         setWorkerId('');
@@ -297,7 +310,6 @@ const handleSubmit = async (e) => {
       const result = await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: parsedSeqs });
       setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${operation}.`);
       
-     
       setPieceSeqs('');
       setSkuCode('');
       setWorkerId('');
@@ -314,6 +326,14 @@ const handleSubmit = async (e) => {
     try {
       const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
       setChecklistPieces(Array.isArray(data) ? data : (data.pieces || []));
+      if (data && data.meta) {
+        setPiecesMeta(data.meta);
+      } else {
+        const piecesArr = Array.isArray(data) ? data : (data.pieces || []);
+        const total = piecesArr.length;
+        const done = piecesArr.filter(p => p.done_at_op).length;
+        setPiecesMeta({ total, done, pending: total - done });
+      }
     } catch (err) { setChecklistError(err.message); }
     finally { setLoadingPieces(false); }
   };
@@ -325,6 +345,10 @@ const handleSubmit = async (e) => {
     try {
       await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: selectedPieces });
       setSuccessMsg("Success!"); setShowChecklistModal(false); setSelectedPieces([]);
+      setPieceSeqs('');
+      setSkuCode('');
+      setWorkerId('');
+      setCuttingCount('');
     } catch (err) { setChecklistError(err.message); }
     finally { setChecklistSubmitting(false); }
   };
@@ -749,7 +773,7 @@ const handleSubmit = async (e) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
-              {operation === 'Cutting' ? (
+              {selectedStage === 'Cutting' ? (
                 <div className="flex flex-col gap-3 md:col-span-2">
                   <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <Scissors className="w-4 h-4 text-amber-600" /> Cut Piece Count (Total Quantity) *
@@ -823,7 +847,6 @@ const handleSubmit = async (e) => {
 
             </div>
           </div>
-
           {/* Form Actions */}
           <div className="pt-4 flex flex-col gap-3">
             <div className="flex gap-3 w-full">
@@ -921,73 +944,72 @@ const handleSubmit = async (e) => {
         </div>,
         document.body
       )}
-{/* TRAVELER CARD PRINT MODAL */}
-{mounted && showPrintModal && createPortal(
-  <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
-    <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
-      <div className="flex justify-between items-center p-6 border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-50">
-            <Scissors className="w-4 h-4 text-[#c8834a]" />
-          </div>
-          <div>
-            <h3 className="text-base font-black text-slate-900">Traveler Cards / Barcodes Minted</h3>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces: {cuttingPieces.length}</p>
-          </div>
-        </div>
-        {/* 🎯 மேே உள்ள X பட்டன் */}
-        <button
-          onClick={() => {
-            setShowPrintModal(false);
-            setCuttingPieces([]); // டேட்டாவை க்ளியர் செய்தல்
-          }}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
 
-      <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
-        {cuttingPieces.map((piece) => (
-          <div key={piece.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-2xs">
-            <div>
-              <p className="text-xs font-mono font-black text-slate-800">{piece.code}</p>
-              <p className="text-[10px] font-bold text-slate-400">Sequence: #{piece.seq}</p>
+      {/* TRAVELER CARD PRINT MODAL */}
+      {mounted && showPrintModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-50">
+                  <Scissors className="w-4 h-4 text-[#c8834a]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Traveler Cards / Barcodes Minted</h3>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces: {cuttingPieces.length}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPrintModal(false);
+                  setCuttingPieces([]);
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
-              Ready to Print
-            </span>
-          </div>
-        ))}
-      </div>
 
-      <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
-        {/* 🎯 கீழே உள்ள Close பட்டன் */}
-        <button
-          onClick={() => {
-            setShowPrintModal(false);
-            setCuttingPieces([]);
-          }}
-          className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-        >
-          Close
-        </button>
-        <button
-          onClick={() => {
-            window.print();
-            setShowPrintModal(false); // பிரிண்ட் ஆனவுடன் மோடலை மூடுவது
-            setCuttingPieces();
-          }}
-          className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
-          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-        >
-          <Rocket className="w-3.5 h-3.5" /> Print Traveler Cards
-        </button>
-      </div>
-    </div>
-  </div>,
-  document.body
-)}
+            <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
+              {cuttingPieces.map((piece) => (
+                <div key={piece.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-2xs">
+                  <div>
+                    <p className="text-xs font-mono font-black text-slate-800">{piece.code}</p>
+                    <p className="text-[10px] font-bold text-slate-400">Sequence: #{piece.seq}</p>
+                  </div>
+                  <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
+                    Ready to Print
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
+              <button
+                onClick={() => {
+                  setShowPrintModal(false);
+                  setCuttingPieces([]);
+                }}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => {
+                  window.print();
+                  setShowPrintModal(false);
+                  setCuttingPieces([]);
+                }}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+              >
+                <Rocket className="w-3.5 h-3.5" /> Print Traveler Cards
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* ORDER NUMBER MODAL */}
       {mounted && showOrderNumModal && createPortal(
