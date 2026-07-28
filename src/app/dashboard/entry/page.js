@@ -945,7 +945,7 @@ export default function ProductionLogEntry() {
         document.body
       )}
 
-      {/* TRAVELER CARD PRINT MODAL */}
+  {/* TRAVELER CARD PRINT MODAL */}
       {mounted && showPrintModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
@@ -978,7 +978,7 @@ export default function ProductionLogEntry() {
                     <p className="text-[10px] font-bold text-slate-400">Sequence: #{piece.seq}</p>
                   </div>
                   <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
-                    Ready to Print
+                    Minted
                   </span>
                 </div>
               ))}
@@ -987,30 +987,50 @@ export default function ProductionLogEntry() {
             <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
               <button
                 onClick={() => {
+                  // 👇 Cancel கிளிக் செய்தால் மோடல் மட்டும் க்ளோஸ் ஆகி production logger பக்கத்திலேயே நிற்கும்
                   setShowPrintModal(false);
                   setCuttingPieces([]);
                 }}
                 className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
               >
-                Close
+                Cancel
               </button>
               <button
-                onClick={() => {
-                  window.print();
+                onClick={async () => {
+                  try {
+                    // 👇 OK கிளிக் செய்தால் மட்டும் API கால் நடக்கும்
+                    const skuObj = fetchedSkus.find(s => s.code === skuCode);
+                    if (skuObj && workerId) {
+                      await apiProductionCutting(token, { 
+                        sku_id: skuObj.sku_id, 
+                        employee_id: workerId, 
+                        work_date: date, 
+                        count: parseInt(cuttingCount) 
+                      });
+                      setSuccessMsg(`✅ Cut pieces successfully saved.`);
+                    }
+                  } catch (err) {
+                    setErrorMsg(`Failed to save: ${err.message}`);
+                  }
+
                   setShowPrintModal(false);
                   setCuttingPieces([]);
+                  
+                  // ஃபார்மை ரீசெட் செய்வது
+                  setSkuCode('');
+                  setCuttingCount('');
+                  setWorkerId('');
                 }}
                 className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
               >
-                <Rocket className="w-3.5 h-3.5" /> Print Traveler Cards
+                <Rocket className="w-3.5 h-3.5" /> OK
               </button>
             </div>
           </div>
         </div>,
         document.body
       )}
-
       {/* ORDER NUMBER MODAL */}
       {mounted && showOrderNumModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
