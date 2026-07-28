@@ -104,9 +104,9 @@ export default function DashboardLayout({ children }) {
       { name: 'Client SKU Tree', href: '/dashboard/orders' },
       { name: 'Payroll & Rates', href: '/dashboard/wages' },
       { name: 'Attendance', href: '/dashboard/attendance' },
-      { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
-      { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
-      { name: 'AI Assistant', href: '/dashboard/chat' },
+      // { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
+      // { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
+      // { name: 'AI Assistant', href: '/dashboard/chat' },
       // ── Procurement Suite ──
       { name: 'Procurement', href: '/dashboard/procurement', divider: true },
       { name: 'New Intake', href: '/dashboard/procurement/intake' },
@@ -114,7 +114,7 @@ export default function DashboardLayout({ children }) {
       { name: 'PO Tracker', href: '/dashboard/procurement/po' },
       // ──────────────────────
       { name: 'Admin & Users', href: '/dashboard/admin', divider: true },
-      { name: 'Security Settings', href: '/dashboard/settings' },
+     // { name: 'Security Settings', href: '/dashboard/settings' },
     ],
     []
   );

@@ -35,14 +35,14 @@ export async function apiGetClients(token) {
  * Create a new client (mints first order in same call)
  * @returns {{ id, name, country, code, order_number, order_id }}
  */
-export async function apiCreateClient(token, name, country) {
+export async function apiCreateClient(token, name, country,order_number,code) {
   const res = await fetch(`${API_BASE_URL}/api/v1/clients`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ name, country }),
+    body: JSON.stringify({ name, country ,order_number,code}),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to create client');

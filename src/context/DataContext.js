@@ -86,13 +86,21 @@ export function DataProvider({ children }) {
   useEffect(() => {
     fetchFromApi();
   }, [fetchFromApi]);
-
-  const createClient = useCallback(async (name, companyName, orderNumber) => {
-    const newClient = await apiCreateClient(token, name, companyName, orderNumber);
-    setClients((prev) => [...prev, { id: newClient.id, key: newClient.name, name: newClient.name, country: newClient.country || '—' }]);
+    const createClient = useCallback(async (name, companyCode, orderNumber, country) => {
+    const newClient = await apiCreateClient(token, name, country, orderNumber, companyCode);
+    
+    setClients((prev) => [
+      ...prev, 
+      { 
+        id: newClient.id, 
+        name: newClient.name,                          
+        key: newClient.code || companyCode || '—',    
+        code: newClient.code || companyCode || '—',    
+        country: newClient.country || country || '—'   
+      }
+    ]);
     return newClient;
   }, [token]);
-
   const addClientOrder = useCallback(async (clientId, payload) => {
     const newOrder = await apiAddClientOrder(token, clientId, payload);
     setOrders((prev) => [...prev, newOrder]);
