@@ -886,10 +886,10 @@ export default function ProductionLogEntry() {
 
       </SpotlightCard>
 
-      {/* EXCEL PREVIEW MODAL */}
+     {/* EXCEL PREVIEW MODAL */}
       {mounted && showPreviewModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col relative overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-slate-100">
               <div>
                 <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
@@ -914,12 +914,20 @@ export default function ProductionLogEntry() {
               ) : (
                 <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
               )}
-              {uploadError && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl">
-                  {uploadError}
-                </div>
-              )}
             </div>
+
+            {/* 👇 🚨 Error Popup Banner inside the Modal */}
+            {uploadError && (
+              <div className="mx-6 mb-4 p-4 bg-rose-50 border-2 border-rose-200 rounded-2xl flex items-center gap-3 animate-fade-in shadow-lg">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                  <XCircle className="w-6 h-6 text-rose-600" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-xs font-black uppercase text-rose-900 tracking-wider">Import Error</h4>
+                  <p className="text-xs font-semibold text-rose-700 mt-0.5">{uploadError}</p>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
               <button
@@ -944,7 +952,6 @@ export default function ProductionLogEntry() {
         </div>,
         document.body
       )}
-
   {/* TRAVELER CARD PRINT MODAL */}
       {mounted && showPrintModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
@@ -987,7 +994,7 @@ export default function ProductionLogEntry() {
             <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
               <button
                 onClick={() => {
-                  // 👇 Cancel கிளிக் செய்தால் மோடல் மட்டும் க்ளோஸ் ஆகி production logger பக்கத்திலேயே நிற்கும்
+           
                   setShowPrintModal(false);
                   setCuttingPieces([]);
                 }}
@@ -998,7 +1005,7 @@ export default function ProductionLogEntry() {
               <button
                 onClick={async () => {
                   try {
-                    // 👇 OK கிளிக் செய்தால் மட்டும் API கால் நடக்கும்
+                
                     const skuObj = fetchedSkus.find(s => s.code === skuCode);
                     if (skuObj && workerId) {
                       await apiProductionCutting(token, { 
@@ -1016,7 +1023,7 @@ export default function ProductionLogEntry() {
                   setShowPrintModal(false);
                   setCuttingPieces([]);
                   
-                  // ஃபார்மை ரீசெட் செய்வது
+                
                   setSkuCode('');
                   setCuttingCount('');
                   setWorkerId('');
