@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiGetSkus, apiGetSkuPieces, apiProductionCutting, apiImportPreview, apiImportCommit, apiGetAnalyticsExplore, apiGetStyleDetail } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import Link from 'next/link';
 
@@ -495,7 +495,7 @@ export default function ProductionLogEntry() {
       setShowPreviewModal(true);
       setShowOrderNumModal(false);
     } catch (err) {
-      setUploadError(`Preview failed: ${err.message}`);
+      setUploadError(err.message);
     } finally {
       setUploadLoading(false);
     }
@@ -511,7 +511,7 @@ export default function ProductionLogEntry() {
       setShowPreviewModal(false);
       setUploadOrderNumber('');
     } catch (err) {
-      setUploadError(`Commit failed: ${err.message}`);
+      setUploadError(err.message);
     } finally {
       setCommitLoading(false);
     }
@@ -643,7 +643,51 @@ export default function ProductionLogEntry() {
         document.body
       )}
 
+      {/* ❌ UPLOAD ERROR POPUP MODAL */}
+      {mounted && uploadError && createPortal(
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
+            {/* Red header bar */}
+            <div className="bg-rose-600 px-6 py-5 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h3 className="text-white font-black text-base tracking-wide">Import Blocked</h3>
+                <p className="text-rose-200 text-xs font-semibold mt-0.5">Action cannot be completed</p>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-6 py-6">
+              <p className="text-slate-700 text-sm font-semibold leading-relaxed">{uploadError}</p>
+              <div className="mt-5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                <p className="text-amber-800 text-xs font-bold flex items-center gap-2">
+                  <span className="text-base">💡</span>
+                  Void or amend the existing import instead of re-uploading.
+                </p>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 pb-6 flex justify-end">
+              <button
+                onClick={() => {
+                  setUploadError('');
+                  setShowPreviewModal(false);
+                }}
+                className="px-8 py-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-sm rounded-xl transition-all cursor-pointer shadow-lg shadow-rose-200"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* LOGGING FORM CARD */}
+
       <SpotlightCard className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
 
         <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
@@ -1094,18 +1138,6 @@ export default function ProductionLogEntry() {
               )}
             </div>
 
-            {/* 👇 🚨 Error Popup Banner inside the Modal */}
-            {uploadError && (
-              <div className="mx-6 mb-4 p-4 bg-rose-50 border-2 border-rose-200 rounded-2xl flex items-center gap-3 animate-fade-in shadow-lg">
-                <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
-                  <XCircle className="w-6 h-6 text-rose-600" />
-                </div>
-                <div className="flex-1">
-                  <h4 className="text-xs font-black uppercase text-rose-900 tracking-wider">Import Error</h4>
-                  <p className="text-xs font-semibold text-rose-700 mt-0.5">{uploadError}</p>
-                </div>
-              </div>
-            )}
 
             <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
               <button
