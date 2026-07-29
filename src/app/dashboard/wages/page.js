@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
+import { useMemo } from 'react';
 import { 
   apiGetWageStyles, 
   apiComputeWageRun, 
@@ -70,6 +71,21 @@ function StylesView({ token }) {
   const [savingAll, setSavingAll] = useState(false);
   const [toastMsg, setToastMsg] = useState(null);
   const [toastType, setToastType] = useState('success');
+  const [searchQuery, setSearchQuery] = useState('');
+
+
+  const filteredStyles = useMemo(() => {
+    if (!styles || !Array.isArray(styles)) return [];
+    if (!searchQuery.trim()) return styles;
+    
+    const term = searchQuery.toLowerCase().trim();
+    return styles.filter(item => {
+      const styleCode = String(item.style_code || item.code || '').toLowerCase();
+      const styleName = String(item.style_name || item.name || '').toLowerCase();
+      
+      return styleCode.includes(term) || styleName.includes(term);
+    });
+  }, [styles, searchQuery]);
 
   const showToast = (msg, type = 'success') => {
     setToastMsg(msg);
@@ -318,43 +334,75 @@ function StylesView({ token }) {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in">
-      {styles.map(s => (
-        <SpotlightCard 
-          key={s.style_code} 
-          onClick={() => handleSelectStyle(s)} 
-          className="p-6 bg-white cursor-pointer transition-all rounded-3xl shadow-sm hover:shadow-xl group" 
-          style={{ border: '1px solid rgba(200,131,74,0.15)' }} 
-          spotlightColor="rgba(200,131,74,0.06)"
-        >
-          <div className="flex justify-between items-start mb-4">
-            <h3 className="font-black text-lg" style={{ color: '#2d1f0e' }}>{s.style_code}</h3>
-            <span className="px-2 py-1 bg-[#faf6f0] text-[#c8834a] text-[10px] font-black rounded-lg uppercase tracking-wider border border-[#c8834a]/10 group-hover:bg-[#c8834a] group-hover:text-white transition-colors">
-              Manage Rates
-            </span>
+    <div className="space-y-6 animate-fade-in">
+      {/* 🔍 Search Bar Section */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+        <div>
+          <h3 className="font-black text-lg" style={{ color: '#2d1f0e' }}>Styles Directory</h3>
+          <p className="text-xs font-bold text-[#9a7a5a]">Search styles by code or name to manage rates.</p>
+        </div>
+        <div className="relative w-full sm:w-80">
+          <input
+            type="text"
+            placeholder="Search by Style Code or Name..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full h-11 pl-4 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+          />
+          {searchQuery && (
+            <button 
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredStyles.length > 0 ? (
+          filteredStyles.map(s => (
+            <SpotlightCard 
+              key={s.style_code} 
+              onClick={() => handleSelectStyle(s)} 
+              className="p-6 bg-white cursor-pointer transition-all rounded-3xl shadow-sm hover:shadow-xl group" 
+              style={{ border: '1px solid rgba(200,131,74,0.15)' }} 
+              spotlightColor="rgba(200,131,74,0.06)"
+            >
+              <div className="flex justify-between items-start mb-4">
+                <h3 className="font-black text-lg" style={{ color: '#2d1f0e' }}>{s.style_code}</h3>
+                <span className="px-2 py-1 bg-[#faf6f0] text-[#c8834a] text-[10px] font-black rounded-lg uppercase tracking-wider border border-[#c8834a]/10 group-hover:bg-[#c8834a] group-hover:text-white transition-colors">
+                  Manage Rates
+                </span>
+              </div>
+              <p className="text-xs font-bold text-[#9a7a5a] mb-6 line-clamp-1">{s.style_name}</p>
+              
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full rounded-full transition-all"
+                    style={{ 
+                      width: `${(s.rated_operations / s.total_operations) * 100}%`,
+                      background: s.rated_operations === s.total_operations ? '#10b981' : '#c8834a' 
+                    }}
+                  />
+                </div>
+                <span className="text-[10px] font-black w-12 text-right" style={{ color: s.rated_operations === s.total_operations ? '#10b981' : '#c8834a' }}>
+                  {s.rated_operations} / {s.total_operations}
+                </span>
+              </div>
+            </SpotlightCard>
+          ))
+        ) : (
+          <div className="col-span-full py-12 text-center text-slate-400 font-bold text-sm bg-white rounded-3xl border border-slate-200">
+            No styles found matching "{searchQuery}"
           </div>
-          <p className="text-xs font-bold text-[#9a7a5a] mb-6 line-clamp-1">{s.style_name}</p>
-          
-          <div className="flex items-center gap-3">
-            <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div 
-                className="h-full rounded-full transition-all"
-                style={{ 
-                  width: `${(s.rated_operations / s.total_operations) * 100}%`,
-                  background: s.rated_operations === s.total_operations ? '#10b981' : '#c8834a' 
-                }}
-              />
-            </div>
-            <span className="text-[10px] font-black w-12 text-right" style={{ color: s.rated_operations === s.total_operations ? '#10b981' : '#c8834a' }}>
-              {s.rated_operations} / {s.total_operations}
-            </span>
-          </div>
-        </SpotlightCard>
-      ))}
+        )}
+      </div>
     </div>
   );
 }
-
 // ─── COMPUTATION ENGINE VIEW ───────────────────────────────────────────────────
 function ComputationView({ token }) {
   const [runs, setRuns] = useState([]);
@@ -365,6 +413,10 @@ function ComputationView({ token }) {
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  
+  // Style selection for style-based computation
+  const [styles, setStyles] = useState([]);
+  const [selectedStyleId, setSelectedStyleId] = useState('');
 
   useEffect(() => {
     // Set default dates to first and 15th of current month
@@ -375,6 +427,7 @@ function ComputationView({ token }) {
     setEndDate(`${y}-${m}-15`);
     
     apiGetWageRuns(token).then(setRuns).catch(() => {});
+    apiGetWageStyles(token).then(setStyles).catch(() => {});
   }, [token]);
 
   const handleRunPayroll = async () => {
@@ -382,7 +435,7 @@ function ComputationView({ token }) {
     setLoading(true);
     setErrorMsg(null);
     try {
-      await apiComputeWageRun(token, startDate, endDate);
+      await apiComputeWageRun(token, startDate, endDate, selectedStyleId);
       const data = await apiGetWageRuns(token);
       setRuns(data);
     } catch (err) { 
@@ -421,11 +474,25 @@ function ComputationView({ token }) {
             <p className="text-xs font-bold text-[#9a7a5a]">Select a period to parse floor logs and distribute wages.</p>
             
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
+              <select
+                value={selectedStyleId}
+                onChange={e => setSelectedStyleId(e.target.value)}
+                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-auto"
+                style={{ borderColor: 'rgba(200,131,74,0.2)', color: selectedStyleId ? '#4a3a2a' : '#a09080' }}
+              >
+                <option value="">All Styles (Full Payroll)</option>
+                {styles.map((s, idx) => (
+                  <option key={s.style_code || s.id || idx} value={s.style_code || s.id}>
+                    {s.style_name || s.style_code}
+                  </option>
+                ))}
+              </select>
+
               <input 
                 type="date" 
                 value={startDate} 
                 onChange={e => setStartDate(e.target.value)} 
-                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full"
+                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-40"
                 style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
               />
               <span className="font-bold text-slate-300 text-center sm:text-left">to</span>
@@ -433,7 +500,7 @@ function ComputationView({ token }) {
                 type="date" 
                 value={endDate} 
                 onChange={e => setEndDate(e.target.value)} 
-                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full"
+                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-40"
                 style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
               />
             </div>

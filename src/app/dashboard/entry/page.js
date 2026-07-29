@@ -3,10 +3,114 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiGetSkus, apiGetSkuPieces, apiProductionCutting, apiImportPreview, apiImportCommit } from '@/lib/api';
+import { apiGetSkus, apiGetSkuPieces, apiProductionCutting, apiImportPreview, apiImportCommit, apiGetAnalyticsExplore, apiGetStyleDetail } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import Link from 'next/link';
+
+function AnalyticsPopupContent({ token, sku, data, setData }) {
+  useEffect(() => {
+    if (!token || !sku) return;
+    
+    let isMounted = true;
+    const loadData = async () => {
+      setData({ loading: true, detail: null, error: null });
+      try {
+        const exploreData = await apiGetAnalyticsExplore(token);
+        
+        let targetStyleId = null;
+        for (const client of (exploreData?.clients || [])) {
+          for (const order of (client.orders || [])) {
+            if (sku.order_number && String(order.order_number) !== String(sku.order_number)) continue;
+            
+            const matchedStyle = (order.styles || []).find(s => 
+              String(s.style_name || '').toLowerCase() === String(sku.style_name || '').toLowerCase()
+            );
+            
+            if (matchedStyle) {
+              targetStyleId = matchedStyle.style_id || matchedStyle.id;
+              break;
+            }
+          }
+          if (targetStyleId) break;
+        }
+
+        if (!targetStyleId) {
+          throw new Error('Analytics data not found for this style.');
+        }
+
+        const detail = await apiGetStyleDetail(token, targetStyleId);
+        if (isMounted) setData({ loading: false, detail, error: null });
+        
+      } catch (err) {
+        if (isMounted) setData({ loading: false, detail: null, error: err.message });
+      }
+    };
+    
+    loadData();
+    return () => { isMounted = false; };
+  }, [token, sku, setData]);
+
+  if (!sku) return <div className="text-slate-500 italic p-4 text-center">No SKU Selected</div>;
+  if (data.loading) return <div className="flex justify-center items-center p-12"><Loader2 className="w-8 h-8 animate-spin text-[#c8834a]" /></div>;
+  if (data.error) return <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-2 font-bold"><XCircle className="w-5 h-5"/> {data.error}</div>;
+  if (!data.detail) return null;
+
+  let pieces = data.detail.pieces || [];
+  if (!Array.isArray(pieces)) pieces = pieces.pieces || [];
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+           <div className="text-xs text-slate-500 font-bold mb-1">Article / Style Name</div>
+           <div className="text-sm font-black text-slate-800">{sku.style_name}</div>
+        </div>
+        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+           <div className="text-xs text-slate-500 font-bold mb-1">Total Pieces</div>
+           <div className="text-sm font-black text-slate-800 bg-amber-100 text-amber-800 px-2 py-0.5 rounded w-max">{pieces.length}</div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+        <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 font-bold text-slate-700 text-xs uppercase tracking-wider">
+          Pieces Progress Tracker
+        </div>
+        <div className="overflow-x-auto max-h-[40vh] overflow-y-auto">
+          <table className="w-full text-left text-xs relative">
+            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+              <tr>
+                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Seq</th>
+                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Piece Code</th>
+                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Colour</th>
+                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Size</th>
+                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Current Stage</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {pieces.map(p => (
+                <tr key={p.bundle_id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-3 font-bold text-slate-400">#{p.seq}</td>
+                  <td className="p-3 font-bold text-slate-700">{p.bundle_id}</td>
+                  <td className="p-3">{p.colour}</td>
+                  <td className="p-3">{p.size}</td>
+                  <td className="p-3">
+                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[9px] font-black">
+                      {p.current_stage || 'Pending'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {pieces.length === 0 && (
+                <tr><td colSpan="5" className="p-6 text-center text-slate-400 italic">No pieces found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function DynamicDataViewer({ data }) {
   if (!data) return <div className="text-slate-400 italic text-center p-4">No data available</div>;
@@ -121,6 +225,10 @@ export default function ProductionLogEntry() {
   const [cuttingPieces, setCuttingPieces] = useState([]);
   const [showPrintModal, setShowPrintModal] = useState(false);
 
+  // Analytics Modal State
+  const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
+  const [analyticsData, setAnalyticsData] = useState({ loading: false, detail: null, error: null });
+
   // 🎯 Operation Stage & Worker States
   const [selectedStage, setSelectedStage] = useState('Cutting');
   const [customDesignation, setCustomDesignation] = useState('');
@@ -218,12 +326,25 @@ export default function ProductionLogEntry() {
     }
   }, [errorMsg, uploadError]);
 
-  // 🎯 Filter Workers by Selected Stage
+  // 🎯 Clean mapping object for all stage variations
   const filteredWorkersByStage = useMemo(() => {
     if (!selectedStage || selectedStage === 'Others') return workers;
-    return workers.filter(w => 
-      String(w.designation || w.role || '').toLowerCase().includes(selectedStage.toLowerCase())
-    );
+
+    const stageKeywords = {
+      'cutting': ['cutting', 'cutter'],
+      'fusing': ['fusing', 'fuser'],
+      'pasting': ['pasting', 'paster'],
+      'self stitch': ['self stitch', 'tailor', 'stitcher', 'operator'],
+      'line stitch': ['line stitch', 'tailor', 'stitcher', 'operator', 'supervisor','lining stich','Lining attach'],
+      'final finishing': ['finishing', 'trimming', 'packing', 'quality', 'checker', 'finisher','final finish'],
+    };
+
+    const keywords = stageKeywords[selectedStage.toLowerCase()] || [selectedStage.toLowerCase()];
+
+    return workers.filter(w => {
+      const designation = String(w.designation || w.role || '').toLowerCase();
+      return keywords.some(keyword => designation.includes(keyword));
+    });
   }, [workers, selectedStage]);
 
   // 🎯 Search Filter Logic for SKU Dropdown
@@ -251,7 +372,8 @@ export default function ProductionLogEntry() {
   }, [filteredWorkersByStage, workerSearchQuery]);
 
   const currentSelectedWorker = workers.find(w => w.id === workerId);
-const handleSubmit = async (e) => {
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg(''); setErrorMsg('');
     if (isReadOnly) return setErrorMsg('Unauthorized');
@@ -265,7 +387,6 @@ const handleSubmit = async (e) => {
         const result = await apiProductionCutting(token, { sku_id: skuObj.sku_id, employee_id: workerId, work_date: date, count: parseInt(cuttingCount) });
         setSuccessMsg(`✅ Cut ${result.count} pieces.`);
         
-        // 🎯 கட்டிங் வெற்றிகரமாக முடிந்ததும் ஃபார்மை எம்டி செய்வது
         setSkuCode('');
         setCuttingCount('');
         setWorkerId('');
@@ -297,7 +418,6 @@ const handleSubmit = async (e) => {
       const result = await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: parsedSeqs });
       setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${operation}.`);
       
-     
       setPieceSeqs('');
       setSkuCode('');
       setWorkerId('');
@@ -314,6 +434,14 @@ const handleSubmit = async (e) => {
     try {
       const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
       setChecklistPieces(Array.isArray(data) ? data : (data.pieces || []));
+      if (data && data.meta) {
+        setPiecesMeta(data.meta);
+      } else {
+        const piecesArr = Array.isArray(data) ? data : (data.pieces || []);
+        const total = piecesArr.length;
+        const done = piecesArr.filter(p => p.done_at_op).length;
+        setPiecesMeta({ total, done, pending: total - done });
+      }
     } catch (err) { setChecklistError(err.message); }
     finally { setLoadingPieces(false); }
   };
@@ -325,6 +453,10 @@ const handleSubmit = async (e) => {
     try {
       await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: selectedPieces });
       setSuccessMsg("Success!"); setShowChecklistModal(false); setSelectedPieces([]);
+      setPieceSeqs('');
+      setSkuCode('');
+      setWorkerId('');
+      setCuttingCount('');
     } catch (err) { setChecklistError(err.message); }
     finally { setChecklistSubmitting(false); }
   };
@@ -749,7 +881,7 @@ const handleSubmit = async (e) => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
-              {operation === 'Cutting' ? (
+              {selectedStage === 'Cutting' ? (
                 <div className="flex flex-col gap-3 md:col-span-2">
                   <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <Scissors className="w-4 h-4 text-amber-600" /> Cut Piece Count (Total Quantity) *
@@ -823,7 +955,6 @@ const handleSubmit = async (e) => {
 
             </div>
           </div>
-
           {/* Form Actions */}
           <div className="pt-4 flex flex-col gap-3">
             <div className="flex gap-3 w-full">
@@ -849,24 +980,64 @@ const handleSubmit = async (e) => {
               </button>
             </div>
 
-            <Link
-              href={skuCode ? `/dashboard/analytics?sku=${encodeURIComponent(skuCode)}` : '/dashboard/analytics'}
+            <button
+              type="button"
+              onClick={() => {
+                if (!currentSelectedSku) return;
+                setShowAnalyticsModal(true);
+              }}
               className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
               style={{ color: '#c8834a' }}
             >
               <BarChart3 className="w-4 h-4" />
-              View Analytics {skuCode ? `for SKU (${skuCode})` : 'Page'}
-            </Link>
+              View Analytics {currentSelectedSku ? `for ${currentSelectedSku.style_name || skuCode}` : 'Page'}
+            </button>
           </div>
 
         </form>
 
       </SpotlightCard>
 
-      {/* EXCEL PREVIEW MODAL */}
+      {/* ANALYTICS POPUP MODAL */}
+      {mounted && showAnalyticsModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-2xl max-h-[90vh] flex flex-col relative overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-[#c8834a]" />
+                  Style Analytics Overview
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  {currentSelectedSku ? `${currentSelectedSku.style_name} (PO: ${currentSelectedSku.order_number})` : 'Loading...'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAnalyticsModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto bg-slate-50 flex-1">
+              {/* Analytics Content Fetching Logic */}
+              <AnalyticsPopupContent 
+                token={token} 
+                sku={currentSelectedSku} 
+                data={analyticsData} 
+                setData={setAnalyticsData} 
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+     {/* EXCEL PREVIEW MODAL */}
       {mounted && showPreviewModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col relative overflow-hidden">
             <div className="flex justify-between items-center p-6 border-b border-slate-100">
               <div>
                 <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
@@ -891,12 +1062,20 @@ const handleSubmit = async (e) => {
               ) : (
                 <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
               )}
-              {uploadError && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl">
-                  {uploadError}
-                </div>
-              )}
             </div>
+
+            {/* 👇 🚨 Error Popup Banner inside the Modal */}
+            {uploadError && (
+              <div className="mx-6 mb-4 p-4 bg-rose-50 border-2 border-rose-200 rounded-2xl flex items-center gap-3 animate-fade-in shadow-lg">
+                <div className="w-10 h-10 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                  <XCircle className="w-6 h-6 text-rose-600" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="text-xs font-black uppercase text-rose-900 tracking-wider">Import Error</h4>
+                  <p className="text-xs font-semibold text-rose-700 mt-0.5">{uploadError}</p>
+                </div>
+              </div>
+            )}
 
             <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
               <button
@@ -921,74 +1100,92 @@ const handleSubmit = async (e) => {
         </div>,
         document.body
       )}
-{/* TRAVELER CARD PRINT MODAL */}
-{mounted && showPrintModal && createPortal(
-  <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
-    <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
-      <div className="flex justify-between items-center p-6 border-b border-slate-100">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-50">
-            <Scissors className="w-4 h-4 text-[#c8834a]" />
-          </div>
-          <div>
-            <h3 className="text-base font-black text-slate-900">Traveler Cards / Barcodes Minted</h3>
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces: {cuttingPieces.length}</p>
-          </div>
-        </div>
-        {/* 🎯 மேே உள்ள X பட்டன் */}
-        <button
-          onClick={() => {
-            setShowPrintModal(false);
-            setCuttingPieces([]); // டேட்டாவை க்ளியர் செய்தல்
-          }}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-        >
-          <X className="w-4 h-4" />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
-        {cuttingPieces.map((piece) => (
-          <div key={piece.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-2xs">
-            <div>
-              <p className="text-xs font-mono font-black text-slate-800">{piece.code}</p>
-              <p className="text-[10px] font-bold text-slate-400">Sequence: #{piece.seq}</p>
+  {/* TRAVELER CARD PRINT MODAL */}
+      {mounted && showPrintModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center bg-amber-50">
+                  <Scissors className="w-4 h-4 text-[#c8834a]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900">Traveler Cards / Barcodes Minted</h3>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total Pieces: {cuttingPieces.length}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowPrintModal(false);
+                  setCuttingPieces([]);
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
-              Ready to Print
-            </span>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-2 bg-slate-50">
+              {cuttingPieces.map((piece) => (
+                <div key={piece.id} className="p-3 bg-white border border-slate-200 rounded-xl flex justify-between items-center shadow-2xs">
+                  <div>
+                    <p className="text-xs font-mono font-black text-slate-800">{piece.code}</p>
+                    <p className="text-[10px] font-bold text-slate-400">Sequence: #{piece.seq}</p>
+                  </div>
+                  <span className="text-[10px] font-bold bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg border border-amber-200">
+                    Minted
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
+              <button
+                onClick={() => {
+           
+                  setShowPrintModal(false);
+                  setCuttingPieces([]);
+                }}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                
+                    const skuObj = fetchedSkus.find(s => s.code === skuCode);
+                    if (skuObj && workerId) {
+                      await apiProductionCutting(token, { 
+                        sku_id: skuObj.sku_id, 
+                        employee_id: workerId, 
+                        work_date: date, 
+                        count: parseInt(cuttingCount) 
+                      });
+                      setSuccessMsg(`✅ Cut pieces successfully saved.`);
+                    }
+                  } catch (err) {
+                    setErrorMsg(`Failed to save: ${err.message}`);
+                  }
+
+                  setShowPrintModal(false);
+                  setCuttingPieces([]);
+                  
+                
+                  setSkuCode('');
+                  setCuttingCount('');
+                  setWorkerId('');
+                }}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+              >
+                <Rocket className="w-3.5 h-3.5" /> OK
+              </button>
+            </div>
           </div>
-        ))}
-      </div>
-
-      <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
-        {/* 🎯 கீழே உள்ள Close பட்டன் */}
-        <button
-          onClick={() => {
-            setShowPrintModal(false);
-            setCuttingPieces([]);
-          }}
-          className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
-        >
-          Close
-        </button>
-        <button
-          onClick={() => {
-            window.print();
-            setShowPrintModal(false); // பிரிண்ட் ஆனவுடன் மோடலை மூடுவது
-            setCuttingPieces();
-          }}
-          className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
-          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-        >
-          <Rocket className="w-3.5 h-3.5" /> Print Traveler Cards
-        </button>
-      </div>
-    </div>
-  </div>,
-  document.body
-)}
-
+        </div>,
+        document.body
+      )}
       {/* ORDER NUMBER MODAL */}
       {mounted && showOrderNumModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
