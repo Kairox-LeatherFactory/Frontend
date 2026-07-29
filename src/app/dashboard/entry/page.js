@@ -59,6 +59,15 @@ function AnalyticsPopupContent({ token, sku, data, setData }) {
   let pieces = data.detail.pieces || [];
   if (!Array.isArray(pieces)) pieces = pieces.pieces || [];
 
+  // Filter pieces to show only those belonging to the specific selected SKU (Size & Color)
+  if (sku) {
+    pieces = pieces.filter(p => {
+      const sizeMatch = !sku.size || String(p.size).toLowerCase() === String(sku.size).toLowerCase();
+      const colorMatch = !sku.color_code || String(p.colour || p.color_code || '').toLowerCase() === String(sku.color_code).toLowerCase();
+      return sizeMatch && colorMatch;
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4">
@@ -220,6 +229,9 @@ export default function ProductionLogEntry() {
   const [pieceSeqs, setPieceSeqs] = useState('');
   const [cuttingCount, setCuttingCount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [traceInput, setTraceInput] = useState('');
+  const [traceLoading, setTraceLoading] = useState(false);
+
   const [fetchedSkus, setFetchedSkus] = useState([]);
   const [skusLoading, setSkusLoading] = useState(false);
   const [cuttingPieces, setCuttingPieces] = useState([]);
@@ -236,6 +248,13 @@ export default function ProductionLogEntry() {
   // 🎯 Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
+  
+  // Dropdown Scroll State
+  const [visibleCount, setVisibleCount] = useState(60);
+  useEffect(() => {
+    setVisibleCount(60);
+  }, [skuSearchQuery]);
+
   const skuModalRef = useRef(null);
 
   const [isWorkerOpen, setIsWorkerOpen] = useState(false);
@@ -815,7 +834,15 @@ export default function ProductionLogEntry() {
                     </div>
 
                     {/* Filtered SKU Options List */}
-                    <div className="max-h-56 overflow-y-auto pr-1">
+                    <div 
+                      className="max-h-56 overflow-y-auto pr-1"
+                      onScroll={(e) => {
+                        const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
+                        if (bottom && visibleCount < searchFilteredSkus.length) {
+                          setVisibleCount(prev => prev + 60);
+                        }
+                      }}
+                    >
                       {skusLoading ? (
                         <div className="p-6 flex flex-col items-center gap-2">
                           <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
@@ -823,7 +850,7 @@ export default function ProductionLogEntry() {
                         </div>
                       ) : searchFilteredSkus.length > 0 ? (
                         <>
-                          {searchFilteredSkus.slice(0, 60).map((s) => {
+                          {searchFilteredSkus.slice(0, visibleCount).map((s) => {
                             const isSelected = skuCode === s.code;
                             return (
                               <button
@@ -842,9 +869,9 @@ export default function ProductionLogEntry() {
                               </button>
                             );
                           })}
-                          {searchFilteredSkus.length > 60 && (
-                            <div className="p-2.5 text-center text-[10px] font-bold text-slate-400 border-t border-slate-100 mt-1">
-                              Showing 60 of {searchFilteredSkus.length} — type to filter
+                          {searchFilteredSkus.length > visibleCount && (
+                            <div className="p-3 flex justify-center items-center">
+                               <Loader2 className="w-4 h-4 text-slate-300 animate-spin" />
                             </div>
                           )}
                         </>

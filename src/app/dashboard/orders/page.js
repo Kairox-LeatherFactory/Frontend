@@ -63,57 +63,58 @@ export default function OrdersTreeBrowser() {
 
   return (
     <div className="space-y-8 animate-fade-in relative">
-
       {/* ─── SCREEN CENTER FLOATING TOAST NOTIFICATION ─── */}
-      <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 pointer-events-none transition-all duration-300">
-        <div className="w-full max-w-sm flex flex-col gap-3">
+      {typeof window !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 pointer-events-none transition-all duration-300">
+          <div className="w-full max-w-sm flex flex-col gap-3">
 
-          {/* Success Toast */}
-          {successMsg && (
-            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+            {/* Success Toast */}
+            {successMsg && (
+              <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Success</p>
+                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Success</p>
-                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setSuccessMsg('')}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSuccessMsg('')}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+            )}
 
-          {/* Toast Error */}
-          {toastErrorMsg && (
-            <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
-                  <XCircle className="w-6 h-6 text-rose-400" />
+            {/* Toast Error */}
+            {toastErrorMsg && (
+              <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+                    <XCircle className="w-6 h-6 text-rose-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Error</p>
+                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{toastErrorMsg}</p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Error</p>
-                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{toastErrorMsg}</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setToastErrorMsg('')}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setToastErrorMsg('')}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-        </div>
-      </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* ─── TITLE SECTION ─── */}
       <div>

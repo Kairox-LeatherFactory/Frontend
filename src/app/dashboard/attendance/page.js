@@ -524,6 +524,10 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
   const [addLoading, setAddLoading] = useState(false);
   const [isOther, setIsOther] = useState(false);
 
+  // Prevent duplicate submissions in current session
+  const [checkedInIds, setCheckedInIds] = useState(new Set());
+  const [checkedOutIds, setCheckedOutIds] = useState(new Set());
+
   const showAlert = (type, message) => {
     setAlert({ type, message });
     if (type === 'success') setTimeout(() => setAlert(null), 6000);
@@ -612,6 +616,15 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
       const normalizedRequested = requestedIds.map((id) => String(id));
       const succeeded = normalizedRequested.filter((id) => succeededIds.has(id));
       const failed = normalizedRequested.filter((id) => !succeededIds.has(id));
+      
+      if (type === 'check-in') {
+        setCheckedInIds(prev => new Set([...prev, ...succeeded]));
+        setCheckedOutIds(prev => { const next = new Set(prev); succeeded.forEach(id => next.delete(id)); return next; });
+      } else {
+        setCheckedOutIds(prev => new Set([...prev, ...succeeded]));
+        setCheckedInIds(prev => { const next = new Set(prev); succeeded.forEach(id => next.delete(id)); return next; });
+      }
+
       setSelected(new Set());
       setTimeout(() => setDiffModal({ type, succeeded, failed }), 0);
     } catch (e) {
@@ -707,13 +720,13 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
                         />
                         {isSelected && isPieceRate && (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-20" onClick={(e) => e.stopPropagation()}>
-                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-in'); }} disabled={actionLoading || !!gps.error}
-                              className="bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer">
-                              Check-In
+                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-in'); }} disabled={actionLoading || !!gps.error || checkedInIds.has(w.id)}
+                              className={`bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer ${checkedInIds.has(w.id) ? 'opacity-50' : ''}`}>
+                              {checkedInIds.has(w.id) ? 'Checked In' : 'Check-In'}
                             </button>
-                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-out'); }} disabled={actionLoading || !!gps.error}
-                              className="bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer">
-                              Check-Out
+                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-out'); }} disabled={actionLoading || !!gps.error || checkedOutIds.has(w.id)}
+                              className={`bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer ${checkedOutIds.has(w.id) ? 'opacity-50' : ''}`}>
+                              {checkedOutIds.has(w.id) ? 'Checked Out' : 'Check-Out'}
                             </button>
                           </div>
                         )}
