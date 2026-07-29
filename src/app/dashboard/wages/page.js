@@ -413,6 +413,10 @@ function ComputationView({ token }) {
   const [endDate, setEndDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  
+  // Style selection for style-based computation
+  const [styles, setStyles] = useState([]);
+  const [selectedStyleId, setSelectedStyleId] = useState('');
 
   useEffect(() => {
     // Set default dates to first and 15th of current month
@@ -423,6 +427,7 @@ function ComputationView({ token }) {
     setEndDate(`${y}-${m}-15`);
     
     apiGetWageRuns(token).then(setRuns).catch(() => {});
+    apiGetWageStyles(token).then(setStyles).catch(() => {});
   }, [token]);
 
   const handleRunPayroll = async () => {
@@ -430,7 +435,7 @@ function ComputationView({ token }) {
     setLoading(true);
     setErrorMsg(null);
     try {
-      await apiComputeWageRun(token, startDate, endDate);
+      await apiComputeWageRun(token, startDate, endDate, selectedStyleId);
       const data = await apiGetWageRuns(token);
       setRuns(data);
     } catch (err) { 
@@ -469,11 +474,25 @@ function ComputationView({ token }) {
             <p className="text-xs font-bold text-[#9a7a5a]">Select a period to parse floor logs and distribute wages.</p>
             
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
+              <select
+                value={selectedStyleId}
+                onChange={e => setSelectedStyleId(e.target.value)}
+                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-auto"
+                style={{ borderColor: 'rgba(200,131,74,0.2)', color: selectedStyleId ? '#4a3a2a' : '#a09080' }}
+              >
+                <option value="">All Styles (Full Payroll)</option>
+                {styles.map((s, idx) => (
+                  <option key={s.style_code || s.id || idx} value={s.style_code || s.id}>
+                    {s.style_name || s.style_code}
+                  </option>
+                ))}
+              </select>
+
               <input 
                 type="date" 
                 value={startDate} 
                 onChange={e => setStartDate(e.target.value)} 
-                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full"
+                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-40"
                 style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
               />
               <span className="font-bold text-slate-300 text-center sm:text-left">to</span>
@@ -481,7 +500,7 @@ function ComputationView({ token }) {
                 type="date" 
                 value={endDate} 
                 onChange={e => setEndDate(e.target.value)} 
-                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full"
+                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-40"
                 style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
               />
             </div>
