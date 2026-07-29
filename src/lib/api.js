@@ -274,24 +274,6 @@ export async function apiSetWageRate(token, payload) {
   return res.json();
 }
 
-// /**
-//  * Compute and freeze a wage run for a period
-//  */
-// export async function apiComputeWageRun(token, period_start, period_end) {
-//   const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
-//     method: 'POST',
-//     headers: {
-//       'Content-Type': 'application/json',
-//       Authorization: `Bearer ${token}`,
-//     },
-//     body: JSON.stringify({ period_start, period_end }),
-//   });
-//   if (!res.ok) {
-//     const errText = await res.text().catch(() => 'Failed to compute wage run');
-//     throw new Error(errText || `Failed to compute wage run (${res.status})`);
-//   }
-//   return res.json();
-// }
 
 /**
  * Get stage-by-stage progress for a specific style
