@@ -59,6 +59,15 @@ function AnalyticsPopupContent({ token, sku, data, setData }) {
   let pieces = data.detail.pieces || [];
   if (!Array.isArray(pieces)) pieces = pieces.pieces || [];
 
+  // Filter pieces to show only those belonging to the specific selected SKU (Size & Color)
+  if (sku) {
+    pieces = pieces.filter(p => {
+      const sizeMatch = !sku.size || String(p.size).toLowerCase() === String(sku.size).toLowerCase();
+      const colorMatch = !sku.color_code || String(p.colour || p.color_code || '').toLowerCase() === String(sku.color_code).toLowerCase();
+      return sizeMatch && colorMatch;
+    });
+  }
+
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4">
@@ -220,6 +229,9 @@ export default function ProductionLogEntry() {
   const [pieceSeqs, setPieceSeqs] = useState('');
   const [cuttingCount, setCuttingCount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [traceInput, setTraceInput] = useState('');
+  const [traceLoading, setTraceLoading] = useState(false);
+
   const [fetchedSkus, setFetchedSkus] = useState([]);
   const [skusLoading, setSkusLoading] = useState(false);
   const [cuttingPieces, setCuttingPieces] = useState([]);
@@ -236,6 +248,13 @@ export default function ProductionLogEntry() {
   // 🎯 Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
+  
+  // Dropdown Scroll State
+  const [visibleCount, setVisibleCount] = useState(60);
+  useEffect(() => {
+    setVisibleCount(60);
+  }, [skuSearchQuery]);
+
   const skuModalRef = useRef(null);
 
   const [isWorkerOpen, setIsWorkerOpen] = useState(false);
@@ -551,75 +570,78 @@ export default function ProductionLogEntry() {
         </div>
       </div>
       {/* 🎯 BOTTOM-RIGHT TOAST NOTIFICATION */}
-      <div className="fixed bottom-6 right-4 sm:right-6 z-[99999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
+      {typeof window !== 'undefined' && createPortal(
+        <div className="fixed bottom-6 right-4 sm:right-6 z-[99999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
 
-        {/* Success Toast */}
-        {successMsg && (
-          <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+          {/* Success Toast */}
+          {successMsg && (
+            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
-                <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setSuccessMsg('')}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setSuccessMsg('')}
-              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* Commit Success Toast */}
-        {commitSuccess && (
-          <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+          {/* Commit Success Toast */}
+          {commitSuccess && (
+            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
-                <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setCommitSuccess('')}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setCommitSuccess('')}
-              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* Error Toast */}
-        {(errorMsg || uploadError) && (
-          <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
-                <XCircle className="w-6 h-6 text-rose-400" />
+          {/* Error Toast */}
+          {(errorMsg || uploadError) && (
+            <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+                  <XCircle className="w-6 h-6 text-rose-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
-                <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => { setErrorMsg(''); setUploadError(''); }}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => { setErrorMsg(''); setUploadError(''); }}
-              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          )}
 
-      </div>
+        </div>,
+        document.body
+      )}
 
       {/* LOGGING FORM CARD */}
       <SpotlightCard className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
@@ -815,7 +837,15 @@ export default function ProductionLogEntry() {
                     </div>
 
                     {/* Filtered SKU Options List */}
-                    <div className="max-h-56 overflow-y-auto pr-1">
+                    <div 
+                      className="max-h-56 overflow-y-auto pr-1"
+                      onScroll={(e) => {
+                        const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
+                        if (bottom && visibleCount < searchFilteredSkus.length) {
+                          setVisibleCount(prev => prev + 60);
+                        }
+                      }}
+                    >
                       {skusLoading ? (
                         <div className="p-6 flex flex-col items-center gap-2">
                           <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
@@ -823,7 +853,7 @@ export default function ProductionLogEntry() {
                         </div>
                       ) : searchFilteredSkus.length > 0 ? (
                         <>
-                          {searchFilteredSkus.slice(0, 60).map((s) => {
+                          {searchFilteredSkus.slice(0, visibleCount).map((s) => {
                             const isSelected = skuCode === s.code;
                             return (
                               <button
@@ -842,9 +872,9 @@ export default function ProductionLogEntry() {
                               </button>
                             );
                           })}
-                          {searchFilteredSkus.length > 60 && (
-                            <div className="p-2.5 text-center text-[10px] font-bold text-slate-400 border-t border-slate-100 mt-1">
-                              Showing 60 of {searchFilteredSkus.length} — type to filter
+                          {searchFilteredSkus.length > visibleCount && (
+                            <div className="p-3 flex justify-center items-center">
+                               <Loader2 className="w-4 h-4 text-slate-300 animate-spin" />
                             </div>
                           )}
                         </>
@@ -1086,7 +1116,7 @@ export default function ProductionLogEntry() {
               </button>
               <button
                 onClick={handleCommit}
-                disabled={commitLoading}
+                disabled={commitLoading || !!uploadError}
                 className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
               >
                 {commitLoading ? (
