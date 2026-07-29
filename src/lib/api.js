@@ -274,24 +274,6 @@ export async function apiSetWageRate(token, payload) {
   return res.json();
 }
 
-// /**
-//  * Compute and freeze a wage run for a period
-//  */
-// export async function apiComputeWageRun(token, period_start, period_end) {
-//   const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
-//     method: 'POST',
-//     headers: {
-//       'Content-Type': 'application/json',
-//       Authorization: `Bearer ${token}`,
-//     },
-//     body: JSON.stringify({ period_start, period_end }),
-//   });
-//   if (!res.ok) {
-//     const errText = await res.text().catch(() => 'Failed to compute wage run');
-//     throw new Error(errText || `Failed to compute wage run (${res.status})`);
-//   }
-//   return res.json();
-// }
 
 /**
  * Get stage-by-stage progress for a specific style
@@ -795,14 +777,17 @@ export async function apiGetWageRuns(token, limit = 50, offset = 0) {
 /**
  * 7. POST /wages/runs - Compute & Freeze payroll
  */
-export async function apiComputeWageRun(token, period_start, period_end) {
+export async function apiComputeWageRun(token, period_start, period_end, styleId = null) {
+  const payload = { period_start, period_end };
+  if (styleId) payload.style_code = styleId;
+
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}` 
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ period_start, period_end }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to compute wage run');
