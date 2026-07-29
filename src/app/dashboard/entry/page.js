@@ -570,75 +570,78 @@ export default function ProductionLogEntry() {
         </div>
       </div>
       {/* 🎯 BOTTOM-RIGHT TOAST NOTIFICATION */}
-      <div className="fixed bottom-6 right-4 sm:right-6 z-[99999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
+      {typeof window !== 'undefined' && createPortal(
+        <div className="fixed bottom-6 right-4 sm:right-6 z-[99999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
 
-        {/* Success Toast */}
-        {successMsg && (
-          <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+          {/* Success Toast */}
+          {successMsg && (
+            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
-                <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setSuccessMsg('')}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setSuccessMsg('')}
-              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* Commit Success Toast */}
-        {commitSuccess && (
-          <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+          {/* Commit Success Toast */}
+          {commitSuccess && (
+            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
-                <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => setCommitSuccess('')}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setCommitSuccess('')}
-              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          )}
 
-        {/* Error Toast */}
-        {(errorMsg || uploadError) && (
-          <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
-                <XCircle className="w-6 h-6 text-rose-400" />
+          {/* Error Toast */}
+          {(errorMsg || uploadError) && (
+            <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+                  <XCircle className="w-6 h-6 text-rose-400" />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
+                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
-                <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
-              </div>
+              <button
+                type="button"
+                onClick={() => { setErrorMsg(''); setUploadError(''); }}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => { setErrorMsg(''); setUploadError(''); }}
-              className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        )}
+          )}
 
-      </div>
+        </div>,
+        document.body
+      )}
 
       {/* LOGGING FORM CARD */}
       <SpotlightCard className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
@@ -1113,7 +1116,7 @@ export default function ProductionLogEntry() {
               </button>
               <button
                 onClick={handleCommit}
-                disabled={commitLoading}
+                disabled={commitLoading || !!uploadError}
                 className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
               >
                 {commitLoading ? (
