@@ -8,7 +8,7 @@ import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, U
 import SpotlightCard from '@/components/SpotlightCard';
 import Link from 'next/link';
 
-function AnalyticsPopupContent({ token, sku, data, setData }) {
+function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSeqs }) {
   useEffect(() => {
     if (!token || !sku) return;
     
@@ -64,7 +64,8 @@ function AnalyticsPopupContent({ token, sku, data, setData }) {
     pieces = pieces.filter(p => {
       const sizeMatch = !sku.size || String(p.size).toLowerCase() === String(sku.size).toLowerCase();
       const colorMatch = !sku.color_code || String(p.colour || p.color_code || '').toLowerCase() === String(sku.color_code).toLowerCase();
-      return sizeMatch && colorMatch;
+      const pieceSeqMatch = !lastSubmittedPieceSeqs || lastSubmittedPieceSeqs.length === 0 || lastSubmittedPieceSeqs.includes(p.seq);
+      return sizeMatch && colorMatch && pieceSeqMatch;
     });
   }
 
@@ -255,6 +256,12 @@ export default function ProductionLogEntry() {
     setVisibleCount(60);
   }, [skuSearchQuery]);
 
+  // Session-based Analytics filter for recently logged pieces
+  const [lastSubmittedPieceSeqs, setLastSubmittedPieceSeqs] = useState([]);
+  useEffect(() => {
+    setLastSubmittedPieceSeqs([]);
+  }, [skuCode]);
+
   const skuModalRef = useRef(null);
 
   const [isWorkerOpen, setIsWorkerOpen] = useState(false);
@@ -405,8 +412,8 @@ export default function ProductionLogEntry() {
       try {
         const result = await apiProductionCutting(token, { sku_id: skuObj.sku_id, employee_id: workerId, work_date: date, count: parseInt(cuttingCount) });
         setSuccessMsg(`✅ Cut ${result.count} pieces.`);
+        setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
         
-        setSkuCode('');
         setCuttingCount('');
         setWorkerId('');
         
@@ -436,9 +443,9 @@ export default function ProductionLogEntry() {
     try {
       const result = await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: parsedSeqs });
       setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${operation}.`);
+      setLastSubmittedPieceSeqs(parsedSeqs);
       
       setPieceSeqs('');
-      setSkuCode('');
       setWorkerId('');
       setCuttingCount('');
 
@@ -471,9 +478,11 @@ export default function ProductionLogEntry() {
     setChecklistSubmitting(true);
     try {
       await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: selectedPieces });
-      setSuccessMsg("Success!"); setShowChecklistModal(false); setSelectedPieces([]);
+      setSuccessMsg("Success!"); 
+      setLastSubmittedPieceSeqs(selectedPieces);
+      setShowChecklistModal(false); 
+      setSelectedPieces([]);
       setPieceSeqs('');
-      setSkuCode('');
       setWorkerId('');
       setCuttingCount('');
     } catch (err) { setChecklistError(err.message); }
@@ -834,10 +843,25 @@ export default function ProductionLogEntry() {
             <div className="grid grid-cols-1 gap-8 pt-2">
 
               {/* 🎯 UI-SAFE SEARCHABLE DROPDOWN MENU */}
-              <div className="flex flex-col gap-2 relative self-start" ref={skuModalRef}>
-                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                  <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
-                </label>
+              <div className="flex flex-col gap-2 relative w-full" ref={skuModalRef}>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                    <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setSkuRefreshKey(k => k + 1)}
+                    title="Refresh SKU list"
+                    className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                    style={{ color: '#c8834a', background: 'rgba(200,131,74,0.08)', border: '1px solid rgba(200,131,74,0.2)' }}
+                  >
+                    {skusLoading
+                      ? <Loader2 className="w-3 h-3 animate-spin" />
+                      : <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    }
+                    {skusLoading ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
 
                 {/* Main Select Button */}
                 <button
@@ -1095,6 +1119,7 @@ export default function ProductionLogEntry() {
                 sku={currentSelectedSku} 
                 data={analyticsData} 
                 setData={setAnalyticsData} 
+                lastSubmittedPieceSeqs={lastSubmittedPieceSeqs}
               />
             </div>
           </div>
@@ -1461,6 +1486,20 @@ export default function ProductionLogEntry() {
                 )}
               </button>
             </div>
+            {/* Navigate to Analytics */}
+            {currentSelectedSku?.order_number && (
+              <div className="px-6 pb-5">
+                <Link
+                  href={`/dashboard/analytics?order_number=${currentSelectedSku.order_number}&style_name=${encodeURIComponent(currentSelectedSku.style_name || '')}`}
+                  onClick={() => setShowChecklistModal(false)}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-extrabold transition-all hover:bg-slate-50 cursor-pointer"
+                  style={{ borderColor: 'rgba(200,131,74,0.4)', color: '#c8834a' }}
+                >
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  Navigate to Analytics & Explore Order
+                </Link>
+              </div>
+            )}
           </div>
         </div>,
         document.body
