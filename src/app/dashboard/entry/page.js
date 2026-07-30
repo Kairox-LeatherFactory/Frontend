@@ -1021,7 +1021,7 @@ export default function ProductionLogEntry() {
                 className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
               >
-                <Rocket className="w-5 h-5" /> Submit Event ({selectedStage})
+                <Rocket className="w-5 h-5" /> Submit Event 
               </button>
             </div>
 
