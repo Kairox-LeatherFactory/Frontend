@@ -421,7 +421,8 @@ function OrdersExplorer() {
 
   // ── Auto-link from entry page (runs once after exploreData loads) ────
   useEffect(() => {
-    if (!deepStyleName || !exploreData || autoLinkedRef.current) return;
+    if (!exploreData || autoLinkedRef.current) return;
+    if (!deepStyleName && !deepOrderNumber) return;
     autoLinkedRef.current = true;
 
     // Find the matching group and style from exploreData
@@ -434,11 +435,25 @@ function OrdersExplorer() {
         const orderMatches = !deepOrderNumber || String(order.order_number) === String(deepOrderNumber);
         if (!orderMatches) continue;
 
-        const matchedStyle = (order.styles || []).find(s =>
-          String(s.style_name || '').toLowerCase() === deepStyleName.toLowerCase()
-        );
+        if (deepStyleName) {
+          const matchedStyle = (order.styles || []).find(s =>
+            String(s.style_name || '').toLowerCase() === deepStyleName.toLowerCase()
+          );
 
-        if (matchedStyle) {
+          if (matchedStyle) {
+            const orderName = `${client.client_name} (PO: ${order.order_number})`;
+            targetGroup = {
+              id: orderName,
+              rawId: order.order_id,
+              client: client.client_name,
+              po: order.order_number,
+              styles: order.styles || []
+            };
+            targetStyle = matchedStyle;
+            break;
+          }
+        } else {
+          // Order-only link — match just by order number
           const orderName = `${client.client_name} (PO: ${order.order_number})`;
           targetGroup = {
             id: orderName,
@@ -447,16 +462,15 @@ function OrdersExplorer() {
             po: order.order_number,
             styles: order.styles || []
           };
-          targetStyle = matchedStyle;
           break;
         }
       }
       if (targetGroup) break;
     }
 
-    if (!targetGroup || !targetStyle) return;
+    if (!targetGroup) return;
 
-    // Expand the order
+    // Expand the order group in sidebar
     setExpandedOrders(prev => ({ ...prev, [targetGroup.id]: true }));
 
     // Fetch the order tree
@@ -468,27 +482,38 @@ function OrdersExplorer() {
         .catch(console.error);
     }
 
-    // Expand and select the style
-    const styleId = targetStyle.style_id || targetStyle.id;
-    setExpandedStyles(prev => ({ ...prev, [styleId]: true }));
-    setActiveItem({ type: 'style', data: targetStyle, parentGroup: targetGroup });
+    if (targetStyle) {
+      // Style + Order: expand and select style
+      const styleId = targetStyle.style_id || targetStyle.id;
+      setExpandedStyles(prev => ({ ...prev, [styleId]: true }));
+      setActiveItem({ type: 'style', data: targetStyle, parentGroup: targetGroup });
 
-    // Fetch style detail
-    if (styleId && !styleDetails[styleId]) {
-      setLoadingStyleDetail(prev => ({ ...prev, [styleId]: true }));
-      apiGetStyleDetail(token, styleId)
-        .then(detailData => {
-          if (detailData) setStyleDetails(prev => ({ ...prev, [styleId]: detailData }));
-        })
-        .catch(console.error)
-        .finally(() => setLoadingStyleDetail(prev => ({ ...prev, [styleId]: false })));
+      // Fetch style detail
+      if (styleId && !styleDetails[styleId]) {
+        setLoadingStyleDetail(prev => ({ ...prev, [styleId]: true }));
+        apiGetStyleDetail(token, styleId)
+          .then(detailData => {
+            if (detailData) setStyleDetails(prev => ({ ...prev, [styleId]: detailData }));
+          })
+          .catch(console.error)
+          .finally(() => setLoadingStyleDetail(prev => ({ ...prev, [styleId]: false })));
+      }
+
+      // Scroll the sidebar to the style card after a short delay
+      setTimeout(() => {
+        const el = styleRefs.current[styleId];
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 400);
+    } else {
+      // Order-only: select the order group and show data in hierarchy viewer
+      setActiveItem({ type: 'order', data: targetGroup, parentGroup: targetGroup });
+
+      // Scroll the sidebar to the order card
+      setTimeout(() => {
+        const el = sidebarRef.current?.querySelector(`[data-order-id="${targetGroup.id}"]`);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 400);
     }
-
-    // Scroll the sidebar to the style card after a short delay
-    setTimeout(() => {
-      const el = styleRefs.current[styleId];
-      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 400);
 
   }, [deepStyleName, deepOrderNumber, exploreData, token]);
   // ─────────────────────────────────────────────────────────────────────
@@ -538,6 +563,7 @@ function OrdersExplorer() {
           return (
             <div key={group.id} className="flex flex-col gap-0.5">
               <div
+                data-order-id={group.id}
                 onClick={() => { toggleOrder(group); setActiveItem({ type: 'order', data: group }); setSelectedPieceCode(null); setPieceDetail(null); }}
                 className="flex items-center gap-2 p-2.5 rounded-xl cursor-pointer transition-all duration-200 group"
                 style={{
