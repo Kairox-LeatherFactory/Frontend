@@ -300,7 +300,11 @@ export async function apiImportPreview(token, file, orderNumber) {
     body: formData,
   });
   if (!res.ok) {
-    const errText = await res.text().catch(() => 'Failed to preview import');
+    let errText = await res.text().catch(() => 'Failed to preview import');
+    try {
+      const parsed = JSON.parse(errText);
+      if (parsed.detail) errText = parsed.detail;
+    } catch (e) {}
     console.error('[API] /imports/preview failed:', res.status, errText);
     const err = new Error(errText || `Failed to preview import (${res.status})`);
     err.status = res.status;
@@ -322,7 +326,11 @@ export async function apiImportCommit(token, file, orderNumber) {
     body: formData,
   });
   if (!res.ok) {
-    const errText = await res.text().catch(() => 'Failed to commit import');
+    let errText = await res.text().catch(() => 'Failed to commit import');
+    try {
+      const parsed = JSON.parse(errText);
+      if (parsed.detail) errText = parsed.detail;
+    } catch (e) {}
     console.error('[API] /imports/commit failed:', res.status, errText);
     const err = new Error(errText || `Failed to commit import (${res.status})`);
     err.status = res.status;

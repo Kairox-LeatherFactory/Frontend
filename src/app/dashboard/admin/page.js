@@ -46,7 +46,7 @@ export default function AdminDashboard() {
   const [workerForm, setWorkerForm] = useState({
     name: '',
     phone: '',
-    designation: '',
+    designation: 'Cutting',
     wage_type: 'piece_rate',
     daily_rate: '',
     password: ''
