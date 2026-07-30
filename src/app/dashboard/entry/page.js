@@ -59,7 +59,6 @@ function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSe
   let pieces = data.detail.pieces || [];
   if (!Array.isArray(pieces)) pieces = pieces.pieces || [];
 
-  // Filter pieces to show only those belonging to the specific selected SKU (Size & Color)
   if (sku) {
     pieces = pieces.filter(p => {
       const sizeMatch = !sku.size || String(p.size).toLowerCase() === String(sku.size).toLowerCase();
@@ -224,39 +223,35 @@ export default function ProductionLogEntry() {
   const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
 
-  const [operation, setOperation] = useState(allowedOperations[0] || '');
+  // Stage & Operation Synchronization State
+  const [selectedStage, setSelectedStage] = useState('Cutting');
+  const [customDesignation, setCustomDesignation] = useState('');
+
   const [workerId, setWorkerId] = useState('');
   const [skuCode, setSkuCode] = useState('');
   const [pieceSeqs, setPieceSeqs] = useState('');
   const [cuttingCount, setCuttingCount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [traceInput, setTraceInput] = useState('');
-  const [traceLoading, setTraceLoading] = useState(false);
 
   const [fetchedSkus, setFetchedSkus] = useState([]);
   const [skusLoading, setSkusLoading] = useState(false);
   const [cuttingPieces, setCuttingPieces] = useState([]);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [isSavingCutting, setIsSavingCutting] = useState(false);
 
   // Analytics Modal State
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState({ loading: false, detail: null, error: null });
 
-  // 🎯 Operation Stage & Worker States
-  const [selectedStage, setSelectedStage] = useState('Cutting');
-  const [customDesignation, setCustomDesignation] = useState('');
-
-  // 🎯 Searchable Dropdown States
+  // Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
-  
-  // Dropdown Scroll State
   const [visibleCount, setVisibleCount] = useState(60);
+  
   useEffect(() => {
     setVisibleCount(60);
   }, [skuSearchQuery]);
 
-  // Session-based Analytics filter for recently logged pieces
   const [lastSubmittedPieceSeqs, setLastSubmittedPieceSeqs] = useState([]);
   useEffect(() => {
     setLastSubmittedPieceSeqs([]);
@@ -297,7 +292,6 @@ export default function ProductionLogEntry() {
     setMounted(true);
   }, []);
 
-  // Close Dropdown Menu on click outside
   useEffect(() => {
     function handleClickOutside(e) {
       if (skuModalRef.current && !skuModalRef.current.contains(e.target)) {
@@ -327,7 +321,6 @@ export default function ProductionLogEntry() {
     }
   }, [skuCode, fetchedSkus]);
 
-  // ⏱️ Auto-dismiss Toast Messages
   useEffect(() => {
     if (successMsg) {
       const timer = setTimeout(() => setSuccessMsg(''), 2000);
@@ -352,28 +345,6 @@ export default function ProductionLogEntry() {
     }
   }, [errorMsg, uploadError]);
 
-  // 🎯 Clean mapping object for all stage variations
-  const filteredWorkersByStage = useMemo(() => {
-    if (!selectedStage || selectedStage === 'Others') return workers;
-
-    const stageKeywords = {
-      'cutting': ['cutting', 'cutter'],
-      'fusing': ['fusing', 'fuser'],
-      'pasting': ['pasting', 'paster'],
-      'self stitch': ['self stitch', 'tailor', 'stitcher', 'operator'],
-      'line stitch': ['line stitch', 'tailor', 'stitcher', 'operator', 'supervisor','lining stich','Lining attach'],
-      'final finishing': ['finishing', 'trimming', 'packing', 'quality', 'checker', 'finisher','final finish'],
-    };
-
-    const keywords = stageKeywords[selectedStage.toLowerCase()] || [selectedStage.toLowerCase()];
-
-    return workers.filter(w => {
-      const designation = String(w.designation || w.role || '').toLowerCase();
-      return keywords.some(keyword => designation.includes(keyword));
-    });
-  }, [workers, selectedStage]);
-
-  // 🎯 Search Filter Logic for SKU Dropdown
   const searchFilteredSkus = useMemo(() => {
     if (!skuSearchQuery.trim()) return fetchedSkus;
 
@@ -388,44 +359,51 @@ export default function ProductionLogEntry() {
   const currentSelectedSku = fetchedSkus.find(s => s.code === skuCode);
 
   const searchFilteredWorkers = useMemo(() => {
-    const list = filteredWorkersByStage;
-    if (!workerSearchQuery.trim()) return list;
+    if (!workerSearchQuery.trim()) return workers;
     const searchTerms = workerSearchQuery.toLowerCase().trim().split(/\s+/);
-    return list.filter((w) => {
-      const fullText = `${w.name || ''} ${w.designation || ''} ${w.id || ''}`.toLowerCase();
+    return workers.filter((w) => {
+      const fullText = `${w.name || ''} ${w.id || ''}`.toLowerCase();
       return searchTerms.every(term => fullText.includes(term));
     });
-  }, [filteredWorkersByStage, workerSearchQuery]);
+  }, [workers, workerSearchQuery]);
 
   const currentSelectedWorker = workers.find(w => w.id === workerId);
 
+  // SUBMIT HANDLER: Shows Traveler Card Modal FIRST for Cutting
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg(''); setErrorMsg('');
     if (isReadOnly) return setErrorMsg('Unauthorized');
-    if (!operation || !workerId || !date || !skuCode) return setErrorMsg('Missing fields');
+    if (!workerId || !date || !skuCode) return setErrorMsg('Missing mandatory fields');
 
-    const opRecord = operations.find(o => o.label === operation);
+    const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
-    if (operation === 'Cutting') {
-      try {
-        const result = await apiProductionCutting(token, { sku_id: skuObj.sku_id, employee_id: workerId, work_date: date, count: parseInt(cuttingCount) });
-        setSuccessMsg(`✅ Cut ${result.count} pieces.`);
-        setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
-        
-        setCuttingCount('');
-        setWorkerId('');
-        
-        if (result && result.pieces) {
-          setCuttingPieces(result.pieces);
-          setShowPrintModal(true);
-        }
-      } catch (err) { setErrorMsg(`Cutting failed: ${err.message}`); }
+    // 1. CUTTING STAGE -> Opens Print Modal FIRST
+    if (activeOp === 'Cutting') {
+      const parsedCount = parseInt(cuttingCount, 10);
+      if (!cuttingCount || isNaN(parsedCount) || parsedCount <= 0) {
+        return setErrorMsg('Please enter a valid total Cut Piece Count');
+      }
+
+      // Generate temporary preview pieces array for Traveler Cards
+      const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => ({
+        id: `temp-${i + 1}`,
+        seq: i + 1,
+        code: `${skuObj.code}-${i + 1}`
+      }));
+
+      setCuttingPieces(generatedPreviewPieces);
+      setShowPrintModal(true); // Open Modal First
       return;
     }
 
-    if (!opRecord) return setErrorMsg(`Could not find ID for: ${operation}`);
+    // 2. OTHER STAGES
+    const opRecord = operations.find(o => 
+      String(o.label || '').toLowerCase() === String(activeOp || '').toLowerCase()
+    ) || operations[0];
+
+    if (!opRecord) return setErrorMsg(`Could not find Operation ID for: ${activeOp}`);
 
     let parsedSeqs = [];
     if (pieceSeqs) {
@@ -440,9 +418,19 @@ export default function ProductionLogEntry() {
       });
     }
 
+    if (parsedSeqs.length === 0) {
+      return setErrorMsg('Please enter valid Piece Sequence numbers (e.g. 1, 2, 5-8)');
+    }
+
     try {
-      const result = await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: parsedSeqs });
-      setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${operation}.`);
+      const result = await addScanEvent({
+        operation_id: opRecord.id,
+        employee_id: workerId,
+        work_date: date,
+        sku_id: skuObj.sku_id,
+        piece_seqs: parsedSeqs
+      });
+      setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${activeOp}.`);
       setLastSubmittedPieceSeqs(parsedSeqs);
       
       setPieceSeqs('');
@@ -452,8 +440,39 @@ export default function ProductionLogEntry() {
     } catch (err) { setErrorMsg(`Failed: ${err.message}`); }
   };
 
+  // CONFIRM CUTTING API CALL (Triggered ONLY when clicking OK on Traveler Card Modal)
+  const handleConfirmCuttingSave = async () => {
+    setIsSavingCutting(true);
+    try {
+      const skuObj = fetchedSkus.find(s => s.code === skuCode);
+      const parsedCount = parseInt(cuttingCount, 10);
+
+      const result = await apiProductionCutting(token, {
+        sku_id: skuObj.sku_id,
+        employee_id: workerId,
+        work_date: date,
+        count: parsedCount
+      });
+
+      setSuccessMsg(`✅ Cut ${result.count || parsedCount} pieces successfully saved.`);
+      setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
+      
+      setShowPrintModal(false);
+      setCuttingPieces([]);
+      setSkuCode('');
+      setCuttingCount('');
+      setWorkerId('');
+
+    } catch (err) {
+      setErrorMsg(`Cutting failed: ${err.message}`);
+    } finally {
+      setIsSavingCutting(false);
+    }
+  };
+
   const openChecklistModal = async () => {
-    const opRecord = operations.find(o => o.label === operation);
+    const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
+    const opRecord = operations.find(o => String(o.label || '').toLowerCase() === String(activeOp || '').toLowerCase()) || operations[0];
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
     if (!opRecord || !skuObj) return setErrorMsg("Operation or SKU invalid");
     setLoadingPieces(true); setShowChecklistModal(true);
@@ -473,7 +492,8 @@ export default function ProductionLogEntry() {
   };
 
   const submitChecklist = async () => {
-    const opRecord = operations.find(o => o.label === operation);
+    const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
+    const opRecord = operations.find(o => String(o.label || '').toLowerCase() === String(activeOp || '').toLowerCase()) || operations[0];
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
     setChecklistSubmitting(true);
     try {
@@ -578,7 +598,8 @@ export default function ProductionLogEntry() {
           </button>
         </div>
       </div>
-      {/* 🎯 BOTTOM-RIGHT TOAST NOTIFICATION */}
+
+      {/* BOTTOM-RIGHT TOAST NOTIFICATION */}
       {typeof window !== 'undefined' && createPortal(
         <div className="fixed bottom-6 right-4 sm:right-6 z-[99999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
 
@@ -652,45 +673,7 @@ export default function ProductionLogEntry() {
         document.body
       )}
 
-      {/* ❌ UPLOAD ERROR POPUP MODAL */}
-      {mounted && uploadError && createPortal(
-        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in border border-slate-100 p-6 space-y-6 text-center">
-            {/* Warning Icon Container */}
-            <div className="mx-auto w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center">
-              <AlertTriangle className="w-8 h-8 text-rose-500" />
-            </div>
-
-            {/* Content */}
-            <div className="space-y-2">
-              <h3 className="text-slate-900 font-black text-base" style={{ color: '#2d1f0e' }}>Import Blocked</h3>
-              <p className="text-slate-500 text-xs font-semibold leading-relaxed px-2">
-                This order already has active production entries. Re-importing is blocked to protect the logged production history.
-              </p>
-            </div>
-
-            {/* Actions */}
-            <div className="pt-2">
-              <button
-                onClick={() => {
-                  setUploadError('');
-                  setShowPreviewModal(false);
-                }}
-                className="w-full py-3.5 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-98 cursor-pointer shadow-lg shadow-amber-100"
-                style={{ backgroundColor: '#c8834a' }}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#b0703c'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#c8834a'}
-              >
-                Go Back to Logger
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
       {/* LOGGING FORM CARD */}
-
       <SpotlightCard className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
 
         <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
@@ -702,65 +685,20 @@ export default function ProductionLogEntry() {
 
         <form onSubmit={handleSubmit} className="space-y-8">
 
-          {/* STEP 1: Worker Selection with Operation Stage Banners */}
+          {/* STEP 1: Worker Selection */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
-              Worker Selection &amp; Stage
+              Worker Selection
             </h3>
             
-            <div className="space-y-4 pt-2">
-              <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
-              </label>
-
-              {/* 7 Operation Stage Banners */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['Cutting', 'Fusing', 'Pasting', 'Self Stitch', 'Line Stitch', 'Final Finishing', 'Others'].map((stage) => {
-                  const isSelected = selectedStage === stage;
-                  return (
-                    <button
-                      key={stage}
-                      type="button"
-                      onClick={() => {
-                        setSelectedStage(stage);
-                        setWorkerId('');
-                      }}
-                      className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border ${
-                        isSelected 
-                          ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]' 
-                          : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
-                      }`}
-                    >
-                      {stage}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom Stage Input if Others is selected */}
-              {selectedStage === 'Others' && (
-                <div className="flex flex-col gap-1.5 pt-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500">Custom Stage / Designation Name</label>
-                  <input
-                    type="text"
-                    placeholder="Enter custom role here..."
-                    value={customDesignation}
-                    onChange={(e) => setCustomDesignation(e.target.value)}
-                    className="h-10 w-full rounded-xl px-3 text-xs font-semibold bg-white border border-slate-200 focus:outline-none"
-                    style={{ borderColor: 'rgba(200,131,74,0.3)', color: '#2d1f0e' }}
-                  />
-                </div>
-              )}
-
-              {/* Assigned Worker Searchable Dropdown */}
-              <div className="flex flex-col gap-2 relative z-40 self-start pt-2" ref={workerModalRef}>
+            <div className="pt-2">
+              <div className="flex flex-col gap-2 relative z-40 self-start w-full" ref={workerModalRef}>
                 <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                  <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker for {selectedStage} *
+                  <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker *
                 </label>
 
-                {/* Main Select Button */}
                 <button
                   type="button"
                   onClick={() => {
@@ -770,15 +708,11 @@ export default function ProductionLogEntry() {
                   className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
                 >
                   <span className={currentSelectedWorker ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
-                    {currentSelectedWorker
-                      ? `${currentSelectedWorker.name} ${currentSelectedWorker.designation ? `(${currentSelectedWorker.designation})` : ''}`
-                      : `-- Select / Search ${selectedStage} Worker --`
-                    }
+                    {currentSelectedWorker ? currentSelectedWorker.name : `-- Select / Search Worker --`}
                   </span>
                   <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isWorkerOpen ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Floating Menu with Search Input */}
                 {isWorkerOpen && (
                   <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl z-[99999] p-3 space-y-3 animate-fade-in">
                     <div className="relative">
@@ -786,7 +720,7 @@ export default function ProductionLogEntry() {
                       <input
                         type="text"
                         autoFocus
-                        placeholder={`Search ${selectedStage} Worker...`}
+                        placeholder="Search Worker Name..."
                         value={workerSearchQuery}
                         onChange={(e) => setWorkerSearchQuery(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
@@ -808,14 +742,7 @@ export default function ProductionLogEntry() {
                               }}
                               className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
                             >
-                              <div>
-                                <span>{w.name}</span>
-                                {w.designation && (
-                                  <span className={`ml-2 text-[10px] px-2 py-0.5 rounded font-black ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                                    {w.designation}
-                                  </span>
-                                )}
-                              </div>
+                              <span>{w.name}</span>
                               {isSelected && <span className="font-black text-sm">✓</span>}
                             </button>
                           );
@@ -832,17 +759,59 @@ export default function ProductionLogEntry() {
             </div>
           </div>
 
-          {/* STEP 2: Garment Details (Operation Stage dropdown removed from here) */}
+          {/* STEP 2: Garment Details & Operation Stage */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
-              Garment Details
+              Operation Stage &amp; Garment Details
             </h3>
 
-            <div className="grid grid-cols-1 gap-8 pt-2">
+            <div className="space-y-4 pt-2">
+              <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
+              </label>
 
-              {/* 🎯 UI-SAFE SEARCHABLE DROPDOWN MENU */}
+              {/* 7 Operation Stage Banners */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {['Cutting', 'Fusing', 'Pasting', 'Self Stitch', 'Line Stitch', 'Final Finishing', 'Others'].map((stage) => {
+                  const isSelected = selectedStage === stage;
+                  return (
+                    <button
+                      key={stage}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStage(stage);
+                        setPieceSeqs('');
+                      }}
+                      className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border ${
+                        isSelected 
+                          ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]' 
+                          : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
+                      }`}
+                    >
+                      {stage}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedStage === 'Others' && (
+                <div className="flex flex-col gap-1.5 pt-1">
+                  <label className="text-[10px] font-black uppercase text-slate-500">Custom Stage Name</label>
+                  <input
+                    type="text"
+                    placeholder="Enter custom role here..."
+                    value={customDesignation}
+                    onChange={(e) => setCustomDesignation(e.target.value)}
+                    className="h-10 w-full rounded-xl px-3 text-xs font-semibold bg-white border border-slate-200 focus:outline-none"
+                    style={{ borderColor: 'rgba(200,131,74,0.3)', color: '#2d1f0e' }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 gap-8 pt-4">
               <div className="flex flex-col gap-2 relative w-full" ref={skuModalRef}>
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
@@ -851,19 +820,13 @@ export default function ProductionLogEntry() {
                   <button
                     type="button"
                     onClick={() => setSkuRefreshKey(k => k + 1)}
-                    title="Refresh SKU list"
                     className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg transition-all cursor-pointer"
                     style={{ color: '#c8834a', background: 'rgba(200,131,74,0.08)', border: '1px solid rgba(200,131,74,0.2)' }}
                   >
-                    {skusLoading
-                      ? <Loader2 className="w-3 h-3 animate-spin" />
-                      : <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    }
-                    {skusLoading ? 'Loading...' : 'Refresh'}
+                    {skusLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Refresh'}
                   </button>
                 </div>
 
-                {/* Main Select Button */}
                 <button
                   type="button"
                   onClick={() => {
@@ -881,10 +844,8 @@ export default function ProductionLogEntry() {
                   <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isSkuOpen ? 'rotate-180' : ''}`} />
                 </button>
 
-                {/* Normal Absolute Dropdown */}
                 {isSkuOpen && (
                   <div className="absolute z-[999] top-full mt-2 left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl p-3 space-y-3 animate-fade-in">
-                    {/* Search Field */}
                     <div className="relative">
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
@@ -898,7 +859,6 @@ export default function ProductionLogEntry() {
                       />
                     </div>
 
-                    {/* Filtered SKU Options List */}
                     <div 
                       className="max-h-56 overflow-y-auto pr-1"
                       onScroll={(e) => {
@@ -934,11 +894,6 @@ export default function ProductionLogEntry() {
                               </button>
                             );
                           })}
-                          {searchFilteredSkus.length > visibleCount && (
-                            <div className="p-3 flex justify-center items-center">
-                               <Loader2 className="w-4 h-4 text-slate-300 animate-spin" />
-                            </div>
-                          )}
                         </>
                       ) : (
                         <div className="p-4 text-center text-xs font-bold text-slate-400">
@@ -949,7 +904,6 @@ export default function ProductionLogEntry() {
                   </div>
                 )}
 
-                {/* 🎯 Target Quantity Display */}
                 {currentSelectedSku && (
                   <div className="mt-1 px-4 py-2.5 bg-[#faf6f0] border border-[#c8834a]/20 rounded-xl flex items-center justify-between shadow-sm animate-fade-in">
                     <span className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider flex items-center gap-1.5">
@@ -959,7 +913,6 @@ export default function ProductionLogEntry() {
                   </div>
                 )}
               </div>
-
             </div>
           </div>
 
@@ -968,7 +921,7 @@ export default function ProductionLogEntry() {
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span>
-              Quantities &amp; Submission
+              Quantities &amp; Submission ({selectedStage})
             </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
@@ -1030,7 +983,6 @@ export default function ProductionLogEntry() {
                 </div>
               )}
 
-              {/* Date Selector Row */}
               <div className="flex flex-col gap-2">
                 <label htmlFor="date-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                   <Calendar className="w-4 h-4 text-emerald-500" /> Transaction Date *
@@ -1047,6 +999,7 @@ export default function ProductionLogEntry() {
 
             </div>
           </div>
+
           {/* Form Actions */}
           <div className="pt-4 flex flex-col gap-3">
             <div className="flex gap-3 w-full">
@@ -1068,7 +1021,7 @@ export default function ProductionLogEntry() {
                 className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
               >
-                <Rocket className="w-5 h-5" /> Submit Event
+                <Rocket className="w-5 h-5" /> Submit Event ({selectedStage})
               </button>
             </div>
 
@@ -1090,98 +1043,7 @@ export default function ProductionLogEntry() {
 
       </SpotlightCard>
 
-      {/* ANALYTICS POPUP MODAL */}
-      {mounted && showAnalyticsModal && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-2xl max-h-[90vh] flex flex-col relative overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-[#c8834a]" />
-                  Style Analytics Overview
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-1">
-                  {currentSelectedSku ? `${currentSelectedSku.style_name} (PO: ${currentSelectedSku.order_number})` : 'Loading...'}
-                </p>
-              </div>
-              <button
-                onClick={() => setShowAnalyticsModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 overflow-y-auto bg-slate-50 flex-1">
-              {/* Analytics Content Fetching Logic */}
-              <AnalyticsPopupContent 
-                token={token} 
-                sku={currentSelectedSku} 
-                data={analyticsData} 
-                setData={setAnalyticsData} 
-                lastSubmittedPieceSeqs={lastSubmittedPieceSeqs}
-              />
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-     {/* EXCEL PREVIEW MODAL */}
-      {mounted && showPreviewModal && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col relative overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
-                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                  Excel Import Preview
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-1">
-                  File: {fileName} — Review before importing to database
-                </p>
-              </div>
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
-              {previewData ? (
-                <DynamicDataViewer data={previewData} />
-              ) : (
-                <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
-              )}
-            </div>
-
-
-            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCommit}
-                disabled={commitLoading || !!uploadError}
-                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
-              >
-                {commitLoading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
-                ) : (
-                  <><Upload className="w-4 h-4" /> Confirm &amp; Import to Database</>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-  {/* TRAVELER CARD PRINT MODAL */}
+      {/* TRAVELER CARD PRINT MODAL */}
       {mounted && showPrintModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
@@ -1223,50 +1085,122 @@ export default function ProductionLogEntry() {
             <div className="flex gap-3 p-6 border-t border-slate-100 bg-white">
               <button
                 onClick={() => {
-           
                   setShowPrintModal(false);
                   setCuttingPieces([]);
                 }}
+                disabled={isSavingCutting}
                 className="flex-1 py-3 rounded-xl text-xs font-extrabold bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
-                onClick={async () => {
-                  try {
-                
-                    const skuObj = fetchedSkus.find(s => s.code === skuCode);
-                    if (skuObj && workerId) {
-                      await apiProductionCutting(token, { 
-                        sku_id: skuObj.sku_id, 
-                        employee_id: workerId, 
-                        work_date: date, 
-                        count: parseInt(cuttingCount) 
-                      });
-                      setSuccessMsg(`✅ Cut pieces successfully saved.`);
-                    }
-                  } catch (err) {
-                    setErrorMsg(`Failed to save: ${err.message}`);
-                  }
-
-                  setShowPrintModal(false);
-                  setCuttingPieces([]);
-                  
-                
-                  setSkuCode('');
-                  setCuttingCount('');
-                  setWorkerId('');
-                }}
-                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer"
+                onClick={handleConfirmCuttingSave}
+                disabled={isSavingCutting}
+                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 cursor-pointer disabled:opacity-50"
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
               >
-                <Rocket className="w-3.5 h-3.5" /> OK
+                {isSavingCutting ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Saving...</>
+                ) : (
+                  <><Rocket className="w-3.5 h-3.5" /> OK</>
+                )}
               </button>
             </div>
           </div>
         </div>,
         document.body
       )}
+
+      {/* ANALYTICS POPUP MODAL */}
+      {mounted && showAnalyticsModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-2xl max-h-[90vh] flex flex-col relative overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-[#c8834a]" />
+                  Style Analytics Overview
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  {currentSelectedSku ? `${currentSelectedSku.style_name} (PO: ${currentSelectedSku.order_number})` : 'Loading...'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowAnalyticsModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto bg-slate-50 flex-1">
+              <AnalyticsPopupContent 
+                token={token} 
+                sku={currentSelectedSku} 
+                data={analyticsData} 
+                setData={setAnalyticsData} 
+                lastSubmittedPieceSeqs={lastSubmittedPieceSeqs}
+              />
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* EXCEL PREVIEW MODAL */}
+      {mounted && showPreviewModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col relative overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                  Excel Import Preview
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  File: {fileName} — Review before importing to database
+                </p>
+              </div>
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
+              {previewData ? (
+                <DynamicDataViewer data={previewData} />
+              ) : (
+                <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
+              )}
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
+              <button
+                onClick={() => setShowPreviewModal(false)}
+                className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCommit}
+                disabled={commitLoading || !!uploadError}
+                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+              >
+                {commitLoading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
+                ) : (
+                  <><Upload className="w-4 h-4" /> Confirm &amp; Import to Database</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* ORDER NUMBER MODAL */}
       {mounted && showOrderNumModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
@@ -1350,7 +1284,7 @@ export default function ProductionLogEntry() {
                   <ListChecks className="w-4 h-4" style={{ color: '#c8834a' }} />
                 </div>
                 <div>
-                  <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Select Pieces — {operation}</h3>
+                  <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Select Pieces — {selectedStage}</h3>
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{skuCode}</p>
                 </div>
               </div>
@@ -1452,13 +1386,6 @@ export default function ProductionLogEntry() {
                       </button>
                     );
                   })}
-
-                  {checklistError && (
-                    <div className="col-span-2 sm:col-span-3 mt-2 p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2">
-                      <XCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                      <p className="text-xs font-bold text-red-700">{checklistError}</p>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -1486,20 +1413,6 @@ export default function ProductionLogEntry() {
                 )}
               </button>
             </div>
-            {/* Navigate to Analytics */}
-            {currentSelectedSku?.order_number && (
-              <div className="px-6 pb-5">
-                <Link
-                  href={`/dashboard/analytics?order_number=${currentSelectedSku.order_number}&style_name=${encodeURIComponent(currentSelectedSku.style_name || '')}`}
-                  onClick={() => setShowChecklistModal(false)}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-xs font-extrabold transition-all hover:bg-slate-50 cursor-pointer"
-                  style={{ borderColor: 'rgba(200,131,74,0.4)', color: '#c8834a' }}
-                >
-                  <BarChart3 className="w-3.5 h-3.5" />
-                  Navigate to Analytics & Explore Order
-                </Link>
-              </div>
-            )}
           </div>
         </div>,
         document.body
