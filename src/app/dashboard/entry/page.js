@@ -645,40 +645,34 @@ export default function ProductionLogEntry() {
 
       {/* ❌ UPLOAD ERROR POPUP MODAL */}
       {mounted && uploadError && createPortal(
-        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in">
-            {/* Red header bar */}
-            <div className="bg-rose-600 px-6 py-5 flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <h3 className="text-white font-black text-base tracking-wide">Import Blocked</h3>
-                <p className="text-rose-200 text-xs font-semibold mt-0.5">Action cannot be completed</p>
-              </div>
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-fade-in border border-slate-100 p-6 space-y-6 text-center">
+            {/* Warning Icon Container */}
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 flex items-center justify-center">
+              <AlertTriangle className="w-8 h-8 text-rose-500" />
             </div>
 
-            {/* Body */}
-            <div className="px-6 py-6">
-              <p className="text-slate-700 text-sm font-semibold leading-relaxed">{uploadError}</p>
-              <div className="mt-5 p-3 bg-amber-50 border border-amber-200 rounded-xl">
-                <p className="text-amber-800 text-xs font-bold flex items-center gap-2">
-                  <span className="text-base">💡</span>
-                  Void or amend the existing import instead of re-uploading.
-                </p>
-              </div>
+            {/* Content */}
+            <div className="space-y-2">
+              <h3 className="text-slate-900 font-black text-base" style={{ color: '#2d1f0e' }}>Import Blocked</h3>
+              <p className="text-slate-500 text-xs font-semibold leading-relaxed px-2">
+                This order already has active production entries. Re-importing is blocked to protect the logged production history.
+              </p>
             </div>
 
-            {/* Footer */}
-            <div className="px-6 pb-6 flex justify-end">
+            {/* Actions */}
+            <div className="pt-2">
               <button
                 onClick={() => {
                   setUploadError('');
                   setShowPreviewModal(false);
                 }}
-                className="px-8 py-3 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-black text-sm rounded-xl transition-all cursor-pointer shadow-lg shadow-rose-200"
+                className="w-full py-3.5 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition-all active:scale-98 cursor-pointer shadow-lg shadow-amber-100"
+                style={{ backgroundColor: '#c8834a' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#b0703c'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#c8834a'}
               >
-                Dismiss
+                Go Back to Logger
               </button>
             </div>
           </div>
