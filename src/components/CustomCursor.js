@@ -72,12 +72,12 @@ export default function CustomCursor() {
       <div 
         ref={dotRef}
         className="cursor-dot pointer-events-none fixed w-2 h-2 -ml-1 -mt-1 rounded-full transition-transform duration-200"
-        style={{ left: '-20px', top: '-20px', background: '#c8834a', zIndex: 9999999 }}
+        style={{ left: '-20px', top: '-20px', background: '#c8834a', zIndex: 2147483647 }}
       />
       <div 
         ref={ringRef}
         className="cursor-ring pointer-events-none fixed w-10 h-10 -ml-5 -mt-5 rounded-full transition-[transform,background-color,border-color] duration-300"
-        style={{ left: '-20px', top: '-20px', border: '1.5px solid rgba(200,131,74,0.6)', zIndex: 9999998 }}
+        style={{ left: '-20px', top: '-20px', border: '1.5px solid rgba(200,131,74,0.6)', zIndex: 2147483646 }}
       />
       <style jsx global>{`
         /* Hide default cursor universally on interactive and non-interactive elements */
