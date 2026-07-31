@@ -520,7 +520,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
   const [diffModal, setDiffModal] = useState(null);
 
   const [addModal, setAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', phone: '', designation: 'Cutting', wage_type: 'piece_rate', daily_rate: '', password: '' });
+  const [addForm, setAddForm] = useState({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '', password: '' });
   const [addLoading, setAddLoading] = useState(false);
   const [isOther, setIsOther] = useState(false);
 
@@ -591,7 +591,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
 
       showAlert('success', `Worker "${name}" onboarded to floor roster.`);
       setAddModal(false);
-      setAddForm({ name: '', phone: '', designation: 'Cutting', wage_type: 'piece_rate', daily_rate: '', password: '' });
+      setAddForm({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '', password: '' });
       setIsOther(false);
       if (onWorkerAdded)
         onWorkerAdded();
@@ -643,10 +643,8 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
       
       if (type === 'check-in') {
         setCheckedInIds(prev => new Set([...prev, ...succeeded]));
-        setCheckedOutIds(prev => { const next = new Set(prev); succeeded.forEach(id => next.delete(id)); return next; });
       } else {
         setCheckedOutIds(prev => new Set([...prev, ...succeeded]));
-        setCheckedInIds(prev => { const next = new Set(prev); succeeded.forEach(id => next.delete(id)); return next; });
       }
 
       setSelected(new Set());
@@ -840,6 +838,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
                     }}
                     className="input-field w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a] relative z-20 cursor-pointer"
                   >
+                    <option value="" disabled>Select Designation</option>
                     <option value="Cutting">Cutting</option>
                     <option value="Fusing">Fusing</option>
                     <option value="Pasting">Pasting</option>

@@ -60,19 +60,38 @@ function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSe
   let pieces = data.detail.pieces || [];
   if (!Array.isArray(pieces)) pieces = pieces.pieces || [];
 
+  const isFilteredBySubmission = lastSubmittedPieceSeqs && lastSubmittedPieceSeqs.length > 0;
+
   if (sku) {
     pieces = pieces.filter(p => {
-      const sizeMatch = !sku.size || String(p.size || '').trim().toLowerCase() === String(sku.size).trim().toLowerCase();
-      const colorMatch = !sku.color_code || 
-        String(p.colour || p.color_code || '').trim().toLowerCase() === String(sku.color_code).trim().toLowerCase() ||
-        String(p.color_name || '').trim().toLowerCase() === String(sku.color_code).trim().toLowerCase();
-      const pieceSeqMatch = !lastSubmittedPieceSeqs || lastSubmittedPieceSeqs.length === 0 || lastSubmittedPieceSeqs.includes(p.seq);
+      const pSize = String(p.size || '').trim().toLowerCase();
+      const skuSize = String(sku.size || '').trim().toLowerCase();
+      const sizeMatch = !skuSize || skuSize === 'n/a' || skuSize === 'default' || pSize === skuSize;
+
+      const pColor = String(p.colour || p.color_code || p.color_name || '').trim().toLowerCase();
+      const skuColor = String(sku.color_code || '').trim().toLowerCase();
+      const colorMatch = !skuColor || skuColor === 'n/a' || skuColor === 'default' || pColor === skuColor || pColor.includes(skuColor) || skuColor.includes(pColor);
+
+      const pSeq = p.seq ?? p.piece_seq ?? p.seq_no ?? p.sequence;
+      const pieceSeqMatch = !isFilteredBySubmission || lastSubmittedPieceSeqs.map(String).includes(String(pSeq));
+
       return sizeMatch && colorMatch && pieceSeqMatch;
     });
   }
 
   return (
     <div className="space-y-6">
+      {isFilteredBySubmission && (
+        <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 text-xs flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+            <span className="font-bold text-amber-900">
+              Showing Analytics for {pieces.length} Recently Submitted Pieces (#{lastSubmittedPieceSeqs.join(', #')})
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
            <div className="text-xs text-slate-500 font-bold mb-1">Article / Style Name</div>
@@ -244,6 +263,7 @@ export default function ProductionLogEntry() {
 
   // Check-in Warning Modal
   const [showCheckInWarning, setShowCheckInWarning] = useState(false);
+  const [showCheckOutWarning, setShowCheckOutWarning] = useState(false);
   const [warningWorkerName, setWarningWorkerName] = useState('');
   const router = useRouter();
 
@@ -420,16 +440,23 @@ export default function ProductionLogEntry() {
 
     // Instant block for non-checked in workers on other stages
     const currentWorker = workers.find(w => w.id === workerId);
-    if (currentWorker && currentWorker.is_checked_in === false) {
-      setWarningWorkerName(currentWorker.name);
-      setShowCheckInWarning(true);
-      
-      // Auto close and redirect after 3 seconds
-      setTimeout(() => {
-        setShowCheckInWarning(false);
-        router.push('/dashboard/entry');
-      }, 2000);
-      return;
+    try {
+      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const rosterData = await response.json();
+      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      if (!workerRoster) {
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckInWarning(true);
+        setTimeout(() => setShowCheckInWarning(false), 2000);
+        return;
+      } else if (workerRoster.check_out_at) {
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckOutWarning(true);
+        setTimeout(() => setShowCheckOutWarning(false), 2000);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to verify attendance", e);
     }
 
     let parsedSeqs = [];
@@ -471,18 +498,27 @@ export default function ProductionLogEntry() {
   const handleConfirmCuttingSave = async () => {
     // Double check check-in status when confirming
     const currentWorker = workers.find(w => w.id === workerId);
-    if (currentWorker && currentWorker.is_checked_in === false) {
-      setShowPrintModal(false);
-      setCuttingPieces([]);
-      setWarningWorkerName(currentWorker.name);
-      setShowCheckInWarning(true);
-      
-      // Auto close and redirect after 3 seconds
-      setTimeout(() => {
-        setShowCheckInWarning(false);
-        router.push('/dashboard/entry');
-      }, 2000);
-      return;
+    try {
+      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const rosterData = await response.json();
+      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      if (!workerRoster) {
+        setShowPrintModal(false);
+        setCuttingPieces([]);
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckInWarning(true);
+        setTimeout(() => setShowCheckInWarning(false), 2000);
+        return;
+      } else if (workerRoster.check_out_at) {
+        setShowPrintModal(false);
+        setCuttingPieces([]);
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckOutWarning(true);
+        setTimeout(() => setShowCheckOutWarning(false), 2000);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to verify attendance", e);
     }
 
     setIsSavingCutting(true);
@@ -546,11 +582,34 @@ export default function ProductionLogEntry() {
       return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
     }) || operations[0];
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
+    const currentWorker = workers.find(w => w.id === workerId);
+    
+    try {
+      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const rosterData = await response.json();
+      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      if (!workerRoster) {
+        setShowChecklistModal(false);
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckInWarning(true);
+        setTimeout(() => setShowCheckInWarning(false), 2000);
+        return;
+      } else if (workerRoster.check_out_at) {
+        setShowChecklistModal(false);
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckOutWarning(true);
+        setTimeout(() => setShowCheckOutWarning(false), 2000);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to verify attendance", e);
+    }
+    
     setChecklistSubmitting(true);
     try {
       await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: selectedPieces });
       setSuccessMsg("Success!"); 
-      setLastSubmittedPieceSeqs(selectedPieces);
+      setLastSubmittedPieceSeqs([...selectedPieces]);
       setShowChecklistModal(false); 
       setSelectedPieces([]);
       setPieceSeqs('');
@@ -1152,29 +1211,35 @@ export default function ProductionLogEntry() {
 
       {/* CHECK-IN WARNING MODAL */}
       {mounted && showCheckInWarning && createPortal(
-        <div className="fixed inset-0 z-[9999999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 space-y-5 text-center">
-            <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center">
-              <AlertTriangle className="w-7 h-7 text-amber-500" />
+        <div className="fixed inset-0 z-[9999999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] rounded-3xl p-8 w-full max-w-xs text-center flex flex-col items-center gap-4 animate-slide-up-fade">
+            <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center shadow-inner border border-amber-100/50">
+              <AlertTriangle className="w-8 h-8 text-amber-500 drop-shadow-sm" />
             </div>
-            <div className="space-y-1.5">
-              <h3 className="text-slate-900 font-black text-base">Worker Not Checked In</h3>
-              <p className="text-slate-500 text-xs font-semibold leading-relaxed">
-                <span className="font-black text-slate-800">{warningWorkerName}</span> has not checked in today.
-                Please mark attendance before logging production.
+            <div>
+              <h3 className="text-slate-800 font-black text-lg tracking-tight">Not Checked In</h3>
+              <p className="text-slate-500 text-xs font-medium mt-1.5 leading-relaxed">
+                <span className="font-bold text-slate-800">{warningWorkerName}</span> has not started their shift yet.
               </p>
-              <p className="text-[10px] text-slate-400 font-semibold">Returning to production logger in 2 seconds...</p>
             </div>
-            <button
-              onClick={() => {
-                setShowCheckInWarning(false);
-                router.push('/dashboard/entry');
-              }}
-              className="w-full py-3 text-xs font-extrabold text-white rounded-xl transition-all hover:-translate-y-0.5 cursor-pointer shadow-md"
-              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-            >
-              OK
-            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* CHECK-OUT WARNING MODAL */}
+      {mounted && showCheckOutWarning && createPortal(
+        <div className="fixed inset-0 z-[9999999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] rounded-3xl p-8 w-full max-w-xs text-center flex flex-col items-center gap-4 animate-slide-up-fade">
+            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center shadow-inner border border-red-100/50">
+              <XCircle className="w-8 h-8 text-red-500 drop-shadow-sm" />
+            </div>
+            <div>
+              <h3 className="text-slate-800 font-black text-lg tracking-tight">Checked Out</h3>
+              <p className="text-slate-500 text-xs font-medium mt-1.5 leading-relaxed">
+                <span className="font-bold text-slate-800">{warningWorkerName}</span> is no longer active today.
+              </p>
+            </div>
           </div>
         </div>,
         document.body
@@ -1420,11 +1485,26 @@ export default function ProductionLogEntry() {
                   {checklistPieces.map((piece) => {
                     const isSelected = selectedPieces.includes(piece.seq);
                     const isDone = piece.done_at_op;
+                    
+                    const sortedOps = [...operations].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+                    const formatStr = (str) => String(str || '').toLowerCase().replace(/[^a-z]/g, '');
+                    const searchOp = formatStr(selectedStage);
+                    const activeOpIndex = sortedOps.findIndex(o => formatStr(o.label) === searchOp);
+                    
+                    const pieceStageLabelStr = formatStr(piece.current_stage_label);
+                    const pieceStageIndex = sortedOps.findIndex(o => 
+                      (piece.current_stage_label && formatStr(o.label) === pieceStageLabelStr) || o.id === piece.current_stage
+                    );
+                    
+                    // Piece is eligible if we are at the first stage, OR if it has reached at least the previous stage
+                    const isEligible = activeOpIndex <= 0 || pieceStageIndex >= (activeOpIndex - 1);
+                    const isDisabled = isDone || !isEligible;
+
                     return (
                       <button
                         key={piece.piece_id || piece.seq}
                         type="button"
-                        disabled={isDone}
+                        disabled={isDisabled}
                         onClick={() => {
                           setSelectedPieces(prev =>
                             prev.includes(piece.seq)
@@ -1432,17 +1512,19 @@ export default function ProductionLogEntry() {
                               : [...prev, piece.seq]
                           );
                         }}
-                        className={`relative p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${isSelected
+                        className={`relative p-3 rounded-xl border-2 text-left transition-all ${!isDisabled ? 'cursor-pointer' : 'cursor-not-allowed'} ${isSelected
                           ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
                           : isDone
                             ? 'border-emerald-200 bg-emerald-50 opacity-70'
-                            : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
+                            : !isEligible
+                              ? 'border-slate-100 bg-slate-50 opacity-50'
+                              : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
                           }`}
                       >
-                        <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : '#2d1f0e' }}>
+                        <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (!isEligible ? '#94a3b8' : '#2d1f0e') }}>
                           #{piece.seq}
                         </p>
-                        <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage || '—'}</p>
+                        <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage || '-'}</p>
                         {isDone && !isSelected && (
                           <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
                             <CheckCircle2 className="w-2.5 h-2.5 text-white" />
@@ -1460,28 +1542,40 @@ export default function ProductionLogEntry() {
               )}
             </div>
 
-            <div className="flex gap-3 p-4 sm:p-6 border-t border-slate-100 shrink-0 bg-white pb-6 sm:pb-6">
-              <button
-                type="button"
-                onClick={() => { setShowChecklistModal(false); setChecklistError(''); }}
-                className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
-                style={{ background: '#f1f5f9', color: '#475569' }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={selectedPieces.length === 0 || checklistSubmitting}
-                onClick={submitChecklist}
-                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0 cursor-pointer"
-                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-              >
-                {checklistSubmitting ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Submitting...</>
-                ) : (
-                  <><Rocket className="w-3.5 h-3.5" /> Submit {selectedPieces.length > 0 ? `${selectedPieces.length} Pieces` : 'Event'}</>
-                )}
-              </button>
+            <div className="flex flex-col gap-2.5 p-4 sm:p-6 border-t border-slate-100 shrink-0 bg-white pb-6 sm:pb-6">
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowChecklistModal(false); setChecklistError(''); }}
+                  className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
+                  style={{ background: '#f1f5f9', color: '#475569' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedPieces.length === 0 || checklistSubmitting}
+                  onClick={submitChecklist}
+                  className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0 cursor-pointer"
+                  style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                >
+                  {checklistSubmitting ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Submitting...</>
+                  ) : (
+                    <><Rocket className="w-3.5 h-3.5" /> Submit {selectedPieces.length > 0 ? `${selectedPieces.length} Pieces` : 'Event'}</>
+                  )}
+                </button>
+              </div>
+
+              {currentSelectedSku && (
+                <Link
+                  href={`/dashboard/analytics?order_number=${encodeURIComponent(currentSelectedSku.order_number || '')}&style_name=${encodeURIComponent(currentSelectedSku.style_name || '')}`}
+                  onClick={() => setShowChecklistModal(false)}
+                  className="w-full py-2.5 rounded-xl text-xs font-extrabold text-[#0ea5e9] bg-[#0ea5e9]/10 border border-[#0ea5e9]/20 shadow-sm flex items-center justify-center gap-1.5 transition-all hover:bg-[#0ea5e9]/20 text-center"
+                >
+                  <Rocket className="w-3.5 h-3.5" /> Navigate to Order Explorer
+                </Link>
+              )}
             </div>
           </div>
         </div>,
