@@ -387,7 +387,7 @@ export default function ProductionLogEntry() {
     
     if (!workerId || !date || !skuCode) return setErrorMsg('Missing mandatory fields');
 
-    const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
+    const activeOp = selectedStage;
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
     // 1. CUTTING STAGE -> Opens Print Modal FIRST
@@ -514,7 +514,7 @@ export default function ProductionLogEntry() {
   };
 
   const openChecklistModal = async () => {
-    const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
+    const activeOp = selectedStage;
     const searchOp = String(activeOp || '').toLowerCase().replace(/[^a-z]/g, '');
     const opRecord = operations.find(o => {
       const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -539,7 +539,7 @@ export default function ProductionLogEntry() {
   };
 
   const submitChecklist = async () => {
-    const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
+    const activeOp = selectedStage;
     const searchOp = String(activeOp || '').toLowerCase().replace(/[^a-z]/g, '');
     const opRecord = operations.find(o => {
       const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -825,7 +825,7 @@ export default function ProductionLogEntry() {
 
               {/* 7 Operation Stage Banners */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['Cutting', 'Fusing', 'Pasting', 'Shell Stitch', 'Lining Stitch', 'Final Finish', 'Others'].map((stage) => {
+                {['Cutting', 'Fusing', 'Pasting', 'Shell Stitch', 'Lining Stitch', 'Final Finish'].map((stage) => {
                   const isSelected = selectedStage === stage;
                   return (
                     <button
@@ -847,19 +847,7 @@ export default function ProductionLogEntry() {
                 })}
               </div>
 
-              {selectedStage === 'Others' && (
-                <div className="flex flex-col gap-1.5 pt-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500">Custom Stage Name</label>
-                  <input
-                    type="text"
-                    placeholder="Enter custom role here..."
-                    value={customDesignation}
-                    onChange={(e) => setCustomDesignation(e.target.value)}
-                    className="h-10 w-full rounded-xl px-3 text-xs font-semibold bg-white border border-slate-200 focus:outline-none"
-                    style={{ borderColor: 'rgba(200,131,74,0.3)', color: '#2d1f0e' }}
-                  />
-                </div>
-              )}
+              {/* Custom Stage Input Removed */}
             </div>
 
             <div className="grid grid-cols-1 gap-8 pt-4">
@@ -1436,6 +1424,7 @@ export default function ProductionLogEntry() {
                       <button
                         key={piece.piece_id || piece.seq}
                         type="button"
+                        disabled={isDone}
                         onClick={() => {
                           setSelectedPieces(prev =>
                             prev.includes(piece.seq)
