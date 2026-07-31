@@ -46,7 +46,7 @@ export default function AdminDashboard() {
   const [workerForm, setWorkerForm] = useState({
     name: '',
     phone: '',
-    designation: 'Cutting',
+    designation: '',
     wage_type: '',
     daily_rate: '',
     password: ''
@@ -133,7 +133,7 @@ export default function AdminDashboard() {
       }
 
       showToast('worker', 'success', `Worker "${name}" successfully registered onto the system roster.`);
-      setWorkerForm({ name: '', phone: '', designation: 'Cutting', wage_type: '', daily_rate: '', password: '' });
+      setWorkerForm({ name: '', phone: '', designation: '', wage_type: '', daily_rate: '', password: '' });
       await refreshUsers();
     } catch (err) {
       showToast('worker', 'error', err.message || 'Onboarding registration failed.');
@@ -278,6 +278,7 @@ export default function AdminDashboard() {
                       }
                     }}
                   >
+                    <option value="" disabled>Select Designation</option>
                     <option value="Cutting">Cutting</option>
                     <option value="Fusing">Fusing</option>
                     <option value="Pasting">Pasting</option>
