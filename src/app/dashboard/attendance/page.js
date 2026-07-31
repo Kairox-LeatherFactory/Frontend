@@ -531,15 +531,17 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
   useEffect(() => {
     async function initStatus() {
       try {
-        const rosterData = await apiFetch('/api/v1/attendance/today', {}, token);
+        const rosterData = await apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token);
         if (rosterData && Array.isArray(rosterData)) {
-          // Find workers who have an active session (checked in, but not checked out)
-          const activeIds = rosterData.filter(r => !r.check_out_at).map(r => String(r.employee_id));
+          // One-time per day logic:
+          // 1. If they have ANY record today, they have already checked in (disable Check-In)
+          const inIds = rosterData.map(r => String(r.employee_id));
           
-          // Only disable Check-In for active workers. 
-          // For inactive workers (checked out or never checked in), BOTH should be enabled.
-          setCheckedInIds(new Set(activeIds));
-          setCheckedOutIds(new Set());
+          // 2. If their record has check_out_at, they have already checked out (disable Check-Out)
+          const outIds = rosterData.filter(r => r.check_out_at).map(r => String(r.employee_id));
+          
+          setCheckedInIds(prev => new Set([...prev, ...inIds]));
+          setCheckedOutIds(prev => new Set([...prev, ...outIds]));
         }
       } catch (e) {
         console.error("Failed to fetch floor roster", e);
