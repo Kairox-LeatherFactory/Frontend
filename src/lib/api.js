@@ -815,3 +815,257 @@ export async function apiGetWageRunDetails(token, runId) {
   if (!res.ok) throw new Error(`Failed to fetch wage run details (${res.status})`);
   return res.json();
 }
+
+/**
+ * ==========================================
+ * BARCODE FEATURE — API CONTRACT V3.0 HELPERS
+ * ==========================================
+ */
+
+/**
+ * 1. GET /api/v1/barcode/resolve?code=...
+ * The single front door for every physical scan
+ */
+export async function apiBarcodeResolve(token, code) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/resolve?code=${encodeURIComponent(code)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 404) {
+    const err = new Error('Barcode code not found in registry');
+    err.status = 404;
+    throw err;
+  }
+  if (res.status === 410) {
+    const err = new Error('Employee code deactivated (label retired)');
+    err.status = 410;
+    throw err;
+  }
+  if (!res.ok) throw new Error(`Failed to resolve barcode (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 2. POST /api/v1/barcode/print
+ * Get printable payload for a set of codes
+ */
+export async function apiBarcodePrint(token, { codes, sku_id, order_id }) {
+  const payload = {};
+  if (codes) payload.codes = codes;
+  if (sku_id) payload.sku_id = sku_id;
+  if (order_id) payload.order_id = order_id;
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/print`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`Failed to generate printable barcodes (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 3. POST /api/v1/production/log
+ * Two-door production logging (Barcode Door or Manual Door)
+ */
+export async function apiProductionLogTwoDoor(token, logData) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/log`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(logData),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Production log failed');
+    throw new Error(errText || `Production log failed (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * 4. PATCH /api/v1/employees/{id}/barcode
+ * Edit, reassign, or deactivate an employee barcode
+ */
+export async function apiPatchEmployeeBarcode(token, employeeId, action) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/employees/${encodeURIComponent(employeeId)}/barcode`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ action }),
+  });
+  if (!res.ok) throw new Error(`Failed to update employee barcode (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 5. POST /api/v1/materials/lots
+ * Create material lot (LEATHER, LINING, ACCESSORY)
+ */
+export async function apiCreateMaterialLot(token, lotData) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/lots`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(lotData),
+  });
+  if (!res.ok) throw new Error(`Failed to create material lot (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 6. GET /api/v1/materials/stock
+ * Check stock on-hand, reserved, available, shortfall
+ */
+export async function apiGetMaterialsStock(token, params = {}) {
+  const query = new URLSearchParams(params).toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/stock?${query}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch material stock (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 7. POST /api/v1/materials/receive
+ * Record receiving approved/rejected quantities
+ */
+export async function apiReceiveMaterials(token, receiveData) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/receive`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(receiveData),
+  });
+  if (!res.ok) throw new Error(`Failed to receive material lot (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 8. POST /api/v1/suppliers/orders
+ * Raise manual supplier order on shortfall
+ */
+export async function apiCreateSupplierOrder(token, orderData) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/suppliers/orders`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(orderData),
+  });
+  if (!res.ok) throw new Error(`Failed to create supplier order (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 9. PATCH /api/v1/suppliers/orders/{id}
+ * Flip status ORDERED -> ARRIVED
+ */
+export async function apiPatchSupplierOrder(token, orderId, status = 'ARRIVED') {
+  const res = await fetch(`${API_BASE_URL}/api/v1/suppliers/orders/${encodeURIComponent(orderId)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error(`Failed to update supplier order status (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 10. POST /api/v1/drawers/store-scan
+ * Store piece into drawer & evaluate completeness
+ */
+export async function apiStoreDrawerScan(token, drawerData) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/store-scan`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(drawerData),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Drawer store scan failed');
+    throw new Error(errText || `Drawer store scan failed (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * 11. POST /api/v1/drawers/{id}/receive
+ * Transition drawer status (RECEIVED / SENDED)
+ */
+export async function apiReceiveDrawer(token, drawerId, transition) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/${encodeURIComponent(drawerId)}/receive`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ transition }),
+  });
+  if (!res.ok) throw new Error(`Failed to update drawer transition (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 12. POST /api/v1/attendance/scan-check-in
+ * Check in/out by scanning employee barcode
+ */
+export async function apiAttendanceScanCheckIn(token, scanData) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/attendance/scan-check-in`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(scanData),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Scan check-in failed');
+    throw new Error(errText || `Scan check-in failed (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * 13. GET /api/v1/analytics/pieces/{code}
+ * Full piece life story & timeline
+ */
+export async function apiGetAnalyticsPieceDetail(token, pieceCode) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/pieces/${encodeURIComponent(pieceCode)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch piece analytics (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 14. GET /api/v1/analytics/consumption
+ * Leather consumed vs stock rollup per style/order
+ */
+export async function apiGetAnalyticsConsumption(token, params = {}) {
+  const query = new URLSearchParams(params).toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/analytics/consumption?${query}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch consumption analytics (${res.status})`);
+  return res.json();
+}
