@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
@@ -59,17 +60,38 @@ function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSe
   let pieces = data.detail.pieces || [];
   if (!Array.isArray(pieces)) pieces = pieces.pieces || [];
 
+  const isFilteredBySubmission = lastSubmittedPieceSeqs && lastSubmittedPieceSeqs.length > 0;
+
   if (sku) {
     pieces = pieces.filter(p => {
-      const sizeMatch = !sku.size || String(p.size).toLowerCase() === String(sku.size).toLowerCase();
-      const colorMatch = !sku.color_code || String(p.colour || p.color_code || '').toLowerCase() === String(sku.color_code).toLowerCase();
-      const pieceSeqMatch = !lastSubmittedPieceSeqs || lastSubmittedPieceSeqs.length === 0 || lastSubmittedPieceSeqs.includes(p.seq);
+      const pSize = String(p.size || '').trim().toLowerCase();
+      const skuSize = String(sku.size || '').trim().toLowerCase();
+      const sizeMatch = !skuSize || skuSize === 'n/a' || skuSize === 'default' || pSize === skuSize;
+
+      const pColor = String(p.colour || p.color_code || p.color_name || '').trim().toLowerCase();
+      const skuColor = String(sku.color_code || '').trim().toLowerCase();
+      const colorMatch = !skuColor || skuColor === 'n/a' || skuColor === 'default' || pColor === skuColor || pColor.includes(skuColor) || skuColor.includes(pColor);
+
+      const pSeq = p.seq ?? p.piece_seq ?? p.seq_no ?? p.sequence;
+      const pieceSeqMatch = !isFilteredBySubmission || lastSubmittedPieceSeqs.map(String).includes(String(pSeq));
+
       return sizeMatch && colorMatch && pieceSeqMatch;
     });
   }
 
   return (
     <div className="space-y-6">
+      {isFilteredBySubmission && (
+        <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 text-xs flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+            <span className="font-bold text-amber-900">
+              Showing Analytics for {pieces.length} Recently Submitted Pieces (#{lastSubmittedPieceSeqs.join(', #')})
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
            <div className="text-xs text-slate-500 font-bold mb-1">Article / Style Name</div>
@@ -239,6 +261,12 @@ export default function ProductionLogEntry() {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isSavingCutting, setIsSavingCutting] = useState(false);
 
+  // Check-in Warning Modal
+  const [showCheckInWarning, setShowCheckInWarning] = useState(false);
+  const [showCheckOutWarning, setShowCheckOutWarning] = useState(false);
+  const [warningWorkerName, setWarningWorkerName] = useState('');
+  const router = useRouter();
+
   // Analytics Modal State
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState({ loading: false, detail: null, error: null });
@@ -305,9 +333,7 @@ export default function ProductionLogEntry() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
-  }, [workers, workerId]);
+
 
   useEffect(() => {
     setSkusLoading(true);
@@ -370,13 +396,18 @@ export default function ProductionLogEntry() {
   const currentSelectedWorker = workers.find(w => w.id === workerId);
 
   // SUBMIT HANDLER: Shows Traveler Card Modal FIRST for Cutting
-  const handleSubmit = async (e) => {
+ const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg(''); setErrorMsg('');
     if (isReadOnly) return setErrorMsg('Unauthorized');
+
+   
+    // Check-in validation removed here to let Traveler Cards modal open first
+
+    
     if (!workerId || !date || !skuCode) return setErrorMsg('Missing mandatory fields');
 
-    const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
+    const activeOp = selectedStage;
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
     // 1. CUTTING STAGE -> Opens Print Modal FIRST
@@ -399,11 +430,34 @@ export default function ProductionLogEntry() {
     }
 
     // 2. OTHER STAGES
-    const opRecord = operations.find(o => 
-      String(o.label || '').toLowerCase() === String(activeOp || '').toLowerCase()
-    ) || operations[0];
+    const searchOp = String(activeOp || '').toLowerCase().replace(/[^a-z]/g, '');
+    const opRecord = operations.find(o => {
+      const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
+      return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
+    }) || operations[0];
 
     if (!opRecord) return setErrorMsg(`Could not find Operation ID for: ${activeOp}`);
+
+    // Instant block for non-checked in workers on other stages
+    const currentWorker = workers.find(w => w.id === workerId);
+    try {
+      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const rosterData = await response.json();
+      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      if (!workerRoster) {
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckInWarning(true);
+        setTimeout(() => setShowCheckInWarning(false), 2000);
+        return;
+      } else if (workerRoster.check_out_at) {
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckOutWarning(true);
+        setTimeout(() => setShowCheckOutWarning(false), 2000);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to verify attendance", e);
+    }
 
     let parsedSeqs = [];
     if (pieceSeqs) {
@@ -442,6 +496,31 @@ export default function ProductionLogEntry() {
 
   // CONFIRM CUTTING API CALL (Triggered ONLY when clicking OK on Traveler Card Modal)
   const handleConfirmCuttingSave = async () => {
+    // Double check check-in status when confirming
+    const currentWorker = workers.find(w => w.id === workerId);
+    try {
+      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const rosterData = await response.json();
+      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      if (!workerRoster) {
+        setShowPrintModal(false);
+        setCuttingPieces([]);
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckInWarning(true);
+        setTimeout(() => setShowCheckInWarning(false), 2000);
+        return;
+      } else if (workerRoster.check_out_at) {
+        setShowPrintModal(false);
+        setCuttingPieces([]);
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckOutWarning(true);
+        setTimeout(() => setShowCheckOutWarning(false), 2000);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to verify attendance", e);
+    }
+
     setIsSavingCutting(true);
     try {
       const skuObj = fetchedSkus.find(s => s.code === skuCode);
@@ -471,8 +550,12 @@ export default function ProductionLogEntry() {
   };
 
   const openChecklistModal = async () => {
-    const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
-    const opRecord = operations.find(o => String(o.label || '').toLowerCase() === String(activeOp || '').toLowerCase()) || operations[0];
+    const activeOp = selectedStage;
+    const searchOp = String(activeOp || '').toLowerCase().replace(/[^a-z]/g, '');
+    const opRecord = operations.find(o => {
+      const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
+      return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
+    }) || operations[0];
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
     if (!opRecord || !skuObj) return setErrorMsg("Operation or SKU invalid");
     setLoadingPieces(true); setShowChecklistModal(true);
@@ -492,14 +575,41 @@ export default function ProductionLogEntry() {
   };
 
   const submitChecklist = async () => {
-    const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
-    const opRecord = operations.find(o => String(o.label || '').toLowerCase() === String(activeOp || '').toLowerCase()) || operations[0];
+    const activeOp = selectedStage;
+    const searchOp = String(activeOp || '').toLowerCase().replace(/[^a-z]/g, '');
+    const opRecord = operations.find(o => {
+      const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
+      return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
+    }) || operations[0];
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
+    const currentWorker = workers.find(w => w.id === workerId);
+    
+    try {
+      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const rosterData = await response.json();
+      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      if (!workerRoster) {
+        setShowChecklistModal(false);
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckInWarning(true);
+        setTimeout(() => setShowCheckInWarning(false), 2000);
+        return;
+      } else if (workerRoster.check_out_at) {
+        setShowChecklistModal(false);
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckOutWarning(true);
+        setTimeout(() => setShowCheckOutWarning(false), 2000);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to verify attendance", e);
+    }
+    
     setChecklistSubmitting(true);
     try {
       await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: selectedPieces });
       setSuccessMsg("Success!"); 
-      setLastSubmittedPieceSeqs(selectedPieces);
+      setLastSubmittedPieceSeqs([...selectedPieces]);
       setShowChecklistModal(false); 
       setSelectedPieces([]);
       setPieceSeqs('');
@@ -601,7 +711,7 @@ export default function ProductionLogEntry() {
 
       {/* BOTTOM-RIGHT TOAST NOTIFICATION */}
       {typeof window !== 'undefined' && createPortal(
-        <div className="fixed bottom-6 right-4 sm:right-6 z-[99999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
+        <div className="fixed bottom-6 right-4 sm:right-6 z-[9999999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
 
           {/* Success Toast */}
           {successMsg && (
@@ -774,7 +884,7 @@ export default function ProductionLogEntry() {
 
               {/* 7 Operation Stage Banners */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['Cutting', 'Fusing', 'Pasting', 'Self Stitch', 'Line Stitch', 'Final Finishing', 'Others'].map((stage) => {
+                {['Cutting', 'Fusing', 'Pasting', 'Shell Stitch', 'Lining Stitch', 'Final Finish'].map((stage) => {
                   const isSelected = selectedStage === stage;
                   return (
                     <button
@@ -796,19 +906,7 @@ export default function ProductionLogEntry() {
                 })}
               </div>
 
-              {selectedStage === 'Others' && (
-                <div className="flex flex-col gap-1.5 pt-1">
-                  <label className="text-[10px] font-black uppercase text-slate-500">Custom Stage Name</label>
-                  <input
-                    type="text"
-                    placeholder="Enter custom role here..."
-                    value={customDesignation}
-                    onChange={(e) => setCustomDesignation(e.target.value)}
-                    className="h-10 w-full rounded-xl px-3 text-xs font-semibold bg-white border border-slate-200 focus:outline-none"
-                    style={{ borderColor: 'rgba(200,131,74,0.3)', color: '#2d1f0e' }}
-                  />
-                </div>
-              )}
+              {/* Custom Stage Input Removed */}
             </div>
 
             <div className="grid grid-cols-1 gap-8 pt-4">
@@ -835,7 +933,7 @@ export default function ProductionLogEntry() {
                   }}
                   className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
                 >
-                  <span className={currentSelectedSku ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
+                  <span className={currentSelectedSku ? "text-slate-900 font-extrabold text-left break-words whitespace-normal" : "text-slate-400"}>
                     {currentSelectedSku
                       ? `[Order #${currentSelectedSku.order_number || 'N/A'}] ${currentSelectedSku.label || `${currentSelectedSku.style_name || ''} · ${currentSelectedSku.color_code || ''} · ${currentSelectedSku.size}`}`
                       : "-- Select / Search Garment SKU --"
@@ -887,7 +985,7 @@ export default function ProductionLogEntry() {
                                 }}
                                 className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
                               >
-                                <div className="truncate pr-2">
+                                <div className="pr-2 break-words whitespace-normal text-left">
                                   <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
                                 </div>
                                 {isSelected && <span className="font-black text-sm shrink-0">✓</span>}
@@ -1111,6 +1209,42 @@ export default function ProductionLogEntry() {
         document.body
       )}
 
+      {/* CHECK-IN WARNING MODAL */}
+      {mounted && showCheckInWarning && createPortal(
+        <div className="fixed inset-0 z-[9999999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] rounded-3xl p-8 w-full max-w-xs text-center flex flex-col items-center gap-4 animate-slide-up-fade">
+            <div className="w-16 h-16 rounded-full bg-amber-50 flex items-center justify-center shadow-inner border border-amber-100/50">
+              <AlertTriangle className="w-8 h-8 text-amber-500 drop-shadow-sm" />
+            </div>
+            <div>
+              <h3 className="text-slate-800 font-black text-lg tracking-tight">Not Checked In</h3>
+              <p className="text-slate-500 text-xs font-medium mt-1.5 leading-relaxed">
+                <span className="font-bold text-slate-800">{warningWorkerName}</span> has not started their shift yet.
+              </p>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* CHECK-OUT WARNING MODAL */}
+      {mounted && showCheckOutWarning && createPortal(
+        <div className="fixed inset-0 z-[9999999] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white/95 backdrop-blur-xl border border-white/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.1)] rounded-3xl p-8 w-full max-w-xs text-center flex flex-col items-center gap-4 animate-slide-up-fade">
+            <div className="w-16 h-16 rounded-full bg-red-50 flex items-center justify-center shadow-inner border border-red-100/50">
+              <XCircle className="w-8 h-8 text-red-500 drop-shadow-sm" />
+            </div>
+            <div>
+              <h3 className="text-slate-800 font-black text-lg tracking-tight">Checked Out</h3>
+              <p className="text-slate-500 text-xs font-medium mt-1.5 leading-relaxed">
+                <span className="font-bold text-slate-800">{warningWorkerName}</span> is no longer active today.
+              </p>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* ANALYTICS POPUP MODAL */}
       {mounted && showAnalyticsModal && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
@@ -1275,37 +1409,37 @@ export default function ProductionLogEntry() {
 
       {/* PIECE CHECKLIST MODAL */}
       {mounted && showChecklistModal && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-end sm:justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-100 w-full sm:max-w-lg h-[92vh] sm:h-auto sm:max-h-[85vh] flex flex-col overflow-hidden relative">
 
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+            <div className="flex justify-between items-center p-4 sm:p-6 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(200,131,74,0.12)' }}>
                   <ListChecks className="w-4 h-4" style={{ color: '#c8834a' }} />
                 </div>
                 <div>
-                  <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Select Pieces — {selectedStage}</h3>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{skuCode}</p>
+                  <h3 className="text-sm sm:text-base font-black line-clamp-1" style={{ color: '#2d1f0e' }}>Select Pieces — {selectedStage}</h3>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 max-w-[250px] sm:max-w-sm whitespace-normal break-words leading-tight">{skuCode}</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowChecklistModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {piecesMeta && (
-              <div className="flex gap-3 px-6 py-3 bg-slate-50 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-500">Total: <strong className="text-slate-700">{piecesMeta.total}</strong></span>
-                <span className="text-xs font-bold text-emerald-600">Done: <strong>{piecesMeta.done}</strong></span>
-                <span className="text-xs font-bold text-amber-600">Pending: <strong>{piecesMeta.pending}</strong></span>
-                <span className="text-xs font-bold ml-auto" style={{ color: '#c8834a' }}>Selected: <strong>{selectedPieces.length}</strong></span>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 sm:px-6 py-2.5 sm:py-3 bg-slate-50 border-b border-slate-100 shrink-0">
+                <span className="text-[11px] sm:text-xs font-bold text-slate-500">Total: <strong className="text-slate-700">{piecesMeta.total}</strong></span>
+                <span className="text-[11px] sm:text-xs font-bold text-emerald-600">Done: <strong>{piecesMeta.done}</strong></span>
+                <span className="text-[11px] sm:text-xs font-bold text-amber-600">Pending: <strong>{piecesMeta.pending}</strong></span>
+                <span className="text-[11px] sm:text-xs font-bold ml-auto" style={{ color: '#c8834a' }}>Selected: <strong>{selectedPieces.length}</strong></span>
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 overscroll-contain">
               {loadingPieces ? (
                 <div className="flex flex-col items-center justify-center h-32 gap-3">
                   <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
@@ -1351,10 +1485,26 @@ export default function ProductionLogEntry() {
                   {checklistPieces.map((piece) => {
                     const isSelected = selectedPieces.includes(piece.seq);
                     const isDone = piece.done_at_op;
+                    
+                    const sortedOps = [...operations].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
+                    const formatStr = (str) => String(str || '').toLowerCase().replace(/[^a-z]/g, '');
+                    const searchOp = formatStr(selectedStage);
+                    const activeOpIndex = sortedOps.findIndex(o => formatStr(o.label) === searchOp);
+                    
+                    const pieceStageLabelStr = formatStr(piece.current_stage_label);
+                    const pieceStageIndex = sortedOps.findIndex(o => 
+                      (piece.current_stage_label && formatStr(o.label) === pieceStageLabelStr) || o.id === piece.current_stage
+                    );
+                    
+                    // Piece is eligible if we are at the first stage, OR if it has reached at least the previous stage
+                    const isEligible = activeOpIndex <= 0 || pieceStageIndex >= (activeOpIndex - 1);
+                    const isDisabled = isDone || !isEligible;
+
                     return (
                       <button
                         key={piece.piece_id || piece.seq}
                         type="button"
+                        disabled={isDisabled}
                         onClick={() => {
                           setSelectedPieces(prev =>
                             prev.includes(piece.seq)
@@ -1362,17 +1512,19 @@ export default function ProductionLogEntry() {
                               : [...prev, piece.seq]
                           );
                         }}
-                        className={`relative p-3 rounded-xl border-2 text-left transition-all cursor-pointer ${isSelected
+                        className={`relative p-3 rounded-xl border-2 text-left transition-all ${!isDisabled ? 'cursor-pointer' : 'cursor-not-allowed'} ${isSelected
                           ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
                           : isDone
                             ? 'border-emerald-200 bg-emerald-50 opacity-70'
-                            : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
+                            : !isEligible
+                              ? 'border-slate-100 bg-slate-50 opacity-50'
+                              : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
                           }`}
                       >
-                        <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : '#2d1f0e' }}>
+                        <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (!isEligible ? '#94a3b8' : '#2d1f0e') }}>
                           #{piece.seq}
                         </p>
-                        <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage || '—'}</p>
+                        <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage || '-'}</p>
                         {isDone && !isSelected && (
                           <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
                             <CheckCircle2 className="w-2.5 h-2.5 text-white" />
@@ -1390,28 +1542,40 @@ export default function ProductionLogEntry() {
               )}
             </div>
 
-            <div className="flex gap-3 p-6 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => { setShowChecklistModal(false); setChecklistError(''); }}
-                className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
-                style={{ background: '#f1f5f9', color: '#475569' }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={selectedPieces.length === 0 || checklistSubmitting}
-                onClick={submitChecklist}
-                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0 cursor-pointer"
-                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-              >
-                {checklistSubmitting ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Submitting...</>
-                ) : (
-                  <><Rocket className="w-3.5 h-3.5" /> Submit {selectedPieces.length > 0 ? `${selectedPieces.length} Pieces` : 'Event'}</>
-                )}
-              </button>
+            <div className="flex flex-col gap-2.5 p-4 sm:p-6 border-t border-slate-100 shrink-0 bg-white pb-6 sm:pb-6">
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setShowChecklistModal(false); setChecklistError(''); }}
+                  className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
+                  style={{ background: '#f1f5f9', color: '#475569' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={selectedPieces.length === 0 || checklistSubmitting}
+                  onClick={submitChecklist}
+                  className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0 cursor-pointer"
+                  style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                >
+                  {checklistSubmitting ? (
+                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Submitting...</>
+                  ) : (
+                    <><Rocket className="w-3.5 h-3.5" /> Submit {selectedPieces.length > 0 ? `${selectedPieces.length} Pieces` : 'Event'}</>
+                  )}
+                </button>
+              </div>
+
+              {currentSelectedSku && (
+                <Link
+                  href={`/dashboard/analytics?order_number=${encodeURIComponent(currentSelectedSku.order_number || '')}&style_name=${encodeURIComponent(currentSelectedSku.style_name || '')}`}
+                  onClick={() => setShowChecklistModal(false)}
+                  className="w-full py-2.5 rounded-xl text-xs font-extrabold text-[#0ea5e9] bg-[#0ea5e9]/10 border border-[#0ea5e9]/20 shadow-sm flex items-center justify-center gap-1.5 transition-all hover:bg-[#0ea5e9]/20 text-center"
+                >
+                  <Rocket className="w-3.5 h-3.5" /> Navigate to Order Explorer
+                </Link>
+              )}
             </div>
           </div>
         </div>,
