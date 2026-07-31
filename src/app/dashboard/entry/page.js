@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
@@ -61,8 +62,10 @@ function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSe
 
   if (sku) {
     pieces = pieces.filter(p => {
-      const sizeMatch = !sku.size || String(p.size).toLowerCase() === String(sku.size).toLowerCase();
-      const colorMatch = !sku.color_code || String(p.colour || p.color_code || '').toLowerCase() === String(sku.color_code).toLowerCase();
+      const sizeMatch = !sku.size || String(p.size || '').trim().toLowerCase() === String(sku.size).trim().toLowerCase();
+      const colorMatch = !sku.color_code || 
+        String(p.colour || p.color_code || '').trim().toLowerCase() === String(sku.color_code).trim().toLowerCase() ||
+        String(p.color_name || '').trim().toLowerCase() === String(sku.color_code).trim().toLowerCase();
       const pieceSeqMatch = !lastSubmittedPieceSeqs || lastSubmittedPieceSeqs.length === 0 || lastSubmittedPieceSeqs.includes(p.seq);
       return sizeMatch && colorMatch && pieceSeqMatch;
     });
@@ -239,6 +242,11 @@ export default function ProductionLogEntry() {
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isSavingCutting, setIsSavingCutting] = useState(false);
 
+  // Check-in Warning Modal
+  const [showCheckInWarning, setShowCheckInWarning] = useState(false);
+  const [warningWorkerName, setWarningWorkerName] = useState('');
+  const router = useRouter();
+
   // Analytics Modal State
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState({ loading: false, detail: null, error: null });
@@ -370,10 +378,15 @@ export default function ProductionLogEntry() {
   const currentSelectedWorker = workers.find(w => w.id === workerId);
 
   // SUBMIT HANDLER: Shows Traveler Card Modal FIRST for Cutting
-  const handleSubmit = async (e) => {
+ const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg(''); setErrorMsg('');
     if (isReadOnly) return setErrorMsg('Unauthorized');
+
+   
+    // Check-in validation removed here to let Traveler Cards modal open first
+
+    
     if (!workerId || !date || !skuCode) return setErrorMsg('Missing mandatory fields');
 
     const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
@@ -404,6 +417,20 @@ export default function ProductionLogEntry() {
     ) || operations[0];
 
     if (!opRecord) return setErrorMsg(`Could not find Operation ID for: ${activeOp}`);
+
+    // Instant block for non-checked in workers on other stages
+    const currentWorker = workers.find(w => w.id === workerId);
+    if (currentWorker && currentWorker.is_checked_in !== true) {
+      setWarningWorkerName(currentWorker.name);
+      setShowCheckInWarning(true);
+      
+      // Auto close and redirect after 3 seconds
+      setTimeout(() => {
+        setShowCheckInWarning(false);
+        router.push('/dashboard/entry');
+      }, 2000);
+      return;
+    }
 
     let parsedSeqs = [];
     if (pieceSeqs) {
@@ -442,6 +469,22 @@ export default function ProductionLogEntry() {
 
   // CONFIRM CUTTING API CALL (Triggered ONLY when clicking OK on Traveler Card Modal)
   const handleConfirmCuttingSave = async () => {
+    // Double check check-in status when confirming
+    const currentWorker = workers.find(w => w.id === workerId);
+    if (currentWorker && currentWorker.is_checked_in !== true) {
+      setShowPrintModal(false);
+      setCuttingPieces([]);
+      setWarningWorkerName(currentWorker.name);
+      setShowCheckInWarning(true);
+      
+      // Auto close and redirect after 3 seconds
+      setTimeout(() => {
+        setShowCheckInWarning(false);
+        router.push('/dashboard/entry');
+      }, 2000);
+      return;
+    }
+
     setIsSavingCutting(true);
     try {
       const skuObj = fetchedSkus.find(s => s.code === skuCode);
@@ -601,7 +644,7 @@ export default function ProductionLogEntry() {
 
       {/* BOTTOM-RIGHT TOAST NOTIFICATION */}
       {typeof window !== 'undefined' && createPortal(
-        <div className="fixed bottom-6 right-4 sm:right-6 z-[99999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
+        <div className="fixed bottom-6 right-4 sm:right-6 z-[9999999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
 
           {/* Success Toast */}
           {successMsg && (
@@ -1106,6 +1149,36 @@ export default function ProductionLogEntry() {
                 )}
               </button>
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* CHECK-IN WARNING MODAL */}
+      {mounted && showCheckInWarning && createPortal(
+        <div className="fixed inset-0 z-[9999999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 space-y-5 text-center">
+            <div className="mx-auto w-14 h-14 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center">
+              <AlertTriangle className="w-7 h-7 text-amber-500" />
+            </div>
+            <div className="space-y-1.5">
+              <h3 className="text-slate-900 font-black text-base">Worker Not Checked In</h3>
+              <p className="text-slate-500 text-xs font-semibold leading-relaxed">
+                <span className="font-black text-slate-800">{warningWorkerName}</span> has not checked in today.
+                Please mark attendance before logging production.
+              </p>
+              <p className="text-[10px] text-slate-400 font-semibold">Returning to production logger in 2 seconds...</p>
+            </div>
+            <button
+              onClick={() => {
+                setShowCheckInWarning(false);
+                router.push('/dashboard/entry');
+              }}
+              className="w-full py-3 text-xs font-extrabold text-white rounded-xl transition-all hover:-translate-y-0.5 cursor-pointer shadow-md"
+              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+            >
+              OK
+            </button>
           </div>
         </div>,
         document.body
