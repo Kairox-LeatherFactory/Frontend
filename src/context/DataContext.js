@@ -122,7 +122,7 @@ export function DataProvider({ children }) {
 
  
   const refreshData = useCallback(() => {
-    fetchFromApi();
+    return fetchFromApi();
   }, [fetchFromApi]);
 
   return (

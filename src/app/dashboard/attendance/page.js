@@ -528,6 +528,28 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
   const [checkedInIds, setCheckedInIds] = useState(new Set());
   const [checkedOutIds, setCheckedOutIds] = useState(new Set());
 
+  useEffect(() => {
+    async function initStatus() {
+      try {
+        const rosterData = await apiFetch('/api/v1/attendance/today', {}, token);
+        if (rosterData && Array.isArray(rosterData)) {
+          // Find workers who have an active session (checked in, but not checked out)
+          const activeIds = rosterData.filter(r => !r.check_out_at).map(r => String(r.employee_id));
+          
+          // Only disable Check-In for active workers. 
+          // For inactive workers (checked out or never checked in), BOTH should be enabled.
+          setCheckedInIds(new Set(activeIds));
+          setCheckedOutIds(new Set());
+        }
+      } catch (e) {
+        console.error("Failed to fetch floor roster", e);
+      }
+    }
+    if (token) {
+      initStatus();
+    }
+  }, [token]);
+
   const showAlert = (type, message) => {
     setAlert({ type, message });
     if (type === 'success') setTimeout(() => setAlert(null), 6000);
@@ -720,13 +742,13 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
                         />
                         {isSelected && isPieceRate && (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-20" onClick={(e) => e.stopPropagation()}>
-                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-in'); }} disabled={actionLoading || !!gps.error || checkedInIds.has(w.id)}
-                              className={`bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer ${checkedInIds.has(w.id) ? 'opacity-50' : ''}`}>
-                              {checkedInIds.has(w.id) ? 'Checked In' : 'Check-In'}
+                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-in'); }} disabled={actionLoading || !!gps.error || checkedInIds.has(String(w.id))}
+                              className={`bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer ${checkedInIds.has(String(w.id)) ? 'opacity-50' : ''}`}>
+                              {checkedInIds.has(String(w.id)) ? 'Checked In' : 'Check-In'}
                             </button>
-                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-out'); }} disabled={actionLoading || !!gps.error || checkedOutIds.has(w.id)}
-                              className={`bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer ${checkedOutIds.has(w.id) ? 'opacity-50' : ''}`}>
-                              {checkedOutIds.has(w.id) ? 'Checked Out' : 'Check-Out'}
+                            <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-out'); }} disabled={actionLoading || !!gps.error || !checkedInIds.has(String(w.id)) || checkedOutIds.has(String(w.id))}
+                              className={`bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer ${checkedOutIds.has(String(w.id)) ? 'opacity-50' : ''}`}>
+                              {checkedOutIds.has(String(w.id)) ? 'Checked Out' : 'Check-Out'}
                             </button>
                           </div>
                         )}

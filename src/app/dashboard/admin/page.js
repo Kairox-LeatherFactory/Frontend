@@ -47,7 +47,7 @@ export default function AdminDashboard() {
     name: '',
     phone: '',
     designation: 'Cutting',
-    wage_type: 'piece_rate',
+    wage_type: '',
     daily_rate: '',
     password: ''
   });
@@ -65,7 +65,7 @@ export default function AdminDashboard() {
     name: '',
     phone: '',
     email: '',
-    role: 'viewer',
+    role: '',
     password: '',
     employee_id: ''
   });
@@ -133,7 +133,7 @@ export default function AdminDashboard() {
       }
 
       showToast('worker', 'success', `Worker "${name}" successfully registered onto the system roster.`);
-      setWorkerForm({ name: '', phone: '', designation: 'Cutting', wage_type: 'piece_rate', daily_rate: '', password: '' });
+      setWorkerForm({ name: '', phone: '', designation: 'Cutting', wage_type: '', daily_rate: '', password: '' });
       await refreshUsers();
     } catch (err) {
       showToast('worker', 'error', err.message || 'Onboarding registration failed.');
@@ -168,7 +168,7 @@ export default function AdminDashboard() {
 
       await apiCreateUser(token, payload);
       showToast('user', 'success', `User account login for "${name}" created successfully.`);
-      setUserForm({ name: '', phone: '', email: '', role: 'viewer', password: '', employee_id: '' });
+      setUserForm({ name: '', phone: '', email: '', role: '', password: '', employee_id: '' });
       await refreshUsers();
     } catch (err) {
       showToast('user', 'error', err.message || 'Failed to create user login.');
@@ -310,6 +310,7 @@ export default function AdminDashboard() {
                 <select className={inputCls}
                   value={workerForm.wage_type}
                   onChange={e => setWorkerForm({ ...workerForm, wage_type: e.target.value, password: '' })}>
+                  <option value="" disabled>-- Select Wage Type --</option>
                   <option value="piece_rate">Piece Rate / Daily Wage</option>
                   <option value="monthly">Monthly Salary</option>
                 </select>
@@ -407,6 +408,7 @@ export default function AdminDashboard() {
                     value={userForm.role}
                     onChange={e => setUserForm({ ...userForm, role: e.target.value })}
                   >
+                    <option value="" disabled>-- Select Role --</option>
                     <option value="viewer">Viewer</option>
                     <option value="supervisor">Supervisor</option>
                     <option value="cutting_manager">Cutting Manager</option>
