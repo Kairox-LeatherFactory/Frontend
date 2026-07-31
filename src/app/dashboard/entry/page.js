@@ -313,9 +313,7 @@ export default function ProductionLogEntry() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  useEffect(() => {
-    if (!workerId && workers.length > 0) setWorkerId(workers[0].id);
-  }, [workers, workerId]);
+
 
   useEffect(() => {
     setSkusLoading(true);
@@ -412,15 +410,17 @@ export default function ProductionLogEntry() {
     }
 
     // 2. OTHER STAGES
-    const opRecord = operations.find(o => 
-      String(o.label || '').toLowerCase() === String(activeOp || '').toLowerCase()
-    ) || operations[0];
+    const searchOp = String(activeOp || '').toLowerCase().replace(/[^a-z]/g, '');
+    const opRecord = operations.find(o => {
+      const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
+      return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
+    }) || operations[0];
 
     if (!opRecord) return setErrorMsg(`Could not find Operation ID for: ${activeOp}`);
 
     // Instant block for non-checked in workers on other stages
     const currentWorker = workers.find(w => w.id === workerId);
-    if (currentWorker && currentWorker.is_checked_in !== true) {
+    if (currentWorker && currentWorker.is_checked_in === false) {
       setWarningWorkerName(currentWorker.name);
       setShowCheckInWarning(true);
       
@@ -471,7 +471,7 @@ export default function ProductionLogEntry() {
   const handleConfirmCuttingSave = async () => {
     // Double check check-in status when confirming
     const currentWorker = workers.find(w => w.id === workerId);
-    if (currentWorker && currentWorker.is_checked_in !== true) {
+    if (currentWorker && currentWorker.is_checked_in === false) {
       setShowPrintModal(false);
       setCuttingPieces([]);
       setWarningWorkerName(currentWorker.name);
@@ -515,7 +515,11 @@ export default function ProductionLogEntry() {
 
   const openChecklistModal = async () => {
     const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
-    const opRecord = operations.find(o => String(o.label || '').toLowerCase() === String(activeOp || '').toLowerCase()) || operations[0];
+    const searchOp = String(activeOp || '').toLowerCase().replace(/[^a-z]/g, '');
+    const opRecord = operations.find(o => {
+      const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
+      return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
+    }) || operations[0];
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
     if (!opRecord || !skuObj) return setErrorMsg("Operation or SKU invalid");
     setLoadingPieces(true); setShowChecklistModal(true);
@@ -536,7 +540,11 @@ export default function ProductionLogEntry() {
 
   const submitChecklist = async () => {
     const activeOp = selectedStage === 'Others' ? customDesignation : selectedStage;
-    const opRecord = operations.find(o => String(o.label || '').toLowerCase() === String(activeOp || '').toLowerCase()) || operations[0];
+    const searchOp = String(activeOp || '').toLowerCase().replace(/[^a-z]/g, '');
+    const opRecord = operations.find(o => {
+      const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
+      return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
+    }) || operations[0];
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
     setChecklistSubmitting(true);
     try {
@@ -817,7 +825,7 @@ export default function ProductionLogEntry() {
 
               {/* 7 Operation Stage Banners */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['Cutting', 'Fusing', 'Pasting', 'Self Stitch', 'Line Stitch', 'Final Finishing', 'Others'].map((stage) => {
+                {['Cutting', 'Fusing', 'Pasting', 'Shell Stitch', 'Lining Stitch', 'Final Finish', 'Others'].map((stage) => {
                   const isSelected = selectedStage === stage;
                   return (
                     <button
@@ -878,7 +886,7 @@ export default function ProductionLogEntry() {
                   }}
                   className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
                 >
-                  <span className={currentSelectedSku ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
+                  <span className={currentSelectedSku ? "text-slate-900 font-extrabold text-left break-words whitespace-normal" : "text-slate-400"}>
                     {currentSelectedSku
                       ? `[Order #${currentSelectedSku.order_number || 'N/A'}] ${currentSelectedSku.label || `${currentSelectedSku.style_name || ''} · ${currentSelectedSku.color_code || ''} · ${currentSelectedSku.size}`}`
                       : "-- Select / Search Garment SKU --"
@@ -930,7 +938,7 @@ export default function ProductionLogEntry() {
                                 }}
                                 className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
                               >
-                                <div className="truncate pr-2">
+                                <div className="pr-2 break-words whitespace-normal text-left">
                                   <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
                                 </div>
                                 {isSelected && <span className="font-black text-sm shrink-0">✓</span>}
@@ -1348,37 +1356,37 @@ export default function ProductionLogEntry() {
 
       {/* PIECE CHECKLIST MODAL */}
       {mounted && showChecklistModal && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
+        <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-end sm:justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl border border-slate-100 w-full sm:max-w-lg h-[92vh] sm:h-auto sm:max-h-[85vh] flex flex-col overflow-hidden relative">
 
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+            <div className="flex justify-between items-center p-4 sm:p-6 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(200,131,74,0.12)' }}>
                   <ListChecks className="w-4 h-4" style={{ color: '#c8834a' }} />
                 </div>
                 <div>
-                  <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Select Pieces — {selectedStage}</h3>
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">{skuCode}</p>
+                  <h3 className="text-sm sm:text-base font-black line-clamp-1" style={{ color: '#2d1f0e' }}>Select Pieces — {selectedStage}</h3>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 max-w-[250px] sm:max-w-sm whitespace-normal break-words leading-tight">{skuCode}</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowChecklistModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer shrink-0"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {piecesMeta && (
-              <div className="flex gap-3 px-6 py-3 bg-slate-50 border-b border-slate-100">
-                <span className="text-xs font-bold text-slate-500">Total: <strong className="text-slate-700">{piecesMeta.total}</strong></span>
-                <span className="text-xs font-bold text-emerald-600">Done: <strong>{piecesMeta.done}</strong></span>
-                <span className="text-xs font-bold text-amber-600">Pending: <strong>{piecesMeta.pending}</strong></span>
-                <span className="text-xs font-bold ml-auto" style={{ color: '#c8834a' }}>Selected: <strong>{selectedPieces.length}</strong></span>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 sm:px-6 py-2.5 sm:py-3 bg-slate-50 border-b border-slate-100 shrink-0">
+                <span className="text-[11px] sm:text-xs font-bold text-slate-500">Total: <strong className="text-slate-700">{piecesMeta.total}</strong></span>
+                <span className="text-[11px] sm:text-xs font-bold text-emerald-600">Done: <strong>{piecesMeta.done}</strong></span>
+                <span className="text-[11px] sm:text-xs font-bold text-amber-600">Pending: <strong>{piecesMeta.pending}</strong></span>
+                <span className="text-[11px] sm:text-xs font-bold ml-auto" style={{ color: '#c8834a' }}>Selected: <strong>{selectedPieces.length}</strong></span>
               </div>
             )}
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6 overscroll-contain">
               {loadingPieces ? (
                 <div className="flex flex-col items-center justify-center h-32 gap-3">
                   <Loader2 className="w-7 h-7 animate-spin" style={{ color: '#c8834a' }} />
@@ -1463,7 +1471,7 @@ export default function ProductionLogEntry() {
               )}
             </div>
 
-            <div className="flex gap-3 p-6 border-t border-slate-100">
+            <div className="flex gap-3 p-4 sm:p-6 border-t border-slate-100 shrink-0 bg-white pb-6 sm:pb-6">
               <button
                 type="button"
                 onClick={() => { setShowChecklistModal(false); setChecklistError(''); }}
