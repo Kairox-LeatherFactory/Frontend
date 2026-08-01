@@ -1871,7 +1871,9 @@ export default function ProductionLogEntry() {
                               <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (!isEligible ? '#94a3b8' : '#2d1f0e') }}>
                                 #{piece.seq}
                               </p>
-                              <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage || '-'}</p>
+                              <p className={`text-[9px] truncate ${isDone ? 'font-black text-emerald-700' : isSelected ? 'font-bold text-[#c8834a]' : 'font-semibold text-slate-400'}`}>
+                                {isDone ? selectedStage : (piece.current_stage_label || piece.current_stage || selectedStage)}
+                              </p>
                               {isDone && !isSelected && (
                                 <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
                                   <CheckCircle2 className="w-2.5 h-2.5 text-white" />
