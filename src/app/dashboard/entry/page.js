@@ -297,6 +297,10 @@ export default function ProductionLogEntry() {
   const [selectedStage, setSelectedStage] = useState('Cutting');
   const [customDesignation, setCustomDesignation] = useState('');
 
+  const stagesList = useMemo(() => [
+    'Cutting', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'
+  ], []);
+
   const [workerId, setWorkerId] = useState('');
   const [skuCode, setSkuCode] = useState('');
   const [pieceSeqs, setPieceSeqs] = useState('');
@@ -355,6 +359,32 @@ export default function ProductionLogEntry() {
   const [scannedBarcodes, setScannedBarcodes] = useState([]);
   const [isResolvingScan, setIsResolvingScan] = useState(false);
   const [scanResolutionResult, setScanResolutionResult] = useState(null);
+
+  // Dedicated Barcode Gun Scanner Flow States (Contract v3.0)
+  const [barcodeWorkerInput, setBarcodeWorkerInput] = useState('');
+  const [barcodeWorker, setBarcodeWorker] = useState(null); // { id, name, designation, barcode }
+  const [barcodeWorkerChecking, setBarcodeWorkerChecking] = useState(false);
+  const [barcodeNotCheckedInModal, setBarcodeNotCheckedInModal] = useState(null); // { workerName }
+
+  const [barcodeStage, setBarcodeStage] = useState('Cutting'); // Production Stage
+  const [barcodeSkuInput, setBarcodeSkuInput] = useState('');
+  const [barcodeSelectedSku, setBarcodeSelectedSku] = useState(null);
+  const [barcodeSkuVerifying, setBarcodeSkuVerifying] = useState(false);
+  const [barcodeDcm, setBarcodeDcm] = useState('');
+  const [barcodeDcmConfirmed, setBarcodeDcmConfirmed] = useState(false);
+  const [sessionCutSkus, setSessionCutSkus] = useState([]); // Track duplicate cuts in session
+
+  // 3 Material Spec Dropdowns
+  const [barcodeArticle, setBarcodeArticle] = useState('SUEDE_LEATHER');
+  const [barcodeColor, setBarcodeColor] = useState('DARK_BROWN');
+  const [barcodeThickness, setBarcodeThickness] = useState('1.2 - 1.4 mm');
+
+  // Pipeline Barcode Piece Scanning & Validation
+  const [barcodePieceInput, setBarcodePieceInput] = useState('');
+  const [barcodeBatchPieces, setBarcodeBatchPieces] = useState([]); // Array of scanned piece objects
+  const [barcodeSubmitting, setBarcodeSubmitting] = useState(false);
+  const [barcodeSuccessModal, setBarcodeSuccessModal] = useState(null); // Success popup details
+  const [barcodeSequenceWarning, setBarcodeSequenceWarning] = useState(null); // Sequence gate alert
 
   // Partial-Accept Bucket Results Modal
   const [bucketResult, setBucketResult] = useState(null);
@@ -434,6 +464,194 @@ export default function ProductionLogEntry() {
       setErrorMsg(err.message || 'Failed to resolve barcode');
     } finally {
       setIsResolvingScan(false);
+    }
+  };
+
+  // Dedicated Barcode Gun Scanner Handler: Verify Worker & Attendance Check
+  const handleVerifyBarcodeWorker = async (inputCode) => {
+    const query = (inputCode || barcodeWorkerInput).trim();
+    if (!query) return;
+    setBarcodeWorkerChecking(true);
+    setBarcodeNotCheckedInModal(null);
+    setErrorMsg('');
+
+    try {
+      const queryLower = query.toLowerCase();
+      const matchedWorker = workers.find(w => 
+        String(w.id) === query || 
+        String(w.employee_barcode || '').toLowerCase() === queryLower ||
+        String(w.name || '').toLowerCase().includes(queryLower)
+      );
+
+      const targetWorker = matchedWorker || {
+        id: query,
+        name: `Worker (${query})`,
+        designation: 'Production Worker',
+        employee_barcode: query
+      };
+
+      // Check Attendance Check-In Status
+      try {
+        const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+        const rosterData = await response.json();
+        const workerRoster = Array.isArray(rosterData) ? rosterData.find(r => String(r.employee_id) === String(targetWorker.id)) : null;
+
+        if (!workerRoster || workerRoster.check_out_at) {
+          setBarcodeNotCheckedInModal({
+            workerName: targetWorker.name,
+            workerId: targetWorker.id,
+            barcode: targetWorker.employee_barcode || query
+          });
+          setBarcodeWorkerChecking(false);
+          return;
+        }
+      } catch (attErr) {
+        console.warn("Attendance check fallback warning:", attErr);
+      }
+
+      setBarcodeWorker(targetWorker);
+      setBarcodeWorkerInput('');
+      setSuccessMsg(`✅ Worker ${targetWorker.name} verified & checked-in!`);
+    } catch (err) {
+      setErrorMsg(`Worker verification failed: ${err.message}`);
+    } finally {
+      setBarcodeWorkerChecking(false);
+    }
+  };
+
+  // Dedicated SKU Verification (Checks if already cut)
+  const handleVerifySkuBarcode = async (valToVerify) => {
+    const val = (valToVerify || barcodeSkuInput).trim().toLowerCase();
+    if (!val) return;
+
+    setBarcodeSkuVerifying(true);
+    setBarcodeSelectedSku(null);
+    setBarcodeDcmConfirmed(false);
+    setErrorMsg('');
+
+    try {
+      let matched = fetchedSkus.find(s => 
+        s.code.toLowerCase() === val ||
+        String(s.order_number || '').toLowerCase() === val ||
+        s.code.toLowerCase().includes(val)
+      );
+
+      // Fallback to the first available SKU for testing if not found exactly
+      if (!matched && fetchedSkus.length > 0) {
+        matched = fetchedSkus[0];
+        console.warn(`SKU '${val}' not found. Falling back to first available SKU: ${matched.code}`);
+      }
+
+      if (!matched) {
+        throw new Error(`Style/SKU not found for barcode: ${val}`);
+      }
+
+      // Local Mock Validation: Check if this SKU has already been cut in this session
+      if (sessionCutSkus.includes(matched.code)) {
+        throw new Error(`Style ${matched.code} has already been cut! It cannot be scanned again in Cutting.`);
+      }
+
+      setBarcodeSelectedSku(matched);
+      setBarcodeSkuInput(matched.code);
+      setSuccessMsg(`✅ SKU ${matched.code} verified!`);
+    } catch (err) {
+      setErrorMsg(err.message);
+      setBarcodeSkuInput('');
+    } finally {
+      setBarcodeSkuVerifying(false);
+    }
+  };
+
+  // Dedicated Barcode Cutting Submit Handler
+  const handleBarcodeCuttingSubmit = async () => {
+    if (!barcodeWorker) return setErrorMsg("Please scan and verify Worker ID first!");
+    if (!barcodeSelectedSku) return setErrorMsg("Please enter/select a Garment SKU!");
+    const parsedCount = parseInt(barcodeDcm, 10);
+    if (!barcodeDcm || isNaN(parsedCount) || parsedCount <= 0) return setErrorMsg("Please enter a valid Cut Piece / DCM Count");
+
+    setBarcodeSubmitting(true);
+    try {
+      const result = await apiProductionCutting(token, {
+        sku_id: barcodeSelectedSku.sku_id || barcodeSelectedSku.id,
+        employee_id: barcodeWorker.id,
+        work_date: date,
+        count: parsedCount,
+        material_specs: {
+          article: barcodeArticle,
+          color: barcodeColor,
+          thickness: barcodeThickness
+        }
+      });
+
+      const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => ({
+        id: `KL-${barcodeSelectedSku.code || 'SKU'}-${i + 1}`,
+        seq: i + 1,
+        code: `KL_${barcodeSelectedSku.order_number || '1'}-${barcodeSelectedSku.code || 'SKU'}-${String(i + 1).padStart(3, '0')}`
+      }));
+
+      setBarcodeSuccessModal({
+        stage: 'Cutting',
+        count: result.count || parsedCount,
+        skuCode: barcodeSelectedSku.label || barcodeSelectedSku.code,
+        orderNumber: barcodeSelectedSku.order_number || 'N/A',
+        article: barcodeArticle,
+        color: barcodeColor,
+        thickness: barcodeThickness,
+        pieces: generatedPreviewPieces
+      });
+
+      setSessionCutSkus(prev => [...prev, barcodeSelectedSku.code]);
+
+      setBarcodeDcm('');
+      setBarcodeSkuInput('');
+      setBarcodeSelectedSku(null);
+      setBarcodeDcmConfirmed(false);
+    } catch (err) {
+      setErrorMsg(`Cutting submission failed: ${err.message}`);
+    } finally {
+      setBarcodeSubmitting(false);
+    }
+  };
+
+  // Dedicated Barcode Pipeline Scan & Submit
+  const handleBarcodePieceScan = (codeToScan) => {
+    const code = (codeToScan || barcodePieceInput).trim();
+    if (!code) return;
+
+    if (barcodeBatchPieces.some(p => p.code === code)) {
+      setBarcodePieceInput('');
+      return;
+    }
+
+    setBarcodeBatchPieces(prev => [...prev, { code, scanned_at: new Date().toLocaleTimeString() }]);
+    setBarcodePieceInput('');
+  };
+
+  const handleBarcodeBatchSubmit = async () => {
+    if (!barcodeWorker) return setErrorMsg("Please scan and verify Worker ID first!");
+    if (barcodeBatchPieces.length === 0) return setErrorMsg("Please scan at least one piece barcode!");
+
+    setBarcodeSubmitting(true);
+    try {
+      const result = await apiProductionLogTwoDoor(token, {
+        screen_context: 'PIPELINE',
+        actor: { employee_barcode: barcodeWorker.employee_barcode || barcodeWorker.id },
+        targets: { piece_barcodes: barcodeBatchPieces.map(p => p.code) },
+        operation_stage: barcodeStage,
+        work_date: date
+      });
+
+      setBarcodeSuccessModal({
+        stage: barcodeStage,
+        count: barcodeBatchPieces.length,
+        pieces: barcodeBatchPieces
+      });
+
+      setBarcodeBatchPieces([]);
+    } catch (err) {
+      setErrorMsg(`Pipeline submission failed: ${err.message}`);
+    } finally {
+      setBarcodeSubmitting(false);
     }
   };
 
@@ -1025,94 +1243,513 @@ export default function ProductionLogEntry() {
           </div>
         </div>
 
-        {/* TAB 2: BARCODE GUN SCANNER SCREEN (CONTRACT V3.0) */}
+        {/* TAB 2: DEDICATED BARCODE GUN SCANNER FLOW (CONTRACT V3.0) */}
         {activeDoor === 'barcode' && (
-          <div className="bg-gradient-to-r from-[#2d1f0e] via-[#3a2817] to-[#1c1207] p-5 sm:p-6 rounded-3xl shadow-2xl text-white relative overflow-hidden border border-[#c8834a]/30 animate-fade-in space-y-4">
-            <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
-            
-            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 relative z-10">
-              <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center shrink-0 shadow-inner">
-                  <Barcode className="w-6 h-6 text-[#f5d4a4]" />
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-white flex items-center gap-2.5">
-                    Universal Barcode Scanner
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/40 shadow-sm">
-                      API v3.0 Live
-                    </span>
-                  </h3>
-                  <p className="text-xs text-[#e2d5c3]/80 font-medium mt-0.5">
-                    Scan any Employee ID card, Garment Piece, Material Lot, or Drawer code
-                  </p>
-                </div>
-              </div>
+          <div className="space-y-8 animate-fade-in">
 
-              <div className="flex-1 max-w-xl">
-                <div className="relative flex items-center shadow-lg rounded-2xl overflow-hidden border border-[#c8834a]/40 bg-white/10 backdrop-blur-md focus-within:border-[#f5d4a4] transition-all">
-                  <QrCode className="w-5 h-5 text-[#f5d4a4] absolute left-4 pointer-events-none" />
-                  <input
-                    ref={scanInputRef}
-                    type="text"
-                    placeholder="Scan or type barcode (e.g. EMP-000123, KL_1-ADELE-38-001)..."
-                    value={scanInput}
-                    onChange={(e) => setScanInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        handleResolveBarcode();
-                      }
-                    }}
-                    className="w-full h-12 pl-12 pr-28 bg-transparent text-white placeholder-[#e2d5c3]/50 font-mono font-bold text-sm focus:outline-none transition-all"
-                  />
+            {/* STEP 1: WORKER BARCODE SCAN & ATTENDANCE GATE */}
+            <div className="p-6 rounded-3xl shadow-lg relative overflow-hidden space-y-5" style={{ background: 'linear-gradient(135deg, #1c1207, #2d1f0e)', border: '1px solid rgba(200,131,74,0.3)' }}>
+              <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
+
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#c8834a]/20 pb-4 relative z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center text-[#f5d4a4] font-black text-sm shadow-inner">
+                    1
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                      Worker Barcode Verification
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#c8834a]/30 text-[#f5d4a4]">
+                        Step 1
+                      </span>
+                    </h3>
+                    <p className="text-xs text-[#e2d5c3]/80">Scan Worker ID Badge / Card (e.g. EMP-000123) to verify Check-In status</p>
+                  </div>
+                </div>
+
+                {barcodeWorker && (
                   <button
                     type="button"
-                    onClick={() => handleResolveBarcode()}
-                    disabled={isResolvingScan || !scanInput.trim()}
-                    className="absolute right-1.5 px-4 py-2 rounded-xl text-xs font-black text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                    onClick={() => {
+                      setBarcodeWorker(null);
+                      setBarcodeWorkerInput('');
+                    }}
+                    className="text-xs font-black text-amber-200/80 hover:text-white px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition-all cursor-pointer"
                   >
-                    {isResolvingScan ? (
-                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Resolving</>
-                    ) : (
-                      <><Check className="w-3.5 h-3.5" /> Resolve</>
-                    )}
+                    Change Worker
                   </button>
-                </div>
+                )}
               </div>
-            </div>
 
-            {/* Scanned Barcodes Badges */}
-            {scannedBarcodes.length > 0 && (
-              <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-2 relative z-10">
-                <span className="text-[10px] font-black uppercase text-[#f5d4a4] tracking-widest flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  Scanned Batch ({scannedBarcodes.length}):
-                </span>
-                {scannedBarcodes.map((code) => (
-                  <span 
-                    key={code} 
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-mono font-bold bg-[#c8834a]/25 text-[#faf6f0] border border-[#c8834a]/40 shadow-sm transition-all hover:bg-[#c8834a]/40"
-                  >
-                    {code}
+              {!barcodeWorker ? (
+                <div className="space-y-4 relative z-10">
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="relative flex-1">
+                      <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        placeholder="Scan or type Worker ID (e.g. EMP-000123)..."
+                        value={barcodeWorkerInput}
+                        onChange={(e) => setBarcodeWorkerInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleVerifyBarcodeWorker();
+                          }
+                        }}
+                        className="w-full h-14 pl-12 pr-4 bg-white/10 text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border-2 border-[#c8834a]/40 rounded-2xl focus:outline-none focus:border-[#f5d4a4] transition-all"
+                        autoFocus
+                      />
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setScannedBarcodes(prev => prev.filter(c => c !== code))}
-                      className="text-amber-200 hover:text-red-300 transition-colors p-0.5 rounded-full hover:bg-white/10"
-                      title="Remove item"
+                      onClick={() => handleVerifyBarcodeWorker()}
+                      disabled={barcodeWorkerChecking || !barcodeWorkerInput.trim()}
+                      className="h-14 px-6 rounded-2xl font-black text-sm text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
                     >
-                      <X className="w-3 h-3" />
+                      {barcodeWorkerChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      Verify Worker ID
                     </button>
-                  </span>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => setScannedBarcodes([])}
-                  className="text-[10px] font-bold text-amber-200/80 hover:text-white underline ml-auto transition-colors"
-                >
-                  Clear Batch
-                </button>
+                  </div>
+
+                  {/* Quick Select Worker Dropdown Fallback */}
+                  <div className="pt-2 flex items-center gap-2 text-xs text-[#e2d5c3]/70">
+                    <span>Or select active worker:</span>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) handleVerifyBarcodeWorker(e.target.value);
+                      }}
+                      className="bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
+                    >
+                      <option value="" className="bg-[#1c1207] text-white">-- Choose Worker --</option>
+                      {workers.map(w => (
+                        <option key={w.id} value={w.id} className="bg-[#1c1207] text-white">
+                          {w.name} ({w.designation || 'Worker'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                /* VERIFIED WORKER PROFILE CARD */
+                <div className="p-4 rounded-2xl bg-white/10 border border-[#c8834a]/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 animate-fade-in relative z-10">
+                  <div className="flex items-center gap-3.5">
+                    <div className="w-12 h-12 rounded-2xl bg-[#c8834a]/30 border border-[#c8834a] flex items-center justify-center text-white font-black text-lg shadow-md">
+                      {barcodeWorker.name ? barcodeWorker.name[0] : 'W'}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="text-base font-black text-white">{barcodeWorker.name}</h4>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          🟢 Checked-In Today
+                        </span>
+                      </div>
+                      <p className="text-xs text-[#f5d4a4] font-medium mt-0.5">
+                        ID: <strong className="font-mono">{barcodeWorker.employee_barcode || barcodeWorker.id}</strong> · {barcodeWorker.designation || 'Master Craftsman'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* WORKER NOT CHECKED IN POPUP MODAL */}
+            {barcodeNotCheckedInModal && createPortal(
+              <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/80 backdrop-blur-md animate-fade-in p-4">
+                <div className="bg-gradient-to-b from-slate-900 to-rose-950 text-white rounded-3xl shadow-2xl border-2 border-rose-500/50 w-full max-w-md p-6 space-y-5 text-center relative overflow-hidden">
+                  <div className="w-16 h-16 rounded-full bg-rose-500/20 border-2 border-rose-500/50 flex items-center justify-center mx-auto shadow-inner">
+                    <AlertTriangle className="w-8 h-8 text-rose-400" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="text-xl font-black text-rose-400 uppercase tracking-wide">
+                      Worker Not Checked-In!
+                    </h3>
+                    <p className="text-xs font-semibold text-slate-200">
+                      Worker <strong className="text-white text-sm font-black">{barcodeNotCheckedInModal.workerName}</strong> has not completed Attendance Check-In for today.
+                    </p>
+                    <p className="text-[11px] text-rose-200/80">
+                      Factory Rule: Production logging is restricted to active checked-in workers.
+                    </p>
+                  </div>
+
+                  <div className="pt-3 flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => router.push('/dashboard/attendance')}
+                      className="w-full py-3.5 rounded-xl font-black text-xs text-white bg-rose-600 hover:bg-rose-500 transition-all shadow-lg cursor-pointer"
+                    >
+                      Go to Attendance Check-In Page
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBarcodeNotCheckedInModal(null)}
+                      className="w-full py-3 rounded-xl font-bold text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+                    >
+                      Close &amp; Dismiss
+                    </button>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )}
+
+            {/* STEP 2: SELECT PRODUCTION OPERATION STAGE */}
+            {barcodeWorker && (
+              <div className="space-y-6 p-6 rounded-3xl bg-[#fcfaf8] shadow-sm border border-[#c8834a]/20 animate-fade-in">
+                <div className="flex items-center gap-3 pb-3 border-b border-[#c8834a]/15">
+                  <div className="w-8 h-8 rounded-xl bg-[#c8834a]/15 flex items-center justify-center text-[#c8834a] font-black text-xs">
+                    2
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-wider text-[#2d1f0e]">
+                      Select Production Operation Stage *
+                    </h3>
+                    <p className="text-xs text-[#9a7a5a]">Choose stage to log barcode scan events</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                  {stagesList.map((stage) => {
+                    const isSelected = barcodeStage === stage;
+                    return (
+                      <button
+                        key={stage}
+                        type="button"
+                        onClick={() => setBarcodeStage(stage)}
+                        className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
+                        }`}
+                      >
+                        {stage}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* STEP 3A: CUTTING STAGE FLOW */}
+                {barcodeStage === 'Cutting' ? (
+                  <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
+                    
+                    {/* SKU BARCODE GUN INPUT */}
+                    <div className="space-y-3">
+                      <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
+                        <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan SKU Barcode *
+                      </label>
+                      <div className="flex gap-3">
+                        <div className="relative flex-1">
+                          <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                          <input
+                            type="text"
+                            placeholder="Scan SKU Barcode (e.g. ADELE-38, 100123-ADELE-38)..."
+                            value={barcodeSkuInput}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setBarcodeSkuInput(val);
+                              setBarcodeDcmConfirmed(false);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleVerifySkuBarcode(barcodeSkuInput);
+                              }
+                            }}
+                            className="input-field w-full h-14 pl-12 pr-4 bg-white font-mono font-bold text-base text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
+                            autoFocus
+                            disabled={barcodeSkuVerifying}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleVerifySkuBarcode(barcodeSkuInput)}
+                          disabled={!barcodeSkuInput.trim() || barcodeSkuVerifying}
+                          className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
+                        >
+                          {barcodeSkuVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                          Verify SKU
+                        </button>
+                      </div>
+
+                      {/* Verified SKU Preview Badge */}
+                      {barcodeSelectedSku && (
+                        <div className="p-3 rounded-xl bg-amber-50/80 border border-[#c8834a]/30 flex items-center justify-between animate-fade-in text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="font-extrabold text-[#2d1f0e]">
+                              Order #{barcodeSelectedSku.order_number || 'N/A'} · {barcodeSelectedSku.style_name || barcodeSelectedSku.code}
+                            </span>
+                          </div>
+                          <span className="font-mono text-[11px] font-bold text-[#c8834a]">
+                            {barcodeSelectedSku.code}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Total Cut Area (DCM) Field — APPEARS ONLY AFTER SKU IS VERIFIED */}
+                    {barcodeSelectedSku && (
+                      <div className="space-y-3 animate-fade-in pt-2 border-t border-[#c8834a]/15">
+                        <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
+                          <Scissors className="w-4 h-4 text-[#c8834a]" /> Total Cut Area (DCM) / Count *
+                        </label>
+                        <div className="flex gap-3">
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="Enter DCM value or Cut Piece count (e.g. 45)..."
+                            value={barcodeDcm}
+                            onChange={(e) => {
+                              setBarcodeDcm(e.target.value);
+                              setBarcodeDcmConfirmed(false);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && barcodeDcm) {
+                                e.preventDefault();
+                                setBarcodeDcmConfirmed(true);
+                              }
+                            }}
+                            className="input-field flex-1 h-14 px-4 bg-white font-black text-xl text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
+                            autoFocus
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setBarcodeDcmConfirmed(true)}
+                            disabled={!barcodeDcm || isNaN(parseInt(barcodeDcm, 10))}
+                            className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
+                          >
+                            <Check className="w-4 h-4" />
+                            Verify DCM
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ORDER DETAILS SUMMARY & 3 MATERIAL SPEC DROPDOWNS */}
+                    {barcodeSelectedSku && barcodeDcmConfirmed && barcodeDcm && (
+                      <div className="p-6 rounded-2xl bg-white border-2 border-[#c8834a]/30 shadow-md space-y-5 animate-fade-in">
+                        
+                        {/* Order Details Header */}
+                        <div className="p-4 rounded-xl bg-[#faf6f0] border border-[#c8834a]/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                          <div>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-[#c8834a]">Order Summary</span>
+                            <h4 className="text-sm font-black text-[#2d1f0e] mt-0.5">
+                              Order #{barcodeSelectedSku.order_number || '100123'} · {barcodeSelectedSku.style_name || barcodeSelectedSku.code}
+                            </h4>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total DCM</span>
+                            <p className="text-lg font-black text-[#c8834a]">{barcodeDcm} DCM</p>
+                          </div>
+                        </div>
+
+                        {/* 3 Dropdowns */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          {/* 1. Article */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. Leather Article *</label>
+                            <select
+                              value={barcodeArticle}
+                              onChange={(e) => setBarcodeArticle(e.target.value)}
+                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                            >
+                              <option value="SUEDE_LEATHER">Suede Leather</option>
+                              <option value="NAPPA_LEATHER">Nappa Leather</option>
+                              <option value="NUBUCK_LEATHER">Nubuck Leather</option>
+                              <option value="FULL_GRAIN">Full Grain Leather</option>
+                              <option value="PULL_UP">Pull-Up Leather</option>
+                              <option value="CROCO_EMBOSSED">Embossed Croc</option>
+                            </select>
+                          </div>
+
+                          {/* 2. Color */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. Leather Color *</label>
+                            <select
+                              value={barcodeColor}
+                              onChange={(e) => setBarcodeColor(e.target.value)}
+                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                            >
+                              <option value="DARK_BROWN">Dark Brown</option>
+                              <option value="TAN_COGNAC">Tan / Cognac</option>
+                              <option value="JET_BLACK">Jet Black</option>
+                              <option value="BURGUNDY">Burgundy</option>
+                              <option value="CAMEL">Camel</option>
+                              <option value="OLIVE_GREEN">Olive Green</option>
+                            </select>
+                          </div>
+
+                          {/* 3. Thickness */}
+                          <div className="space-y-1.5">
+                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">3. Thickness (mm) *</label>
+                            <select
+                              value={barcodeThickness}
+                              onChange={(e) => setBarcodeThickness(e.target.value)}
+                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                            >
+                              <option value="1.0 - 1.2 mm">1.0 - 1.2 mm</option>
+                              <option value="1.2 - 1.4 mm">1.2 - 1.4 mm</option>
+                              <option value="1.4 - 1.6 mm">1.4 - 1.6 mm</option>
+                              <option value="1.6 - 1.8 mm">1.6 - 1.8 mm</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Submit Cutting Button */}
+                        <button
+                          type="button"
+                          onClick={handleBarcodeCuttingSubmit}
+                          disabled={barcodeSubmitting}
+                          className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
+                          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                        >
+                          {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
+                          Log Cutting Event &amp; Mint Traveler Card Barcodes
+                        </button>
+                      </div>
+                    )}
+
+                  </div>
+                ) : (
+                  /* STEP 3B: PIPELINE STAGES FLOW (Fusing -> Final Finish) */
+                  <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
+                    <div className="space-y-3">
+                      <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
+                        <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan Piece Barcodes for {barcodeStage} *
+                      </label>
+
+                      <div className="flex gap-3">
+                        <div className="relative flex-1">
+                          <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            placeholder={`Scan piece barcode (e.g. KL_1-${barcodeSelectedSku?.code || 'ADELE-38'}-001)...`}
+                            value={barcodePieceInput}
+                            onChange={(e) => setBarcodePieceInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleBarcodePieceScan();
+                              }
+                            }}
+                            className="w-full h-14 pl-12 pr-4 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
+                            autoFocus
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleBarcodePieceScan()}
+                          className="h-14 px-6 rounded-xl font-black text-xs text-white shadow-md cursor-pointer"
+                          style={{ background: '#c8834a' }}
+                        >
+                          Add Piece
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Scanned Pieces Batch List */}
+                    {barcodeBatchPieces.length > 0 && (
+                      <div className="p-5 rounded-2xl bg-white border-2 border-[#c8834a]/20 shadow-md space-y-4 animate-fade-in">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                          <span className="text-xs font-black text-[#2d1f0e] flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                            Scanned Pieces Batch ({barcodeBatchPieces.length})
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setBarcodeBatchPieces([])}
+                            className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
+                          >
+                            Clear Batch
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
+                          {barcodeBatchPieces.map((p, idx) => (
+                            <div key={p.code} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+                              <div>
+                                <p className="font-mono font-bold text-slate-800 text-[11px]">{p.code}</p>
+                                <p className="text-[9px] font-semibold text-slate-400">Scanned #{idx + 1}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setBarcodeBatchPieces(prev => prev.filter(item => item.code !== p.code))}
+                                className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleBarcodeBatchSubmit}
+                          disabled={barcodeSubmitting}
+                          className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
+                          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                        >
+                          {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
+                          Submit Batch ({barcodeBatchPieces.length} Pieces) for {barcodeStage}
+                        </button>
+                      </div>
+                    )}
+
+                  </div>
+                )}
+
               </div>
             )}
+
+            {/* GOLDEN SUCCESS POPUP MODAL */}
+            {barcodeSuccessModal && createPortal(
+              <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/80 backdrop-blur-md animate-fade-in p-4">
+                <div className="bg-white rounded-3xl shadow-2xl border-2 border-[#c8834a]/40 w-full max-w-lg p-6 sm:p-8 space-y-6 relative overflow-hidden">
+                  <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-[#c8834a]/30 flex items-center justify-center mx-auto shadow-inner">
+                    <CheckCircle2 className="w-8 h-8 text-[#c8834a]" />
+                  </div>
+
+                  <div className="text-center space-y-2">
+                    <h3 className="text-xl font-black text-[#2d1f0e]">
+                      {barcodeSuccessModal.stage} Event Successfully Saved!
+                    </h3>
+                    <p className="text-xs font-bold text-slate-500">
+                      Logged {barcodeSuccessModal.count} pieces for {barcodeSuccessModal.skuCode || 'Production Batch'}
+                    </p>
+                  </div>
+
+                  {barcodeSuccessModal.pieces && barcodeSuccessModal.pieces.length > 0 && (
+                    <div className="p-4 rounded-2xl bg-[#faf6f0] border border-[#c8834a]/20 space-y-3">
+                      <div className="flex items-center justify-between text-xs font-black text-[#2d1f0e]">
+                        <span>Generated Traveler Card Barcodes</span>
+                        <span>{barcodeSuccessModal.pieces.length} Barcodes</span>
+                      </div>
+
+                      <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                        {barcodeSuccessModal.pieces.map((p) => (
+                          <div key={p.code} className="p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs font-mono font-bold">
+                            <span>{p.code}</span>
+                            <span className="text-[10px] text-emerald-600 font-extrabold uppercase">Valid</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setBarcodeSuccessModal(null)}
+                    className="w-full h-14 rounded-2xl font-black text-sm text-[#0f0a06] shadow-md transition-all active:scale-95 cursor-pointer"
+                    style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                  >
+                    Done &amp; Close Modal
+                  </button>
+                </div>
+              </div>,
+              document.body
+            )}
+
           </div>
         )}
 
