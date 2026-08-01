@@ -999,7 +999,7 @@ export default function ProductionLogEntry() {
           }}
         >
           <Users className="w-4 h-4" />
-          Manual Logger (Legacy Door)
+          Manual Logger 
         </button>
         <button
           type="button"
@@ -1011,7 +1011,7 @@ export default function ProductionLogEntry() {
           }}
         >
           <Barcode className="w-4 h-4" />
-          Barcode Gun Scanner (Contract v3.0)
+          Barcode Gun Scanner 
         </button>
       </div>
 
