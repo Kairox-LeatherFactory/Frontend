@@ -319,6 +319,9 @@ export default function ProductionLogEntry() {
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState({ loading: false, detail: null, error: null });
 
+  // Mode Switcher Tabs: 'manual' (default) vs 'barcode'
+  const [activeDoor, setActiveDoor] = useState('manual');
+
   // Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
@@ -510,7 +513,6 @@ export default function ProductionLogEntry() {
     if (!skuSearchQuery.trim()) return fetchedSkus;
 
     const searchTerms = skuSearchQuery.toLowerCase().trim().split(/\s+/);
-
     return fetchedSkus.filter((s) => {
       const fullText = `[${s.order_number || ''}] ${s.label || ''} ${s.style_name || ''} ${s.color_code || ''} ${s.size || ''} ${s.code || ''}`.toLowerCase();
       return searchTerms.every(term => fullText.includes(term));
@@ -545,23 +547,28 @@ export default function ProductionLogEntry() {
     const activeOp = selectedStage;
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
-    // 1. CUTTING STAGE -> Opens Print Modal FIRST
+    // 1. CUTTING STAGE
     if (activeOp === 'Cutting') {
       const parsedCount = parseInt(cuttingCount, 10);
       if (!cuttingCount || isNaN(parsedCount) || parsedCount <= 0) {
         return setErrorMsg('Please enter a valid total Cut Piece Count');
       }
 
-      // Generate temporary preview pieces array for Traveler Cards
-      const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => ({
-        id: `temp-${i + 1}`,
-        seq: i + 1,
-        code: `${skuObj.code}-${i + 1}`
-      }));
+      // If in Barcode Mode -> Opens Traveler Card Print Modal FIRST
+      if (activeDoor === 'barcode') {
+        const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => ({
+          id: `temp-${i + 1}`,
+          seq: i + 1,
+          code: `${skuObj.code}-${i + 1}`
+        }));
 
-      setCuttingPieces(generatedPreviewPieces);
-      setShowPrintModal(true); // Open Modal First
-      return;
+        setCuttingPieces(generatedPreviewPieces);
+        setShowPrintModal(true); // Open Modal First
+        return;
+      }
+
+      // If in Manual Mode -> Direct Save Without Traveler Card Popup!
+      return handleDirectCuttingSave();
     }
 
     // 2. OTHER STAGES
@@ -630,6 +637,50 @@ export default function ProductionLogEntry() {
   };
 
   // CONFIRM CUTTING API CALL (Triggered ONLY when clicking OK on Traveler Card Modal)
+  const handleDirectCuttingSave = async () => {
+    const currentWorker = workers.find(w => w.id === workerId);
+    try {
+      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const rosterData = await response.json();
+      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      if (!workerRoster) {
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckInWarning(true);
+        setTimeout(() => setShowCheckInWarning(false), 2000);
+        return;
+      } else if (workerRoster.check_out_at) {
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckOutWarning(true);
+        setTimeout(() => setShowCheckOutWarning(false), 2000);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to verify attendance", e);
+    }
+
+    setIsSavingCutting(true);
+    try {
+      const skuObj = fetchedSkus.find(s => s.code === skuCode);
+      const parsedCount = parseInt(cuttingCount, 10);
+
+      const result = await apiProductionCutting(token, {
+        sku_id: skuObj.sku_id,
+        employee_id: workerId,
+        work_date: date,
+        count: parsedCount
+      });
+
+      setSuccessMsg(`✅ Cut ${result.count || parsedCount} pieces successfully saved.`);
+      setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
+      setCuttingCount('');
+      setPieceSeqs('');
+    } catch (err) {
+      setErrorMsg(`Cutting failed: ${err.message}`);
+    } finally {
+      setIsSavingCutting(false);
+    }
+  };
+
   const handleConfirmCuttingSave = async () => {
     // Double check check-in status when confirming
     const currentWorker = workers.find(w => w.id === workerId);
@@ -936,107 +987,138 @@ export default function ProductionLogEntry() {
         document.body
       )}
 
+      {/* TOP TAB BAR (MATCHING ATTENDANCE PAGE STYLE) */}
+      <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
+        <button
+          type="button"
+          onClick={() => setActiveDoor('manual')}
+          className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
+          style={{
+            borderColor: activeDoor === 'manual' ? '#c8834a' : 'transparent',
+            color: activeDoor === 'manual' ? '#c8834a' : '#9a7a5a',
+          }}
+        >
+          <Users className="w-4 h-4" />
+          Manual Logger (Legacy Door)
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveDoor('barcode')}
+          className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
+          style={{
+            borderColor: activeDoor === 'barcode' ? '#c8834a' : 'transparent',
+            color: activeDoor === 'barcode' ? '#c8834a' : '#9a7a5a',
+          }}
+        >
+          <Barcode className="w-4 h-4" />
+          Barcode Gun Scanner (Contract v3.0)
+        </button>
+      </div>
+
       {/* LOGGING FORM CARD */}
       <SpotlightCard className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
 
-        <div className="p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
-          <div className="text-xs font-bold" style={{ color: '#4a3a2a' }}>
+        <div className="p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.25)' }}>
+          <div className="text-xs font-bold flex items-center gap-2" style={{ color: '#4a3a2a' }}>
             <span>Logged By: </span>
-            <span className="text-white px-2 py-0.5 rounded font-black uppercase tracking-wider" style={{ background: '#c8834a' }}>{user.replace('_', ' ')}</span>
+            <span className="text-white px-2.5 py-1 rounded-lg font-black uppercase tracking-wider text-[11px] shadow-sm" style={{ background: '#c8834a' }}>{user.replace('_', ' ')}</span>
           </div>
         </div>
 
-        {/* UNIVERSAL BARCODE SCANNER HEADER BAR (Contract v3.0) */}
-        <div className="bg-gradient-to-r from-[#2d1f0e] via-[#3a2817] to-[#1c1207] p-5 sm:p-6 rounded-3xl shadow-2xl text-white relative overflow-hidden border border-[#c8834a]/30">
-          {/* Subtle background ambient glow */}
-          <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
-          
-          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 relative z-10">
-            <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center shrink-0 shadow-inner">
-                <Barcode className="w-6 h-6 text-[#f5d4a4]" />
+        {/* TAB 2: BARCODE GUN SCANNER SCREEN (CONTRACT V3.0) */}
+        {activeDoor === 'barcode' && (
+          <div className="bg-gradient-to-r from-[#2d1f0e] via-[#3a2817] to-[#1c1207] p-5 sm:p-6 rounded-3xl shadow-2xl text-white relative overflow-hidden border border-[#c8834a]/30 animate-fade-in space-y-4">
+            <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
+            
+            <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 relative z-10">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center shrink-0 shadow-inner">
+                  <Barcode className="w-6 h-6 text-[#f5d4a4]" />
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2.5">
+                    Universal Barcode Scanner
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/40 shadow-sm">
+                      API v3.0 Live
+                    </span>
+                  </h3>
+                  <p className="text-xs text-[#e2d5c3]/80 font-medium mt-0.5">
+                    Scan any Employee ID card, Garment Piece, Material Lot, or Drawer code
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-extrabold text-white flex items-center gap-2.5">
-                  Universal Barcode Scanner
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/40 shadow-sm">
-                    API v3.0 Live
-                  </span>
-                </h3>
-                <p className="text-xs text-[#e2d5c3]/80 font-medium mt-0.5">
-                  Scan any Employee ID card, Garment Piece, Material Lot, or Drawer code
-                </p>
-              </div>
-            </div>
 
-            <div className="flex-1 max-w-xl">
-              <div className="relative flex items-center shadow-lg rounded-2xl overflow-hidden border border-[#c8834a]/40 bg-white/10 backdrop-blur-md focus-within:border-[#f5d4a4] transition-all">
-                <QrCode className="w-5 h-5 text-[#f5d4a4] absolute left-4 pointer-events-none" />
-                <input
-                  ref={scanInputRef}
-                  type="text"
-                  placeholder="Scan or type barcode (e.g. EMP-000123, KL_1-ADELE-38-001)..."
-                  value={scanInput}
-                  onChange={(e) => setScanInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleResolveBarcode();
-                    }
-                  }}
-                  className="w-full h-12 pl-12 pr-28 bg-transparent text-white placeholder-[#e2d5c3]/50 font-mono font-bold text-sm focus:outline-none transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleResolveBarcode()}
-                  disabled={isResolvingScan || !scanInput.trim()}
-                  className="absolute right-1.5 px-4 py-2 rounded-xl text-xs font-black text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
-                >
-                  {isResolvingScan ? (
-                    <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Resolving</>
-                  ) : (
-                    <><Check className="w-3.5 h-3.5" /> Resolve</>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Scanned Barcodes Badges */}
-          {scannedBarcodes.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-2 relative z-10">
-              <span className="text-[10px] font-black uppercase text-[#f5d4a4] tracking-widest flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Scanned Batch ({scannedBarcodes.length}):
-              </span>
-              {scannedBarcodes.map((code) => (
-                <span 
-                  key={code} 
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-mono font-bold bg-[#c8834a]/25 text-[#faf6f0] border border-[#c8834a]/40 shadow-sm transition-all hover:bg-[#c8834a]/40"
-                >
-                  {code}
+              <div className="flex-1 max-w-xl">
+                <div className="relative flex items-center shadow-lg rounded-2xl overflow-hidden border border-[#c8834a]/40 bg-white/10 backdrop-blur-md focus-within:border-[#f5d4a4] transition-all">
+                  <QrCode className="w-5 h-5 text-[#f5d4a4] absolute left-4 pointer-events-none" />
+                  <input
+                    ref={scanInputRef}
+                    type="text"
+                    placeholder="Scan or type barcode (e.g. EMP-000123, KL_1-ADELE-38-001)..."
+                    value={scanInput}
+                    onChange={(e) => setScanInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleResolveBarcode();
+                      }
+                    }}
+                    className="w-full h-12 pl-12 pr-28 bg-transparent text-white placeholder-[#e2d5c3]/50 font-mono font-bold text-sm focus:outline-none transition-all"
+                  />
                   <button
                     type="button"
-                    onClick={() => setScannedBarcodes(prev => prev.filter(c => c !== code))}
-                    className="text-amber-200 hover:text-red-300 transition-colors p-0.5 rounded-full hover:bg-white/10"
-                    title="Remove item"
+                    onClick={() => handleResolveBarcode()}
+                    disabled={isResolvingScan || !scanInput.trim()}
+                    className="absolute right-1.5 px-4 py-2 rounded-xl text-xs font-black text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
                   >
-                    <X className="w-3 h-3" />
+                    {isResolvingScan ? (
+                      <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Resolving</>
+                    ) : (
+                      <><Check className="w-3.5 h-3.5" /> Resolve</>
+                    )}
                   </button>
-                </span>
-              ))}
-              <button
-                type="button"
-                onClick={() => setScannedBarcodes([])}
-                className="text-[10px] font-bold text-amber-200/80 hover:text-white underline ml-auto transition-colors"
-              >
-                Clear Batch
-              </button>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
+            {/* Scanned Barcodes Badges */}
+            {scannedBarcodes.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-2 relative z-10">
+                <span className="text-[10px] font-black uppercase text-[#f5d4a4] tracking-widest flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Scanned Batch ({scannedBarcodes.length}):
+                </span>
+                {scannedBarcodes.map((code) => (
+                  <span 
+                    key={code} 
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-mono font-bold bg-[#c8834a]/25 text-[#faf6f0] border border-[#c8834a]/40 shadow-sm transition-all hover:bg-[#c8834a]/40"
+                  >
+                    {code}
+                    <button
+                      type="button"
+                      onClick={() => setScannedBarcodes(prev => prev.filter(c => c !== code))}
+                      className="text-amber-200 hover:text-red-300 transition-colors p-0.5 rounded-full hover:bg-white/10"
+                      title="Remove item"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </span>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setScannedBarcodes([])}
+                  className="text-[10px] font-bold text-amber-200/80 hover:text-white underline ml-auto transition-colors"
+                >
+                  Clear Batch
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* TAB 1: MANUAL LOGGER FORM SCREEN (LEGACY DOOR) */}
+        {activeDoor === 'manual' && (
+          <form onSubmit={handleSubmit} className="space-y-8 animate-fade-in">
 
           {/* STEP 1: Worker Selection */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
@@ -1216,7 +1298,7 @@ export default function ProductionLogEntry() {
                         </div>
                       ) : searchFilteredSkus.length > 0 ? (
                         <>
-                          {searchFilteredSkus.slice(0, visibleCount).map((s) => {
+                          {searchFilteredSkus.slice(0, visibleCount).map((s, idx) => {
                             const isSelected = skuCode === s.code;
                             return (
                               <button
@@ -1226,9 +1308,18 @@ export default function ProductionLogEntry() {
                                   setSkuCode(s.code);
                                   setIsSkuOpen(false);
                                 }}
-                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-1 cursor-pointer border ${
+                                  isSelected 
+                                    ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm' 
+                                    : 'hover:bg-amber-50/60 text-slate-800 border-transparent'
+                                }`}
                               >
-                                <div className="pr-2 break-words whitespace-normal text-left">
+                                <div className="pr-2 break-words whitespace-normal text-left flex flex-col gap-0.5">
+                                  {isSelected && (
+                                    <span className="text-[9px] font-black uppercase tracking-wider text-amber-200">
+                                      ★ Current Active Style
+                                    </span>
+                                  )}
                                   <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
                                 </div>
                                 {isSelected && <span className="font-black text-sm shrink-0">✓</span>}
@@ -1381,6 +1472,7 @@ export default function ProductionLogEntry() {
           </div>
 
         </form>
+        )}
 
       </SpotlightCard>
 
@@ -1698,81 +1790,104 @@ export default function ProductionLogEntry() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <div className="col-span-2 sm:col-span-3 flex gap-2 mb-2">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPieces(checklistPieces.filter(p => !p.done_at_op).map(p => p.seq))}
-                      className="text-[10px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                      style={{ background: 'rgba(200,131,74,0.12)', color: '#c8834a' }}
-                    >
-                      Select All Pending
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPieces([])}
-                      className="text-[10px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all"
-                      style={{ background: '#f1f5f9', color: '#475569' }}
-                    >
-                      Deselect All
-                    </button>
-                  </div>
+                  {(() => {
+                    const stageOrder = ['cut', 'fusing', 'pasting', 'linestitch', 'shellstitch', 'finalfinish'];
+                    const normalizeStageName = (str) => {
+                      const s = String(str || '').toLowerCase().replace(/[^a-z]/g, '');
+                      if (s.includes('cut')) return 'cut';
+                      if (s.includes('fuse')) return 'fusing';
+                      if (s.includes('paste')) return 'pasting';
+                      if (s.includes('line') || s.includes('lining')) return 'linestitch';
+                      if (s.includes('shell') || s.includes('stitch') || s.includes('sew')) return 'shellstitch';
+                      if (s.includes('finish') || s.includes('final')) return 'finalfinish';
+                      return s;
+                    };
 
-                  {checklistPieces.map((piece) => {
-                    const isSelected = selectedPieces.includes(piece.seq);
-                    const isDone = piece.done_at_op;
-                    
-                    const sortedOps = [...operations].sort((a, b) => (a.display_order || 0) - (b.display_order || 0));
-                    const formatStr = (str) => String(str || '').toLowerCase().replace(/[^a-z]/g, '');
-                    const searchOp = formatStr(selectedStage);
-                    const activeOpIndex = sortedOps.findIndex(o => formatStr(o.label) === searchOp);
-                    
-                    const pieceStageLabelStr = formatStr(piece.current_stage_label);
-                    const pieceStageIndex = sortedOps.findIndex(o => 
-                      (piece.current_stage_label && formatStr(o.label) === pieceStageLabelStr) || o.id === piece.current_stage
-                    );
-                    
-                    // Piece is eligible if we are at the first stage, OR if it has reached at least the previous stage
-                    const isEligible = activeOpIndex <= 0 || pieceStageIndex >= (activeOpIndex - 1);
-                    const isDisabled = isDone || !isEligible;
+                    const isPieceEligible = (p) => {
+                      if (p.done_at_op) return false;
+                      const activeNorm = normalizeStageName(selectedStage);
+                      const activeOpIdx = stageOrder.indexOf(activeNorm);
+                      const pieceNorm = normalizeStageName(p.current_stage_label || p.current_stage);
+
+                      // Factory Rule: Pieces at Cutting ('cut') are ONLY enabled in Cutting (0) & Fusing (1).
+                      // From Pasting (2) onwards, Cutting pieces are BLOCKED & DISABLED!
+                      if (pieceNorm === 'cut' && activeOpIdx >= 2) {
+                        return false;
+                      }
+                      return true;
+                    };
 
                     return (
-                      <button
-                        key={piece.piece_id || piece.seq}
-                        type="button"
-                        disabled={isDisabled}
-                        onClick={() => {
-                          setSelectedPieces(prev =>
-                            prev.includes(piece.seq)
-                              ? prev.filter(s => s !== piece.seq)
-                              : [...prev, piece.seq]
+                      <>
+                        <div className="col-span-2 sm:col-span-3 flex gap-2 mb-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const eligibleSeqs = checklistPieces.filter(p => isPieceEligible(p)).map(p => p.seq);
+                              setSelectedPieces(eligibleSeqs);
+                            }}
+                            className="text-[10px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                            style={{ background: 'rgba(200,131,74,0.12)', color: '#c8834a' }}
+                          >
+                            Select All Pending
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedPieces([])}
+                            className="text-[10px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all"
+                            style={{ background: '#f1f5f9', color: '#475569' }}
+                          >
+                            Deselect All
+                          </button>
+                        </div>
+
+                        {checklistPieces.map((piece) => {
+                          const isSelected = selectedPieces.includes(piece.seq);
+                          const isDone = piece.done_at_op;
+                          const isEligible = isPieceEligible(piece);
+                          const isDisabled = isDone || !isEligible;
+
+                          return (
+                            <button
+                              key={piece.piece_id || piece.seq}
+                              type="button"
+                              disabled={isDisabled}
+                              onClick={() => {
+                                setSelectedPieces(prev =>
+                                  prev.includes(piece.seq)
+                                    ? prev.filter(s => s !== piece.seq)
+                                    : [...prev, piece.seq]
+                                );
+                              }}
+                              className={`relative p-3 rounded-xl border-2 text-left transition-all ${!isDisabled ? 'cursor-pointer' : 'cursor-not-allowed'} ${isSelected
+                                ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
+                                : isDone
+                                  ? 'border-emerald-200 bg-emerald-50 opacity-70'
+                                  : !isEligible
+                                    ? 'border-slate-100 bg-slate-50 opacity-50'
+                                    : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
+                              }`}
+                            >
+                              <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (!isEligible ? '#94a3b8' : '#2d1f0e') }}>
+                                #{piece.seq}
+                              </p>
+                              <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage || '-'}</p>
+                              {isDone && !isSelected && (
+                                <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
+                                  <CheckCircle2 className="w-2.5 h-2.5 text-white" />
+                                </span>
+                              )}
+                              {isSelected && (
+                                <span className="absolute top-1 right-1 w-3 h-3 rounded-full flex items-center justify-center" style={{ background: '#c8834a' }}>
+                                  <span className="w-1.5 h-1.5 rounded-full bg-white" />
+                                </span>
+                              )}
+                            </button>
                           );
-                        }}
-                        className={`relative p-3 rounded-xl border-2 text-left transition-all ${!isDisabled ? 'cursor-pointer' : 'cursor-not-allowed'} ${isSelected
-                          ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
-                          : isDone
-                            ? 'border-emerald-200 bg-emerald-50 opacity-70'
-                            : !isEligible
-                              ? 'border-slate-100 bg-slate-50 opacity-50'
-                              : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
-                          }`}
-                      >
-                        <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (!isEligible ? '#94a3b8' : '#2d1f0e') }}>
-                          #{piece.seq}
-                        </p>
-                        <p className="text-[9px] font-semibold text-slate-400 truncate">{piece.current_stage_label || piece.current_stage || '-'}</p>
-                        {isDone && !isSelected && (
-                          <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
-                            <CheckCircle2 className="w-2.5 h-2.5 text-white" />
-                          </span>
-                        )}
-                        {isSelected && (
-                          <span className="absolute top-1 right-1 w-3 h-3 rounded-full flex items-center justify-center" style={{ background: '#c8834a' }}>
-                            <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                          </span>
-                        )}
-                      </button>
+                        })}
+                      </>
                     );
-                  })}
+                  })()}
                 </div>
               )}
             </div>
