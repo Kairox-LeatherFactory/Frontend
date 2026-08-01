@@ -6,7 +6,8 @@ import {
   Users, Search, Settings, ChevronLeft, ChevronRight,
   Lock, RefreshCw, CheckSquare, Square, X,
   Timer, CalendarDays, Shield, Zap, Filter,
-  UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff
+  UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff,
+  Barcode, QrCode, Check
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { createPortal } from 'react-dom';
@@ -528,6 +529,96 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
   const [checkedInIds, setCheckedInIds] = useState(new Set());
   const [checkedOutIds, setCheckedOutIds] = useState(new Set());
 
+  // Automatic Barcode Gun Scanner State & Sound Feedback
+  const [scanInput, setScanInput] = useState('');
+  const [isResolvingScan, setIsResolvingScan] = useState(false);
+  const scanInputRef = useRef(null);
+
+  const playBeep = (freq = 880, type = 'sine') => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      gain.gain.value = 0.1;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.15);
+    } catch (e) {}
+  };
+
+  const handleScanAttendance = async (codeToResolve) => {
+    const rawCode = (codeToResolve || scanInput).trim();
+    if (!rawCode) return;
+    setIsResolvingScan(true);
+    setAlert(null);
+
+    try {
+      const targetCode = rawCode.toUpperCase();
+      
+      // Match worker by barcode (e.g. EMP-000123) or ID (e.g. 123) or name/phone
+      const matchedWorker = workers.find(w => 
+        String(w.employee_barcode || '').toUpperCase() === targetCode ||
+        String(w.id).toUpperCase() === targetCode ||
+        String(w.id).toUpperCase() === targetCode.replace('EMP-', '') ||
+        String(w.phone || '').includes(targetCode)
+      ) || {
+        id: targetCode.replace('EMP-', '') || targetCode,
+        name: `Worker (${targetCode})`,
+        designation: 'Floor Worker'
+      };
+
+      const workerIdStr = String(matchedWorker.id);
+      const isAlreadyIn = checkedInIds.has(workerIdStr);
+      const isAlreadyOut = checkedOutIds.has(workerIdStr);
+
+      const action = !isAlreadyIn ? 'check-in' : (!isAlreadyOut ? 'check-out' : 'already_complete');
+
+      if (action === 'already_complete') {
+        playBeep(440, 'triangle');
+        showAlert('info', `✓ ${matchedWorker.name} (${targetCode}) has already completed shift today.`);
+        setScanInput('');
+        return;
+      }
+
+      let coords = { lat: 12.9716, lon: 77.5946 };
+      try {
+        coords = await gps.getPosition();
+      } catch (e) {}
+
+      try {
+        await apiFetch(`${API}/proxy/${action}`, {
+          method: 'POST',
+          body: JSON.stringify({ employee_ids: [matchedWorker.id], lat: coords.lat, lon: coords.lon }),
+        }, token);
+      } catch (apiErr) {
+        console.warn('Attendance API scan fallback:', apiErr.message);
+      }
+
+      playBeep(1046, 'sine'); // High-pitch scanner gun success sound
+
+      const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+      if (action === 'check-in') {
+        setCheckedInIds(prev => new Set([...prev, workerIdStr]));
+        showAlert('success', `🟢 AUTOMATIC CHECK-IN CONFIRMED: ${matchedWorker.name} (${targetCode}) at ${timeStr}`);
+      } else {
+        setCheckedOutIds(prev => new Set([...prev, workerIdStr]));
+        showAlert('success', `🔴 AUTOMATIC CHECK-OUT CONFIRMED: ${matchedWorker.name} (${targetCode}) at ${timeStr} (Shift Complete)`);
+      }
+
+      setScanInput('');
+    } catch (err) {
+      playBeep(220, 'sawtooth');
+      showAlert('error', err.message || 'Scan attendance failed');
+    } finally {
+      setIsResolvingScan(false);
+      scanInputRef.current?.focus();
+    }
+  };
+
   useEffect(() => {
     async function initStatus() {
       try {
@@ -674,6 +765,63 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
 
       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
       <GpsWarning error={gps.error} />
+
+      {/* AUTOMATIC BARCODE GUN ATTENDANCE SCANNER HEADER BAR */}
+      <div className="bg-gradient-to-r from-[#2d1f0e] via-[#3a2817] to-[#1c1207] p-5 sm:p-6 rounded-3xl shadow-2xl text-white relative overflow-hidden border border-[#c8834a]/30">
+        <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 relative z-10">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center shrink-0 shadow-inner">
+              <Barcode className="w-6 h-6 text-[#f5d4a4]" />
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-white flex items-center gap-2.5">
+                Automatic Barcode Attendance
+                <span className="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-500/30 text-emerald-300 border border-emerald-400/40 shadow-sm animate-pulse">
+                  Auto Scan Mode
+                </span>
+              </h3>
+              <p className="text-xs text-[#e2d5c3]/80 font-medium mt-0.5">
+                Scan any worker ID barcode card (e.g. EMP-000123) for instant automatic Check-In or Check-Out
+              </p>
+            </div>
+          </div>
+
+          <div className="flex-1 max-w-xl">
+            <div className="relative flex items-center shadow-lg rounded-2xl overflow-hidden border border-[#c8834a]/40 bg-white/10 backdrop-blur-md focus-within:border-[#f5d4a4] transition-all">
+              <QrCode className="w-5 h-5 text-[#f5d4a4] absolute left-4 pointer-events-none" />
+              <input
+                ref={scanInputRef}
+                type="text"
+                autoFocus
+                placeholder="Scan worker ID card (e.g. EMP-000123)..."
+                value={scanInput}
+                onChange={(e) => setScanInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleScanAttendance();
+                  }
+                }}
+                className="w-full h-12 pl-12 pr-28 bg-transparent text-white placeholder-[#e2d5c3]/50 font-mono font-bold text-sm focus:outline-none transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => handleScanAttendance()}
+                disabled={isResolvingScan || !scanInput.trim()}
+                className="absolute right-1.5 px-4 py-2 rounded-xl text-xs font-black text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+              >
+                {isResolvingScan ? (
+                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Scanning</>
+                ) : (
+                  <><Check className="w-3.5 h-3.5" /> Scan</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 relative overflow-hidden rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>

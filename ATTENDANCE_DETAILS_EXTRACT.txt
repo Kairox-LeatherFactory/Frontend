@@ -1,0 +1,512 @@
+=== MATCH AT LINE 8 ===
+Phase 1 · 12 modules · one worked example followed all the way through
+This document explains what the system does, in the order it actually happens on a factory floor. One real order is
+followed from the client's email to the packed carton, and every module is introduced at the moment it first matters.
+Read it top to bottom once. After that, §14 is the module-by-module reference.
+Scope
+app/core + users, clients, employees, attendance, imports, barcode,
+materials, production, drawers, wages, analytics — 11 modules + core =
+12
+Not
+covered
+bom, procurement, inventory, supplier_po — Phase 2, documented
+separately
+Stack FastAPI (async) · SQLAlchemy 2.0 async · Pydantic v2 · PostgreSQL
+(Supabase) · Alembic · Celery
+Companion
+doc docs/API_REFERENCE_FRONTEND.md — every endpoint, request and response
+1. What KairoX is, in one paragraph
+KairoX runs a leather garment factory. Its job is per-piece traceability: every individual jacket carries a barcode from
+the moment the breakdown sheet is uploaded, and every single thing that happens to it — cut, fused, pasted, stitched,
+stored, inspected, packed — is scanned and written against that barcode. From that one spine the system derives
+production progress, material consumption, worker attendance, and payroll.
+What it does not do in Phase 1: costing. The Managing Director prices a BOM by hand and emails it to the client. The
+system is the system of record and the tracking layer; humans still drive the commercial decisions.
+2. The cast
+Ten roles. Who someone is decides which screens they see and which stages they may log.
+Role Enum value What they do all day
+Managing
+Director managing_directorSuperuser. Finalises costing. Bypasses every gate.
+Direct
+Managerdirect_managerThe designer. Uploads breakdowns, releases drawers,
+sets wage rates, runs payroll. Also bypasses gates.
+--- PAGE BREAK ---
+Role Enum value What they do all day
+Cutting
+Managercutting_managerLogs leather cutting and fusing. Creates material lots.
+Lining
+Managerlining_managerLogs the lining-cut path.
+Stitching
+Managerstitching_managerLogs pasting, line stitching, shell stitching.
+Supervisorsupervisor Marks daily-wage workers present by proxy.
+
+==========================
+
+=== MATCH AT LINE 23 ===
+doc docs/API_REFERENCE_FRONTEND.md — every endpoint, request and response
+1. What KairoX is, in one paragraph
+KairoX runs a leather garment factory. Its job is per-piece traceability: every individual jacket carries a barcode from
+the moment the breakdown sheet is uploaded, and every single thing that happens to it — cut, fused, pasted, stitched,
+stored, inspected, packed — is scanned and written against that barcode. From that one spine the system derives
+production progress, material consumption, worker attendance, and payroll.
+What it does not do in Phase 1: costing. The Managing Director prices a BOM by hand and emails it to the client. The
+system is the system of record and the tracking layer; humans still drive the commercial decisions.
+2. The cast
+Ten roles. Who someone is decides which screens they see and which stages they may log.
+Role Enum value What they do all day
+Managing
+Director managing_directorSuperuser. Finalises costing. Bypasses every gate.
+Direct
+Managerdirect_managerThe designer. Uploads breakdowns, releases drawers,
+sets wage rates, runs payroll. Also bypasses gates.
+--- PAGE BREAK ---
+Role Enum value What they do all day
+Cutting
+Managercutting_managerLogs leather cutting and fusing. Creates material lots.
+Lining
+Managerlining_managerLogs the lining-cut path.
+Stitching
+Managerstitching_managerLogs pasting, line stitching, shell stitching.
+Supervisorsupervisor Marks daily-wage workers present by proxy.
+HR hr Employees, designations, wage visibility.
+Employeeemployee Only their own attendance and their own barcode. Nothing
+else.
+Client client Read-only views of their own orders.
+Viewer viewer Read-only.
+Two rules that shape everything:
+MD and DM bypass every role gate. Convenient, and worth knowing when you test permissions — a
+walkthrough done entirely as the MD proves none of them work.
+An employee token can reach exactly three things: log in, their own attendance, and resolving their own
+barcode. Every manager router is wrapped in a block_employees dependency.
+3. The data hierarchy
+Client                     "John Peter"          (the buyer) 
+ └── ClientOrder           "JP-2026-014"         (one purchase order) 
+      └── Style            "CLERMONT"            (one garment design) 
+           └── SKU         colour + size + qty   (what actually gets made) 
+
+==========================
+
+=== MATCH AT LINE 44 ===
+Managerlining_managerLogs the lining-cut path.
+Stitching
+Managerstitching_managerLogs pasting, line stitching, shell stitching.
+Supervisorsupervisor Marks daily-wage workers present by proxy.
+HR hr Employees, designations, wage visibility.
+Employeeemployee Only their own attendance and their own barcode. Nothing
+else.
+Client client Read-only views of their own orders.
+Viewer viewer Read-only.
+Two rules that shape everything:
+MD and DM bypass every role gate. Convenient, and worth knowing when you test permissions — a
+walkthrough done entirely as the MD proves none of them work.
+An employee token can reach exactly three things: log in, their own attendance, and resolving their own
+barcode. Every manager router is wrapped in a block_employees dependency.
+3. The data hierarchy
+Client                     "John Peter"          (the buyer) 
+ └── ClientOrder           "JP-2026-014"         (one purchase order) 
+      └── Style            "CLERMONT"            (one garment design) 
+           └── SKU         colour + size + qty   (what actually gets made) 
+                └── Piece  ONE physical jacket    ← the tracked unit 
+Piece is the atom. Its code is the barcode printed on the label. A piece also carries needs_lining (from the
+breakdown) and drawer_id (its storage slot).
+THE WORKED EXAMPLE
+Everything from here follows one order.
+--- PAGE BREAK ---
+The order. John Peter (Italy) emails an order sheet and a spec sheet. One purchase order, JP-2026-014. One
+style, CLERMONT, article CL1. Two SKUs:
+SKU code Colour SizeQty
+JP-2026-014-CLERMONT-PINE-MPINE GREENM 30
+JP-2026-014-CLERMONT-PINE-LPINE GREENL 20
+50 jackets. Lined. Follow them.
+4. Day 0 — Somebody has to log in ·
+users + core
+Nothing happens without a token.
+POST /api/v1/auth/login 
+{ "username": "9000000001", "password": "..." } 
+username is the phone number, not an email. The response carries the JWT plus the caller's role and name, so the
+frontend can pick a home screen immediately without a second call:
+{ "access_token": "eyJ…", "token_type": "bearer", 
+  "role": "direct_manager", "name": "Priya", "user_id": "…", 
+
+==========================
+
+=== MATCH AT LINE 51 ===
+Client client Read-only views of their own orders.
+Viewer viewer Read-only.
+Two rules that shape everything:
+MD and DM bypass every role gate. Convenient, and worth knowing when you test permissions — a
+walkthrough done entirely as the MD proves none of them work.
+An employee token can reach exactly three things: log in, their own attendance, and resolving their own
+barcode. Every manager router is wrapped in a block_employees dependency.
+3. The data hierarchy
+Client                     "John Peter"          (the buyer) 
+ └── ClientOrder           "JP-2026-014"         (one purchase order) 
+      └── Style            "CLERMONT"            (one garment design) 
+           └── SKU         colour + size + qty   (what actually gets made) 
+                └── Piece  ONE physical jacket    ← the tracked unit 
+Piece is the atom. Its code is the barcode printed on the label. A piece also carries needs_lining (from the
+breakdown) and drawer_id (its storage slot).
+THE WORKED EXAMPLE
+Everything from here follows one order.
+--- PAGE BREAK ---
+The order. John Peter (Italy) emails an order sheet and a spec sheet. One purchase order, JP-2026-014. One
+style, CLERMONT, article CL1. Two SKUs:
+SKU code Colour SizeQty
+JP-2026-014-CLERMONT-PINE-MPINE GREENM 30
+JP-2026-014-CLERMONT-PINE-LPINE GREENL 20
+50 jackets. Lined. Follow them.
+4. Day 0 — Somebody has to log in ·
+users + core
+Nothing happens without a token.
+POST /api/v1/auth/login 
+{ "username": "9000000001", "password": "..." } 
+username is the phone number, not an email. The response carries the JWT plus the caller's role and name, so the
+frontend can pick a home screen immediately without a second call:
+{ "access_token": "eyJ…", "token_type": "bearer", 
+  "role": "direct_manager", "name": "Priya", "user_id": "…", 
+  "must_change_password": false } 
+Every later request sends Authorization: Bearer <token>.
+users vs employees — these are different things. A User is a login. An Employee is a person on the floor. A
+monthly-salaried worker gets both; a daily-wage cutter gets only an Employee record and never logs in at all — their
+supervisor marks them present. User.employee_id links the two when both exist.
+core is the shared foundation underneath: the async engine and get_db session dependency, the portable GUID type
+(real UUID on Postgres, CHAR(32) elsewhere), timestamp mixins, JWT signing and bcrypt, config, storage backends,
+
+==========================
+
+=== MATCH AT LINE 208 ===
+available is computed on every read. It is never a column, so it can never drift out of sync with the other two.
+Shortfall → supplier order. Ask for stock with a required quantity and, if you are short, the response tells you by how
+much and suggests a supplier who stocks that article. You place a supplier order (ORDERED), mark it ARRIVED, then
+receive it — recording approved and rejected quantities separately. Approved qty is added to stock; rejected qty is
+logged against the supplier's quality history.
+8b. Attendance · attendance
+A worker who is not clocked in today cannot have production logged against them. This is a hard gate, and it is the
+single most common reason a scan is refused.
+Two flows:
+Flow Who How
+SELF Monthly workers with a loginThey check themselves in from their phone
+PROXYDaily-wage workers with no loginTheir supervisor marks them present
+--- PAGE BREAK ---
+POST /api/v1/attendance/check-in    { "lat": 12.9716, "lon": 77.5946 } 
+The geofence. The check-in is measured against the factory's configured coordinates. Outside the radius (default 100 m)
+→ 403 telling the worker how far out they are. Identity comes from the token, never the body, and the timestamp is set
+server-side — a worker cannot check in as someone else, from home, or at a time they choose.
+⚠  Configure the factory coordinates before go-live. factory_lat and factory_lon default to 0.0 — the
+Atlantic Ocean off West Africa. Until a DM sets them via PATCH /api/v1/attendance/config, every genuine
+check-in is measured as ~1,900 km out of bounds and refused, and because attendance gates production, the
+entire floor stops. This is the number-one first-day failure.
+One row per employee per day, enforced by a database constraint. Re-tapping the card is a genuine no-op: no second
+row, and the original check-in time is not moved.
+9. Day 5 — Cutting · production (part 1)
+Now the interesting part.
+One endpoint, two doors, no stage buttons
+The entire factory floor logs through one endpoint:
+POST /api/v1/production/log 
+The caller sends an actor (which worker) and targets (which pieces). Both can be given as barcodes or as ids — the
+barcode door and the manual door post the identical shape, and the router resolves codes to ids before the service sees
+anything.
+The caller never sends a stage. That is worth restating: there is no "log fusing" button. The stage is determined one of
+two ways:
+On a cut screen (LEATHER_CUT / LINING_CUT), the screen fixes the stage.
+Otherwise, the stage is inferred per piece from that piece's own history — the next stage on its chain.
+So a stitching manager scans a tray of mixed pieces and each one advances to whatever it needed next. The manager
+does not have to sort them.
+The pipeline
+--- PAGE BREAK ---
+LEATHER_CUTTING ┐ 
+
+==========================
+
+=== MATCH AT LINE 216 ===
+Two flows:
+Flow Who How
+SELF Monthly workers with a loginThey check themselves in from their phone
+PROXYDaily-wage workers with no loginTheir supervisor marks them present
+--- PAGE BREAK ---
+POST /api/v1/attendance/check-in    { "lat": 12.9716, "lon": 77.5946 } 
+The geofence. The check-in is measured against the factory's configured coordinates. Outside the radius (default 100 m)
+→ 403 telling the worker how far out they are. Identity comes from the token, never the body, and the timestamp is set
+server-side — a worker cannot check in as someone else, from home, or at a time they choose.
+⚠  Configure the factory coordinates before go-live. factory_lat and factory_lon default to 0.0 — the
+Atlantic Ocean off West Africa. Until a DM sets them via PATCH /api/v1/attendance/config, every genuine
+check-in is measured as ~1,900 km out of bounds and refused, and because attendance gates production, the
+entire floor stops. This is the number-one first-day failure.
+One row per employee per day, enforced by a database constraint. Re-tapping the card is a genuine no-op: no second
+row, and the original check-in time is not moved.
+9. Day 5 — Cutting · production (part 1)
+Now the interesting part.
+One endpoint, two doors, no stage buttons
+The entire factory floor logs through one endpoint:
+POST /api/v1/production/log 
+The caller sends an actor (which worker) and targets (which pieces). Both can be given as barcodes or as ids — the
+barcode door and the manual door post the identical shape, and the router resolves codes to ids before the service sees
+anything.
+The caller never sends a stage. That is worth restating: there is no "log fusing" button. The stage is determined one of
+two ways:
+On a cut screen (LEATHER_CUT / LINING_CUT), the screen fixes the stage.
+Otherwise, the stage is inferred per piece from that piece's own history — the next stage on its chain.
+So a stitching manager scans a tray of mixed pieces and each one advances to whatever it needed next. The manager
+does not have to sort them.
+The pipeline
+--- PAGE BREAK ---
+LEATHER_CUTTING ┐ 
+                ├─ parallel cut paths, per piece 
+LINING_CUTTING  ┘ 
+   → FUSING → PASTING → [ MERGE GATE ] → LINE_STITCHING → SHELL_STITCHING 
+   → FINAL_FINISH → FINAL_INSPECTION → PACKAGE_EXPORT 
+Our tray of 10
+The cutting manager opens the leather-cut screen, scans Ramesh's employee card, scans the SUEDE-A32 lot barcode,
+enters 80 dcm per piece, and scans 10 piece labels.
+POST /api/v1/production/log 
+
+==========================
+
+=== MATCH AT LINE 221 ===
+POST /api/v1/attendance/check-in    { "lat": 12.9716, "lon": 77.5946 } 
+The geofence. The check-in is measured against the factory's configured coordinates. Outside the radius (default 100 m)
+→ 403 telling the worker how far out they are. Identity comes from the token, never the body, and the timestamp is set
+server-side — a worker cannot check in as someone else, from home, or at a time they choose.
+⚠  Configure the factory coordinates before go-live. factory_lat and factory_lon default to 0.0 — the
+Atlantic Ocean off West Africa. Until a DM sets them via PATCH /api/v1/attendance/config, every genuine
+check-in is measured as ~1,900 km out of bounds and refused, and because attendance gates production, the
+entire floor stops. This is the number-one first-day failure.
+One row per employee per day, enforced by a database constraint. Re-tapping the card is a genuine no-op: no second
+row, and the original check-in time is not moved.
+9. Day 5 — Cutting · production (part 1)
+Now the interesting part.
+One endpoint, two doors, no stage buttons
+The entire factory floor logs through one endpoint:
+POST /api/v1/production/log 
+The caller sends an actor (which worker) and targets (which pieces). Both can be given as barcodes or as ids — the
+barcode door and the manual door post the identical shape, and the router resolves codes to ids before the service sees
+anything.
+The caller never sends a stage. That is worth restating: there is no "log fusing" button. The stage is determined one of
+two ways:
+On a cut screen (LEATHER_CUT / LINING_CUT), the screen fixes the stage.
+Otherwise, the stage is inferred per piece from that piece's own history — the next stage on its chain.
+So a stitching manager scans a tray of mixed pieces and each one advances to whatever it needed next. The manager
+does not have to sort them.
+The pipeline
+--- PAGE BREAK ---
+LEATHER_CUTTING ┐ 
+                ├─ parallel cut paths, per piece 
+LINING_CUTTING  ┘ 
+   → FUSING → PASTING → [ MERGE GATE ] → LINE_STITCHING → SHELL_STITCHING 
+   → FINAL_FINISH → FINAL_INSPECTION → PACKAGE_EXPORT 
+Our tray of 10
+The cutting manager opens the leather-cut screen, scans Ramesh's employee card, scans the SUEDE-A32 lot barcode,
+enters 80 dcm per piece, and scans 10 piece labels.
+POST /api/v1/production/log 
+{ "screen_context": "LEATHER_CUT", 
+  "actor":   { "employee_barcode": "EMP-000042" }, 
+  "targets": { "piece_barcodes": ["JP-…-M-001", "…-002", … ] }, 
+  "work_date": "2026-05-12", 
+  "consumption": { "qty": 80, "leather_lot_id": "…" } } 
+
+==========================
+
+=== MATCH AT LINE 222 ===
+The geofence. The check-in is measured against the factory's configured coordinates. Outside the radius (default 100 m)
+→ 403 telling the worker how far out they are. Identity comes from the token, never the body, and the timestamp is set
+server-side — a worker cannot check in as someone else, from home, or at a time they choose.
+⚠  Configure the factory coordinates before go-live. factory_lat and factory_lon default to 0.0 — the
+Atlantic Ocean off West Africa. Until a DM sets them via PATCH /api/v1/attendance/config, every genuine
+check-in is measured as ~1,900 km out of bounds and refused, and because attendance gates production, the
+entire floor stops. This is the number-one first-day failure.
+One row per employee per day, enforced by a database constraint. Re-tapping the card is a genuine no-op: no second
+row, and the original check-in time is not moved.
+9. Day 5 — Cutting · production (part 1)
+Now the interesting part.
+One endpoint, two doors, no stage buttons
+The entire factory floor logs through one endpoint:
+POST /api/v1/production/log 
+The caller sends an actor (which worker) and targets (which pieces). Both can be given as barcodes or as ids — the
+barcode door and the manual door post the identical shape, and the router resolves codes to ids before the service sees
+anything.
+The caller never sends a stage. That is worth restating: there is no "log fusing" button. The stage is determined one of
+two ways:
+On a cut screen (LEATHER_CUT / LINING_CUT), the screen fixes the stage.
+Otherwise, the stage is inferred per piece from that piece's own history — the next stage on its chain.
+So a stitching manager scans a tray of mixed pieces and each one advances to whatever it needed next. The manager
+does not have to sort them.
+The pipeline
+--- PAGE BREAK ---
+LEATHER_CUTTING ┐ 
+                ├─ parallel cut paths, per piece 
+LINING_CUTTING  ┘ 
+   → FUSING → PASTING → [ MERGE GATE ] → LINE_STITCHING → SHELL_STITCHING 
+   → FINAL_FINISH → FINAL_INSPECTION → PACKAGE_EXPORT 
+Our tray of 10
+The cutting manager opens the leather-cut screen, scans Ramesh's employee card, scans the SUEDE-A32 lot barcode,
+enters 80 dcm per piece, and scans 10 piece labels.
+POST /api/v1/production/log 
+{ "screen_context": "LEATHER_CUT", 
+  "actor":   { "employee_barcode": "EMP-000042" }, 
+  "targets": { "piece_barcodes": ["JP-…-M-001", "…-002", … ] }, 
+  "work_date": "2026-05-12", 
+  "consumption": { "qty": 80, "leather_lot_id": "…" } } 
+Response:
+
+==========================
+
+=== MATCH AT LINE 422 ===
+4 employees
+People on the floor;
+designations; auto-
+provisioning
+employee
+5 attendanceCheck-in/out, geofence,
+proxy, shift config attendance_log, shift_config
+6 imports Breakdown parsing and
+the pre-mint (writes piece, drawer, barcode_registry)
+7 barcode The one registry,
+resolve(), card lifecycle
+barcode_registry, drawer, material_lot,
+material_reservation, material_receipt,
+material_supplier, supplier_order
+--- PAGE BREAK ---
+# Module Owns Key tables
+8 materials
+Lots, on-
+hand/reserved/available,
+receiving, supplier orders
+(uses barcode's tables)
+9 production
+The two-door log, the
+four gates, stage
+inference
+operation, operation_access, style_operation,
+piece, production_event
+10drawers The merge state
+machine and store-scan(uses drawer)
+11wages
+Rates, runs, the
+PIECE_RATE/MONTHLY
+fork, proration
+rate, wage_run, wage_line, wage_line_detail
+12analyticsRead-only aggregation.
+Owns nothing. —
+Notes on two pairings that look odd
+barcode owns the drawer and material tables. The drawers and materials modules hold the logic but the tables
+are declared in barcode/models.py. This is because all four concepts were introduced together in one migration and
+share the registry. It works, but it is why drawers has no models.py.
+
+==========================
+
+=== MATCH AT LINE 423 ===
+People on the floor;
+designations; auto-
+provisioning
+employee
+5 attendanceCheck-in/out, geofence,
+proxy, shift config attendance_log, shift_config
+6 imports Breakdown parsing and
+the pre-mint (writes piece, drawer, barcode_registry)
+7 barcode The one registry,
+resolve(), card lifecycle
+barcode_registry, drawer, material_lot,
+material_reservation, material_receipt,
+material_supplier, supplier_order
+--- PAGE BREAK ---
+# Module Owns Key tables
+8 materials
+Lots, on-
+hand/reserved/available,
+receiving, supplier orders
+(uses barcode's tables)
+9 production
+The two-door log, the
+four gates, stage
+inference
+operation, operation_access, style_operation,
+piece, production_event
+10drawers The merge state
+machine and store-scan(uses drawer)
+11wages
+Rates, runs, the
+PIECE_RATE/MONTHLY
+fork, proration
+rate, wage_run, wage_line, wage_line_detail
+12analyticsRead-only aggregation.
+Owns nothing. —
+Notes on two pairings that look odd
+barcode owns the drawer and material tables. The drawers and materials modules hold the logic but the tables
+are declared in barcode/models.py. This is because all four concepts were introduced together in one migration and
+share the registry. It works, but it is why drawers has no models.py.
+material (Phase 1) and inventory (Phase 2) are deliberately separate — do not merge them.
+
+==========================
+
+=== MATCH AT LINE 485 ===
+_LOCKED = [Depends(block_employees)] 
+Locked (managers only) Open
+clients, employees, production, wages, analytics, imports,
+materials, suppliers, drawers
+auth, users,
+attendance, barcode
+The open four are open on purpose: a worker must be able to log in, check in, and scan their own card.
+Health
+GET /health — pure liveness. Checks nothing, by design.
+GET /ready — executes SELECT 1; returns 503 if the database is unreachable. This is the one your
+orchestrator should use.
+16. Alembic — migrations
+alembic revision --autogenerate -m "what changed" 
+alembic upgrade head 
+alembic heads          # verify ONE head before writing a new down_revision 
+alembic downgrade -1 
+Current head: 20260731_wage_line_uniq, on a single-root linear chain.
+Three things that will bite you
+1. app_user.role is a native Postgres enum. Adding a value to the Python UserRole enum is not enough —
+Postgres needs the value added to the type:
+if op.get_bind().dialect.name == "postgresql": 
+    op.execute("ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'lining_manager'") 
+Guarded, so it is a no-op on SQLite where there is no native enum.
+2. Always run alembic heads before setting down_revision. The chain has been branched and repaired once
+already. A second root produces two heads and a schema that cannot be built.
+--- PAGE BREAK ---
+3. Check alembic_version before deploying to an existing environment.
+SELECT version_num FROM alembic_version; 
+Several revisions have been deleted and rewritten. A database stamped at one of them fails upgrade head with "Can't
+locate revision".
+Portability
+IDs come from the application (uuid4()), not gen_random_uuid(). No JSONB operators, no ON CONFLICT. Keep it
+that way — it is what lets the test suite run on SQLite and keeps a future Oracle port open.
+17. requirements.txt
+Pinned to an exact set resolved and verified together on Python 3.13. The whole set installs with no dependency conflicts
+— do not bump one package in isolation.
+fastapi==0.136.3            uvicorn[standard]==0.48.0     python-multipart==0.0.29 
+sqlalchemy[asyncio]==2.0.50 alembic==1.18.4 
+asyncpg==0.31.0             # async driver — the live API 
+psycopg2-binary==2.9.12     # sync driver — Alembic and the seed script 
+
+==========================
+
+=== MATCH AT LINE 553 ===
+pytest tests/integration     # service → repo → DB on aiosqlite 
+pytest tests/system          # router → service → repo via httpx 
+Five layers, priority-ordered money paths > data integrity > read paths:
+Layer Proves
+tests/unit Pure predicates — proration, geofence, skill gate, stage chain
+tests/integrationWage runs, attendance, merge gate, materials, barcode lifecycle
+tests/functionalOne garment cut → export, and drawer recycling
+tests/system Role guards and status codes through the real app
+tests/uat Markdown checklists for human testers on the floor
+SQLite proves the logic; a Postgres CI job is needed to prove the migration and the native-enum path.
+20. The ten things to remember
+1. Pieces are minted at breakdown upload, not at cutting. A jacket has a barcode and a drawer before it
+physically exists.
+2. One barcode registry, one resolve() endpoint. 404 = never existed, 410 = retired.
+3. One production endpoint. The caller never sends a stage — it is inferred per piece from that piece's history.
+--- PAGE BREAK ---
+4. Gate 1 fails the whole request; gates 2–4 fail one piece. One bad piece never loses the good ones scanned
+with it.
+5. Stock decrements once per batch, only at the two cut stages, and never on rework.
+6. available is derived, never stored. It cannot drift.
+7. The merge gate is about completeness, not order. Lining may arrive first; a leather-only piece is complete on
+leather alone.
+8. A drawer's code is static; its state recycles.
+9. Rates are date-effective. A mid-period change prices each day at its own rate.
+10. A closed wage run is frozen forever, and you delete a barcode, never a person.
+Companion document: docs/API_REFERENCE_FRONTEND.md — every endpoint with its exact request and response
+shape.
