@@ -23,6 +23,7 @@ import {
   ShoppingCart,
   UploadCloud,
   Layers,
+  Barcode,
 } from 'lucide-react';
 
 const NAV_ICONS = {
@@ -36,6 +37,7 @@ const NAV_ICONS = {
   '/dashboard/tracer': ScanSearch,
   '/dashboard/chat': BotMessageSquare,
   '/dashboard/attendance': ClipboardPen,
+  '/dashboard/barcode': Barcode,
   '/dashboard/admin': ShieldCheck,
   '/dashboard/settings': Settings,
   '/dashboard/procurement': ShoppingCart,
@@ -104,6 +106,7 @@ export default function DashboardLayout({ children }) {
       { name: 'Client SKU Tree', href: '/dashboard/orders' },
       { name: 'Payroll & Rates', href: '/dashboard/wages' },
       { name: 'Attendance', href: '/dashboard/attendance' },
+      { name: 'Barcode Management', href: '/dashboard/barcode' },
       // { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
       // { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
       // { name: 'AI Assistant', href: '/dashboard/chat' },
