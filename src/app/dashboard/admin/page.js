@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiGetUsers, apiCreateUser } from '@/lib/api';
@@ -9,6 +10,7 @@ import {
   Search
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
+import { staggerContainer, fadeUpItem, rowStagger } from '@/lib/motionVariants';
 
 // ─── Shared styled input ─────────────────────────────────────────────────────
 function Field({ label, children }) {
@@ -184,38 +186,48 @@ export default function AdminDashboard() {
   // ─── ACCESS DENIED ──────────────────────────────────────────────────────────
   if (!isHRAdmin) {
     return (
-      <SpotlightCard className="p-12 text-center rounded-3xl max-w-lg mx-auto mt-12" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)' }} spotlightColor="rgba(200,131,74,0.1)">
-        <Lock className="w-14 h-14 mx-auto mb-3" style={{ color: '#c8834a' }} />
-        <h3 className="text-xl font-black uppercase tracking-wide" style={{ color: '#9c4221' }}>Admin Access Required</h3>
-        <p className="text-sm font-semibold mt-2" style={{ color: '#a86022' }}>
-          Manager or HR Admin privileges are required to view and manage users.
-        </p>
-      </SpotlightCard>
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}>
+        <SpotlightCard className="p-12 text-center rounded-3xl max-w-lg mx-auto mt-12" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)' }} spotlightColor="rgba(200,131,74,0.1)">
+          <Lock className="w-14 h-14 mx-auto mb-3" style={{ color: '#c8834a' }} />
+          <h3 className="text-xl font-black uppercase tracking-wide" style={{ color: '#9c4221' }}>Admin Access Required</h3>
+          <p className="text-sm font-semibold mt-2" style={{ color: '#a86022' }}>
+            Manager or HR Admin privileges are required to view and manage users.
+          </p>
+        </SpotlightCard>
+      </motion.div>
     );
   }
 
   return (
-    <div className="space-y-8 animate-fade-in pb-12">
+    <motion.div className="space-y-8 pb-12" variants={staggerContainer} initial="hidden" animate="show">
 
       {/* ─── GLOBAL TOAST (fallback) ─── */}
-      {toast && toast.form === 'global' && (
-        <div className="fixed bottom-6 right-4 sm:right-6 z-[999999] max-w-sm w-full animate-fade-in">
-          <div className="flex items-center gap-3 p-4 rounded-2xl shadow-2xl font-semibold text-sm backdrop-blur-md border"
-            style={{
-              background: toast.type === 'success' ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
-              borderColor: toast.type === 'success' ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.2)',
-              color: toast.type === 'success' ? '#166534' : '#991b1b',
-            }}>
-            {toast.type === 'success'
-              ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
-              : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
-            <p>{toast.msg}</p>
-          </div>
-        </div>
-      )}
+      <AnimatePresence>
+        {toast && toast.form === 'global' && (
+          <motion.div
+            className="fixed bottom-6 right-4 sm:right-6 z-[999999] max-w-sm w-full"
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <div className="flex items-center gap-3 p-4 rounded-2xl shadow-2xl font-semibold text-sm backdrop-blur-md border"
+              style={{
+                background: toast.type === 'success' ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
+                borderColor: toast.type === 'success' ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.2)',
+                color: toast.type === 'success' ? '#166534' : '#991b1b',
+              }}>
+              {toast.type === 'success'
+                ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                : <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+              <p>{toast.msg}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ─── HEADER ─── */}
-      <div>
+      <motion.div variants={fadeUpItem}>
         <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>Platform Administration</p>
         <h1 className="text-3xl font-black tracking-tight flex items-center gap-3" style={{ color: '#2d1f0e' }}>
           <ShieldCheck className="w-8 h-8" style={{ color: '#c8834a' }} />
@@ -224,16 +236,24 @@ export default function AdminDashboard() {
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>
           Register factory floor employees and provision system login accounts.
         </p>
-      </div>
+      </motion.div>
 
       {/* ─── STATS STRIP ─── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+      <motion.div className="grid grid-cols-2 sm:grid-cols-3 gap-4" variants={staggerContainer}>
         {[
           { label: 'Total Accounts', value: users.length, icon: Users },
           { label: 'Internal Staff', value: users.filter(u => !u.client_id).length, icon: Factory },
           { label: 'Client Portals', value: users.filter(u => !!u.client_id).length, icon: Building2 },
         ].map(({ label, value, icon: Icon }) => (
-          <SpotlightCard key={label} className="p-4 bg-white rounded-2xl shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.12)' }} spotlightColor="rgba(200,131,74,0.05)">
+          <SpotlightCard
+            key={label}
+            variants={fadeUpItem}
+            whileHover={{ y: -4, scale: 1.015 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+            className="p-4 bg-white rounded-2xl shadow-sm"
+            style={{ border: '1px solid rgba(200,131,74,0.12)' }}
+            spotlightColor="rgba(200,131,74,0.05)"
+          >
             <div className="flex items-center justify-between mb-1">
               <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>{label}</span>
               <Icon className="w-4 h-4" style={{ color: '#c8834a' }} />
@@ -241,13 +261,13 @@ export default function AdminDashboard() {
             <p className="text-2xl font-black" style={{ color: '#2d1f0e' }}>{loading ? '—' : value}</p>
           </SpotlightCard>
         ))}
-      </div>
+      </motion.div>
 
       {/* ─── FORMS GRID ─── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <motion.div className="grid grid-cols-1 lg:grid-cols-2 gap-6" variants={staggerContainer}>
 
         {/* 1. REGISTER FACTORY EMPLOYEE CARD */}
-        <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
           <h3 className="text-lg font-extrabold pb-4 mb-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
             <Factory className="w-5 h-5" style={{ color: '#c8834a' }} /> Register Factory Employee
           </h3>
@@ -358,21 +378,25 @@ export default function AdminDashboard() {
               {isSubmittingWorker ? <><Loader2 className="w-4 h-4 animate-spin" /> Registering...</> : <><UserPlus className="w-4 h-4" /> Register Employee</>}
             </button>
 
-            {toast && toast.form === 'worker' && (
-              <div className="mt-3 p-3.5 rounded-xl text-xs font-bold border text-center animate-fade-in backdrop-blur-sm"
-                style={{
-                  background: toast.type === 'success' ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
-                  borderColor: toast.type === 'success' ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.2)',
-                  color: toast.type === 'success' ? '#166534' : '#991b1b',
-                }}>
-                {toast.msg}
-              </div>
-            )}
+            <AnimatePresence>
+              {toast && toast.form === 'worker' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}
+                  className="mt-3 p-3.5 rounded-xl text-xs font-bold border text-center backdrop-blur-sm"
+                  style={{
+                    background: toast.type === 'success' ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
+                    borderColor: toast.type === 'success' ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.2)',
+                    color: toast.type === 'success' ? '#166534' : '#991b1b',
+                  }}>
+                  {toast.msg}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </form>
         </SpotlightCard>
 
         {/* 2. PROVISION USER LOGIN CARD */}
-        <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
           <h3 className="text-lg font-extrabold pb-4 mb-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
             <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Create User Login
           </h3>
@@ -438,22 +462,26 @@ export default function AdminDashboard() {
               Create User Account
             </button>
 
-            {toast && toast.form === 'user' && (
-              <div className="mt-3 p-3.5 rounded-xl text-xs font-bold border text-center animate-fade-in backdrop-blur-sm"
-                style={{
-                  background: toast.type === 'success' ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
-                  borderColor: toast.type === 'success' ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.2)',
-                  color: toast.type === 'success' ? '#166534' : '#991b1b',
-                }}>
-                {toast.msg}
-              </div>
-            )}
+            <AnimatePresence>
+              {toast && toast.form === 'user' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}
+                  className="mt-3 p-3.5 rounded-xl text-xs font-bold border text-center backdrop-blur-sm"
+                  style={{
+                    background: toast.type === 'success' ? 'rgba(240, 253, 244, 0.95)' : 'rgba(254, 242, 242, 0.95)',
+                    borderColor: toast.type === 'success' ? 'rgba(22, 163, 74, 0.25)' : 'rgba(220, 38, 38, 0.2)',
+                    color: toast.type === 'success' ? '#166534' : '#991b1b',
+                  }}>
+                  {toast.msg}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </form>
         </SpotlightCard>
-      </div>
+      </motion.div>
 
       {/* ─── USERS DIRECTORY ─── */}
-      <SpotlightCard className="p-0 bg-white shadow-xl rounded-3xl overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.04)">
+      <SpotlightCard variants={fadeUpItem} className="p-0 bg-white shadow-xl rounded-3xl overflow-hidden" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.04)">
         <div className="p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
             <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> System Users Directory
@@ -490,7 +518,7 @@ export default function AdminDashboard() {
                   <th className="p-3">Status</th>
                 </tr>
               </thead>
-              <tbody>
+              <motion.tbody variants={rowStagger} initial="hidden" animate="show">
                 {filteredUsers.length === 0 ? (
                   <tr>
                     {/*                                               */}
@@ -502,7 +530,7 @@ export default function AdminDashboard() {
                 ) : filteredUsers.map(u => {
                   const roleCfg = ROLE_COLORS[u.role] || { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: u.role };
                   return (
-                    <tr key={u.id} className="border-b hover:bg-[#fcfaf8] transition-colors text-xs" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
+                    <motion.tr key={u.id} variants={fadeUpItem} className="border-b hover:bg-[#fcfaf8] transition-colors text-xs" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
 
                       {/* User Name & Avatar */}
                       <td className="p-3 pl-5">
@@ -550,14 +578,14 @@ export default function AdminDashboard() {
                         )}
                       </td>
 
-                    </tr>
+                    </motion.tr>
                   );
                 })}
-              </tbody>
+              </motion.tbody>
             </table>
           </div>
         )}
       </SpotlightCard>
-    </div>
+    </motion.div>
   );
 }
