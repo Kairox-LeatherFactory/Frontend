@@ -1,9 +1,12 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '@/context/DataContext';
 import { useAuth } from '@/context/AuthContext';
 import { Building2, Plus, X, Loader2, Search, CheckCircle2, XCircle } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
+import AnimatedModal from '@/components/AnimatedModal';
+import { staggerContainer, fadeUpItem } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
 
 export default function OrdersTreeBrowser() {
@@ -62,65 +65,77 @@ export default function OrdersTreeBrowser() {
   }, [allClients, searchQuery]);
 
   return (
-    <div className="space-y-8 animate-fade-in relative">
+    <motion.div className="space-y-8 relative" variants={staggerContainer} initial="hidden" animate="show">
       {/* ─── SCREEN CENTER FLOATING TOAST NOTIFICATION ─── */}
       {typeof window !== 'undefined' && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 pointer-events-none transition-all duration-300">
           <div className="w-full max-w-sm flex flex-col gap-3">
 
             {/* Success Toast */}
-            {successMsg && (
-              <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Success</p>
-                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSuccessMsg('')}
-                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            <AnimatePresence>
+              {successMsg && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl"
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Success</p>
+                      <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSuccessMsg('')}
+                    className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Toast Error */}
-            {toastErrorMsg && (
-              <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
-                    <XCircle className="w-6 h-6 text-rose-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Error</p>
-                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{toastErrorMsg}</p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setToastErrorMsg('')}
-                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            <AnimatePresence>
+              {toastErrorMsg && (
+                <motion.div
+                  initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                  className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl"
                 >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+                      <XCircle className="w-6 h-6 text-rose-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Error</p>
+                      <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{toastErrorMsg}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setToastErrorMsg('')}
+                    className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>,
         document.body
       )}
 
       {/* ─── TITLE SECTION ─── */}
-      <div>
+      <motion.div variants={fadeUpItem}>
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Client Directory</h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Manage active client accounts and associated purchase orders.</p>
-      </div>
+      </motion.div>
 
       {apiLoading ? (
         <div className="flex justify-center py-12">
@@ -128,7 +143,7 @@ export default function OrdersTreeBrowser() {
         </div>
       ) : (
         /* ─── CLIENT DIRECTORY LIST VIEW ─── */
-        <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <SpotlightCard variants={fadeUpItem} className="p-6 sm:p-8 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pb-4 gap-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
             <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
               <Building2 className="w-5 h-5" style={{ color: '#c8834a' }} /> Active Client Directory
@@ -171,13 +186,16 @@ export default function OrdersTreeBrowser() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" variants={staggerContainer}>
             {filteredClients.length > 0 ? (
               filteredClients.map((client, index) => {
                 return (
                   <SpotlightCard
                     key={`${client.id}-${index}`}
-                    className="rounded-2xl p-5 transition-all shadow-sm hover:shadow-md flex flex-col justify-between min-h-[160px] bg-white hover:-translate-y-1"
+                    variants={fadeUpItem}
+                    whileHover={{ y: -6, scale: 1.015 }}
+                    transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+                    className="rounded-2xl p-5 shadow-sm hover:shadow-md flex flex-col justify-between min-h-[160px] bg-white"
                     style={{ border: '1px solid rgba(200,131,74,0.15)' }}
                     spotlightColor="rgba(200,131,74,0.06)"
                   >
@@ -214,45 +232,35 @@ export default function OrdersTreeBrowser() {
                 No clients found matching "{searchQuery}"
               </div>
             )}
-          </div>
+          </motion.div>
         </SpotlightCard>
       )}
 
       {/* ─── CREATE CLIENT MODAL POPUP ─── */}
-      {showCreateModal && typeof window !== 'undefined' && createPortal(
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            zIndex: 999999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            padding: '16px',
-            pointerEvents: 'auto'
-          }}
-        >
-          <div
-            style={{
-              backgroundColor: '#ffffff',
-              borderRadius: '20px',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
-              border: '1px solid #e2e8f0',
-              width: '100%',
-              maxWidth: '448px',
-              padding: '24px',
-              position: 'relative',
-              zIndex: 1000000,
-              pointerEvents: 'auto'
-            }}
-            className="space-y-4 animate-scale-up"
-            onClick={(e) => e.stopPropagation()}
-            onMouseDown={(e) => e.stopPropagation()}
-          >
+      <AnimatedModal
+        isOpen={showCreateModal}
+        onClose={() => {
+          setShowCreateModal(false);
+          setNewClientName('');
+          setNewCompanyCode('');
+          setNewCountry('');
+          setNewOrderNumber('');
+          setOrderNumberError('');
+          setCreateError('');
+        }}
+        zIndex={999999}
+        panelClassName="space-y-4"
+        panelStyle={{
+          backgroundColor: '#ffffff',
+          borderRadius: '20px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+          border: '1px solid #e2e8f0',
+          width: '100%',
+          maxWidth: '448px',
+          padding: '24px',
+          pointerEvents: 'auto'
+        }}
+      >
             <div className="flex justify-between items-center pb-2 border-b border-slate-100">
               <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
                 <Building2 className="w-5 h-5 text-amber-600" />
@@ -432,12 +440,9 @@ export default function OrdersTreeBrowser() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>,
-        document.body
-      )}
+      </AnimatedModal>
 
-    </div>
+    </motion.div>
   );
 }
 // 'use client';
