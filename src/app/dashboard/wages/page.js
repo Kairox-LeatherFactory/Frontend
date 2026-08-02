@@ -1,62 +1,72 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useMemo } from 'react';
-import { 
-  apiGetWageStyles, 
-  apiComputeWageRun, 
-  apiGetWageRuns, 
-  apiGetRateSheet, 
+import {
+  apiGetWageStyles,
+  apiComputeWageRun,
+  apiGetWageRuns,
+  apiGetRateSheet,
   apiSetWageRatesBulk,
   apiSetWageRateSingle,
   apiGetRateHistory,
-  apiGetWageRunDetails 
+  apiGetWageRunDetails
 } from '@/lib/api';
 import { Loader2, History, Eye, X, Save, Activity } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
+import AnimatedModal from '@/components/AnimatedModal';
+import { staggerContainer, fadeUpItem, tabFade, rowStagger } from '@/lib/motionVariants';
+
+const TABS = [
+  { id: 'styles', label: 'Styles & Rates' },
+  { id: 'computation', label: 'Computation' },
+  { id: 'ledger', label: 'Ledger' },
+];
 
 export default function PieceRatesAndWages() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState('styles');
 
   return (
-    <div className="space-y-8 animate-fade-in pb-12">
+    <motion.div className="space-y-8 pb-12" variants={staggerContainer} initial="hidden" animate="show">
       {/* ─── TITLE SECTION ─── */}
-      <div>
+      <motion.div variants={fadeUpItem}>
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Payroll &amp; Rates Manager</h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Verify piece-rates and execute audits on shop floor wage calculations.</p>
-      </div>
+      </motion.div>
 
       {/* ─── TABS ─── */}
-      <div className="grid grid-cols-3 sm:flex sm:w-max gap-2 sm:gap-3 p-1.5 rounded-2xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
-        <button 
-          onClick={() => setActiveTab('styles')} 
-          className={`px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap text-center ${activeTab === 'styles' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
-          style={activeTab === 'styles' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
-        >
-          Styles & Rates
-        </button>
-        <button 
-          onClick={() => setActiveTab('computation')} 
-          className={`px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap text-center ${activeTab === 'computation' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
-          style={activeTab === 'computation' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
-        >
-          Computation
-        </button>
-        <button 
-          onClick={() => setActiveTab('ledger')} 
-          className={`px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap text-center ${activeTab === 'ledger' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
-          style={activeTab === 'ledger' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
-        >
-          Ledger
-        </button>
-      </div>
-      
-      {activeTab === 'styles' && <StylesView token={token} />}
-      {activeTab === 'computation' && <ComputationView token={token} />}
-      {activeTab === 'ledger' && <LedgerView token={token} />}
-    </div>
+      <motion.div variants={fadeUpItem} className="grid grid-cols-3 sm:flex sm:w-max gap-2 sm:gap-3 p-1.5 rounded-2xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
+        {TABS.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className="relative px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-colors whitespace-nowrap text-center"
+            style={{ color: activeTab === tab.id ? '#c8834a' : '#9a7a5a' }}
+          >
+            {activeTab === tab.id && (
+              <motion.span
+                layoutId="wagesTabPill"
+                className="absolute inset-0 bg-white shadow-sm border rounded-xl"
+                style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+              />
+            )}
+            <span className="relative">{tab.label}</span>
+          </button>
+        ))}
+      </motion.div>
+
+      <AnimatePresence mode="wait">
+        <motion.div key={activeTab} variants={tabFade} initial="hidden" animate="show" exit="exit">
+          {activeTab === 'styles' && <StylesView token={token} />}
+          {activeTab === 'computation' && <ComputationView token={token} />}
+          {activeTab === 'ledger' && <LedgerView token={token} />}
+        </motion.div>
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -154,34 +164,42 @@ function StylesView({ token }) {
 
   if (selectedStyle) {
     return (
-      <div className="space-y-6 animate-fade-in">
+      <motion.div className="space-y-6" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}>
         <SpotlightCard className="p-8 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
             <div>
               <h2 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>{selectedStyle.style_name}</h2>
               <p className="text-xs font-bold uppercase tracking-widest mt-1" style={{ color: '#c8834a' }}>{selectedStyle.style_code} • Piece Rates</p>
             </div>
-            <button 
-              onClick={() => setSelectedStyle(null)} 
+            <button
+              onClick={() => setSelectedStyle(null)}
               className="px-5 py-2.5 bg-[#faf6f0] font-bold text-xs rounded-xl transition-all border shadow-sm flex items-center justify-center gap-2 hover:bg-white"
               style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
             >
               ← Back to Styles
             </button>
           </div>
-          
+
           {/* Toast — bottom-right portal */}
-          {toastMsg && typeof document !== 'undefined' && createPortal(
-            <div className="fixed bottom-6 right-4 sm:right-6 z-[999999] animate-fade-in">
-              <div className={`px-5 py-3.5 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 backdrop-blur-md border ${
-                toastType === 'success'
-                  ? 'bg-emerald-50/95 border-emerald-300/40 text-emerald-900'
-                  : 'bg-red-50/95 border-red-300/40 text-red-900'
-              }`}>
-                <Activity className="w-4 h-4 shrink-0" />
-                {toastMsg}
-              </div>
-            </div>,
+          {typeof document !== 'undefined' && createPortal(
+            <AnimatePresence>
+              {toastMsg && (
+                <motion.div
+                  className="fixed bottom-6 right-4 sm:right-6 z-[999999]"
+                  initial={{ opacity: 0, y: 16, scale: 0.96 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                  transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  <div className={`px-5 py-3.5 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 backdrop-blur-md border ${
+                    toastType === 'success'
+                      ? 'bg-emerald-50/95 border-emerald-300/40 text-emerald-900'
+                      : 'bg-red-50/95 border-red-300/40 text-red-900'
+                  }`}>
+                    <Activity className="w-4 h-4 shrink-0" />
+                    {toastMsg}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>,
             document.body
           )}
 
@@ -194,11 +212,11 @@ function StylesView({ token }) {
                   <th className="p-4 w-32 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
+              <motion.tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }} variants={rowStagger} initial="hidden" animate="show">
                 {rates.map((op, idx) => {
                   const isSaving = savingOps[op.operation_code];
                   return (
-                    <tr key={op.operation_code} className="hover:bg-[#fcfaf8] transition-colors">
+                    <motion.tr key={op.operation_code} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                       <td className="p-4 font-extrabold" style={{ color: '#2d1f0e' }}>
                         {op.label}
                         <span className="block text-[10px] font-bold mt-0.5 text-slate-400">{op.operation_code}</span>
@@ -243,10 +261,10 @@ function StylesView({ token }) {
                           </button>
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   );
                 })}
-              </tbody>
+              </motion.tbody>
             </table>
           </div>
 
@@ -264,22 +282,22 @@ function StylesView({ token }) {
         </SpotlightCard>
 
         {/* Audit History Modal */}
-        {historyModal && typeof document !== 'undefined' && createPortal(
-          <div 
-            className="fixed inset-0 flex items-center justify-center p-4 z-[99999] animate-fade-in"
-            style={{ background: 'rgba(15, 23, 42, 0.6)' }}
-            onClick={(e) => { if(e.target === e.currentTarget) setHistoryModal(null); }}
-          >
-            <div className="bg-white rounded-3xl w-full max-w-md relative shadow-2xl animate-scale-up border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-              
+        <AnimatedModal
+          isOpen={!!historyModal}
+          onClose={() => setHistoryModal(null)}
+          panelClassName="bg-white rounded-3xl w-full max-w-md relative shadow-2xl border overflow-hidden"
+          panelStyle={{ borderColor: 'rgba(200,131,74,0.1)' }}
+        >
+          {historyModal && (
+            <>
               <div className="p-6 sm:p-8" style={{ background: 'linear-gradient(135deg, #fdfbf9, #faf6f0)' }}>
-                <button 
-                  onClick={() => setHistoryModal(null)} 
+                <button
+                  onClick={() => setHistoryModal(null)}
                   className="absolute top-6 right-6 p-2 bg-white border text-slate-400 hover:text-[#c8834a] rounded-xl transition-all shadow-sm"
                 >
                   <X className="w-5 h-5" />
                 </button>
-                
+
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border" style={{ background: 'white', borderColor: 'rgba(200,131,74,0.15)' }}>
                     <Activity className="w-5 h-5" style={{ color: '#c8834a' }} />
@@ -290,7 +308,7 @@ function StylesView({ token }) {
                   </div>
                 </div>
               </div>
-              
+
               <div className="p-6 sm:p-8 pt-4 max-h-[60vh] overflow-y-auto">
                 {historyModal.history.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-10 opacity-60">
@@ -298,11 +316,11 @@ function StylesView({ token }) {
                     <p className="text-sm font-bold text-slate-400 text-center">No history recorded yet.</p>
                   </div>
                 ) : (
-                  <div className="relative border-l-2 ml-4 space-y-8" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+                  <motion.div className="relative border-l-2 ml-4 space-y-8" style={{ borderColor: 'rgba(200,131,74,0.2)' }} variants={rowStagger} initial="hidden" animate="show">
                     {historyModal.history.map((h, i) => (
-                      <div key={i} className="relative pl-6 animate-fade-in" style={{ animationDelay: `${i * 50}ms` }}>
+                      <motion.div key={i} variants={fadeUpItem} className="relative pl-6">
                         <div className="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full border-[3px] border-white shadow-sm" style={{ background: i === 0 ? '#10b981' : '#c8834a' }}></div>
-                        
+
                         <div className="p-4 rounded-2xl border shadow-sm transition-all hover:shadow-md" style={{ background: i === 0 ? '#f0fdf4' : 'white', borderColor: i === 0 ? '#bbf7d0' : 'rgba(200,131,74,0.1)' }}>
                           {i === 0 && (
                             <span className="inline-block mb-2 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-100">
@@ -320,23 +338,22 @@ function StylesView({ token }) {
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </motion.div>
                     ))}
-                  </div>
+                  </motion.div>
                 )}
               </div>
-            </div>
-          </div>,
-          document.body
-        )}
-      </div>
+            </>
+          )}
+        </AnimatedModal>
+      </motion.div>
     );
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="show">
       {/* 🔍 Search Bar Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+      <motion.div variants={fadeUpItem} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         <div>
           <h3 className="font-black text-lg" style={{ color: '#2d1f0e' }}>Styles Directory</h3>
           <p className="text-xs font-bold text-[#9a7a5a]">Search styles by code or name to manage rates.</p>
@@ -350,7 +367,7 @@ function StylesView({ token }) {
             className="w-full h-11 pl-4 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
           />
           {searchQuery && (
-            <button 
+            <button
               onClick={() => setSearchQuery('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
             >
@@ -358,16 +375,19 @@ function StylesView({ token }) {
             </button>
           )}
         </div>
-      </div>
+      </motion.div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <motion.div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" variants={staggerContainer}>
         {filteredStyles.length > 0 ? (
           filteredStyles.map(s => (
-            <SpotlightCard 
-              key={s.style_code} 
-              onClick={() => handleSelectStyle(s)} 
-              className="p-6 bg-white cursor-pointer transition-all rounded-3xl shadow-sm hover:shadow-xl group" 
-              style={{ border: '1px solid rgba(200,131,74,0.15)' }} 
+            <SpotlightCard
+              key={s.style_code}
+              variants={fadeUpItem}
+              whileHover={{ y: -6, scale: 1.015 }}
+              transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+              onClick={() => handleSelectStyle(s)}
+              className="p-6 bg-white cursor-pointer rounded-3xl shadow-sm group"
+              style={{ border: '1px solid rgba(200,131,74,0.15)' }}
               spotlightColor="rgba(200,131,74,0.06)"
             >
               <div className="flex justify-between items-start mb-4">
@@ -399,8 +419,8 @@ function StylesView({ token }) {
             No styles found matching "{searchQuery}"
           </div>
         )}
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }
 // ─── COMPUTATION ENGINE VIEW ───────────────────────────────────────────────────
@@ -466,8 +486,8 @@ function ComputationView({ token }) {
   const latestRun = runs.length > 0 ? [runs[0]] : [];
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+    <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="show">
+      <SpotlightCard variants={fadeUpItem} className="p-6 sm:p-8 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
           <div className="flex-1 space-y-2">
             <h3 className="font-extrabold text-base uppercase tracking-wider" style={{ color: '#2d1f0e' }}>Active Computation Engine</h3>
@@ -516,16 +536,21 @@ function ComputationView({ token }) {
         </div>
         
         {/* Error Notification */}
-        {errorMsg && (
-          <div className="mt-4 p-4 rounded-xl border flex items-center gap-3 animate-fade-in bg-red-50" style={{ borderColor: 'rgba(239,68,68,0.2)' }}>
-            <Activity className="w-5 h-5 text-red-500 shrink-0" />
-            <p className="text-sm font-bold text-red-700">{errorMsg}</p>
-          </div>
-        )}
+        <AnimatePresence>
+          {errorMsg && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}
+              className="mt-4 p-4 rounded-xl border flex items-center gap-3 bg-red-50" style={{ borderColor: 'rgba(239,68,68,0.2)' }}
+            >
+              <Activity className="w-5 h-5 text-red-500 shrink-0" />
+              <p className="text-sm font-bold text-red-700">{errorMsg}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </SpotlightCard>
-      
+
       {latestRun.length > 0 && (
-        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+        <motion.div variants={fadeUpItem} className="bg-white rounded-3xl border shadow-sm overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
           <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)', background: '#faf6f0' }}>
             <h3 className="font-black text-sm uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Latest Computed Run</h3>
           </div>
@@ -541,9 +566,9 @@ function ComputationView({ token }) {
                   <th className="p-4 pr-6 text-right">View Ledger</th>
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
+              <motion.tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }} variants={rowStagger} initial="hidden" animate="show">
                 {latestRun.map(r => (
-                  <tr key={r.id} className="hover:bg-[#fcfaf8] transition-colors">
+                  <motion.tr key={r.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                     <td className="p-4 pl-6 font-bold" style={{ color: '#4a3a2a' }}>
                       {r.period_start} <span className="text-slate-300 font-normal mx-1">to</span> {r.period_end}
                       {r.gap_days > 0 && <span className="block text-[10px] text-red-500 font-black mt-1">⚠️ {r.gap_days} Days Gap</span>}
@@ -576,19 +601,17 @@ function ComputationView({ token }) {
                         <Eye className="w-4 h-4" /> Details
                       </button>
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
-              </tbody>
+              </motion.tbody>
             </table>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Wage Run Breakdown Modal */}
-      {selectedRunDetails && (
-        <WageRunDetailsModal details={selectedRunDetails} onClose={() => setSelectedRunDetails(null)} />
-      )}
-    </div>
+      <WageRunDetailsModal details={selectedRunDetails} onClose={() => setSelectedRunDetails(null)} />
+    </motion.div>
   );
 }
 
@@ -624,18 +647,23 @@ function LedgerView({ token }) {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="bg-white rounded-3xl border shadow-sm overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+    <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="show">
+      <motion.div variants={fadeUpItem} className="bg-white rounded-3xl border shadow-sm overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)', background: '#faf6f0' }}>
           <h3 className="font-black text-sm uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Complete Ledger History</h3>
         </div>
 
-        {detailsError && (
-          <div className="mx-4 mb-0 mt-4 p-3.5 rounded-xl text-xs font-bold border text-red-800 bg-red-50 border-red-200 animate-fade-in">
-            ⚠️ {detailsError}
-          </div>
-        )}
-        
+        <AnimatePresence>
+          {detailsError && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.2 }}
+              className="mx-4 mb-0 mt-4 p-3.5 rounded-xl text-xs font-bold border text-red-800 bg-red-50 border-red-200"
+            >
+              ⚠️ {detailsError}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {runs.length === 0 ? (
           <div className="p-12 text-center">
             <p className="text-sm font-bold text-slate-400">No payroll history found in ledger.</p>
@@ -653,9 +681,9 @@ function LedgerView({ token }) {
                   <th className="p-4 pr-6 text-right">View Ledger</th>
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
+              <motion.tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }} variants={rowStagger} initial="hidden" animate="show">
                 {runs.map(r => (
-                  <tr key={r.id} className="hover:bg-[#fcfaf8] transition-colors">
+                  <motion.tr key={r.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                     <td className="p-4 pl-6 font-bold" style={{ color: '#4a3a2a' }}>
                       {r.period_start} <span className="text-slate-300 font-normal mx-1">to</span> {r.period_end}
                       {r.gap_days > 0 && <span className="block text-[10px] text-red-500 font-black mt-1">⚠️ {r.gap_days} Days Gap</span>}
@@ -691,43 +719,43 @@ function LedgerView({ token }) {
                           : <><Eye className="w-4 h-4" /> Details</>}
                       </button>
                     </td>
-                  </tr>
+                  </motion.tr>
                 ))}
-              </tbody>
+              </motion.tbody>
             </table>
           </div>
         )}
-      </div>
+      </motion.div>
 
       {/* Wage Run Breakdown Modal */}
-      {selectedRunDetails && (
-        <WageRunDetailsModal details={selectedRunDetails} onClose={() => setSelectedRunDetails(null)} />
-      )}
-    </div>
+      <WageRunDetailsModal details={selectedRunDetails} onClose={() => setSelectedRunDetails(null)} />
+    </motion.div>
   );
 }
 
 // ─── WAGE RUN DETAILS MODAL (Shared) ─────────────────────────────────────────
 function WageRunDetailsModal({ details, onClose }) {
   return (
-    <div 
-      className="fixed inset-0 flex items-center justify-center p-4 z-[99999]"
-      style={{ background: 'rgba(15, 23, 42, 0.6)' }}
-      onClick={(e) => { if(e.target === e.currentTarget) onClose(); }}
+    <AnimatedModal
+      isOpen={!!details}
+      onClose={onClose}
+      panelClassName="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-2xl relative max-h-[90vh] flex flex-col shadow-2xl border"
+      panelStyle={{ borderColor: 'rgba(200,131,74,0.1)' }}
     >
-      <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-2xl relative max-h-[90vh] flex flex-col shadow-2xl animate-scale-up border" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-        <button 
-          onClick={onClose} 
+      {details && (
+        <>
+        <button
+          onClick={onClose}
           className="absolute top-6 right-6 p-2 bg-slate-50 text-slate-400 hover:text-slate-800 rounded-xl transition-colors z-10"
         >
           <X className="w-5 h-5" />
         </button>
-        
+
         <div className="mb-6 pr-12 shrink-0">
           <h3 className="font-black text-xl" style={{ color: '#2d1f0e' }}>Run Breakdown</h3>
           <p className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider mt-1">ID: {details.id}</p>
         </div>
-        
+
         <div className="overflow-y-auto flex-1 rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
 
               <table className="w-full text-sm relative">
@@ -770,8 +798,9 @@ function WageRunDetailsModal({ details, onClose }) {
                 Close View
               </button>
             </div>
-          </div>
-    </div>
+        </>
+      )}
+    </AnimatedModal>
   );
 }
 // 'use client';
