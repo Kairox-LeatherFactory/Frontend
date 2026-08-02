@@ -1,5 +1,6 @@
 'use client';
 import { useState } from 'react';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import Link from 'next/link';
@@ -10,11 +11,25 @@ import {
   Scissors, Layers, RefreshCw,
 } from 'lucide-react';
 
+/* ── Entrance animation variants ──────────────────────────────────────
+   staggerContainer orchestrates a cascade across its direct motion
+   children; fadeUpItem is the per-component reveal. Nesting them lets
+   each dashboard section cascade in, then its own children cascade too. */
+const staggerContainer = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
+};
+const fadeUpItem = {
+  hidden: { opacity: 0, y: 18 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: [0.22, 1, 0.36, 1] } },
+};
+
 /* ── Stat Card ─────────────────────────────────────────────────────── */
 function StatCard({ title, value, sub, icon: Icon, accent = '#c8834a', danger = false, glow = false }) {
-  
+
   return (
-    <div
+    <motion.div
+      variants={fadeUpItem}
       className="relative overflow-hidden rounded-2xl p-5 flex flex-col gap-3 border transition-all duration-300 hover:-translate-y-0.5"
       style={{
         background: '#ffffff',
@@ -53,7 +68,7 @@ function StatCard({ title, value, sub, icon: Icon, accent = '#c8834a', danger = 
         <p className="text-4xl font-black text-[#2d1f0e] leading-none">{value ?? 0}</p>
         {sub && <p className="text-xs mt-2 font-semibold" style={{ color: danger ? '#f87171' : '#c8834a' }}>{sub}</p>}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -68,7 +83,8 @@ function OrderRow({ order }) {
   const prog = Math.min(Math.max(order?.pct_complete ?? order?.progress ?? 0, 0), 100);
 
   return (
-    <div
+    <motion.div
+      variants={fadeUpItem}
       className="rounded-2xl p-5 border flex flex-col md:flex-row gap-5 transition-all duration-200 hover:border-[#c8834a]/40 group"
       style={{
         background: '#ffffff',
@@ -144,7 +160,7 @@ function OrderRow({ order }) {
           <ArrowUpRight className="w-3 h-3" />
         </Link>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -153,7 +169,7 @@ function FeedItem({ evt, workerName }) {
   const pieceCode = evt?.bundle_id || evt?.piece_code || evt?.size || 'N/A';
 
   return (
-    <div className="relative pl-5">
+    <motion.div variants={fadeUpItem} className="relative pl-5">
       <span className="absolute left-0 top-1.5 w-2 h-2 rounded-full ring-4" style={{ background: '#c8834a', ringColor: '#f2ece4' }} />
       <div className="space-y-0.5">
         <div className="flex items-center justify-between gap-2">
@@ -166,27 +182,29 @@ function FeedItem({ evt, workerName }) {
         </p>
         <p className="text-[10px]" style={{ color: '#b09070' }}>Order {evt?.order_id || evt?.order_number || 'N/A'} · Code {pieceCode}</p>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
 /* ── Quick Nav Card ─────────────────────────────────────────────────── */
 function QuickNav({ href, icon: Icon, label, sub, accent = '#c8834a' }) {
   return (
-    <Link
-      href={href}
-      className="rounded-xl p-4 flex items-center gap-3 border transition-all duration-200 hover:-translate-y-0.5 group"
-      style={{ background: '#fff8f2', borderColor: 'rgba(180,130,80,0.2)' }}
-    >
-      <div className="p-2 rounded-lg" style={{ background: 'rgba(200,131,74,0.1)' }}>
-        <Icon className="w-4 h-4" style={{ color: accent }} />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-xs font-black truncate" style={{ color: '#2d1f0e' }}>{label}</p>
-        <p className="text-[10px] font-medium" style={{ color: '#b09070' }}>{sub}</p>
-      </div>
-      <ArrowUpRight className="w-3.5 h-3.5 transition-colors" style={{ color: '#c8834a' }} />
-    </Link>
+    <motion.div variants={fadeUpItem}>
+      <Link
+        href={href}
+        className="rounded-xl p-4 flex items-center gap-3 border transition-all duration-200 hover:-translate-y-0.5 group"
+        style={{ background: '#fff8f2', borderColor: 'rgba(180,130,80,0.2)' }}
+      >
+        <div className="p-2 rounded-lg" style={{ background: 'rgba(200,131,74,0.1)' }}>
+          <Icon className="w-4 h-4" style={{ color: accent }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-black truncate" style={{ color: '#2d1f0e' }}>{label}</p>
+          <p className="text-[10px] font-medium" style={{ color: '#b09070' }}>{sub}</p>
+        </div>
+        <ArrowUpRight className="w-3.5 h-3.5 transition-colors" style={{ color: '#c8834a' }} />
+      </Link>
+    </motion.div>
   );
 }
 
@@ -232,10 +250,16 @@ export default function DashboardHome() {
   const today = new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   return (
-    <div className="space-y-8 animate-fade-in" style={{ color: '#d4c4b4' }}>
+    <motion.div
+      className="space-y-8"
+      style={{ color: '#d4c4b4' }}
+      variants={staggerContainer}
+      initial="hidden"
+      animate="show"
+    >
 
       {/* ── HEADER ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <motion.div variants={fadeUpItem} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <p className="text-[11px] font-bold tracking-widest uppercase mb-1" style={{ color: '#c8834a' }}>
             {today}
@@ -259,10 +283,10 @@ export default function DashboardHome() {
           <Plus className="w-4 h-4" />
           Log Shop Floor Event
         </Link>
-      </div>
+      </motion.div>
 
      {/* ── KPI STAT CARDS WITH REFRESH HEADER ── */}
-      <div className="space-y-3">
+      <motion.div variants={fadeUpItem} className="space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-xs font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>
             Key Performance Metrics
@@ -280,18 +304,21 @@ export default function DashboardHome() {
         </div>
 
         {/*                    */}
-        <div className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 transition-opacity duration-300 ${refreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+        <motion.div
+          variants={staggerContainer}
+          className={`grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 transition-opacity duration-300 ${refreshing ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}
+        >
           <StatCard title="Active Client Orders" value={totalOrders}   sub={`${avgProgress}% avg completion`} icon={ClipboardList} glow />
           <StatCard title="On Track"           value={onTimeOrders}  sub="Within sea cutoff window"         icon={CheckCircle2}  accent="#4ade80" />
           <StatCard title="Delayed Production Runs" value={delayedOrders} sub={delayedOrders > 0 ? 'Past internal deadline' : 'All on schedule'} icon={Clock} danger={delayedOrders > 0} glow={delayedOrders > 0} />
           <StatCard title="Air Freight Alerts" value={airRiskOrders} sub={airRiskOrders > 0 ? '~35% margin penalty risk' : 'No penalty risk'} icon={Plane} danger={airRiskOrders > 0} glow={airRiskOrders > 0} />
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
       {/* ── MAIN GRID ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <motion.div variants={staggerContainer} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         {/* LEFT: Order Cards */}
-        <div className="lg:col-span-2 space-y-5">
+        <motion.div variants={fadeUpItem} className="lg:col-span-2 space-y-5">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
               <Package className="w-4 h-4" style={{ color: '#c8834a' }} />
@@ -306,7 +333,7 @@ export default function DashboardHome() {
             </Link>
           </div>
 
-          <div className="space-y-4">
+          <motion.div variants={staggerContainer} className="space-y-4">
             {orders.length === 0 ? (
               <div className="p-8 rounded-2xl bg-white border border-slate-200 text-center text-slate-400 text-xs font-bold">
                 No Active Orders Found
@@ -314,14 +341,14 @@ export default function DashboardHome() {
             ) : (
               orders.map((order, idx) => <OrderRow key={order.id || order.order_number || idx} order={order} />)
             )}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
 
         {/* RIGHT COLUMN */}
-        <div className="space-y-5">
+        <motion.div variants={staggerContainer} className="space-y-5">
 
           {/* Live Feed */}
-          <div className="rounded-2xl border overflow-hidden" style={{ background: '#ffffff', borderColor: 'rgba(180,130,80,0.2)', boxShadow: '0 1px 6px rgba(180,130,80,0.08)' }}>
+          <motion.div variants={fadeUpItem} className="rounded-2xl border overflow-hidden" style={{ background: '#ffffff', borderColor: 'rgba(180,130,80,0.2)', boxShadow: '0 1px 6px rgba(180,130,80,0.08)' }}>
             <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: 'rgba(180,130,80,0.12)' }}>
               <h2 className="text-sm font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
                 <Activity className="w-4 h-4" style={{ color: '#c8834a' }} />
@@ -333,7 +360,7 @@ export default function DashboardHome() {
               </span>
             </div>
 
-            <div className="p-5 space-y-5 border-l-2 ml-5" style={{ borderColor: 'rgba(200,131,74,0.3)' }}>
+            <motion.div variants={staggerContainer} className="p-5 space-y-5 border-l-2 ml-5" style={{ borderColor: 'rgba(200,131,74,0.3)' }}>
               {recentEvents.length === 0 ? (
                 <p className="text-xs text-center py-4" style={{ color: '#b09070' }}>No events logged yet.</p>
               ) : (
@@ -341,7 +368,7 @@ export default function DashboardHome() {
                   <FeedItem key={evt.id || idx} evt={evt} workerName={getWorkerName(evt.worker_id || evt.employee_id)} />
                 ))
               )}
-            </div>
+            </motion.div>
 
             <div className="px-5 pb-5">
               <Link
@@ -352,28 +379,28 @@ export default function DashboardHome() {
                 <FilePen className="w-3.5 h-3.5" /> Log New Event
               </Link>
             </div>
-          </div>
+          </motion.div>
 
           {/* Quick Navigation */}
-          <div className="rounded-2xl border overflow-hidden" style={{ background: '#ffffff', borderColor: 'rgba(180,130,80,0.2)', boxShadow: '0 1px 6px rgba(180,130,80,0.08)' }}>
+          <motion.div variants={fadeUpItem} className="rounded-2xl border overflow-hidden" style={{ background: '#ffffff', borderColor: 'rgba(180,130,80,0.2)', boxShadow: '0 1px 6px rgba(180,130,80,0.08)' }}>
             <div className="px-5 py-4 border-b" style={{ borderColor: 'rgba(180,130,80,0.12)' }}>
               <h2 className="text-sm font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
                 <Zap className="w-4 h-4" style={{ color: '#c8834a' }} />
                 Quick Access
               </h2>
             </div>
-            <div className="p-3 space-y-2">
+            <motion.div variants={staggerContainer} className="p-3 space-y-2">
               <QuickNav href="/dashboard/analytics"   icon={BarChart3}   label="Analytics & Alerts"    sub="Charts, trends, KPIs" />
               <QuickNav href="/dashboard/progress"    icon={TrendingUp}  label="Stage Progress"        sub="Spread & cut tracking" />
               <QuickNav href="/dashboard/wages"       icon={Users}       label="Payroll & Rates"        sub="Worker wage ledger" />
               <QuickNav href="/dashboard/attendance"  icon={CheckCircle2} label="Attendance"            sub="Daily floor check-in" />
               <QuickNav href="/dashboard/simulator"   icon={Activity}    label="Delay Simulator"        sub="Freight impact model" />
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
 
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+    </motion.div>
   );
 }
 // 'use client';

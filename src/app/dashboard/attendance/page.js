@@ -9,6 +9,9 @@ import {
   UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
+import AnimatedModal from '@/components/AnimatedModal';
+import { motion, AnimatePresence } from 'framer-motion';
+import { staggerContainer, fadeUpItem, tabFade, rowStagger } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
 
 // ─── API BASE ────────────────────────────────────────────────────────────────
@@ -118,7 +121,7 @@ function AlertBanner({ type, message, onClose }) {
     setMounted(true);
   }, []);
 
-  if (!message || !mounted) return null;
+  if (!mounted) return null;
   const styles = {
     success: 'bg-emerald-50/95 border-emerald-500/30 text-emerald-900 backdrop-blur-md',
     error: 'bg-red-50/95 border-red-500/30 text-red-900 backdrop-blur-md',
@@ -128,15 +131,25 @@ function AlertBanner({ type, message, onClose }) {
   const icons = { success: CheckCircle2, error: AlertCircle, warning: AlertTriangle, info: Activity };
   const Icon = icons[type] || AlertCircle;
   return createPortal(
-    <div className={`fixed bottom-6 right-4 sm:right-6 z-[999999] flex items-start gap-2.5 p-4 rounded-2xl border text-sm font-semibold shadow-2xl max-w-sm w-full animate-fade-in ${styles[type] || styles.info}`}>
-      <Icon className="w-4 h-4 mt-0.5 flex-shrink-0" />
-      <p className="flex-1">{message}</p>
-      {onClose && (
-        <button onClick={onClose} className="opacity-60 hover:opacity-100 cursor-pointer">
-          <X className="w-4 h-4" />
-        </button>
+    <AnimatePresence>
+      {message && (
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 8, scale: 0.96 }}
+          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          className={`fixed bottom-6 right-4 sm:right-6 z-[999999] flex items-start gap-2.5 p-4 rounded-2xl border text-sm font-semibold shadow-2xl max-w-sm w-full ${styles[type] || styles.info}`}
+        >
+          <Icon className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <p className="flex-1">{message}</p>
+          {onClose && (
+            <button onClick={onClose} className="opacity-60 hover:opacity-100 cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </motion.div>
       )}
-    </div>,
+    </AnimatePresence>,
     document.body
   );
 }
@@ -312,20 +325,24 @@ function MyAttendanceView({ token }) {
   const busy = actionLoading || gps.loading;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
       <div>
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>My Attendance</h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Track your shift status and review personal attendance history.</p>
       </div>
 
-      {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+      <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
       <GpsWarning error={gps.error} />
 
       {/* Hero row — Managing Director-க்கு மட்டும் இந்த ஷீல்ட் / டைமர் பேனர்கள் மறைக்கப்படும் */}
       {!isManagingDirector && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <motion.div variants={staggerContainer} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Shift Timer */}
-          <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <SpotlightCard
+            variants={fadeUpItem}
+            whileHover={{ y: -6, scale: 1.02 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+            className="p-6 bg-white shadow-xl space-y-4 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
             <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
               <Timer className="w-4 h-4" style={{ color: '#c8834a' }} /> Shift Timer
             </h3>
@@ -355,7 +372,11 @@ function MyAttendanceView({ token }) {
           </SpotlightCard>
 
           {/* Action Terminal */}
-          <SpotlightCard className="lg:col-span-2 p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <SpotlightCard
+            variants={fadeUpItem}
+            whileHover={{ y: -6, scale: 1.02 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+            className="lg:col-span-2 p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
             <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
               <Zap className="w-4 h-4" style={{ color: '#c8834a' }} /> Action Terminal
             </h3>
@@ -391,11 +412,11 @@ function MyAttendanceView({ token }) {
               </div>
             )}
           </SpotlightCard>
-        </div>
+        </motion.div>
       )}
 
       {/* Personal History */}
-      <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
             <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Attendance History
@@ -435,9 +456,9 @@ function MyAttendanceView({ token }) {
                     <th className="p-3">Flags</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
+                <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
                   {paginated.map((row) => (
-                    <tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
+                    <motion.tr key={row.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                       <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</td>
                       <td className="p-3">{fmtTime(row.check_in_at)}</td>
                       <td className="p-3">
@@ -455,16 +476,16 @@ function MyAttendanceView({ token }) {
                           {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
-                </tbody>
+                </motion.tbody>
               </table>
             </div>
 
             {/* Mobile cards — shown only on mobile */}
-            <div className="sm:hidden space-y-3">
+            <motion.div variants={staggerContainer} initial="hidden" animate="show" className="sm:hidden space-y-3">
               {paginated.map((row) => (
-                <div key={row.id} className="rounded-xl p-4 space-y-3" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.1)' }}>
+                <motion.div key={row.id} variants={fadeUpItem} className="rounded-xl p-4 space-y-3" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.1)' }}>
                   <div className="flex items-center justify-between">
                     <span className="font-black text-sm" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</span>
                     <Badge label={row.source} type={row.source} />
@@ -496,14 +517,14 @@ function MyAttendanceView({ token }) {
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
             <Paginator page={page} totalPages={totalPages} setPage={setPage} total={history.length} perPage={PER_PAGE} />
           </>
         )}
       </SpotlightCard>
-    </div>
+    </motion.div>
   );
 }
 
@@ -658,7 +679,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Floor Command</h1>
@@ -672,10 +693,10 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
         </div>
       </div>
 
-      {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+      <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
       <GpsWarning error={gps.error} />
 
-      <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 relative overflow-hidden rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-4 relative overflow-hidden rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2 flex-1" style={{ color: '#2d1f0e' }}>
             <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Daily Wage Roster
@@ -718,12 +739,12 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
                   <th className="p-3">Type</th>
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
+              <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
                 {filtered.map((w) => {
                   const isSelected = selected.has(w.id);
                   const isPieceRate = w.wage_type === 'piece_rate';
                   return (
-                    <tr key={w.id} onClick={() => toggleSelect(w.id)}
+                    <motion.tr key={w.id} variants={fadeUpItem} onClick={() => toggleSelect(w.id)}
                       className="cursor-pointer transition-colors relative" style={{ background: isSelected ? '#fff9f0' : 'transparent' }}>
                       <td className="p-3">
                         {isSelected
@@ -753,20 +774,24 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
                           </div>
                         )}
                       </td>
-                    </tr>
+                    </motion.tr>
                   );
                 })}
-              </tbody>
+              </motion.tbody>
             </table>
           </div>
         )}
       </SpotlightCard>
 
       {/* Diff result modal */}
-      {diffModal && typeof window !== 'undefined' && createPortal(
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15, 23, 42, 0.65)', padding: '16px', pointerEvents: 'auto' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', width: '100%', maxWidth: '448px', padding: '24px', position: 'relative', zIndex: 1000000, pointerEvents: 'auto' }}
-            className="space-y-4 animate-scale-up" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+      <AnimatedModal
+        isOpen={!!diffModal}
+        onClose={() => setDiffModal(null)}
+        panelClassName="space-y-4 w-full max-w-md"
+        panelStyle={{ backgroundColor: '#ffffff', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', padding: '24px' }}
+      >
+        {diffModal && (
+          <>
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-black text-slate-900 text-base sm:text-lg">
                 {diffModal.type === 'check-in' ? 'Check-In' : 'Check-Out'} Results
@@ -792,16 +817,19 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
               )}
             </div>
             <button onClick={() => setDiffModal(null)} className="btn-primary w-full h-11 sm:h-10 text-xs font-black cursor-pointer relative z-30 pointer-events-auto">Done</button>
-          </div>
-        </div>,
-        document.body
-      )}
+          </>
+        )}
+      </AnimatedModal>
 
       {/* Add floor worker modal */}
-      {addModal && typeof window !== 'undefined' && createPortal(
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15, 23, 42, 0.65)', padding: '16px', pointerEvents: 'auto' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', width: '100%', maxWidth: '448px', maxHeight: '90vh', overflowY: 'auto', padding: '24px', position: 'relative', zIndex: 1000000, pointerEvents: 'auto' }}
-            className="space-y-4 animate-scale-up" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-worker-title">
+      <AnimatedModal
+        isOpen={addModal}
+        onClose={() => setAddModal(false)}
+        panelClassName="space-y-4 w-full max-w-md"
+        panelStyle={{ backgroundColor: '#ffffff', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}
+      >
+        {addModal && (
+          <>
             <div className="flex-shrink-0 flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 id="add-worker-title" className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" /> Add Floor Worker
@@ -917,11 +945,10 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
                 {addLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding...</> : <><UserPlus className="w-4 h-4" /> Add Worker</>}
               </button>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
-    </div>
+          </>
+        )}
+      </AnimatedModal>
+    </motion.div>
   );
 }
 
@@ -1025,15 +1052,15 @@ function OperationsHRView({ token }) {
   const totalPages = Math.ceil(filteredRoster.length / PER_PAGE);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
       <div>
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Operations &amp; HR</h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Live roster audit and shift policy configuration.</p>
       </div>
 
-      {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+      <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 
-      <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
             <Activity className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster
@@ -1103,9 +1130,9 @@ function OperationsHRView({ token }) {
                     <th className="p-3">Flags</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
+                <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
                   {paginated.map((row) => (
-                    <tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
+                    <motion.tr key={row.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                       <td className="p-3 font-mono text-[10px] font-black" style={{ color: '#9a7a5a' }}>
                         {String(row.employee_id).slice(0, 8)}…
                       </td>
@@ -1125,9 +1152,9 @@ function OperationsHRView({ token }) {
                           {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
-                </tbody>
+                </motion.tbody>
               </table>
             </div>
             <Paginator page={page} totalPages={totalPages} setPage={setPage} total={filteredRoster.length} perPage={PER_PAGE} />
@@ -1135,7 +1162,7 @@ function OperationsHRView({ token }) {
         )}
       </SpotlightCard>
 
-      <SpotlightCard className="p-6 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
           <Settings className="w-5 h-5" style={{ color: '#c8834a' }} /> Shift &amp; Geofence Configuration
         </h3>
@@ -1222,7 +1249,7 @@ function OperationsHRView({ token }) {
           </div>
         )}
       </SpotlightCard>
-    </div>
+    </motion.div>
   );
 }
 
@@ -1260,36 +1287,48 @@ export default function AttendancePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
-        {tabs.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setActiveTab(key)}
-            className="flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap border-b-2 transition-colors"
-            style={{
-              borderColor: activeTab === key ? '#c8834a' : 'transparent',
-              color: activeTab === key ? '#c8834a' : '#9a7a5a',
-            }}>
-            <Icon className="w-4 h-4" />
-            {label}
-          </button>
-        ))}
+        {tabs.map(({ key, label, icon: Icon }) => {
+          const isActive = activeTab === key;
+          return (
+            <button key={key} onClick={() => setActiveTab(key)}
+              className="relative flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap transition-colors"
+              style={{ color: isActive ? '#c8834a' : '#9a7a5a' }}>
+              <Icon className="w-4 h-4 relative" />
+              <span className="relative">{label}</span>
+              {isActive && (
+                <motion.span
+                  layoutId="attendanceTabUnderline"
+                  className="absolute left-0 right-0 -bottom-px h-[2px]"
+                  style={{ background: '#c8834a' }}
+                  transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {activeTab === 'me' && <MyAttendanceView token={token} />}
+      <AnimatePresence mode="wait">
+        <motion.div key={activeTab} variants={tabFade} initial="hidden" animate="show" exit="exit">
+          {activeTab === 'me' && <MyAttendanceView token={token} />}
 
-      {activeTab === 'proxy' && (
-        isSupervisor
-          ? <FloorCommandView workers={workers} token={token} onWorkerAdded={refreshWorkers} />
-          : <LockedView
-            title="Supervisor Authorization Required"
-            description="Floor Command is restricted to Supervisors and Direct Managers." />
-      )}
+          {activeTab === 'proxy' && (
+            isSupervisor
+              ? <FloorCommandView workers={workers} token={token} onWorkerAdded={refreshWorkers} />
+              : <LockedView
+                title="Supervisor Authorization Required"
+                description="Floor Command is restricted to Supervisors and Direct Managers." />
+          )}
 
-      {activeTab === 'admin' && (
-        isManager
-          ? <OperationsHRView token={token} />
-          : <LockedView
-            title="Direct Manager Authorization Required"
-            description="Operations & HR is restricted to Direct Managers only." />
-      )}
+          {activeTab === 'admin' && (
+            isManager
+              ? <OperationsHRView token={token} />
+              : <LockedView
+                title="Direct Manager Authorization Required"
+                description="Operations & HR is restricted to Direct Managers only." />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
@@ -1615,7 +1654,7 @@ export default function AttendancePage() {
 //         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Track your shift status and review personal attendance history.</p>
 //       </div>
 
-//       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+//       <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 //       <GpsWarning error={gps.error} />
 
 //       {/* Hero row */}
@@ -1927,7 +1966,7 @@ export default function AttendancePage() {
 //         </div>
 //       </div>
 
-//       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+//       <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 //       <GpsWarning error={gps.error} />
 
 //       {/* Roster table */}
@@ -2255,7 +2294,7 @@ export default function AttendancePage() {
 //         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Live roster audit and shift policy configuration.</p>
 //       </div>
 
-//       {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+//       <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 
 //       {/* Live Daily Roster */}
 //       <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
