@@ -56,8 +56,8 @@ export default function PieceRatesAndWages() {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs sm:text-sm transition-all duration-300 ${isActive
-                    ? 'bg-white shadow-md'
-                    : 'hover:bg-white/40 opacity-70 hover:opacity-100'
+                  ? 'bg-white shadow-md'
+                  : 'hover:bg-white/40 opacity-70 hover:opacity-100'
                   }`}
                 style={isActive ? { color: '#c8834a' } : { color: '#4a3a2a' }}
               >
@@ -92,8 +92,8 @@ function Toast({ msg, type }) {
   return createPortal(
     <div className="fixed bottom-4 right-4 left-4 sm:bottom-8 sm:right-8 sm:left-auto flex justify-center z-[999999] animate-fade-in pointer-events-none">
       <div className={`px-6 py-4 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 backdrop-blur-md border max-w-sm w-full sm:w-auto ${isSuccess
-          ? 'bg-emerald-50/90 border-emerald-200/50 text-emerald-900 shadow-emerald-500/10'
-          : 'bg-red-50/90 border-red-200/50 text-red-900 shadow-red-500/10'
+        ? 'bg-emerald-50/90 border-emerald-200/50 text-emerald-900 shadow-emerald-500/10'
+        : 'bg-red-50/90 border-red-200/50 text-red-900 shadow-red-500/10'
         }`}>
         {isSuccess ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <AlertCircle className="w-5 h-5 text-red-500" />}
         {msg}
