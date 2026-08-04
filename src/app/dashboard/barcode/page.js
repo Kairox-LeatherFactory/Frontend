@@ -8,14 +8,27 @@ import {
 } from 'lucide-react';
 import AnimatedModal from '@/components/AnimatedModal';
 import { useAuth } from '@/context/AuthContext';
+import { apiGetEmployees } from '@/lib/api';
 import { staggerContainer, fadeUpItem, tabFade } from '@/lib/motionVariants';
 
 // ─── PRODUCTION ORDER / EMPLOYEE ROSTER DATASETS ─────────────────────────────
 // Populated from the backend — no seed/demo data.
 const initialOrdersStore = {};
 
-// Populated from the backend employee roster — no seed/demo data.
-const EMPLOYEE_DIRECTORY = [];
+// The employee roster comes from GET /api/v1/employees (apiGetEmployees).
+// That row is { id, name, designation, wage_type, is_active, employee_barcode }
+// — this screen groups by department, so designation doubles as the department
+// bucket until the roster carries one of its own.
+function normalizeEmployee(row) {
+  const empId = row.employee_barcode || `EMP-${String(row.id).slice(0, 8).toUpperCase()}`;
+  return {
+    id: row.id,
+    empId,
+    name: row.name || 'Unnamed',
+    designation: row.designation || 'Unassigned',
+    department: row.department || row.designation || 'Unassigned',
+  };
+}
 
 // Builds a fresh, empty store. Orders/styles/sizes and any generated barcode
 // history are expected to come from the backend once wired up.
@@ -427,9 +440,9 @@ function GenerationTab({
 }
 
 // ─── EMPLOYEE: BATCH GENERATION TAB ────────────────────────────────────────────
-function EmployeeGenerationTab({ employeeGenerated, onGenerateSelected, onGenerateAllRemaining, onSendToPrintCenter, onOpenDetail, onPrintSingle }) {
-  const departments = useMemo(() => Array.from(new Set(EMPLOYEE_DIRECTORY.map((e) => e.department))), []);
-  const designations = useMemo(() => Array.from(new Set(EMPLOYEE_DIRECTORY.map((e) => e.designation))), []);
+function EmployeeGenerationTab({ employees, employeesLoading, employeesError, onRetryEmployees, employeeGenerated, onGenerateSelected, onGenerateAllRemaining, onSendToPrintCenter, onOpenDetail, onPrintSingle }) {
+  const departments = useMemo(() => Array.from(new Set(employees.map((e) => e.department))), [employees]);
+  const designations = useMemo(() => Array.from(new Set(employees.map((e) => e.designation))), [employees]);
   const [deptFilter, setDeptFilter] = useState('ALL');
   const [designationFilter, setDesignationFilter] = useState('ALL');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -438,15 +451,15 @@ function EmployeeGenerationTab({ employeeGenerated, onGenerateSelected, onGenera
   const generatedIds = useMemo(() => new Set(employeeGenerated.map((r) => r.size)), [employeeGenerated]);
 
   const filteredEmployees = useMemo(() => {
-    let list = EMPLOYEE_DIRECTORY;
+    let list = employees;
     if (deptFilter !== 'ALL') list = list.filter((e) => e.department === deptFilter);
     if (designationFilter !== 'ALL') list = list.filter((e) => e.designation === designationFilter);
     const q = search.trim().toLowerCase();
     if (q) list = list.filter((e) => e.name.toLowerCase().includes(q) || e.empId.toLowerCase().includes(q));
     return list;
-  }, [deptFilter, designationFilter, search]);
+  }, [employees, deptFilter, designationFilter, search]);
 
-  const totals = useMemo(() => ({ ordered: EMPLOYEE_DIRECTORY.length, generated: employeeGenerated.length }), [employeeGenerated]);
+  const totals = useMemo(() => ({ ordered: employees.length, generated: employeeGenerated.length }), [employees, employeeGenerated]);
 
   const toggleSelect = (empId) => setSelectedIds((prev) => { const next = new Set(prev); next.has(empId) ? next.delete(empId) : next.add(empId); return next; });
   const selectAllVisible = () => setSelectedIds((prev) => {
@@ -457,7 +470,7 @@ function EmployeeGenerationTab({ employeeGenerated, onGenerateSelected, onGenera
   const clearSelection = () => setSelectedIds(new Set());
 
   const handleGenerateClick = () => {
-    const chosen = EMPLOYEE_DIRECTORY.filter((e) => selectedIds.has(e.empId));
+    const chosen = employees.filter((e) => selectedIds.has(e.empId));
     onGenerateSelected(chosen);
     setSelectedIds(new Set());
   };
@@ -521,8 +534,17 @@ function EmployeeGenerationTab({ employeeGenerated, onGenerateSelected, onGenera
         </div>
 
         <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
-          {filteredEmployees.length === 0 ? (
-            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>No employees match this filter.</div>
+          {employeesLoading ? (
+            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>Loading employee roster…</div>
+          ) : employeesError ? (
+            <div className="text-center py-8 text-sm space-y-2" style={{ color: BRAND.textMuted }}>
+              <p style={{ color: '#b91c1c' }}>{employeesError}</p>
+              <button onClick={onRetryEmployees} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Retry</button>
+            </div>
+          ) : filteredEmployees.length === 0 ? (
+            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>
+              {employees.length === 0 ? 'No employees on the roster yet.' : 'No employees match this filter.'}
+            </div>
           ) : filteredEmployees.map((e, idx) => {
             const isGenerated = generatedIds.has(e.empId);
             const isChecked = selectedIds.has(e.empId);
@@ -1064,7 +1086,7 @@ function PrintPreviewModal({ open, codes, onClose, onConfirm }) {
 
 // ─── PAGE ROOT ──────────────────────────────────────────────────────────────────
 export default function BarcodeManagementPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const operatorLabel = user ? user.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN';
 
   const [category, setCategory] = useState('style');
@@ -1079,6 +1101,14 @@ export default function BarcodeManagementPage() {
 
   // Employee category data — fully separate store
   const [employeeStore, setEmployeeStore] = useState(() => ({ generated: [], history: [] }));
+
+  // Employee roster straight off GET /api/v1/employees — the source for every
+  // department/designation pill and every badge this category generates.
+  const [employeeDirectory, setEmployeeDirectory] = useState([]);
+  const [employeesLoading, setEmployeesLoading] = useState(false);
+  const [employeesError, setEmployeesError] = useState(null);
+  const [employeesReloadKey, setEmployeesReloadKey] = useState(0);
+  const reloadEmployees = useCallback(() => setEmployeesReloadKey((k) => k + 1), []);
 
   // Bucket category data — fully separate store
   const [bucketStore, setBucketStore] = useState(() => ({ generated: [], history: [] }));
@@ -1118,6 +1148,29 @@ export default function BarcodeManagementPage() {
     setCategory(cat);
     setActiveTab('generation');
   }, []);
+
+  // ─── Employee roster fetch: GET /api/v1/employees (active roster only) ───
+  useEffect(() => {
+    if (category !== 'employee' || !token) return;
+    let cancelled = false;
+    const loadRoster = async () => {
+      setEmployeesLoading(true);
+      setEmployeesError(null);
+      try {
+        const rows = await apiGetEmployees(token);
+        if (cancelled) return;
+        setEmployeeDirectory((Array.isArray(rows) ? rows : []).map(normalizeEmployee));
+      } catch (err) {
+        if (cancelled) return;
+        setEmployeeDirectory([]);
+        setEmployeesError(err?.message || 'Failed to load the employee roster.');
+      } finally {
+        if (!cancelled) setEmployeesLoading(false);
+      }
+    };
+    loadRoster();
+    return () => { cancelled = true; };
+  }, [category, token, employeesReloadKey]);
 
   // ─── Print-side-effect: render the hidden sheet then trigger the browser print dialog ───
   useEffect(() => {
@@ -1219,7 +1272,8 @@ export default function BarcodeManagementPage() {
     const batchId = `EMP-BATCH-${Date.now().toString().slice(-6)}`;
     const deptCode = departmentName.replace(/\s+/g, '_').toUpperCase();
     const newRecords = pending.map((emp, idx) => ({
-      pieceCode: `EMP-${emp.empId}-${emp.name.replace(/\s+/g, '_').toUpperCase()}`,
+      // empId is already the backend card code (EMP-000123) — don't re-prefix it.
+      pieceCode: `${emp.empId.startsWith('EMP-') ? emp.empId : `EMP-${emp.empId}`}-${emp.name.replace(/\s+/g, '_').toUpperCase()}`,
       orderId: deptCode, client: departmentName, style: emp.name, color: emp.designation, size: emp.empId,
       serial: idx + 1, serialStr: String(idx + 1).padStart(3, '0'), batchNo: batchId,
       createdDate: new Date().toLocaleString(), generatedBy: operatorLabel, printStatus: 'PENDING', printCount: 0,
@@ -1240,8 +1294,9 @@ export default function BarcodeManagementPage() {
   }, [generateEmployeeDept, showToast]);
 
   const generateAllRemainingEmployees = useCallback(() => {
+    if (employeeDirectory.length === 0) { showToast('No employees on the roster to generate barcodes for!', 'error'); return; }
     const deptMap = new Map();
-    EMPLOYEE_DIRECTORY.forEach((emp) => {
+    employeeDirectory.forEach((emp) => {
       if (!deptMap.has(emp.department)) deptMap.set(emp.department, []);
       deptMap.get(emp.department).push(emp);
     });
@@ -1251,7 +1306,7 @@ export default function BarcodeManagementPage() {
       if (employees.some((e) => !alreadyGenIds.has(e.empId))) { generateEmployeeDept(dept, employees); any = true; }
     });
     if (!any) showToast('All employee ID barcodes have already been generated!', 'info');
-  }, [employeeStore, generateEmployeeDept, showToast]);
+  }, [employeeDirectory, employeeStore, generateEmployeeDept, showToast]);
 
   const sendEmployeesToPrintCenter = useCallback(() => {
     const codes = employeeStore.generated;
@@ -1372,15 +1427,15 @@ export default function BarcodeManagementPage() {
   }, [ordersStore, batchHistoryStore]);
 
   const employeeHistoryOptions = useMemo(() => {
-    const depts = Array.from(new Set(EMPLOYEE_DIRECTORY.map((e) => e.department)));
+    const depts = Array.from(new Set(employeeDirectory.map((e) => e.department)));
     return {
       orderIds: depts.map((d) => d.replace(/\s+/g, '_').toUpperCase()),
       clients: depts,
-      styles: Array.from(new Set(EMPLOYEE_DIRECTORY.map((e) => e.name))),
-      sizes: Array.from(new Set(EMPLOYEE_DIRECTORY.map((e) => e.empId))),
+      styles: Array.from(new Set(employeeDirectory.map((e) => e.name))),
+      sizes: Array.from(new Set(employeeDirectory.map((e) => e.empId))),
       operators: Array.from(new Set(employeeStore.history.map((b) => b.generatedBy))),
     };
-  }, [employeeStore.history]);
+  }, [employeeDirectory, employeeStore.history]);
 
   const bucketHistoryOptions = useMemo(() => ({
     orderIds: Array.from(new Set(bucketStore.history.map((b) => b.orderId))),
@@ -1523,6 +1578,10 @@ export default function BarcodeManagementPage() {
 
       {activeTab === 'generation' && category === 'employee' && (
         <EmployeeGenerationTab
+          employees={employeeDirectory}
+          employeesLoading={employeesLoading}
+          employeesError={token ? employeesError : 'Sign in to load the employee roster.'}
+          onRetryEmployees={reloadEmployees}
           employeeGenerated={employeeStore.generated}
           onGenerateSelected={generateSelectedEmployees}
           onGenerateAllRemaining={generateAllRemainingEmployees}
