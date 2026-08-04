@@ -1,0 +1,15 @@
+POST /api/v1/auth/login
+POST /api/v1/clients
+POST /api/v1/imports/preview
+POST /api/v1/imports/commit
+POST /api/v1/barcode/print)
+GET /api/v1/barcode/resolve?code=JP-2026-014-CLERMONT-PINE-M-007
+POST /api/v1/materials/lots
+GET /api/v1/materials/spec?category=LEATHER
+POST /api/v1/attendance/check-in
+PATCH /api/v1/attendance/config,
+POST /api/v1/production/log
+POST /api/v1/production/log
+POST /api/v1/drawers/store-scan
+GET /api/v1/analytics/pieces/JP-2026-014-CLERMONT-PINE-M-007/story
+POST /api/v1/wages/runs
