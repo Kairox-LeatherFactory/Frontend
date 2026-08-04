@@ -1,10 +1,11 @@
 @import "tailwindcss";
 
 /* ─── Warm Leather Theme Tokens (Tailwind v4) ─── */
-@theme inline {
+@theme {
   --color-background:   #faf6f0;
   --color-foreground:   #2d1f0e;
   --font-sans: var(--font-lato), 'Lato', sans-serif;
+  --font-serif: var(--font-playfair), 'Playfair Display', serif;
 
   /* Warm Leather palette */
   --color-brand-50:  #fff9f0;
@@ -23,6 +24,12 @@
   --color-success:  #16a34a;
   --color-warning:  #d97706;
   --color-danger:   #dc2626;
+}
+
+/* ─── Premium heading utility ─── */
+.font-display {
+  font-family: var(--font-serif);
+  letter-spacing: -0.01em;
 }
 
 /* ─── Base Styles ─── */
