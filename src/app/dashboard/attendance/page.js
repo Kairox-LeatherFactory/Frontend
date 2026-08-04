@@ -540,7 +540,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
     try {
       const targetCode = rawCode.toUpperCase();
       
-      // Match worker by barcode (e.g. EMP-000123) or ID (e.g. 123) or name/phone
       const matchedWorker = workers.find(w => 
         String(w.employee_barcode || '').toUpperCase() === targetCode ||
         String(w.id).toUpperCase() === targetCode ||
@@ -548,43 +547,61 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
         String(w.phone || '').includes(targetCode)
       );
 
-      if (!matchedWorker) {
-        throw new Error(`Worker not found for scan: ${rawCode}`);
+      let direction = 'in';
+
+      if (matchedWorker) {
+        const workerIdStr = String(matchedWorker.id);
+        const isAlreadyIn = checkedInIds.has(workerIdStr);
+        const isAlreadyOut = checkedOutIds.has(workerIdStr);
+
+        if (isAlreadyIn && isAlreadyOut) {
+          playBeep(440, 'triangle');
+          showAlert('info', `✓ ${matchedWorker.name} (${targetCode}) has already completed shift today.`);
+          setScanInput('');
+          return;
+        }
+
+        direction = !isAlreadyIn ? 'in' : 'out';
       }
 
-      const workerIdStr = String(matchedWorker.id);
-      const isAlreadyIn = checkedInIds.has(workerIdStr);
-      const isAlreadyOut = checkedOutIds.has(workerIdStr);
-
-      const action = !isAlreadyIn ? 'check-in' : (!isAlreadyOut ? 'check-out' : 'already_complete');
-
-      if (action === 'already_complete') {
-        playBeep(440, 'triangle');
-        showAlert('info', `✓ ${matchedWorker.name} (${targetCode}) has already completed shift today.`);
-        setScanInput('');
-        return;
-      }
-
-      let coords = { lat: 12.9716, lon: 77.5946 };
+      let coords = null;
+      let reason = undefined;
       try {
         coords = await gps.getPosition();
-      } catch (e) {}
+      } catch (e) {
+        reason = "GPS unavailable";
+      }
 
-      await apiFetch(`${API}/proxy/${action}`, {
+      const payload = {
+        employee_barcode: targetCode,
+        proxy: false,
+        direction: direction
+      };
+
+      if (coords) {
+        payload.lat = coords.lat;
+        payload.lon = coords.lon;
+      } else {
+        payload.reason = reason;
+      }
+
+      const response = await apiFetch(`${API}/scan-check-in`, {
         method: 'POST',
-        body: JSON.stringify({ employee_ids: [matchedWorker.id], lat: coords.lat, lon: coords.lon }),
+        body: JSON.stringify(payload),
       }, token);
 
       playBeep(1046, 'sine'); // High-pitch scanner gun success sound
 
       const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+      const respWorkerIdStr = String(response.employee_id);
 
-      if (action === 'check-in') {
-        setCheckedInIds(prev => new Set([...prev, workerIdStr]));
-        showAlert('success', `🟢 AUTOMATIC CHECK-IN CONFIRMED: ${matchedWorker.name} (${targetCode}) at ${timeStr}`);
+      // If backend returned check_out_at, it means this scan triggered a check-out
+      if (response.check_out_at) {
+        setCheckedOutIds(prev => new Set([...prev, respWorkerIdStr]));
+        showAlert('success', `🔴 AUTOMATIC CHECK-OUT CONFIRMED: ${response.employee_name} (${targetCode}) at ${timeStr} (Shift Complete)`);
       } else {
-        setCheckedOutIds(prev => new Set([...prev, workerIdStr]));
-        showAlert('success', `🔴 AUTOMATIC CHECK-OUT CONFIRMED: ${matchedWorker.name} (${targetCode}) at ${timeStr} (Shift Complete)`);
+        setCheckedInIds(prev => new Set([...prev, respWorkerIdStr]));
+        showAlert('success', `🟢 AUTOMATIC CHECK-IN CONFIRMED: ${response.employee_name} (${targetCode}) at ${timeStr}`);
       }
 
       setScanInput('');
