@@ -1,8 +1,7 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
-import { useMemo } from 'react';
 import { 
   apiGetWageStyles, 
   apiComputeWageRun, 
@@ -13,7 +12,11 @@ import {
   apiGetRateHistory,
   apiGetWageRunDetails 
 } from '@/lib/api';
-import { Loader2, History, Eye, X, Save, Activity } from 'lucide-react';
+import { 
+  Loader2, History, Eye, X, Save, Activity, Search, 
+  Briefcase, Scissors, CheckCircle2, AlertCircle, Coins,
+  Calendar, FileText, Filter, Users, TrendingUp, ChevronRight
+} from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 export default function PieceRatesAndWages() {
@@ -21,46 +24,82 @@ export default function PieceRatesAndWages() {
   const [activeTab, setActiveTab] = useState('styles');
 
   return (
-    <div className="space-y-8 animate-fade-in pb-12">
-      {/* ─── TITLE SECTION ─── */}
-      <div>
-        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Payroll &amp; Rates Manager</h1>
-        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Verify piece-rates and execute audits on shop floor wage calculations.</p>
-      </div>
+    <div className="space-y-8 animate-fade-in pb-16">
+      {/* ─── PREMIUM HEADER & NAVIGATION ─── */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
+        <div>
+          <h1 className="text-4xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>
+            Payroll Command
+          </h1>
+          <p className="font-medium mt-2 text-sm max-w-xl" style={{ color: '#9a7a5a' }}>
+            Manage piece-rate logic, execute shop floor audits, and process automated wage runs with high precision.
+          </p>
+        </div>
 
-      {/* ─── TABS ─── */}
-      <div className="grid grid-cols-3 sm:flex sm:w-max gap-2 sm:gap-3 p-1.5 rounded-2xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
-        <button 
-          onClick={() => setActiveTab('styles')} 
-          className={`px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap text-center ${activeTab === 'styles' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
-          style={activeTab === 'styles' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
-        >
-          Styles & Rates
-        </button>
-        <button 
-          onClick={() => setActiveTab('computation')} 
-          className={`px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap text-center ${activeTab === 'computation' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
-          style={activeTab === 'computation' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
-        >
-          Computation
-        </button>
-        <button 
-          onClick={() => setActiveTab('ledger')} 
-          className={`px-3 sm:px-6 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all whitespace-nowrap text-center ${activeTab === 'ledger' ? 'bg-white shadow-sm border' : 'hover:bg-white/50 border border-transparent'}`}
-          style={activeTab === 'ledger' ? { color: '#c8834a', borderColor: 'rgba(200,131,74,0.2)' } : { color: '#9a7a5a' }}
-        >
-          Ledger
-        </button>
+        {/* ─── PILL NAVIGATION ─── */}
+        <div className="flex items-center gap-1 p-1.5 rounded-full bg-white/60 backdrop-blur-md shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          {[
+            { id: 'styles', icon: Scissors, label: 'Piece Rates' },
+            { id: 'computation', icon: Activity, label: 'Run Engine' },
+            { id: 'ledger', icon: FileText, label: 'Ledger' }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button 
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)} 
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs sm:text-sm transition-all duration-300 ${
+                  isActive 
+                    ? 'bg-white shadow-md' 
+                    : 'hover:bg-white/40 opacity-70 hover:opacity-100'
+                }`}
+                style={isActive ? { color: '#c8834a' } : { color: '#4a3a2a' }}
+              >
+                <Icon className={`w-4 h-4 ${isActive ? 'scale-110' : 'scale-100'} transition-transform`} />
+                <span className="hidden sm:inline">{tab.label}</span>
+              </button>
+            )
+          })}
+        </div>
       </div>
       
-      {activeTab === 'styles' && <StylesView token={token} />}
-      {activeTab === 'computation' && <ComputationView token={token} />}
-      {activeTab === 'ledger' && <LedgerView token={token} />}
+      {/* ─── ACTIVE VIEW RENDERER ─── */}
+      <div className="relative z-0">
+        <div className={`transition-all duration-500 ${activeTab === 'styles' ? 'opacity-100 translate-y-0 relative' : 'opacity-0 translate-y-4 absolute inset-x-0 pointer-events-none'}`}>
+          <StylesView token={token} />
+        </div>
+        <div className={`transition-all duration-500 ${activeTab === 'computation' ? 'opacity-100 translate-y-0 relative' : 'opacity-0 translate-y-4 absolute inset-x-0 pointer-events-none'}`}>
+          <ComputationView token={token} />
+        </div>
+        <div className={`transition-all duration-500 ${activeTab === 'ledger' ? 'opacity-100 translate-y-0 relative' : 'opacity-0 translate-y-4 absolute inset-x-0 pointer-events-none'}`}>
+          <LedgerView token={token} />
+        </div>
+      </div>
     </div>
   );
 }
 
-// ─── STYLES & RATES VIEW ─────────────────────────────────────────────────────
+// ─── TOAST NOTIFICATION COMPONENT ───
+function Toast({ msg, type }) {
+  if (!msg) return null;
+  const isSuccess = type === 'success';
+  return createPortal(
+    <div className="fixed bottom-4 right-4 left-4 sm:bottom-8 sm:right-8 sm:left-auto flex justify-center z-[999999] animate-fade-in pointer-events-none">
+      <div className={`px-6 py-4 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 backdrop-blur-md border max-w-sm w-full sm:w-auto ${
+        isSuccess
+          ? 'bg-emerald-50/90 border-emerald-200/50 text-emerald-900 shadow-emerald-500/10'
+          : 'bg-red-50/90 border-red-200/50 text-red-900 shadow-red-500/10'
+      }`}>
+        {isSuccess ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <AlertCircle className="w-5 h-5 text-red-500" />}
+        {msg}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+// ─── 1. STYLES & RATES VIEW ──────────────────────────────────────────────────
 function StylesView({ token }) {
   const [styles, setStyles] = useState([]);
   const [selectedStyle, setSelectedStyle] = useState(null);
@@ -73,28 +112,28 @@ function StylesView({ token }) {
   const [toastType, setToastType] = useState('success');
   const [searchQuery, setSearchQuery] = useState('');
 
-
   const filteredStyles = useMemo(() => {
     if (!styles || !Array.isArray(styles)) return [];
     if (!searchQuery.trim()) return styles;
-    
     const term = searchQuery.toLowerCase().trim();
-    return styles.filter(item => {
-      const styleCode = String(item.style_code || item.code || '').toLowerCase();
-      const styleName = String(item.style_name || item.name || '').toLowerCase();
-      
-      return styleCode.includes(term) || styleName.includes(term);
-    });
+    return styles.filter(item => 
+      String(item.style_code).toLowerCase().includes(term) || 
+      String(item.style_name).toLowerCase().includes(term)
+    );
   }, [styles, searchQuery]);
 
   const showToast = (msg, type = 'success') => {
-    setToastMsg(msg);
-    setToastType(type);
+    setToastMsg(msg); setToastType(type);
     setTimeout(() => setToastMsg(null), 3000);
   };
 
   useEffect(() => {
-    apiGetWageStyles(token).then(setStyles).finally(() => setLoading(false));
+    let active = true;
+    if (active) setLoading(true);
+    apiGetWageStyles(token).then(data => {
+      if(active) setStyles(data);
+    }).finally(() => { if(active) setLoading(false); });
+    return () => { active = false; };
   }, [token]);
 
   const handleSelectStyle = async (style) => {
@@ -111,16 +150,15 @@ function StylesView({ token }) {
   const handleSaveSingleRate = async (op) => {
     setSavingOps(prev => ({ ...prev, [op.operation_code]: true }));
     try {
-      const payload = {
+      await apiSetWageRateSingle(token, {
         style_code: selectedStyle.style_code,
         operation_code: op.operation_code,
         rate: parseFloat(op.rate || 0),
         effective_from: new Date().toISOString().split('T')[0]
-      };
-      await apiSetWageRateSingle(token, payload);
+      });
       showToast(`${op.label} rate saved!`, 'success');
     } catch (e) { 
-      showToast('Error saving rate: ' + e.message, 'error');
+      showToast('Error: ' + e.message, 'error');
     } finally { 
       setSavingOps(prev => ({ ...prev, [op.operation_code]: false })); 
     }
@@ -129,15 +167,14 @@ function StylesView({ token }) {
   const handleSaveAllRates = async () => {
     setSavingAll(true);
     try {
-      const payload = {
+      await apiSetWageRatesBulk(token, {
         style_code: selectedStyle.style_code,
         effective_from: new Date().toISOString().split('T')[0],
         lines: rates.map(op => ({ operation_code: op.operation_code, rate: parseFloat(op.rate || 0) }))
-      };
-      await apiSetWageRatesBulk(token, payload);
+      });
       showToast('All rates saved successfully!', 'success');
     } catch (e) {
-      showToast('Error saving all rates: ' + e.message, 'error');
+      showToast('Error: ' + e.message, 'error');
     } finally {
       setSavingAll(false);
     }
@@ -145,9 +182,9 @@ function StylesView({ token }) {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center p-12 text-[#9a7a5a]">
-        <Loader2 className="w-8 h-8 animate-spin text-[#c8834a] mb-4" />
-        <p className="font-bold text-sm">Loading Rate Sheets...</p>
+      <div className="flex flex-col items-center justify-center p-20 opacity-60">
+        <Loader2 className="w-10 h-10 animate-spin text-[#c8834a] mb-4" />
+        <p className="font-bold text-sm tracking-widest uppercase" style={{ color: '#9a7a5a' }}>Syncing Ledger...</p>
       </div>
     );
   }
@@ -155,170 +192,128 @@ function StylesView({ token }) {
   if (selectedStyle) {
     return (
       <div className="space-y-6 animate-fade-in">
-        <SpotlightCard className="p-8 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-            <div>
-              <h2 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>{selectedStyle.style_name}</h2>
-              <p className="text-xs font-bold uppercase tracking-widest mt-1" style={{ color: '#c8834a' }}>{selectedStyle.style_code} • Piece Rates</p>
+        <Toast msg={toastMsg} type={toastType} />
+        
+        {/* Editor Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 md:p-8 rounded-[2rem] shadow-xl border relative overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          <div className="absolute top-0 left-0 w-1.5 h-full" style={{ background: 'linear-gradient(to bottom, #c8834a, #e8a06a)' }}></div>
+          <div>
+            <h2 className="font-black text-3xl" style={{ color: '#2d1f0e' }}>{selectedStyle.style_name}</h2>
+            <div className="flex items-center gap-3 mt-2 text-xs font-bold uppercase tracking-widest" style={{ color: '#c8834a' }}>
+              <span className="bg-[#faf6f0] px-3 py-1 rounded-md border" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>{selectedStyle.style_code}</span>
+              <span>•</span>
+              <span>Master Rate Config</span>
             </div>
-            <button 
-              onClick={() => setSelectedStyle(null)} 
-              className="px-5 py-2.5 bg-[#faf6f0] font-bold text-xs rounded-xl transition-all border shadow-sm flex items-center justify-center gap-2 hover:bg-white"
-              style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
-            >
-              ← Back to Styles
-            </button>
           </div>
-          
-          {/* Toast — bottom-right portal */}
-          {toastMsg && typeof document !== 'undefined' && createPortal(
-            <div className="fixed bottom-6 right-4 sm:right-6 z-[999999] animate-fade-in">
-              <div className={`px-5 py-3.5 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 backdrop-blur-md border ${
-                toastType === 'success'
-                  ? 'bg-emerald-50/95 border-emerald-300/40 text-emerald-900'
-                  : 'bg-red-50/95 border-red-300/40 text-red-900'
-              }`}>
-                <Activity className="w-4 h-4 shrink-0" />
-                {toastMsg}
+          <button 
+            onClick={() => setSelectedStyle(null)} 
+            className="px-6 py-3 bg-[#faf6f0] font-black text-xs uppercase tracking-widest rounded-2xl transition-all border shadow-sm hover:shadow-md hover:bg-white active:scale-95"
+            style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
+          >
+            ← Close Editor
+          </button>
+        </div>
+        
+        {/* Editor Rows */}
+        <div className="grid gap-4">
+          {rates.map((op, idx) => {
+            const isSaving = savingOps[op.operation_code];
+            return (
+              <div key={op.operation_code} className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border flex flex-col md:flex-row md:items-center gap-6 transition-all hover:shadow-md group" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                <div className="flex-1">
+                  <h4 className="font-black text-lg flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+                    <div className="w-8 h-8 rounded-full bg-[#faf6f0] flex items-center justify-center text-[10px] text-[#c8834a] border" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+                      {(idx + 1).toString().padStart(2, '0')}
+                    </div>
+                    {op.label}
+                  </h4>
+                  <p className="text-[10px] font-bold text-slate-400 ml-10 mt-1 uppercase tracking-widest">{op.operation_code}</p>
+                </div>
+                
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                  <div className="relative flex-1 md:w-48 group-focus-within:ring-4 rounded-xl transition-all" style={{ ringColor: 'rgba(200,131,74,0.1)' }}>
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm">₹</span>
+                    <input 
+                      type="number" step="0.01" min="0"
+                      className="w-full h-14 pl-9 pr-4 bg-slate-50 hover:bg-white font-black text-lg border-2 rounded-xl outline-none transition-all shadow-inner focus:bg-white focus:border-[#c8834a] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      style={{ color: '#c8834a', borderColor: 'transparent' }}
+                      value={op.rate ?? ''} 
+                      onChange={(e) => {
+                        const newRates = [...rates];
+                        newRates[idx].rate = e.target.value;
+                        setRates(newRates);
+                      }}
+                      placeholder="0.00"
+                    />
+                  </div>
+                  
+                  <button 
+                    onClick={() => handleSaveSingleRate(op)} 
+                    disabled={isSaving}
+                    className="w-14 h-14 rounded-xl font-bold text-white shadow-sm transition-all hover:shadow-lg hover:-translate-y-1 disabled:opacity-50 flex items-center justify-center active:scale-95 shrink-0"
+                    style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                    title="Save Rate"
+                  >
+                    {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                  </button>
+                  <button 
+                    onClick={() => handleShowHistory(op.operation_code)} 
+                    className="w-14 h-14 rounded-xl bg-white shadow-sm border transition-all hover:shadow-md flex items-center justify-center shrink-0"
+                    style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                    title="View Rate History"
+                  >
+                    <History className="w-5 h-5 text-slate-400 hover:text-[#c8834a] transition-colors" />
+                  </button>
+                </div>
               </div>
-            </div>,
-            document.body
-          )}
+            );
+          })}
+        </div>
 
-          <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-            <table className="w-full text-sm text-left">
-              <thead style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-                <tr className="uppercase text-[10px] font-black tracking-wider" style={{ color: '#9a7a5a' }}>
-                  <th className="p-4">Operation Phase</th>
-                  <th className="p-4 w-40">Rate Per Piece (₹)</th>
-                  <th className="p-4 w-32 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
-                {rates.map((op, idx) => {
-                  const isSaving = savingOps[op.operation_code];
-                  return (
-                    <tr key={op.operation_code} className="hover:bg-[#fcfaf8] transition-colors">
-                      <td className="p-4 font-extrabold" style={{ color: '#2d1f0e' }}>
-                        {op.label}
-                        <span className="block text-[10px] font-bold mt-0.5 text-slate-400">{op.operation_code}</span>
-                      </td>
-                      <td className="p-4">
-                        <div className="relative flex items-center">
-                          <span className="absolute left-3 text-slate-400 font-bold text-xs">₹</span>
-                          <input 
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            className="w-full h-11 pl-7 pr-3 bg-white font-black text-sm border-2 rounded-xl outline-none transition-all shadow-sm focus:bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
-                            value={op.rate ?? ''} 
-                            onChange={(e) => {
-                              const newRates = [...rates];
-                              newRates[idx].rate = e.target.value;
-                              setRates(newRates);
-                            }}
-                            placeholder="0.00"
-                          />
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center justify-end gap-2">
-                          <button 
-                            onClick={() => handleSaveSingleRate(op)} 
-                            disabled={isSaving}
-                            className="p-2.5 rounded-xl font-bold text-white shadow-sm transition-all hover:shadow-md disabled:opacity-50 flex items-center justify-center active:scale-95"
-                            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-                            title="Save Rate"
-                          >
-                            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                          </button>
-                          <button 
-                            onClick={() => handleShowHistory(op.operation_code)} 
-                            className="p-2.5 rounded-xl bg-white shadow-sm border transition-all hover:shadow-md group flex items-center justify-center"
-                            style={{ borderColor: 'rgba(200,131,74,0.2)' }}
-                            title="View Rate History"
-                          >
-                            <History className="w-4 h-4 text-slate-400 group-hover:text-[#c8834a] transition-colors" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* ── Save All Rates Button ── */}
-          <div className="flex justify-end pt-4" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
-            <button
-              onClick={handleSaveAllRates}
-              disabled={savingAll}
-              className="h-11 px-8 rounded-xl font-black text-sm text-white shadow-md transition-all hover:shadow-lg hover:-translate-y-0.5 active:scale-95 disabled:opacity-50 flex items-center gap-2"
-              style={{ background: 'linear-gradient(135deg, #2d6a4f, #40916c)' }}
-            >
-              {savingAll ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving All...</> : <><Save className="w-4 h-4" /> Save All Rates</>}
-            </button>
-          </div>
-        </SpotlightCard>
+        {/* Floating Save All Button */}
+        <div className="sticky bottom-6 z-50 flex justify-center mt-8 animate-fade-in-up">
+          <button
+            onClick={handleSaveAllRates}
+            disabled={savingAll}
+            className="h-14 px-10 rounded-full font-black text-base text-white shadow-2xl transition-all hover:shadow-emerald-500/20 hover:-translate-y-1 active:scale-95 disabled:opacity-50 flex items-center gap-3 border border-emerald-400/30 backdrop-blur-md"
+            style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+          >
+            {savingAll ? <><Loader2 className="w-5 h-5 animate-spin" /> Saving Grid...</> : <><Save className="w-5 h-5" /> Commit All Rates</>}
+          </button>
+        </div>
 
         {/* Audit History Modal */}
         {historyModal && typeof document !== 'undefined' && createPortal(
-          <div 
-            className="fixed inset-0 flex items-center justify-center p-4 z-[99999] animate-fade-in"
-            style={{ background: 'rgba(15, 23, 42, 0.6)' }}
-            onClick={(e) => { if(e.target === e.currentTarget) setHistoryModal(null); }}
-          >
-            <div className="bg-white rounded-3xl w-full max-w-md relative shadow-2xl animate-scale-up border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-              
-              <div className="p-6 sm:p-8" style={{ background: 'linear-gradient(135deg, #fdfbf9, #faf6f0)' }}>
-                <button 
-                  onClick={() => setHistoryModal(null)} 
-                  className="absolute top-6 right-6 p-2 bg-white border text-slate-400 hover:text-[#c8834a] rounded-xl transition-all shadow-sm"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-                
-                <div className="flex items-center gap-3 mb-2">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border" style={{ background: 'white', borderColor: 'rgba(200,131,74,0.15)' }}>
-                    <Activity className="w-5 h-5" style={{ color: '#c8834a' }} />
-                  </div>
+          <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl animate-scale-up overflow-hidden mx-4">
+              <div className="p-6 sm:p-8 pb-6 border-b" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.1)' }}>
+                <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-black text-xl tracking-tight" style={{ color: '#2d1f0e' }}>Rate Audit Trail</h3>
-                    <p className="text-xs font-bold uppercase tracking-wider" style={{ color: '#c8834a' }}>OP: {historyModal.operation_code}</p>
+                    <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>Audit Trail</h3>
+                    <p className="text-xs font-bold uppercase tracking-widest mt-1" style={{ color: '#c8834a' }}>OP: {historyModal.operation_code}</p>
                   </div>
+                  <button onClick={() => setHistoryModal(null)} className="p-2 bg-white rounded-full border shadow-sm text-slate-400 hover:text-slate-700 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-              
-              <div className="p-6 sm:p-8 pt-4 max-h-[60vh] overflow-y-auto">
+              <div className="p-8 max-h-[60vh] overflow-y-auto bg-slate-50">
                 {historyModal.history.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-10 opacity-60">
-                    <History className="w-10 h-10 mb-3 text-slate-300" />
-                    <p className="text-sm font-bold text-slate-400 text-center">No history recorded yet.</p>
+                  <div className="text-center py-10 opacity-60">
+                    <History className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                    <p className="text-sm font-bold text-slate-400">No revisions found.</p>
                   </div>
                 ) : (
-                  <div className="relative border-l-2 ml-4 space-y-8" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+                  <div className="space-y-4">
                     {historyModal.history.map((h, i) => (
-                      <div key={i} className="relative pl-6 animate-fade-in" style={{ animationDelay: `${i * 50}ms` }}>
-                        <div className="absolute -left-[9px] top-1.5 w-4 h-4 rounded-full border-[3px] border-white shadow-sm" style={{ background: i === 0 ? '#10b981' : '#c8834a' }}></div>
-                        
-                        <div className="p-4 rounded-2xl border shadow-sm transition-all hover:shadow-md" style={{ background: i === 0 ? '#f0fdf4' : 'white', borderColor: i === 0 ? '#bbf7d0' : 'rgba(200,131,74,0.1)' }}>
-                          {i === 0 && (
-                            <span className="inline-block mb-2 px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest text-emerald-700 bg-emerald-100">
-                              Current Active Rate
-                            </span>
-                          )}
-                          <div className="flex justify-between items-end">
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: i === 0 ? '#166534' : '#9a7a5a' }}>Effective From</p>
-                              <p className="font-bold text-sm" style={{ color: i === 0 ? '#14532d' : '#2d1f0e' }}>{h.effective_from}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: i === 0 ? '#166534' : '#9a7a5a' }}>Rate</p>
-                              <p className="font-black text-xl" style={{ color: i === 0 ? '#059669' : '#c8834a' }}>₹{h.rate}</p>
-                            </div>
-                          </div>
+                      <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border flex justify-between items-center" style={{ borderColor: i === 0 ? '#10b981' : 'rgba(200,131,74,0.1)' }}>
+                        <div>
+                          {i === 0 && <span className="block text-[9px] font-black uppercase text-emerald-600 mb-1 tracking-widest">Active Rate</span>}
+                          <p className="text-xs font-bold text-slate-400 mb-0.5">Effective From</p>
+                          <p className="font-black text-sm" style={{ color: '#2d1f0e' }}>{h.effective_from}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-black text-2xl" style={{ color: i === 0 ? '#10b981' : '#c8834a' }}>₹{h.rate}</p>
                         </div>
                       </div>
                     ))}
@@ -333,749 +328,422 @@ function StylesView({ token }) {
     );
   }
 
+  // STYLES GRID (Default View)
   return (
     <div className="space-y-6 animate-fade-in">
-      {/* 🔍 Search Bar Section */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-        <div>
-          <h3 className="font-black text-lg" style={{ color: '#2d1f0e' }}>Styles Directory</h3>
-          <p className="text-xs font-bold text-[#9a7a5a]">Search styles by code or name to manage rates.</p>
-        </div>
-        <div className="relative w-full sm:w-80">
+      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white/80 backdrop-blur-md p-4 rounded-3xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+        <div className="relative w-full">
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input
             type="text"
             placeholder="Search by Style Code or Name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-11 pl-4 pr-10 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+            className="w-full h-14 pl-14 pr-12 bg-transparent border-none text-sm font-bold text-slate-800 focus:outline-none placeholder-slate-400"
           />
           {searchQuery && (
-            <button 
-              onClick={() => setSearchQuery('')}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
-            >
-              Clear
+            <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
+              <X className="w-3 h-3 text-slate-500" />
             </button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 sm:gap-6 items-stretch">
         {filteredStyles.length > 0 ? (
-          filteredStyles.map(s => (
-            <SpotlightCard 
-              key={s.style_code} 
-              onClick={() => handleSelectStyle(s)} 
-              className="p-6 bg-white cursor-pointer transition-all rounded-3xl shadow-sm hover:shadow-xl group" 
-              style={{ border: '1px solid rgba(200,131,74,0.15)' }} 
-              spotlightColor="rgba(200,131,74,0.06)"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="font-black text-lg" style={{ color: '#2d1f0e' }}>{s.style_code}</h3>
-                <span className="px-2 py-1 bg-[#faf6f0] text-[#c8834a] text-[10px] font-black rounded-lg uppercase tracking-wider border border-[#c8834a]/10 group-hover:bg-[#c8834a] group-hover:text-white transition-colors">
-                  Manage Rates
-                </span>
-              </div>
-              <p className="text-xs font-bold text-[#9a7a5a] mb-6 line-clamp-1">{s.style_name}</p>
-              
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full rounded-full transition-all"
-                    style={{ 
-                      width: `${(s.rated_operations / s.total_operations) * 100}%`,
-                      background: s.rated_operations === s.total_operations ? '#10b981' : '#c8834a' 
-                    }}
-                  />
+          filteredStyles.map((s, idx) => {
+            const progress = (s.rated_operations / s.total_operations) * 100;
+            const isComplete = progress === 100;
+            return (
+              <SpotlightCard 
+                key={s.style_code} 
+                onClick={() => handleSelectStyle(s)} 
+                className="p-5 sm:p-6 bg-white cursor-pointer transition-all rounded-3xl shadow-sm hover:shadow-xl group hover:-translate-y-1 flex flex-col justify-between h-full" 
+                style={{ border: '1px solid rgba(200,131,74,0.15)' }} 
+                spotlightColor="rgba(200,131,74,0.06)"
+              >
+                <div>
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm" style={{ background: isComplete ? '#f0fdf4' : '#faf6f0', color: isComplete ? '#10b981' : '#c8834a' }}>
+                      <Briefcase className="w-5 h-5" />
+                    </div>
+                    <span className="opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900 text-white text-[9px] font-black px-3 py-1.5 rounded-full uppercase tracking-widest">
+                      Edit Rates
+                    </span>
+                  </div>
+                  
+                  <h3 className="font-black text-xl mb-1 truncate" style={{ color: '#2d1f0e' }}>{s.style_code}</h3>
+                  <p className="text-xs font-bold text-[#9a7a5a] mb-8 line-clamp-1">{s.style_name}</p>
                 </div>
-                <span className="text-[10px] font-black w-12 text-right" style={{ color: s.rated_operations === s.total_operations ? '#10b981' : '#c8834a' }}>
-                  {s.rated_operations} / {s.total_operations}
-                </span>
-              </div>
-            </SpotlightCard>
-          ))
+                
+                <div className="space-y-3 mt-auto">
+                  <div className="flex justify-between items-end">
+                    <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: isComplete ? '#10b981' : '#c8834a' }}>
+                      {isComplete ? 'Configuration Complete' : 'Pending Rates'}
+                    </span>
+                    <span className="font-black text-sm" style={{ color: '#2d1f0e' }}>{s.rated_operations}/{s.total_operations}</span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full rounded-full transition-all duration-1000 ease-out"
+                      style={{ 
+                        width: `${progress}%`,
+                        background: isComplete ? 'linear-gradient(90deg, #34d399, #10b981)' : 'linear-gradient(90deg, #e8a06a, #c8834a)' 
+                      }}
+                    />
+                  </div>
+                </div>
+              </SpotlightCard>
+            );
+          })
         ) : (
-          <div className="col-span-full py-12 text-center text-slate-400 font-bold text-sm bg-white rounded-3xl border border-slate-200">
-            No styles found matching "{searchQuery}"
+          <div className="col-span-full py-20 text-center bg-white/50 backdrop-blur-sm rounded-[2rem] border border-dashed border-slate-300">
+            <Filter className="w-10 h-10 mx-auto text-slate-300 mb-4" />
+            <p className="font-bold text-slate-400">No styles found matching "{searchQuery}"</p>
           </div>
         )}
       </div>
     </div>
   );
 }
-// ─── COMPUTATION ENGINE VIEW ───────────────────────────────────────────────────
+
+// ─── 2. COMPUTATION ENGINE VIEW ──────────────────────────────────────────────
 function ComputationView({ token }) {
-  const [runs, setRuns] = useState([]);
-  const [selectedRunDetails, setSelectedRunDetails] = useState(null);
-  
-  // Default to current month's payroll dates
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState(null);
-  
-  // Style selection for style-based computation
+  const [selectedStyle, setSelectedStyle] = useState('ALL');
   const [styles, setStyles] = useState([]);
-  const [selectedStyleId, setSelectedStyleId] = useState('');
+  
+  const [isComputing, setIsComputing] = useState(false);
+  const [calculatedPayroll, setCalculatedPayroll] = useState([]);
+  const [totalPayrollAmount, setTotalPayrollAmount] = useState(0);
+  const [toastMsg, setToastMsg] = useState(null);
+  const [toastType, setToastType] = useState('success');
+
+  const showToast = (msg, type = 'success') => {
+    setToastMsg(msg); setToastType(type);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
 
   useEffect(() => {
-    // Set default dates to first and 15th of current month
+    // Set default dates
     const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    setStartDate(`${y}-${m}-01`);
-    setEndDate(`${y}-${m}-15`);
-    
-    apiGetWageRuns(token).then(setRuns).catch(() => {});
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    setStartDate(firstDay.toISOString().split('T')[0]);
+    setEndDate(today.toISOString().split('T')[0]);
+    // Fetch styles for the mock dropdown
     apiGetWageStyles(token).then(setStyles).catch(() => {});
   }, [token]);
 
-  const handleRunPayroll = async () => {
-    if (!startDate || !endDate) return alert("Select dates");
-    setLoading(true);
-    setErrorMsg(null);
+  const handleCompute = async () => {
+    setIsComputing(true);
+    setCalculatedPayroll([]);
+    setTotalPayrollAmount(0);
     try {
-      await apiComputeWageRun(token, startDate, endDate, selectedStyleId);
-      const data = await apiGetWageRuns(token);
-      setRuns(data);
-    } catch (err) { 
-      let msg = err.message || 'Failed to compute payroll';
-      try {
-        const parsed = JSON.parse(msg);
-        if (parsed.detail) msg = parsed.detail;
-      } catch(e) {}
-      
-      // Shorten specific backend messages
-      if (msg.includes('Period overlaps closed run')) {
-        const match = msg.match(/\((.*?)\)/);
-        const dates = match ? match[1] : 'an existing run';
-        msg = `Selected dates overlap with a previous payroll run (${dates}).`;
-      }
-      
-      setErrorMsg(msg);
-    } finally { 
-      setLoading(false); 
+      // MOCK BEHAVIOR: We technically want to pass selectedStyle, but since backend doesn't support it, 
+      // the existing endpoint apiComputeWageRun expects only (token, start_date, end_date)
+      // Future update: apiComputeWageRun(token, startDate, endDate, selectedStyle === 'ALL' ? null : selectedStyle)
+      const runData = await apiComputeWageRun(token, startDate, endDate);
+      const lines = runData.lines || [];
+      setCalculatedPayroll(lines);
+      setTotalPayrollAmount(runData.total_amount || lines.reduce((acc, l) => acc + (l.amount_calculated || 0), 0));
+      showToast('Payroll processed and frozen successfully.', 'success');
+    } catch (e) {
+      showToast(e.message || 'Computation failed.', 'error');
+    } finally {
+      setIsComputing(false);
     }
   };
 
-  const handleViewDetails = async (runId) => {
-    const details = await apiGetWageRunDetails(token, runId);
-    setSelectedRunDetails(details);
-  };
-
-  const latestRun = runs.length > 0 ? [runs[0]] : [];
-
   return (
     <div className="space-y-6 animate-fade-in">
-      <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-          <div className="flex-1 space-y-2">
-            <h3 className="font-extrabold text-base uppercase tracking-wider" style={{ color: '#2d1f0e' }}>Active Computation Engine</h3>
-            <p className="text-xs font-bold text-[#9a7a5a]">Select a period to parse floor logs and distribute wages.</p>
-            
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-2">
-              <select
-                value={selectedStyleId}
-                onChange={e => setSelectedStyleId(e.target.value)}
-                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-auto"
-                style={{ borderColor: 'rgba(200,131,74,0.2)', color: selectedStyleId ? '#4a3a2a' : '#a09080' }}
-              >
-                <option value="">All Styles (Full Payroll)</option>
-                {styles.map((s, idx) => (
-                  <option key={s.style_code || s.id || idx} value={s.style_code || s.id}>
-                    {s.style_name || s.style_code}
-                  </option>
-                ))}
-              </select>
-
+      <Toast msg={toastMsg} type={toastType} />
+      
+      {/* ── ACTION CENTER ── */}
+      <div className="bg-white rounded-3xl shadow-xl p-6 sm:p-8 border relative overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+        <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-[#c8834a]/10 to-transparent rounded-full blur-3xl pointer-events-none translate-x-1/2 -translate-y-1/2"></div>
+        
+        <h3 className="text-xl font-black mb-6 flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+          <Activity className="w-6 h-6" style={{ color: '#c8834a' }} /> Engine Configuration
+        </h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="space-y-2 relative z-10">
+            <label className="text-[10px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>Start Date</label>
+            <div className="relative">
+              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input 
                 type="date" 
                 value={startDate} 
-                onChange={e => setStartDate(e.target.value)} 
-                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-40"
-                style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
-              />
-              <span className="font-bold text-slate-300 text-center sm:text-left">to</span>
-              <input 
-                type="date" 
-                value={endDate} 
-                onChange={e => setEndDate(e.target.value)} 
-                className="h-12 px-4 bg-[#faf6f0] font-black text-sm border-2 outline-none rounded-xl transition-all w-full sm:w-40"
-                style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
+                onChange={e => setStartDate(e.target.value)}
+                className="w-full h-14 pl-12 pr-4 bg-slate-50 rounded-xl font-bold text-sm outline-none border focus:border-[#c8834a] focus:bg-white transition-all shadow-inner"
+                style={{ borderColor: 'rgba(200,131,74,0.1)' }}
               />
             </div>
           </div>
-          <button 
-            onClick={handleRunPayroll} 
-            disabled={loading} 
-            className="h-12 px-8 rounded-xl text-white font-black text-sm shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 hover:shadow-lg disabled:opacity-50 shrink-0 w-full md:w-auto"
-            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-          >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Compute & Freeze Pay'}
-          </button>
+          
+          <div className="space-y-2 relative z-10">
+            <label className="text-[10px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>End Date</label>
+            <div className="relative">
+              <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input 
+                type="date" 
+                value={endDate} 
+                onChange={e => setEndDate(e.target.value)}
+                className="w-full h-14 pl-12 pr-4 bg-slate-50 rounded-xl font-bold text-sm outline-none border focus:border-[#c8834a] focus:bg-white transition-all shadow-inner"
+                style={{ borderColor: 'rgba(200,131,74,0.1)' }}
+              />
+            </div>
+          </div>
+          
+          <div className="space-y-2 relative z-10">
+            <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
+              Target Style
+              <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-[8px] border border-amber-200">Mocked</span>
+            </label>
+            <div className="relative">
+              <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <select 
+                value={selectedStyle}
+                onChange={e => setSelectedStyle(e.target.value)}
+                className="w-full h-14 pl-12 pr-12 bg-slate-50 rounded-xl font-bold text-sm outline-none border focus:border-[#c8834a] focus:bg-white transition-all shadow-inner appearance-none cursor-pointer text-ellipsis overflow-hidden whitespace-nowrap"
+                style={{ borderColor: 'rgba(200,131,74,0.1)' }}
+              >
+                <option value="ALL">All Styles (Master Ledger)</option>
+                {styles.map(s => (
+                  <option key={s.style_code} value={s.style_code}>{s.style_code} - {s.style_name}</option>
+                ))}
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 font-bold text-xs">▼</div>
+            </div>
+            <p className="text-[9px] font-bold text-slate-400 mt-1 leading-tight">Backend filter integration pending. Displays full ledger for now.</p>
+          </div>
         </div>
         
-        {/* Error Notification */}
-        {errorMsg && (
-          <div className="mt-4 p-4 rounded-xl border flex items-center gap-3 animate-fade-in bg-red-50" style={{ borderColor: 'rgba(239,68,68,0.2)' }}>
-            <Activity className="w-5 h-5 text-red-500 shrink-0" />
-            <p className="text-sm font-bold text-red-700">{errorMsg}</p>
+        <div className="mt-8 flex justify-end relative z-10 pt-6" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
+          <button
+            onClick={handleCompute}
+            disabled={isComputing}
+            className="h-14 px-10 rounded-full font-black text-sm text-white shadow-xl transition-all hover:shadow-orange-500/30 hover:-translate-y-1 active:scale-95 disabled:opacity-50 flex items-center gap-3"
+            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+          >
+            {isComputing ? <><Loader2 className="w-5 h-5 animate-spin" /> Processing Matrix...</> : <><Activity className="w-5 h-5" /> Execute Wage Run</>}
+          </button>
+        </div>
+      </div>
+
+      {/* ── RESULTS DASHBOARD ── */}
+      {calculatedPayroll.length > 0 && (
+        <div className="space-y-6 animate-fade-in-up">
+          {/* Metrics Row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="md:col-span-2 bg-slate-900 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden border border-slate-800">
+              <div className="absolute top-0 right-0 p-8 opacity-10"><Coins className="w-32 h-32 text-white" /></div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Ledger Commitment</p>
+              <h2 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200">
+                ₹{totalPayrollAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+              </h2>
+            </div>
+            <div className="bg-white rounded-[2rem] p-8 shadow-xl border flex flex-col justify-center" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+              <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: '#9a7a5a' }}>Employees Processed</p>
+              <h3 className="text-4xl font-black" style={{ color: '#2d1f0e' }}>{calculatedPayroll.length}</h3>
+            </div>
           </div>
-        )}
-      </SpotlightCard>
-      
-      {latestRun.length > 0 && (
-        <div className="bg-white rounded-3xl border shadow-sm overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-          <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)', background: '#faf6f0' }}>
-            <h3 className="font-black text-sm uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Latest Computed Run</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-white">
-                <tr className="border-b uppercase text-[10px] font-black tracking-wider text-left" style={{ borderColor: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
-                  <th className="p-4 pl-6">Run Period</th>
-                  <th className="p-4">Employees / Pieces</th>
-                  <th className="p-4 text-center">Unrated Ops</th>
-                  <th className="p-4">Disbursement Amount</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4 pr-6 text-right">View Ledger</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
-                {latestRun.map(r => (
-                  <tr key={r.id} className="hover:bg-[#fcfaf8] transition-colors">
-                    <td className="p-4 pl-6 font-bold" style={{ color: '#4a3a2a' }}>
-                      {r.period_start} <span className="text-slate-300 font-normal mx-1">to</span> {r.period_end}
-                      {r.gap_days > 0 && <span className="block text-[10px] text-red-500 font-black mt-1">⚠️ {r.gap_days} Days Gap</span>}
-                    </td>
-                    <td className="p-4 font-bold" style={{ color: '#9a7a5a' }}>
-                      <div className="flex items-center gap-2">
-                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px]">{r.employee_count || 0} Emp</span>
-                        <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[10px]">{r.total_pieces || 0} Pcs</span>
-                      </div>
-                    </td>
-                    <td className="p-4 text-center">
-                      {r.unrated_operations && r.unrated_operations.length > 0 ? (
-                        <span className="bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full text-[10px] font-black">{r.unrated_operations.length} Unrated</span>
-                      ) : (
-                        <span className="text-slate-400 text-[10px] font-bold">-</span>
-                      )}
-                    </td>
-                    <td className="p-4 font-black text-lg" style={{ color: '#2d1f0e' }}>₹{r.total_amount?.toLocaleString() || 0}</td>
-                    <td className="p-4">
-                      <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[10px] uppercase font-black tracking-wider">
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="p-4 pr-6 text-right">
-                      <button 
-                        onClick={() => handleViewDetails(r.id)} 
-                        className="px-4 py-2 bg-white border rounded-xl font-bold text-xs hover:bg-[#faf6f0] transition-colors shadow-sm ml-auto flex items-center gap-2"
-                        style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
-                      >
-                        <Eye className="w-4 h-4" /> Details
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+
+          {/* Cards List */}
+          <h4 className="text-sm font-black uppercase tracking-widest pl-2 pt-4" style={{ color: '#9a7a5a' }}>Individual Payouts</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {calculatedPayroll.map((pay, idx) => (
+              <div key={idx} className="bg-white p-6 rounded-2xl shadow-sm hover:shadow-md transition-all border flex flex-col sm:flex-row sm:items-center justify-between gap-4 group" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 border border-slate-100 group-hover:bg-[#faf6f0] group-hover:text-[#c8834a] group-hover:border-[#c8834a]/20 transition-all">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h5 className="font-black text-lg" style={{ color: '#2d1f0e' }}>{pay.employee_name || 'Worker'}</h5>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{pay.wage_type || 'Piece Rate'}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-black text-xl" style={{ color: '#10b981' }}>₹{(pay.amount_calculated ?? pay.amount ?? 0).toLocaleString('en-IN')}</p>
+                  <p className="text-[10px] font-bold text-slate-400">{pay.total_pieces ?? pay.pieces ?? 0} Pieces Logged</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
-      )}
-
-      {/* Wage Run Breakdown Modal */}
-      {selectedRunDetails && (
-        <WageRunDetailsModal details={selectedRunDetails} onClose={() => setSelectedRunDetails(null)} />
       )}
     </div>
   );
 }
 
-// ─── LEDGER HISTORY VIEW ─────────────────────────────────────────────────────
+// ─── 3. LEDGER HISTORY VIEW ──────────────────────────────────────────────────
 function LedgerView({ token }) {
   const [runs, setRuns] = useState([]);
   const [selectedRunDetails, setSelectedRunDetails] = useState(null);
-  const [detailsLoading, setDetailsLoading] = useState(null); // stores runId being loaded
-  const [detailsError, setDetailsError] = useState(null);
-  
+  const [detailsLoading, setDetailsLoading] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
-    apiGetWageRuns(token).then(setRuns).catch(() => {});
+    let active = true;
+    apiGetWageRuns(token).then(data => {
+      if(active) setRuns(data);
+    }).finally(() => { if(active) setLoading(false); });
+    return () => { active = false; };
   }, [token]);
 
   const handleViewDetails = async (runId) => {
-    console.log('[LedgerView] handleViewDetails called with runId:', runId);
+    console.log("Clicked handleViewDetails with runId:", runId);
     if (!runId) {
-      setDetailsError('Run ID is missing — backend may be returning a different field name.');
-      return;
+        console.error("runId is missing! Full run object might use 'id' instead of 'run_id'");
+        return;
     }
     setDetailsLoading(runId);
-    setDetailsError(null);
     try {
       const details = await apiGetWageRunDetails(token, runId);
-      console.log('[LedgerView] details received:', details);
       setSelectedRunDetails(details);
     } catch (err) {
-      console.error('[LedgerView] Error fetching details:', err);
-      setDetailsError(err.message || 'Failed to load run details.');
+      alert(err.message);
     } finally {
       setDetailsLoading(null);
     }
   };
 
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-20 opacity-60">
+        <Loader2 className="w-10 h-10 animate-spin text-[#c8834a] mb-4" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="bg-white rounded-3xl border shadow-sm overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-        <div className="px-6 py-5 border-b" style={{ borderColor: 'rgba(200,131,74,0.1)', background: '#faf6f0' }}>
-          <h3 className="font-black text-sm uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Complete Ledger History</h3>
+      {runs.length === 0 ? (
+        <div className="py-24 text-center bg-white/50 backdrop-blur-sm rounded-3xl border border-dashed border-slate-300">
+          <History className="w-12 h-12 mx-auto text-slate-300 mb-4" />
+          <p className="font-bold text-slate-400">Ledger is empty. No wage runs have been generated yet.</p>
         </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-6 items-stretch">
+          {runs.map((run, i) => {
+            const currentRunId = run.run_id || run.id;
+            return (
+            <SpotlightCard 
+              key={i} 
+              onClick={() => handleViewDetails(currentRunId)}
+              className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 border flex flex-col justify-between min-h-[180px] h-full cursor-pointer group" 
+              style={{ borderColor: 'rgba(200,131,74,0.15)' }} 
+              spotlightColor="rgba(200,131,74,0.06)"
+            >
+              <div>
+                <div className="flex justify-between items-start mb-6">
+                  <div className="bg-[#faf6f0] p-3 rounded-2xl border group-hover:scale-110 transition-transform duration-300" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                    <Calendar className="w-6 h-6" style={{ color: '#c8834a' }} />
+                  </div>
+                  <span className="bg-emerald-50 text-emerald-700 px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-200 shadow-sm">
+                    Frozen
+                  </span>
+                </div>
+                
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 group-hover:text-[#c8834a] transition-colors">Pay Cycle</p>
+                <h3 className="font-black text-xl" style={{ color: '#2d1f0e' }}>{run.start_date} <span className="opacity-40 px-1">to</span> {run.end_date}</h3>
+              </div>
+              
+              <div className="mt-8 pt-6 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 mb-0.5">Disbursement Total</p>
+                  <p className="font-black text-lg" style={{ color: '#10b981' }}>₹{run.total_amount?.toLocaleString('en-IN') || '0.00'}</p>
+                </div>
+                
+                <div
+                  className="flex items-center justify-center w-12 h-12 bg-slate-50 group-hover:bg-[#faf6f0] group-hover:shadow-md rounded-xl transition-all duration-300 border"
+                  style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                >
+                  {detailsLoading === currentRunId 
+                    ? <Loader2 className="w-5 h-5 animate-spin text-[#c8834a]" /> 
+                    : <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-1 transition-all" />
+                  }
+                </div>
+              </div>
+            </SpotlightCard>
+            );
+          })}
+        </div>
+      )}
 
-        {detailsError && (
-          <div className="mx-4 mb-0 mt-4 p-3.5 rounded-xl text-xs font-bold border text-red-800 bg-red-50 border-red-200 animate-fade-in">
-            ⚠️ {detailsError}
-          </div>
-        )}
-        
-        {runs.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-sm font-bold text-slate-400">No payroll history found in ledger.</p>
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-white">
-                <tr className="border-b uppercase text-[10px] font-black tracking-wider text-left" style={{ borderColor: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
-                  <th className="p-4 pl-6">Run Period</th>
-                  <th className="p-4">Employees / Pieces</th>
-                  <th className="p-4 text-center">Unrated Ops</th>
-                  <th className="p-4">Disbursement Amount</th>
-                  <th className="p-4">Status</th>
-                  <th className="p-4 pr-6 text-right">View Ledger</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)' }}>
-                {runs.map(r => (
-                  <tr key={r.id} className="hover:bg-[#fcfaf8] transition-colors">
-                    <td className="p-4 pl-6 font-bold" style={{ color: '#4a3a2a' }}>
-                      {r.period_start} <span className="text-slate-300 font-normal mx-1">to</span> {r.period_end}
-                      {r.gap_days > 0 && <span className="block text-[10px] text-red-500 font-black mt-1">⚠️ {r.gap_days} Days Gap</span>}
-                    </td>
-                    <td className="p-4 font-bold" style={{ color: '#9a7a5a' }}>
-                      <div className="flex items-center gap-2">
-                        <span className="bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px]">{r.employee_count || 0} Emp</span>
-                        <span className="bg-amber-50 text-amber-700 px-2 py-0.5 rounded text-[10px]">{r.total_pieces || 0} Pcs</span>
+      {/* Ledger Deep Dive Modal */}
+      {selectedRunDetails && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/60 backdrop-blur-md animate-fade-in">
+          <div className="bg-slate-50 rounded-[2.5rem] w-full max-w-4xl shadow-2xl animate-scale-up overflow-hidden flex flex-col max-h-[90vh] mx-4">
+            
+            <div className="p-6 sm:p-8 pb-10 bg-white relative">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none translate-x-1/2 -translate-y-1/2"></div>
+              
+              <div className="flex justify-between items-start relative z-10">
+                <div>
+                  <h3 className="font-black text-3xl" style={{ color: '#2d1f0e' }}>Ledger Manifest</h3>
+                  <div className="flex gap-4 mt-3">
+                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md">ID: {selectedRunDetails.run_id?.substring(0,8)}...</span>
+                    <span className="text-xs font-bold text-[#c8834a] bg-[#faf6f0] px-3 py-1 rounded-md">{selectedRunDetails.start_date} to {selectedRunDetails.end_date}</span>
+                  </div>
+                </div>
+                <button onClick={() => setSelectedRunDetails(null)} className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
+                  <X className="w-5 h-5 text-slate-600" />
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 relative z-10">
+                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
+                  <p className="text-[10px] font-black uppercase text-emerald-600 tracking-wider">Total Disbursed</p>
+                  <p className="text-2xl font-black text-emerald-700 mt-1">₹{selectedRunDetails.total_amount?.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-white border shadow-sm">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Headcount</p>
+                  <p className="text-2xl font-black text-slate-800 mt-1">{selectedRunDetails.lines?.length || 0}</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-white border shadow-sm">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Total Pieces</p>
+                  <p className="text-2xl font-black text-slate-800 mt-1">
+                    {selectedRunDetails.lines?.reduce((acc, l) => acc + (l.total_pieces ?? l.pieces ?? 0), 0).toLocaleString()}
+                  </p>
+                </div>
+                <div className="p-4 rounded-2xl bg-red-50 border border-red-100">
+                  <p className="text-[10px] font-black uppercase text-red-600 tracking-wider">Unrated Ops</p>
+                  <p className="text-2xl font-black text-red-700 mt-1">{selectedRunDetails.unrated_ops_count || 0}</p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto p-8">
+              <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4 pl-2">Detailed Line Items</h4>
+              
+              {selectedRunDetails.lines?.length === 0 ? (
+                <div className="text-center py-10 opacity-50">
+                  <p className="font-bold text-sm">No records found for this run.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedRunDetails.lines?.map((line, idx) => (
+                    <div key={idx} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div>
+                        <h5 className="font-black text-base text-slate-800">{line.employee_name || 'Worker'}</h5>
+                        <p className="text-[10px] font-black uppercase text-slate-400 mt-1">
+                          {line.wage_type || 'Piece Rate'} • {line.total_pieces ?? line.pieces ?? 0} pieces
+                        </p>
                       </div>
-                    </td>
-                    <td className="p-4 text-center">
-                      {r.unrated_operations && r.unrated_operations.length > 0 ? (
-                        <span className="bg-red-50 text-red-600 border border-red-200 px-2 py-0.5 rounded-full text-[10px] font-black">{r.unrated_operations.length} Unrated</span>
-                      ) : (
-                        <span className="text-slate-400 text-[10px] font-bold">-</span>
-                      )}
-                    </td>
-                    <td className="p-4 font-black text-lg" style={{ color: '#2d1f0e' }}>₹{r.total_amount?.toLocaleString() || 0}</td>
-                    <td className="p-4">
-                      <span className="px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-[10px] uppercase font-black tracking-wider">
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="p-4 pr-6 text-right">
-                      <button 
-                        onClick={() => handleViewDetails(r.id)} 
-                        disabled={detailsLoading === r.id}
-                        className="px-4 py-2 bg-white border rounded-xl font-bold text-xs hover:bg-[#faf6f0] transition-colors shadow-sm ml-auto flex items-center gap-2 disabled:opacity-50"
-                        style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
-                      >
-                        {detailsLoading === r.id
-                          ? <><Loader2 className="w-4 h-4 animate-spin" /> Loading...</>
-                          : <><Eye className="w-4 h-4" /> Details</>}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <div className="text-right">
+                        <p className="font-black text-lg text-emerald-600">₹{(line.amount_calculated ?? line.amount ?? 0).toLocaleString('en-IN')}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* Wage Run Breakdown Modal */}
-      {selectedRunDetails && (
-        <WageRunDetailsModal details={selectedRunDetails} onClose={() => setSelectedRunDetails(null)} />
+        </div>,
+        document.body
       )}
     </div>
   );
 }
-
-// ─── WAGE RUN DETAILS MODAL (Shared) ─────────────────────────────────────────
-function WageRunDetailsModal({ details, onClose }) {
-  return (
-    <div 
-      className="fixed inset-0 flex items-center justify-center p-4 z-[99999]"
-      style={{ background: 'rgba(15, 23, 42, 0.6)' }}
-      onClick={(e) => { if(e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-white rounded-3xl p-6 sm:p-8 w-full max-w-2xl relative max-h-[90vh] flex flex-col shadow-2xl animate-scale-up border" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-        <button 
-          onClick={onClose} 
-          className="absolute top-6 right-6 p-2 bg-slate-50 text-slate-400 hover:text-slate-800 rounded-xl transition-colors z-10"
-        >
-          <X className="w-5 h-5" />
-        </button>
-        
-        <div className="mb-6 pr-12 shrink-0">
-          <h3 className="font-black text-xl" style={{ color: '#2d1f0e' }}>Run Breakdown</h3>
-          <p className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider mt-1">ID: {details.id}</p>
-        </div>
-        
-        <div className="overflow-y-auto flex-1 rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-
-              <table className="w-full text-sm relative">
-                <thead className="sticky top-0 z-10 shadow-sm" style={{ background: '#faf6f0' }}>
-                  <tr className="border-b text-left uppercase text-[10px] font-black tracking-wider" style={{ borderColor: 'rgba(200,131,74,0.1)', color: '#c8834a' }}>
-                    <th className="p-4">Employee</th>
-                    <th className="p-4">Wage Type</th>
-                    <th className="p-4 text-center">Total Pieces</th>
-                    <th className="p-4 text-right">Computed Pay</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.05)', background: 'white' }}>
-                  {details.lines.map((line, idx) => (
-                    <tr key={idx} className="hover:bg-[#fcfaf8] transition-colors">
-                      <td className="p-4 font-bold" style={{ color: '#2d1f0e' }}>{line.employee_name}</td>
-                      <td className="p-4">
-                        <span className="px-2 py-1 bg-slate-100 text-slate-600 rounded-md uppercase text-[10px] font-bold">
-                          {line.wage_type}
-                        </span>
-                      </td>
-                      <td className="p-4 font-bold text-center" style={{ color: '#9a7a5a' }}>{line.pieces ?? line.total_pieces ?? 0}</td>
-                      <td className="p-4 text-right font-black text-lg" style={{ color: '#c8834a' }}>₹{(line.amount ?? line.amount_calculated)?.toLocaleString() ?? 0}</td>
-                    </tr>
-                  ))}
-                  {(!details.lines || details.lines.length === 0) && (
-                    <tr>
-                      <td colSpan={4} className="p-8 text-center text-slate-400 font-bold">No wage records generated in this ledger run.</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            
-            <div className="mt-6 pt-6 border-t flex justify-between items-center shrink-0" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-              <div className="text-xs font-bold text-slate-400">Total Records: {details.lines.length}</div>
-              <button 
-                onClick={onClose}
-                className="px-6 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-sm transition-colors"
-              >
-                Close View
-              </button>
-            </div>
-          </div>
-    </div>
-  );
-}
-// 'use client';
-// import { useState, useEffect } from 'react';
-// import { useAuth } from '@/context/AuthContext';
-// import { useData } from '@/context/DataContext';
-// import { apiSetWageRate, apiComputeWageRun } from '@/lib/api';
-// import { CheckCircle2, Tag, Lock, Settings, Coins, FolderOpen, Loader2 } from 'lucide-react';
-// import SpotlightCard from '@/components/SpotlightCard';
-
-// export default function PieceRatesAndWages() {
-//   const { user, token } = useAuth();
-//   const { orders, operations } = useData();
-
-//   // Role Gate check
-//   const isDirectManager = user === 'direct_manager';
-
-//   // State for active pay computation run
-//   const [payPeriod, setPayPeriod] = useState('May 16-31, 2026');
-//   const [isCalculated, setIsCalculated] = useState(false);
-//   const [isFreezing, setIsFreezing] = useState(false);
-//   const [successMsg, setSuccessMsg] = useState('');
-//   const [errorMsg, setErrorMsg] = useState('');
-  
-//   const [calculatedPayroll, setCalculatedPayroll] = useState([]);
-//   const [totalPayrollAmount, setTotalPayrollAmount] = useState(0);
-
-//   // Set Wage Rate Form State
-//   const [styleId, setStyleId] = useState('');
-//   const [operation, setOperation] = useState('CUTTING');
-//   const [pieceRate, setPieceRate] = useState('');
-//   const [effectiveDate, setEffectiveDate] = useState(new Date().toISOString().slice(0, 10));
-//   const [isSettingRate, setIsSettingRate] = useState(false);
-
-//   // Auto-select first order for the style dropdown
-//   useEffect(() => {
-//     if (!styleId && orders && orders.length > 0) {
-//       setStyleId(orders[0].style); // using style name as ID for now based on context
-//     }
-//   }, [orders, styleId]);
-
-//   const handleSetRate = async (e) => {
-//     e.preventDefault();
-//     if (!isDirectManager) return;
-//     setIsSettingRate(true);
-//     setErrorMsg('');
-//     try {
-//       // Find UUIDs
-//       const orderMatch = orders.find(o => o.style === styleId);
-//       const opMatch = operations.find(o => o.label.toLowerCase() === operation.toLowerCase());
-      
-//       if (!orderMatch || !opMatch) {
-//         throw new Error("Could not find matching Style ID or Operation ID in database.");
-//       }
-
-//       await apiSetWageRate(token, {
-//         style_id: orderMatch.style_id,
-//         operation_id: opMatch.id,
-//         rate: parseFloat(pieceRate),
-//         effective_from: effectiveDate
-//       });
-//       setSuccessMsg(`Piece rate for ${operation} on ${styleId} set successfully.`);
-//       setTimeout(() => setSuccessMsg(''), 5000);
-//       setPieceRate('');
-//     } catch (err) {
-//       setErrorMsg(err.message);
-//       setTimeout(() => setErrorMsg(''), 5000);
-//     } finally {
-//       setIsSettingRate(false);
-//     }
-//   };
-
-//   const handleComputeRun = async () => {
-//     if (!isDirectManager) return;
-//     setIsFreezing(true);
-//     setErrorMsg('');
-//     try {
-//       // Parse the period dropdown (e.g. "May 16-31, 2026") into YYYY-MM-DD
-//       let start_date = '2026-05-16';
-//       let end_date = '2026-05-31';
-//       if (payPeriod.includes('June')) {
-//         start_date = '2026-06-01';
-//         end_date = '2026-06-15';
-//       }
-
-//       const runData = await apiComputeWageRun(token, start_date, end_date);
-//       // Backend returns run with lines
-//       const lines = runData.lines || [];
-//       setCalculatedPayroll(lines);
-//       setTotalPayrollAmount(runData.total_amount || lines.reduce((acc, l) => acc + (l.amount_calculated || 0), 0));
-//       setIsCalculated(true);
-//       setSuccessMsg(`Payroll Period "${payPeriod}" computed & frozen successfully!`);
-//       setTimeout(() => setSuccessMsg(''), 5000);
-//     } catch (err) {
-//       setErrorMsg(`Failed to compute payroll: ${err.message}`);
-//       setTimeout(() => setErrorMsg(''), 6000);
-//     } finally {
-//       setIsFreezing(false);
-//     }
-//   };
-
-//   return (
-//     <div className="space-y-8 animate-fade-in pb-12">
-      
-//       {/* ─── TITLE SECTION ─── */}
-//       <div>
-//         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Payroll &amp; Rates Manager</h1>
-//         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Verify piece-rates and execute audits on shop floor wage calculations.</p>
-//       </div>
-
-//       {/* ─── BANNER ALERTS ─── */}
-//       {successMsg && (
-//         <div className="p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-center gap-2.5" style={{ background: '#f0fff4', border: '1px solid #c6f6d5', color: '#276749' }}>
-//           <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-//           <p>{successMsg}</p>
-//         </div>
-//       )}
-//       {errorMsg && (
-//         <div className="p-4 rounded-xl font-bold text-sm shadow-md animate-fade-in flex items-center gap-2.5" style={{ background: '#fff0f0', border: '1px solid #feb2b2', color: '#9b2c2c' }}>
-//           <p>{errorMsg}</p>
-//         </div>
-//       )}
-
-//       {/* ─── DOUBLE BLOCK ROW: RATES & STATUS ─── */}
-//       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        
-//         {/* LEFT COLUMN: SET PIECE RATE */}
-//         <SpotlightCard className="p-6 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-//           <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-//             <Tag className="w-5 h-5" style={{ color: '#c8834a' }} /> Set Piece Rate
-//           </h3>
-//           <p className="text-xs font-semibold" style={{ color: '#9a7a5a' }}>
-//             Define contract piece pay scale for specific styles and operations.
-//           </p>
-
-//           {!isDirectManager ? (
-//             <div className="p-4 rounded-xl text-xs font-bold flex items-center gap-2" style={{ background: '#fff9f0', border: '1px solid #fbd38d', color: '#9c4221' }}>
-//               <Lock className="w-4 h-4" /> Manager Access Required
-//             </div>
-//           ) : (
-//             <form onSubmit={handleSetRate} className="space-y-4">
-//               <div>
-//                 <label className="text-xs font-bold uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Style</label>
-//                 <select 
-//                   className="w-full px-4 py-3 rounded-xl focus:outline-none transition-all cursor-pointer font-bold" 
-//                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
-//                   value={styleId} 
-//                   onChange={(e) => setStyleId(e.target.value)}
-//                   required
-//                 >
-//                   {orders.map(o => (
-//                     <option key={o.id} value={o.style}>{o.style}</option>
-//                   ))}
-//                   <option value="CARNABY">CARNABY</option>
-//                   <option value="REGAL">REGAL</option>
-//                 </select>
-//               </div>
-              
-//               <div>
-//                 <label className="text-xs font-bold uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Operation</label>
-//                 <select 
-//                   className="w-full px-4 py-3 rounded-xl focus:outline-none transition-all cursor-pointer font-bold" 
-//                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
-//                   value={operation} 
-//                   onChange={(e) => setOperation(e.target.value)}
-//                   required
-//                 >
-//                   <option value="CUTTING">Cutting</option>
-//                   <option value="FUSING">Fusing</option>
-//                   <option value="PASTING">Pasting</option>
-//                   <option value="FF">FF</option>
-//                   <option value="SHELL STITCH">Shell Stitch</option>
-//                   <option value="LINING STITCH">Lining Stitch</option>
-//                   <option value="LA">L/A</option>
-//                 </select>
-//               </div>
-
-//               <div>
-//                 <label className="text-xs font-bold uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Rate per Piece (₹)</label>
-//                 <input 
-//                   type="number" 
-//                   step="0.01" 
-//                   min="0"
-//                   className="w-full px-4 py-3 rounded-xl focus:outline-none transition-all font-bold placeholder-opacity-50" 
-//                   style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
-//                   value={pieceRate} 
-//                   onChange={(e) => setPieceRate(e.target.value)}
-//                   placeholder="e.g. 80.00"
-//                   required
-//                 />
-//               </div>
-
-//               <button 
-//                 type="submit" 
-//                 disabled={isSettingRate}
-//                 className="w-full py-3 text-white font-extrabold text-sm rounded-xl transition-all cursor-pointer shadow-md active:scale-95 flex items-center justify-center gap-2 hover:shadow-lg disabled:opacity-50"
-//                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-//               >
-//                 {isSettingRate ? <Loader2 className="w-4 h-4 animate-spin" /> : <Tag className="w-4 h-4" />}
-//                 Save Piece Rate
-//               </button>
-//             </form>
-//           )}
-//         </SpotlightCard>
-
-//         {/* RIGHT COLUMN: PAYROLL OPERATIONS ENGINE */}
-//         <div className="lg:col-span-2 space-y-6">
-          
-//           {!isDirectManager ? (
-//             <SpotlightCard className="p-8 shadow-lg text-center space-y-4 rounded-3xl" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)' }} spotlightColor="rgba(200,131,74,0.1)">
-//               <Lock className="w-12 h-12 mx-auto" style={{ color: '#c8834a' }} />
-//               <h3 className="text-lg font-black uppercase tracking-wide" style={{ color: '#9c4221' }}>
-//                 Direct Manager Authorization Required
-//               </h3>
-//               <p className="text-xs font-semibold max-w-lg mx-auto" style={{ color: '#a86022' }}>
-//                 While piece rates are open to read-only floor audits, payroll runs, frozen logs, and cash distributions are restricted. Switch profiles to run computations.
-//               </p>
-//             </SpotlightCard>
-//           ) : (
-//             <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-              
-//               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-4 gap-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-//                 <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
-//                   <Settings className="w-5 h-5" style={{ color: '#c8834a' }} /> Active Computation Engine
-//                 </h3>
-//                 <div className="flex flex-col sm:flex-row items-center gap-3">
-//                   <select
-//                     value={payPeriod}
-//                     onChange={(e) => setPayPeriod(e.target.value)}
-//                     className="px-4 py-2 font-extrabold text-xs cursor-pointer w-full sm:w-44 rounded-xl focus:outline-none transition-all"
-//                     style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }}
-//                   >
-//                     <option value="May 16-31, 2026">May 16-31, 2026</option>
-//                     <option value="June 01-15, 2026">June 01-15, 2026</option>
-//                   </select>
-//                   <button
-//                     onClick={handleComputeRun}
-//                     disabled={isFreezing}
-//                     className="w-full sm:w-auto h-10 min-h-[40px] px-6 text-xs font-black rounded-xl text-white shadow-md active:scale-95 flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-50"
-//                     style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-//                   >
-//                     {isFreezing ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-//                     Compute & Freeze Pay
-//                   </button>
-//                 </div>
-//               </div>
-
-//               {/* Computations Grid Panel */}
-//               {isCalculated ? (
-//                 <div className="space-y-6 animate-fade-in">
-//                   <div className="flex items-center justify-between p-4 rounded-xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
-//                     <span className="text-xs font-black uppercase">Distribution Period: {payPeriod}</span>
-//                     <span className="text-sm font-black">
-//                       Total Ledger: <strong className="text-base" style={{ color: '#c8834a' }}>₹{totalPayrollAmount.toLocaleString()}</strong>
-//                     </span>
-//                   </div>
-
-//                   <div className="overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }}>
-//                     <table className="w-full text-left text-xs font-semibold">
-//                       <thead>
-//                         <tr className="font-bold uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', color: '#9a7a5a' }}>
-//                           <th className="p-3">Worker / Type</th>
-//                           <th className="p-3 text-center">Total Qty Done</th>
-//                           <th className="p-3 text-right">Wage Amount</th>
-//                         </tr>
-//                       </thead>
-//                       <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
-//                         {calculatedPayroll.map((pay, idx) => (
-//                           <tr key={idx} className="hover:bg-[#fcfaf8] transition-colors">
-//                             <td className="p-3">
-//                               <span className="block font-black">{pay.employee_name || 'Unknown Worker'}</span>
-//                               <span className="block text-[10px] font-bold mt-1 uppercase" style={{ color: '#9a7a5a' }}>
-//                                 {pay.wage_type || 'Unknown'}
-//                               </span>
-//                             </td>
-//                             <td className="p-3 font-black text-center" style={{ color: '#a86022' }}>{pay.total_pieces || 0} pcs</td>
-//                             <td className="p-3 text-right font-black" style={{ color: '#2d1f0e' }}>₹{(pay.amount_calculated || 0).toLocaleString()}</td>
-//                           </tr>
-//                         ))}
-//                       </tbody>
-//                     </table>
-//                   </div>
-
-//                   <div className="flex justify-end gap-3">
-//                     <button
-//                       onClick={() => setIsCalculated(false)}
-//                       className="px-6 py-2.5 text-xs font-bold rounded-xl transition-all hover:bg-slate-100"
-//                       style={{ color: '#4a3a2a', border: '1px solid rgba(200,131,74,0.3)' }}
-//                     >
-//                       Clear View
-//                     </button>
-//                   </div>
-//                 </div>
-//               ) : (
-//                 <div className="text-center py-12 font-medium" style={{ color: '#9a7a5a' }}>
-//                   <Coins className="w-10 h-10 mx-auto mb-2 opacity-50" />
-//                   Select pay cycle period above and click "Compute & Freeze Pay" to parse active floor logs and auto-calculate payroll distributions.
-//                 </div>
-//               )}
-
-//             </SpotlightCard>
-//           )}
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
