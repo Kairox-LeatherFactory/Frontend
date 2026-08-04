@@ -220,26 +220,8 @@ function MyAttendanceView({ token }) {
       }
     } catch (e) {
       console.error('Status fetch failed:', e.message);
-      try {
-        const todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
-        const histData = await apiFetch(`${API}/me?start=${todayStr}&end=${todayStr}`, {}, token);
-        const todayRec = histData.find(r => r.work_date === todayStr);
-        if (todayRec) {
-          setStatus({
-            checked_in: true,
-            checked_out: !!todayRec.check_out_at,
-            check_in_at: todayRec.check_in_at,
-            is_late: todayRec.is_late,
-            is_short: todayRec.is_short,
-            is_overtime: todayRec.is_overtime,
-            shift_end_at: null,
-            remaining_seconds: null,
-          });
-        } else {
-          setStatus(null);
-        }
-        setCountdown(null);
-      } catch { }
+      setStatus(null);
+      setCountdown(null);
     } finally {
       setStatusLoading(false);
     }
@@ -564,11 +546,11 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
         String(w.id).toUpperCase() === targetCode ||
         String(w.id).toUpperCase() === targetCode.replace('EMP-', '') ||
         String(w.phone || '').includes(targetCode)
-      ) || {
-        id: targetCode.replace('EMP-', '') || targetCode,
-        name: `Worker (${targetCode})`,
-        designation: 'Floor Worker'
-      };
+      );
+
+      if (!matchedWorker) {
+        throw new Error(`Worker not found for scan: ${rawCode}`);
+      }
 
       const workerIdStr = String(matchedWorker.id);
       const isAlreadyIn = checkedInIds.has(workerIdStr);
@@ -588,14 +570,10 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
         coords = await gps.getPosition();
       } catch (e) {}
 
-      try {
-        await apiFetch(`${API}/proxy/${action}`, {
-          method: 'POST',
-          body: JSON.stringify({ employee_ids: [matchedWorker.id], lat: coords.lat, lon: coords.lon }),
-        }, token);
-      } catch (apiErr) {
-        console.warn('Attendance API scan fallback:', apiErr.message);
-      }
+      await apiFetch(`${API}/proxy/${action}`, {
+        method: 'POST',
+        body: JSON.stringify({ employee_ids: [matchedWorker.id], lat: coords.lat, lon: coords.lon }),
+      }, token);
 
       playBeep(1046, 'sine'); // High-pitch scanner gun success sound
 
