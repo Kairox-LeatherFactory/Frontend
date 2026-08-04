@@ -12,6 +12,7 @@ import {
 import SpotlightCard from '@/components/SpotlightCard';
 import JsBarcode from 'jsbarcode';
 import { createPortal } from 'react-dom';
+import { staggerContainer, fadeUpItem, rowStagger } from '@/lib/motionVariants';
 
 // ─── Shared styled input ─────────────────────────────────────────────────────
 function Field({ label, children }) {
