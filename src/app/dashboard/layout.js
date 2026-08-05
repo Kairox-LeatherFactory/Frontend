@@ -156,28 +156,36 @@ export default function DashboardLayout({ children }) {
   // Static shape but kept inside component for ROLES/user access — memoized so the array
   // reference stays stable and avoids re-rendering nav items unnecessarily
   const navLinks = useMemo(
-    () => [
-      { name: 'Dashboard Home', href: '/dashboard' },
-      { name: 'Analytics & Alerts', href: '/dashboard/analytics' },
-      { name: 'Production Logger', href: '/dashboard/entry' },
-      { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
-      { name: 'Client SKU Tree', href: '/dashboard/orders' },
-      { name: 'Payroll & Rates', href: '/dashboard/wages' },
-      { name: 'Attendance', href: '/dashboard/attendance' },
-      { name: 'Barcode Management', href: '/dashboard/barcode' },
-      // { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
-      // { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
-      // { name: 'AI Assistant', href: '/dashboard/chat' },
-      // ── Procurement Suite ──
-      { name: 'Procurement', href: '/dashboard/procurement', divider: true },
-      { name: 'New Intake', href: '/dashboard/procurement/intake' },
-      { name: 'Inventory Check', href: '/dashboard/procurement/inventory' },
-      { name: 'PO Tracker', href: '/dashboard/procurement/po' },
-      // ──────────────────────
-      { name: 'Admin & Users', href: '/dashboard/admin', divider: true },
-     // { name: 'Security Settings', href: '/dashboard/settings' },
-    ],
-    []
+    () => {
+      const links = [
+        { name: 'Dashboard Home', href: '/dashboard' },
+        { name: 'Analytics & Alerts', href: '/dashboard/analytics' },
+        { name: 'Production Logger', href: '/dashboard/entry' },
+        { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
+        { name: 'Client SKU Tree', href: '/dashboard/orders' },
+        { name: 'Payroll & Rates', href: '/dashboard/wages' },
+        { name: 'Attendance', href: '/dashboard/attendance' },
+        { name: 'Barcode Management', href: '/dashboard/barcode' },
+        // { name: 'Delay Impact Simulator', href: '/dashboard/simulator' },
+        // { name: 'Garment QC Tracer', href: '/dashboard/tracer' },
+        // { name: 'AI Assistant', href: '/dashboard/chat' },
+        // ── Procurement Suite ──
+        { name: 'Procurement', href: '/dashboard/procurement', divider: true },
+        { name: 'New Intake', href: '/dashboard/procurement/intake' },
+        { name: 'Inventory Check', href: '/dashboard/procurement/inventory' },
+        { name: 'PO Tracker', href: '/dashboard/procurement/po' },
+        // ──────────────────────
+        { name: 'Admin & Users', href: '/dashboard/admin', divider: true },
+       // { name: 'Security Settings', href: '/dashboard/settings' },
+      ];
+
+      if (user === 'security') {
+        return links.filter(link => link.name === 'Attendance');
+      }
+
+      return links;
+    },
+    [user]
   );
 
  if (!user) {
