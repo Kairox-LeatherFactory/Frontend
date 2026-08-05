@@ -1,5 +1,6 @@
 'use client';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import Link from 'next/link';
@@ -194,6 +195,14 @@ function QuickNav({ href, icon: Icon, label, sub, accent = '#c8834a' }) {
 export default function DashboardHome() {
   const { user } = useAuth();
   const { orders: rawOrders, events: rawEvents, workers: rawWorkers, refreshData } = useData();
+  const router = useRouter();
+
+  // Redirect Security directly to Attendance page
+  useEffect(() => {
+    if (user === 'security') {
+      router.replace('/dashboard/attendance');
+    }
+  }, [user, router]);
 
   const [refreshing, setRefreshing] = useState(false);
 
