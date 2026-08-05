@@ -132,17 +132,6 @@ function drawBarcodeCanvas(canvas, text, options = {}) {
   }
 }
 
-function downloadBarcodePNG(canvas, filename) {
-  if (!canvas) return;
-  const imageURI = canvas.toDataURL('image/png');
-  const link = document.createElement('a');
-  link.download = `${filename}.png`;
-  link.href = imageURI;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-}
-
 // ─── ID CARD EXPORT (full card, not just the barcode) ────────────────────────
 // The same field set the "View" modal shows — shared so the on-screen card,
 // the single-card export, and the bulk export all render identically.
@@ -166,29 +155,64 @@ async function captureNodeToCanvas(node) {
   return html2canvas(node, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
 }
 
-function saveCanvasAsPng(canvas, filename) {
+// Lets the user pick a destination folder + filename before saving (Chromium's
+// File System Access API). Falls back to the classic silent-download link for
+// browsers that don't support it (Firefox, Safari) or if the user's activation
+// window has already lapsed by the time we're ready to write.
+async function saveBlob(blob, suggestedName, { description, accept } = {}) {
+  if (typeof window !== 'undefined' && window.showSaveFilePicker) {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName,
+        types: accept ? [{ description: description || 'File', accept }] : undefined,
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return;
+    } catch (err) {
+      if (err && err.name === 'AbortError') return; // user cancelled the picker — respect it
+      // any other failure (unsupported context, activation expired, etc.) falls through below
+    }
+  }
+  const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
-  link.download = `${filename}.png`;
-  link.href = canvas.toDataURL('image/png');
+  link.href = url;
+  link.download = suggestedName;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 }
 
-function saveCanvasAsPdf(canvas, filename) {
+function canvasToBlob(canvas) {
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+}
+
+async function saveCanvasAsPng(canvas, filename) {
+  const blob = await canvasToBlob(canvas);
+  await saveBlob(blob, `${filename}.png`, { description: 'PNG Image', accept: { 'image/png': ['.png'] } });
+}
+
+async function saveCanvasAsPdf(canvas, filename) {
   const orientation = canvas.width >= canvas.height ? 'landscape' : 'portrait';
   const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height] });
   pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height);
-  pdf.save(`${filename}.pdf`);
+  await saveBlob(pdf.output('blob'), `${filename}.pdf`, { description: 'PDF Document', accept: { 'application/pdf': ['.pdf'] } });
+}
+
+async function savePdfBlob(pdf, filename) {
+  await saveBlob(pdf.output('blob'), `${filename}.pdf`, { description: 'PDF Document', accept: { 'application/pdf': ['.pdf'] } });
 }
 
 // Renders one printable ID card — barcode + code + the same fields grid as the
 // "View" modal. Used both inline (View modal) and off-screen (bulk export).
+// Style/Bucket categories only — Employee uses the monochrome EmployeeTicketCard below.
 function IdCard({ barcode, labels, cardRef, width }) {
   const fields = buildCardFields(barcode, labels);
   return (
-    <div ref={cardRef} className="p-6 text-center bg-white" style={width ? { width } : undefined}>
-      <div className="bg-white p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
+    <div ref={cardRef} className="p-6 text-center" style={{ background: '#ffffff', ...(width ? { width } : null) }}>
+      <div className="p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
         <BarcodeCanvas code={barcode.pieceCode} height={65} moduleWidth={1.6} />
       </div>
       <div className="font-mono font-bold mb-4" style={{ color: '#5a3518' }}>{barcode.pieceCode}</div>
@@ -199,6 +223,75 @@ function IdCard({ barcode, labels, cardRef, width }) {
             <span className="font-semibold" style={{ color: BRAND.text }}>{value || '—'}</span>
           </div>
         ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── EMPLOYEE ID TICKET (black & white, receipt-style) ───────────────────────
+const TICKET = { black: '#000000', gray: '#6b6b6b', line: '#d8d8d8', bg: '#ffffff' };
+
+// Company mark — a white ring outline with "PTE" inside it, drawn entirely in
+// CSS/text so it's always crisp (no source image to go blurry or distort).
+function CompanyMark({ size = 56 }) {
+  return (
+    <div
+      style={{
+        width: size, height: size, borderRadius: '50%', border: '2px solid #ffffff',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxSizing: 'border-box',
+      }}
+    >
+      <span style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: size * 0.26, fontWeight: 700, letterSpacing: '0.03em', color: '#ffffff', lineHeight: 1 }}>PTE</span>
+    </div>
+  );
+}
+
+// Ticket-stub perforation: dashed rule with a notch cut out of each side.
+// The card always sits directly on a white surface (modal panel, export page,
+// print paper), so the notches are plain white to read as cutouts.
+function TicketPerforation() {
+  return (
+    <div style={{ position: 'relative', margin: '6px -24px 22px' }}>
+      <div style={{ borderTop: `2px dashed ${TICKET.line}` }} />
+      <div style={{ position: 'absolute', left: -12, top: -12, width: 24, height: 24, borderRadius: '50%', background: '#fff' }} />
+      <div style={{ position: 'absolute', right: -12, top: -12, width: 24, height: 24, borderRadius: '50%', background: '#fff' }} />
+    </div>
+  );
+}
+
+function TicketRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between py-3" style={{ borderBottom: `1px solid ${TICKET.line}` }}>
+      <span className="text-sm font-semibold uppercase tracking-wide" style={{ color: TICKET.gray }}>{label}</span>
+      <span className="text-lg font-bold" style={{ color: TICKET.black }}>{value || '—'}</span>
+    </div>
+  );
+}
+
+// Employee badge, receipt/ticket styled: logo header, Name / Employee ID /
+// Designation, perforated tear line, barcode. Used for the "employee" category
+// in the View modal, bulk export, and the printed sheet.
+function EmployeeTicketCard({ barcode, cardRef, width }) {
+  return (
+    <div
+      ref={cardRef}
+      className="overflow-hidden"
+      style={{ width: width || 440, maxWidth: '100%', background: '#ffffff', border: `1px solid ${TICKET.line}`, borderRadius: 0, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
+    >
+      <div className="flex items-center justify-between px-6 py-4" style={{ background: TICKET.black }}>
+        <CompanyMark />
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.7)' }}>Employee ID</span>
+      </div>
+      <div className="px-7 pt-7">
+        <TicketRow label="Name" value={barcode.style} />
+        <TicketRow label="Employee ID" value={barcode.size} />
+        <TicketRow label="Designation" value={barcode.color} />
+      </div>
+      <div className="px-7">
+        <TicketPerforation />
+      </div>
+      <div className="px-7 pb-8 flex flex-col items-center">
+        <BarcodeCanvas code={barcode.pieceCode} height={70} moduleWidth={1.7} />
       </div>
     </div>
   );
@@ -1087,17 +1180,18 @@ function HistoryTab({ batchHistoryStore, filters, setFilter, resetFilters, optio
 }
 
 // ─── MODALS ─────────────────────────────────────────────────────────────────────
-function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style }) {
+function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style, category = 'style' }) {
   const cardRef = useRef(null);
   const [exporting, setExporting] = useState(null); // 'png' | 'pdf' | null
+  const isEmployee = category === 'employee';
 
   const handleDownload = async (format) => {
     if (!cardRef.current || exporting) return;
     setExporting(format);
     try {
       const canvas = await captureNodeToCanvas(cardRef.current);
-      if (format === 'png') saveCanvasAsPng(canvas, barcode.pieceCode);
-      else saveCanvasAsPdf(canvas, barcode.pieceCode);
+      if (format === 'png') await saveCanvasAsPng(canvas, barcode.pieceCode);
+      else await saveCanvasAsPdf(canvas, barcode.pieceCode);
     } finally {
       setExporting(null);
     }
@@ -1117,7 +1211,9 @@ function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style
           <h3 className="font-bold" style={{ color: '#5a3518' }}>Barcode Specification</h3>
           <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
         </div>
-        <IdCard barcode={barcode} labels={labels} cardRef={cardRef} />
+        {isEmployee
+          ? <div className="p-6 flex justify-center"><EmployeeTicketCard barcode={barcode} cardRef={cardRef} /></div>
+          : <IdCard barcode={barcode} labels={labels} cardRef={cardRef} />}
         <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
           <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
           <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
@@ -1492,10 +1588,10 @@ export default function BarcodeManagementPage() {
           if (i > 0) pdf.addPage();
           pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, pageH);
         }
-        pdf.save(`barcode-cards-${category}-${Date.now()}.pdf`);
+        await savePdfBlob(pdf, `barcode-cards-${category}-${Date.now()}`);
       } else {
         const canvas = await captureNodeToCanvas(container);
-        saveCanvasAsPng(canvas, `barcode-cards-${category}-${Date.now()}`);
+        await saveCanvasAsPng(canvas, `barcode-cards-${category}-${Date.now()}`);
       }
       showToast(`Downloaded ${items.length} card${items.length === 1 ? '' : 's'} as ${format.toUpperCase()}!`, 'success');
     } catch (err) {
@@ -1628,6 +1724,11 @@ export default function BarcodeManagementPage() {
           .print-card .card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 4mm; width: 100%; }
           .print-card .card-fields .f-label { color: #666; text-transform: uppercase; font-size: 5.5pt; font-weight: 700; }
           .print-card .card-fields .f-value { font-weight: 600; color: #111; font-size: 7pt; }
+          .print-ticket-cell {
+            display: flex; align-items: center; justify-content: center;
+            break-inside: avoid; overflow: hidden;
+          }
+          .print-ticket-cell > div { width: 100% !important; max-width: 82mm; box-shadow: none !important; }
         }
       `}</style>
 
@@ -1780,7 +1881,7 @@ export default function BarcodeManagementPage() {
       </motion.div>
       </AnimatePresence>
 
-      <DetailModal barcode={detailBarcode} onClose={() => setDetailCode(null)} onPrint={handlePrintSingle} labels={activeLabels} />
+      <DetailModal barcode={detailBarcode} onClose={() => setDetailCode(null)} onPrint={handlePrintSingle} labels={activeLabels} category={category} />
       <PrintPreviewModal
         open={previewOpen}
         codes={Array.from(activeSelectedPrint)}
@@ -1793,18 +1894,24 @@ export default function BarcodeManagementPage() {
         {chunkArray(printSheetItems, 4).map((group, pageIdx) => (
           <div className="print-page" key={pageIdx}>
             {group.map((b) => (
-              <div className="print-card" key={b.pieceCode}>
-                <BarcodeCanvas code={b.pieceCode} height={40} moduleWidth={1.1} showText={false} />
-                <div className="card-code">{b.pieceCode}</div>
-                <div className="card-fields">
-                  {buildCardFields(b, activeLabels).map(([label, value]) => (
-                    <div key={label}>
-                      <div className="f-label">{label}</div>
-                      <div className="f-value">{value || '—'}</div>
-                    </div>
-                  ))}
+              category === 'employee' ? (
+                <div className="print-ticket-cell" key={b.pieceCode}>
+                  <EmployeeTicketCard barcode={b} />
                 </div>
-              </div>
+              ) : (
+                <div className="print-card" key={b.pieceCode}>
+                  <BarcodeCanvas code={b.pieceCode} height={40} moduleWidth={1.1} showText={false} />
+                  <div className="card-code">{b.pieceCode}</div>
+                  <div className="card-fields">
+                    {buildCardFields(b, activeLabels).map(([label, value]) => (
+                      <div key={label}>
+                        <div className="f-label">{label}</div>
+                        <div className="f-value">{value || '—'}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
             ))}
           </div>
         ))}
@@ -1821,7 +1928,9 @@ export default function BarcodeManagementPage() {
                 style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, width: 800, padding: 24, background: '#fff' }}
               >
                 {group.map((b) => (
-                  <IdCard key={b.pieceCode} barcode={b} labels={activeLabels} width={340} />
+                  category === 'employee'
+                    ? <EmployeeTicketCard key={b.pieceCode} barcode={b} width={340} />
+                    : <IdCard key={b.pieceCode} barcode={b} labels={activeLabels} width={340} />
                 ))}
               </div>
             ))}
