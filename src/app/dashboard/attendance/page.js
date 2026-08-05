@@ -493,7 +493,7 @@ function MyAttendanceView({ token }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 // VIEW B — FLOOR COMMAND
 // ═══════════════════════════════════════════════════════════════════════════════
-function FloorCommandView({ workers = [], token, onWorkerAdded }) {
+function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
   const gps = useGps();
 
   const [search, setSearch] = useState('');
@@ -547,21 +547,42 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
         String(w.phone || '').includes(targetCode)
       );
 
-      let direction = 'in';
-
+      let targetId = targetCode;
+      let targetName = "Unknown Worker";
       if (matchedWorker) {
-        const workerIdStr = String(matchedWorker.id);
-        const isAlreadyIn = checkedInIds.has(workerIdStr);
-        const isAlreadyOut = checkedOutIds.has(workerIdStr);
+         targetId = String(matchedWorker.id);
+         targetName = matchedWorker.name;
+      }
 
-        if (isAlreadyIn && isAlreadyOut) {
-          playBeep(440, 'triangle');
-          showAlert('info', `✓ ${matchedWorker.name} (${targetCode}) has already completed shift today.`);
-          setScanInput('');
-          return;
+      const isAlreadyIn = checkedInIds.has(targetId);
+      const isAlreadyOut = checkedOutIds.has(targetId);
+
+      if (isAlreadyIn && isAlreadyOut) {
+        playBeep(440, 'triangle');
+        showAlert('info', `✓ ${targetName} (${targetCode}) has already completed shift today.`);
+        setScanInput('');
+        return;
+      }
+
+      const direction = !isAlreadyIn ? 'in' : 'out';
+
+      if (isSecurity) {
+        // MOCK FLOW FOR SECURITY
+        await new Promise(r => setTimeout(r, 600)); // Simulate API delay
+        playBeep(1046, 'sine');
+
+        const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+
+        if (direction === 'in') {
+          setCheckedInIds(prev => new Set([...prev, targetId]));
+          showAlert('success', `🟢 AUTOMATIC CHECK-IN CONFIRMED: ${targetName} (${targetCode}) at ${timeStr}`);
+        } else {
+          setCheckedOutIds(prev => new Set([...prev, targetId]));
+          showAlert('success', `🔴 AUTOMATIC CHECK-OUT CONFIRMED: ${targetName} (${targetCode}) at ${timeStr} (Shift Complete)`);
         }
-
-        direction = !isAlreadyIn ? 'in' : 'out';
+        setScanInput('');
+        return;
       }
 
       let coords = null;
@@ -616,6 +637,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
 
   useEffect(() => {
     async function initStatus() {
+      if (isSecurity) return; // Mock: don't fetch real data if Security Workspace
       try {
         const rosterData = await apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token);
         if (rosterData && Array.isArray(rosterData)) {
@@ -715,13 +737,32 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
     if (selected.size === 0) return;
     setActionLoading(true);
     try {
-      const coords = await gps.getPosition();
       const requestedIds = [...selected];
+
+      if (isSecurity) {
+        // MOCK BATCH ACTION FOR SECURITY
+        await new Promise(r => setTimeout(r, 600)); // simulate delay
+        const normalizedRequested = requestedIds.map((id) => String(id));
+        const succeeded = normalizedRequested;
+        const failed = [];
+        
+        if (type === 'check-in') {
+          setCheckedInIds(prev => new Set([...prev, ...succeeded]));
+        } else {
+          setCheckedOutIds(prev => new Set([...prev, ...succeeded]));
+        }
+        setSelected(new Set());
+        setTimeout(() => setDiffModal({ type, succeeded, failed }), 0);
+        return;
+      }
+
+      const coords = await gps.getPosition();
       const endpoint = type === 'check-in' ? `${API}/proxy/check-in` : `${API}/proxy/check-out`;
       const result = await apiFetch(endpoint, {
         method: 'POST',
         body: JSON.stringify({ employee_ids: requestedIds, lat: coords.lat, lon: coords.lon }),
       }, token);
+      
       const succeededIds = new Set(result.map((r) => String(r.employee_id)));
       const normalizedRequested = requestedIds.map((id) => String(id));
       const succeeded = normalizedRequested.filter((id) => succeededIds.has(id));
@@ -1370,6 +1411,122 @@ function OperationsHRView({ token }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// VIEW E — EMPLOYEES LIST (MOCKED)
+// ═══════════════════════════════════════════════════════════════════════════════
+function EmployeesListView({ workers = [] }) {
+  const [search, setSearch] = useState('');
+
+  const filteredWorkers = workers.filter(w =>
+    w.name?.toLowerCase().includes(search.toLowerCase()) ||
+    w.employee_barcode?.toLowerCase().includes(search.toLowerCase()) ||
+    w.phone?.includes(search)
+  );
+
+  return (
+    <div className="space-y-6">
+      <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Employees Directory (Mocked)
+          </h3>
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="text" placeholder="Search by name, ID or phone..." value={search} onChange={(e) => setSearch(e.target.value)}
+              className="w-full h-10 pl-9 pr-3 rounded-xl text-sm font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30"
+              style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs whitespace-nowrap">
+            <thead>
+              <tr style={{ borderBottom: '2px solid rgba(200,131,74,0.1)' }}>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Barcode</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Name</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Phone</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Designation</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredWorkers.length > 0 ? filteredWorkers.map(w => (
+                <tr key={w.id} className="hover:bg-[#fcfaf8] transition-colors">
+                  <td className="p-3 font-mono font-black text-slate-600">{w.employee_barcode || '—'}</td>
+                  <td className="p-3 font-black text-[#2d1f0e]">{w.name}</td>
+                  <td className="p-3 text-slate-500">{w.phone}</td>
+                  <td className="p-3 text-slate-500 capitalize">{w.designation?.replace('_', ' ')}</td>
+                  <td className="p-3"><Badge label={w.is_active !== false ? 'Active' : 'Inactive'} type={w.is_active !== false ? 'active' : 'frozen'} /></td>
+                </tr>
+              )) : (
+                <tr><td colSpan="5" className="p-8 text-center text-slate-400 font-semibold">No employees found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SpotlightCard>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIEW F — ATTENDANCE HISTORY (MOCKED)
+// ═══════════════════════════════════════════════════════════════════════════════
+function AttendanceHistoryView() {
+  const [history, setHistory] = useState([]);
+  
+  // Generate dummy data on mount
+  useEffect(() => {
+    const d = new Date();
+    const today = d.toISOString().split('T')[0];
+    const dummyData = [
+      { id: 1, employee_id: 'EMP-001', employee_name: 'John Doe', check_in_at: `${today}T08:50:00Z`, check_out_at: `${today}T18:05:00Z`, status: 'Present', source: 'proxy' },
+      { id: 2, employee_id: 'EMP-002', employee_name: 'Jane Smith', check_in_at: `${today}T09:15:00Z`, check_out_at: null, status: 'Late', source: 'self' },
+      { id: 3, employee_id: 'EMP-003', employee_name: 'Mike Johnson', check_in_at: `${today}T08:55:00Z`, check_out_at: `${today}T17:30:00Z`, status: 'Short', source: 'proxy' },
+    ];
+    setHistory(dummyData);
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2 mb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
+          <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster (Mocked)
+        </h3>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs whitespace-nowrap">
+            <thead>
+              <tr style={{ borderBottom: '2px solid rgba(200,131,74,0.1)' }}>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Barcode</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Name</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Check In</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Check Out</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Source</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {history.map(row => (
+                <tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
+                  <td className="p-3 font-mono font-black text-slate-600">{row.employee_id}</td>
+                  <td className="p-3 font-black text-[#2d1f0e]">{row.employee_name}</td>
+                  <td className="p-3 font-black" style={{ color: '#9a7a5a' }}>{fmtTime(row.check_in_at)}</td>
+                  <td className="p-3 font-black" style={{ color: '#9a7a5a' }}>{fmtTime(row.check_out_at)}</td>
+                  <td className="p-3"><Badge label={row.source} type={row.source} /></td>
+                  <td className="p-3">
+                    <Badge label={row.status} type={row.status.toLowerCase() === 'late' ? 'late' : row.status.toLowerCase() === 'short' ? 'short' : 'active'} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SpotlightCard>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // ROOT EXPORT — Attendance Module Router
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function AttendancePage() {
@@ -1377,14 +1534,19 @@ export default function AttendancePage() {
 
   const isManager = user === 'direct_manager';
   const isSupervisor = user === 'cutting_manager' || user === 'stitching_manager' || isManager;
+  const isSecurity = user === 'security';
 
-  const tabs = [
+  const tabs = isSecurity ? [
+    { key: 'employees', label: 'Employees List', icon: Users, show: true },
+    { key: 'proxy', label: 'Floor Command', icon: QrCode, show: true },
+    { key: 'history', label: 'Attendance History', icon: CalendarDays, show: true },
+  ] : [
     { key: 'me', label: 'My Attendance', icon: Clock, show: true },
     { key: 'proxy', label: 'Floor Command', icon: Users, show: isSupervisor },
     { key: 'admin', label: 'Operations & HR', icon: Building2, show: isManager },
   ].filter((t) => t.show);
 
-  const [activeTab, setActiveTab] = useState('me');
+  const [activeTab, setActiveTab] = useState(isSecurity ? 'employees' : 'me');
   const [workers, setWorkers] = useState([]);
   const [workerRefreshKey, setWorkerRefreshKey] = useState(0);
 
@@ -1393,12 +1555,30 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    if ((activeTab === 'proxy' || activeTab === 'admin')) {
+    if (isSecurity) {
+      // MOCK DATA FOR SECURITY WORKSPACE
+      setWorkers([
+        { id: 1, name: 'John Doe', employee_barcode: 'EMP-001', phone: '9876543210', designation: 'cutting_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 2, name: 'Jane Smith', employee_barcode: 'EMP-002', phone: '9876543211', designation: 'stitching_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 3, name: 'Mike Johnson', employee_barcode: 'EMP-003', phone: '9876543212', designation: 'helper', wage_type: 'piece_rate', is_active: false },
+        { id: 12, name: 'Test User', employee_barcode: 'EMP-000012', phone: '1234567890', designation: 'operator', wage_type: 'piece_rate', is_active: true },
+        { id: 4, name: 'Arun Kumar', employee_barcode: 'EMP-004', phone: '9876543214', designation: 'supervisor', wage_type: 'piece_rate', is_active: true },
+        { id: 5, name: 'Priya Raj', employee_barcode: 'EMP-005', phone: '9876543215', designation: 'packing_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 6, name: 'Mani Kandan', employee_barcode: 'EMP-006', phone: '9876543216', designation: 'ironing_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 7, name: 'Karthik', employee_barcode: 'EMP-007', phone: '9876543217', designation: 'stitching_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 8, name: 'Selvi', employee_barcode: 'EMP-008', phone: '9876543218', designation: 'helper', wage_type: 'piece_rate', is_active: true },
+        { id: 9, name: 'Ramesh', employee_barcode: 'EMP-009', phone: '9876543219', designation: 'cutting_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 10, name: 'Gowtham', employee_barcode: 'EMP-010', phone: '9876543220', designation: 'skiving_operator', wage_type: 'piece_rate', is_active: true },
+      ]);
+      return;
+    }
+
+    if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
       apiFetch('/api/v1/employees', {}, token)
         .then(setWorkers)
         .catch(() => { });
     }
-  }, [activeTab, token, workerRefreshKey]);
+  }, [activeTab, token, workerRefreshKey, isSecurity]);
 
   return (
     <div className="space-y-6">
@@ -1416,17 +1596,21 @@ export default function AttendancePage() {
         ))}
       </div>
 
-      {activeTab === 'me' && <MyAttendanceView token={token} />}
+      {activeTab === 'me' && !isSecurity && <MyAttendanceView token={token} />}
+      
+      {activeTab === 'employees' && isSecurity && <EmployeesListView workers={workers} />}
+
+      {activeTab === 'history' && isSecurity && <AttendanceHistoryView />}
 
       {activeTab === 'proxy' && (
-        isSupervisor
-          ? <FloorCommandView workers={workers} token={token} onWorkerAdded={refreshWorkers} />
+        (isSupervisor || isSecurity)
+          ? <FloorCommandView workers={workers} token={token} onWorkerAdded={refreshWorkers} isSecurity={isSecurity} />
           : <LockedView
-            title="Supervisor Authorization Required"
-            description="Floor Command is restricted to Supervisors and Direct Managers." />
+            title="Authorization Required"
+            description="Floor Command is restricted." />
       )}
 
-      {activeTab === 'admin' && (
+      {activeTab === 'admin' && !isSecurity && (
         isManager
           ? <OperationsHRView token={token} />
           : <LockedView
