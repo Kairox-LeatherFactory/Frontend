@@ -568,25 +568,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
         String(w.phone || '').includes(targetCode)
       );
 
-<<<<<<< HEAD
-      let direction = 'in';
-
-      if (matchedWorker) {
-        const workerIdStr = String(matchedWorker.id);
-        const isAlreadyIn = checkedInIds.has(workerIdStr);
-        const isAlreadyOut = checkedOutIds.has(workerIdStr);
-
-        if (isAlreadyIn && isAlreadyOut) {
-          playBeep(440, 'triangle');
-          showAlert('info', `✓ ${matchedWorker.name} (${targetCode}) has already completed shift today.`);
-          setScanInput('');
-          return;
-        }
-
-        direction = !isAlreadyIn ? 'in' : 'out';
-      }
-
-=======
       let targetId = targetCode;
       let targetName = "Unknown Worker";
       if (matchedWorker) {
@@ -625,7 +606,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
         return;
       }
 
->>>>>>> e3d93a16f7949ac5fd091c9a6d726ff434535d05
       let coords = null;
       let reason = undefined;
       try {
