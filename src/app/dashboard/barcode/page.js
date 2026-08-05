@@ -231,17 +231,17 @@ function IdCard({ barcode, labels, cardRef, width }) {
 // ─── EMPLOYEE ID TICKET (black & white, receipt-style) ───────────────────────
 const TICKET = { black: '#000000', gray: '#6b6b6b', line: '#d8d8d8', bg: '#ffffff' };
 
-// Company mark — a white ring outline with "PTE" inside it, drawn entirely in
-// CSS/text so it's always crisp (no source image to go blurry or distort).
+// Company logo — public/images/company-logo.svg. Vector, so it stays sharp
+// at any size (no more raster blur from a PNG being scaled up/down).
 function CompanyMark({ size = 56 }) {
   return (
-    <div
-      style={{
-        width: size, height: size, borderRadius: '50%', border: '2px solid #ffffff',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxSizing: 'border-box',
-      }}
-    >
-      <span style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontSize: size * 0.26, fontWeight: 700, letterSpacing: '0.03em', color: '#ffffff', lineHeight: 1 }}>PTE</span>
+    <div style={{ width: size, height: size, flexShrink: 0 }}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/images/company-logo.svg"
+        alt="Company logo"
+        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+      />
     </div>
   );
 }
@@ -1454,7 +1454,9 @@ export default function BarcodeManagementPage() {
     const deptCode = departmentName.replace(/\s+/g, '_').toUpperCase();
     const newRecords = pending.map((emp, idx) => ({
       // empId is already the backend card code (EMP-000123) — don't re-prefix it.
-      pieceCode: `${emp.empId.startsWith('EMP-') ? emp.empId : `EMP-${emp.empId}`}-${emp.name.replace(/\s+/g, '_').toUpperCase()}`,
+      // The barcode itself only encodes the Employee ID, not the name — empId
+      // is already unique per employee, so this stays a safe key/print target.
+      pieceCode: emp.empId.startsWith('EMP-') ? emp.empId : `EMP-${emp.empId}`,
       orderId: deptCode, client: departmentName, style: emp.name, color: emp.designation, size: emp.empId,
       serial: idx + 1, serialStr: String(idx + 1).padStart(3, '0'), batchNo: batchId,
       createdDate: new Date().toLocaleString(), generatedBy: operatorLabel, printStatus: 'PENDING', printCount: 0,
