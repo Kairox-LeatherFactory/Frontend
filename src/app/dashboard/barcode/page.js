@@ -57,7 +57,7 @@ const CODE128B_PATTERNS = {};
     '11011011000', '11011000110', '11000110110', '10100011000', '10001011000',
     '10001000110', '10110001000', '10001101000', '10001100010', '11010001000',
     '11000101000', '11000100010', '10110111000', '10110001110', '10001101110',
-    '10111011000', '10111000110', '10001110110', '11101101110', '11010001110',
+    '10111011000', '10111000110', '10001110110', '11101110110', '11010001110',
     '11000101110', '11011101000', '11011100010', '11011101110', '11101011000',
     '11101000110', '11100010110', '11101101000', '11101100010', '11100011010',
     '11101111010', '11001000010', '11110001010', '10100110000', '10100001100',
@@ -83,53 +83,256 @@ const CODE128B_PATTERNS = {};
   CODE128B_VALUES['STOP'] = 106;
 })();
 
-function encodeCode128B(text) {
-  const values = [];
-  for (let i = 0; i < text.length; i++) {
-    const val = CODE128B_VALUES[text[i]];
-    if (val !== undefined) values.push(val);
-  }
-  let checksum = CODE128B_VALUES['START_B'];
-  for (let i = 0; i < values.length; i++) {
-    checksum += values[i] * (i + 1);
-  }
-  checksum = checksum % 103;
+// Subset switching. Code C packs two digits into one 11-module character, so a
+// trailing digit run costs half as much width. "EMP-000009" drops from 145 to
+// 123 modules — 15% shorter symbol, which buys a 15% wider narrow bar on the
+// same label. The decoded string is byte-for-byte identical either way, so
+// nothing downstream (lookups, employee_barcode) has to change.
+const START_B = 104, START_C = 105, CODE_B = 100, CODE_C = 99, STOP_VAL = 106;
+const isDigitChar = (c) => c >= '0' && c <= '9';
 
-  let pattern = CODE128B_PATTERNS['START_B'];
-  values.forEach((v) => { pattern += CODE128B_PATTERNS[v]; });
+function planCode128Values(text) {
+  const values = [];
+  let mode = null;
+  let i = 0;
+
+  const enterB = () => {
+    if (mode === null) values.push(START_B);
+    else if (mode !== 'B') values.push(CODE_B);
+    mode = 'B';
+  };
+  const enterC = () => {
+    if (mode === null) values.push(START_C);
+    else if (mode !== 'C') values.push(CODE_C);
+    mode = 'C';
+  };
+
+  while (i < text.length) {
+    let run = 0;
+    while (i + run < text.length && isDigitChar(text[i + run])) run++;
+    // A switch character costs 11 modules, so Code C only pays off on a run of
+    // 4+ digits at either end, or 6+ digits mid-string.
+    const threshold = (i === 0 || i + run === text.length) ? 4 : 6;
+
+    if (run >= threshold) {
+      let take = run;
+      if (take % 2) {           // odd run — peel one digit off in Code B first
+        enterB();
+        values.push(CODE128B_VALUES[text[i]]);
+        i += 1; take -= 1;
+      }
+      if (take >= 2) {
+        enterC();
+        for (let k = 0; k < take; k += 2) values.push(Number(text.substr(i + k, 2)));
+        i += take;
+        continue;
+      }
+    }
+
+    enterB();
+    const v = CODE128B_VALUES[text[i]];
+    if (v !== undefined) values.push(v);
+    i += 1;
+  }
+
+  if (mode === null) values.push(START_B);
+  return values;
+}
+
+function encodeCode128(text) {
+  const values = planCode128Values(text);
+  // Checksum weights count the start character as position 0 and every
+  // subsequent value — switch characters included — from 1.
+  let checksum = values[0];
+  for (let k = 1; k < values.length; k++) checksum += values[k] * k;
+  checksum %= 103;
+
+  let pattern = '';
+  for (const v of values) pattern += CODE128B_PATTERNS[v];
   pattern += CODE128B_PATTERNS[checksum];
   pattern += CODE128B_PATTERNS['STOP'];
   pattern += '11';
-
   return pattern;
 }
 
-function drawBarcodeCanvas(canvas, text, options = {}) {
-  if (!canvas) return;
-  const { height = 55, moduleWidth = 1.4, padding = 8, showText = true } = options;
-  const pattern = encodeCode128B(text);
-  const barWidth = pattern.length * moduleWidth;
+// Kept so older call sites keep working.
+const encodeCode128B = encodeCode128;
 
-  canvas.width = barWidth + padding * 2;
-  canvas.height = height + (showText ? 18 : 0) + padding;
+// ─── BARCODE OUTPUT SPEC ─────────────────────────────────────────────────────
+// What actually decides whether a printed barcode scans is the X-dimension:
+// the physical width of the narrowest bar, in millimetres. Pixels and DPI are
+// only a means of hitting it. Handheld laser scanners want X ≥ 0.25 mm (10 mil);
+// 0.33 mm (13 mil) is the comfortable zone that survives thermal print spread.
+//
+// Everything below is therefore specified on paper and converted to pixels last.
+// Defaults suit the 50 × 30 mm employee badge.
+const MM_PER_IN = 25.4;
+const CSS_DPI = 96;               // what a browser assumes 1 CSS px is worth
+const mmToPx = (mm, dpi) => (mm / MM_PER_IN) * dpi;
+const pxToMm = (px, dpi) => (px / dpi) * MM_PER_IN;
+
+const BARCODE_SPEC = {
+  dpi: 300,
+  widthMm: 40,         // symbol + quiet zones, on paper
+  barHeightMm: 9,
+  textMm: 2.2,         // human-readable line under the bars
+  quietModules: 10,    // Code 128 minimum, each side
+  minXMm: 0.25,        // below this, expect misreads
+  goodXMm: 0.33,
+};
+
+const clampNum = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+
+// Picks the widest whole-pixel narrow bar that fits the width budget. Whole
+// pixels matter: a fractional bar gets anti-aliased into grey edges, and grey
+// edges are the classic reason a printed Code 128 won't read.
+function planBarcodeGeometry(pattern, options = {}) {
+  const {
+    dpi = BARCODE_SPEC.dpi,
+    widthMm = BARCODE_SPEC.widthMm,
+    barHeightMm = BARCODE_SPEC.barHeightMm,
+    textMm = BARCODE_SPEC.textMm,
+    quietModules = BARCODE_SPEC.quietModules,
+    showText = true,
+    displayWidth,                  // CSS px this canvas occupies on screen
+    captureDpi = BARCODE_SPEC.dpi, // DPI html2canvas will capture the card at
+  } = options;
+
+  const modules = pattern.length;
+  const totalModules = modules + quietModules * 2;
+
+  // Two budgets, take the larger. The paper budget is what we actually want.
+  // The screen budget stops html2canvas from having to UPSCALE this bitmap when
+  // it captures the card — upscaling is what makes an exported label look soft.
+  const paperBudgetPx = mmToPx(widthMm, dpi);
+  const screenBudgetPx = displayWidth ? displayWidth * (captureDpi / CSS_DPI) : 0;
+  const budgetPx = Math.max(paperBudgetPx, screenBudgetPx);
+
+  let moduleWidth = Math.floor(budgetPx / totalModules);
+  let snapped = true;
+  if (moduleWidth < 1) {
+    moduleWidth = budgetPx / totalModules; // payload too dense for whole pixels
+    snapped = false;
+  }
+
+  const width = Math.round(totalModules * moduleWidth);
+  const barTop = Math.round(mmToPx(0.5, dpi));
+  const barHeight = Math.round(mmToPx(barHeightMm, dpi));
+  const textBand = showText ? Math.round(mmToPx(textMm, dpi)) : 0;
+  const height = barTop * 2 + barHeight + textBand;
+
+  const xMm = pxToMm(moduleWidth, dpi);
+
+  return {
+    dpi, width, height, moduleWidth, barTop, barHeight, textBand, snapped,
+    offsetX: quietModules * moduleWidth,
+    xMm,
+    xMils: xMm / 0.0254,
+    symbolWidthMm: pxToMm(width, dpi),
+    scannable: xMm >= BARCODE_SPEC.minXMm,
+    printWidthIn: width / dpi,
+    printHeightIn: height / dpi,
+    cssWidth: Math.round((width / dpi) * CSS_DPI),
+  };
+}
+
+function drawBarcodeCanvas(canvas, text, options = {}) {
+  if (!canvas) return null;
+  const { showText = true } = options;
+  const pattern = encodeCode128(text);
+  const geo = planBarcodeGeometry(pattern, { ...options, showText });
+
+  if (!geo.scannable && typeof console !== 'undefined') {
+    console.warn(
+      `[barcode] "${text}" renders at X=${geo.xMm.toFixed(3)}mm ` +
+      `(${geo.xMils.toFixed(1)} mil), under the ${BARCODE_SPEC.minXMm}mm floor. ` +
+      `Widen the label, trim the payload, or drop the human-readable prefix.`
+    );
+  }
+
+  canvas.width = geo.width;
+  canvas.height = geo.height;
+  canvas.dataset.dpi = String(geo.dpi); // read back by the PNG/PDF exporters
 
   const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, geo.width, geo.height);
 
-  ctx.fillStyle = '#111827';
+  // Pure black, not the UI's near-black — every point of contrast helps the read.
+  ctx.fillStyle = '#000000';
   for (let i = 0; i < pattern.length; i++) {
     if (pattern[i] === '1') {
-      ctx.fillRect(padding + i * moduleWidth, padding / 2, moduleWidth, height);
+      ctx.fillRect(geo.offsetX + i * geo.moduleWidth, geo.barTop, geo.moduleWidth, geo.barHeight);
     }
   }
 
-  if (showText) {
-    ctx.fillStyle = '#2C221E';
-    ctx.font = `600 11px 'JetBrains Mono', monospace`;
+  if (showText && geo.textBand) {
+    ctx.fillStyle = '#000000';
+    ctx.font = `600 ${Math.round(geo.textBand * 0.78)}px 'JetBrains Mono', monospace`;
     ctx.textAlign = 'center';
-    ctx.fillText(text, canvas.width / 2, height + padding / 2 + 13);
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(text, geo.width / 2, geo.barTop + geo.barHeight + geo.textBand * 0.82);
   }
+
+  return geo;
+}
+
+// ─── PNG DENSITY METADATA ────────────────────────────────────────────────────
+// A canvas has no notion of DPI, so the PNG it hands back is implicitly 96 DPI.
+// Word, Illustrator and most label software would then place a 560 px barcode
+// at ~5.8 inches wide. Writing a pHYs chunk stamps the real density on the file
+// so it lands at its intended physical size.
+const PNG_CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function pngCrc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) crc = PNG_CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function stampPngDpi(buffer, dpi = BARCODE_SPEC.dpi) {
+  const src = new Uint8Array(buffer);
+  const perMetre = Math.round(dpi / 0.0254); // 300 DPI → 11811 px/m
+
+  const chunk = new Uint8Array(21);
+  const cv = new DataView(chunk.buffer);
+  cv.setUint32(0, 9);                       // data length
+  chunk.set([0x70, 0x48, 0x59, 0x73], 4);   // "pHYs"
+  cv.setUint32(8, perMetre);                // x axis
+  cv.setUint32(12, perMetre);               // y axis
+  chunk[16] = 1;                            // unit specifier: metre
+  cv.setUint32(17, pngCrc32(chunk.subarray(4, 17)));
+
+  // Walk the chunk list so an existing pHYs is replaced, not duplicated.
+  const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+  let pos = 8; // past the PNG signature
+  while (pos + 12 <= src.length) {
+    const len = dv.getUint32(pos);
+    const type = String.fromCharCode(src[pos + 4], src[pos + 5], src[pos + 6], src[pos + 7]);
+    if (type === 'pHYs') {
+      const out = src.slice();
+      out.set(chunk, pos);
+      return out;
+    }
+    if (type === 'IDAT' || type === 'IEND') break; // pHYs has to precede IDAT
+    pos += 12 + len;
+  }
+  if (pos + 12 > src.length) pos = 33; // signature + IHDR, if the walk ran off
+
+  const out = new Uint8Array(src.length + chunk.length);
+  out.set(src.subarray(0, pos), 0);
+  out.set(chunk, pos);
+  out.set(src.subarray(pos), pos + chunk.length);
+  return out;
 }
 
 // ─── ID CARD EXPORT (full card, not just the barcode) ────────────────────────
@@ -151,8 +354,16 @@ function chunkArray(arr, size) {
   return out;
 }
 
-async function captureNodeToCanvas(node) {
-  return html2canvas(node, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+// scale 2 gave ~192 DPI, which is soft once printed. Capturing at dpi/96
+// (3.125x for 300 DPI) means the exported card is genuinely 300 DPI.
+async function captureNodeToCanvas(node, { dpi = BARCODE_SPEC.dpi } = {}) {
+  const canvas = await html2canvas(node, {
+    backgroundColor: '#ffffff',
+    scale: dpi / CSS_DPI,
+    useCORS: true,
+  });
+  if (canvas?.dataset) canvas.dataset.dpi = String(dpi);
+  return canvas;
 }
 
 // Lets the user pick a destination folder + filename before saving (Chromium's
@@ -185,19 +396,35 @@ async function saveBlob(blob, suggestedName, { description, accept } = {}) {
   URL.revokeObjectURL(url);
 }
 
-function canvasToBlob(canvas) {
-  return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+function canvasDpi(canvas, override) {
+  return override || Number(canvas?.dataset?.dpi) || BARCODE_SPEC.dpi;
 }
 
-async function saveCanvasAsPng(canvas, filename) {
-  const blob = await canvasToBlob(canvas);
+async function canvasToBlob(canvas, dpi) {
+  const raw = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  if (!raw) return null;
+  try {
+    const stamped = stampPngDpi(await raw.arrayBuffer(), canvasDpi(canvas, dpi));
+    return new Blob([stamped], { type: 'image/png' });
+  } catch {
+    return raw; // density metadata is a nicety — never lose the image over it
+  }
+}
+
+async function saveCanvasAsPng(canvas, filename, dpi) {
+  const blob = await canvasToBlob(canvas, dpi);
   await saveBlob(blob, `${filename}.png`, { description: 'PNG Image', accept: { 'image/png': ['.png'] } });
 }
 
-async function saveCanvasAsPdf(canvas, filename) {
-  const orientation = canvas.width >= canvas.height ? 'landscape' : 'portrait';
-  const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height] });
-  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height);
+async function saveCanvasAsPdf(canvas, filename, dpi) {
+  // Size the page in inches from the pixel count and the density, so the PDF
+  // prints at physical size instead of being treated as 72 px-per-inch art.
+  const density = canvasDpi(canvas, dpi);
+  const wIn = canvas.width / density;
+  const hIn = canvas.height / density;
+  const orientation = wIn >= hIn ? 'landscape' : 'portrait';
+  const pdf = new jsPDF({ orientation, unit: 'in', format: [wIn, hIn] });
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, wIn, hIn);
   await saveBlob(pdf.output('blob'), `${filename}.pdf`, { description: 'PDF Document', accept: { 'application/pdf': ['.pdf'] } });
 }
 
@@ -213,7 +440,7 @@ function IdCard({ barcode, labels, cardRef, width }) {
   return (
     <div ref={cardRef} className="p-6 text-center" style={{ background: '#ffffff', ...(width ? { width } : null) }}>
       <div className="p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
-        <BarcodeCanvas code={barcode.pieceCode} height={65} moduleWidth={1.6} />
+        <BarcodeCanvas code={barcode.pieceCode} displayWidth={260} />
       </div>
       <div className="font-mono font-bold mb-4" style={{ color: '#5a3518' }}>{barcode.pieceCode}</div>
       <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-left text-sm p-4 rounded-lg" style={{ background: BRAND.bg }}>
@@ -291,7 +518,7 @@ function EmployeeTicketCard({ barcode, cardRef, width }) {
         <TicketPerforation />
       </div>
       <div className="px-7 pb-8 flex flex-col items-center">
-        <BarcodeCanvas code={barcode.pieceCode} height={70} moduleWidth={1.7} />
+        <BarcodeCanvas code={barcode.pieceCode} displayWidth={300} />
       </div>
     </div>
   );
@@ -355,12 +582,39 @@ function statusBadgeClass(status) {
 }
 
 // ─── SHARED CANVAS RENDERER ───────────────────────────────────────────────────
-function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true }) {
+// The bitmap is always full spec (300–600 × 80–150 @ 300 DPI). `displayWidth`
+// only decides how many CSS pixels it occupies, so the thumbnail in a list and
+// the copy that goes to the printer come off the exact same pixels — a small
+// preview is just the same image scaled down by the browser.
+function BarcodeCanvas({
+  code,
+  displayWidth,
+  widthMm = BARCODE_SPEC.widthMm,
+  barHeightMm = BARCODE_SPEC.barHeightMm,
+  showText = true,
+  dpi = BARCODE_SPEC.dpi,
+}) {
   const ref = useRef(null);
+  const [naturalCss, setNaturalCss] = useState(null);
+
   useEffect(() => {
-    drawBarcodeCanvas(ref.current, code, { height, moduleWidth, showText });
-  }, [code, height, moduleWidth, showText]);
-  return <canvas ref={ref} style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />;
+    const geo = drawBarcodeCanvas(ref.current, code, {
+      widthMm, barHeightMm, showText, dpi, displayWidth,
+    });
+    if (geo) setNaturalCss(geo.cssWidth);
+  }, [code, widthMm, barHeightMm, showText, dpi, displayWidth]);
+
+  return (
+    <canvas
+      ref={ref}
+      style={{
+        width: displayWidth ?? naturalCss ?? undefined,
+        maxWidth: '100%',
+        height: 'auto',
+        display: 'block',
+      }}
+    />
+  );
 }
 
 // ─── TOASTS ────────────────────────────────────────────────────────────────────
@@ -572,7 +826,7 @@ function GenerationTab({
                 style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}
               >
                 <div className="w-full bg-white rounded-lg p-2 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
-                  <BarcodeCanvas code={b.pieceCode} height={40} moduleWidth={1.1} />
+                  <BarcodeCanvas code={b.pieceCode} displayWidth={200} />
                 </div>
                 <div className="text-center w-full">
                   <div className="font-mono font-bold text-xs break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
@@ -757,7 +1011,7 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
                 style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}
               >
                 <div className="w-full bg-white rounded-lg p-2 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
-                  <BarcodeCanvas code={b.pieceCode} height={40} moduleWidth={1.1} />
+                  <BarcodeCanvas code={b.pieceCode} displayWidth={200} />
                 </div>
                 <div className="text-center w-full">
                   <div className="font-mono font-bold text-xs break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
@@ -848,7 +1102,7 @@ function BucketGenerationTab({ bucketGenerated, onGenerateRange, onSendToPrintCe
                 style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}
               >
                 <div className="w-full bg-white rounded-lg p-2 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
-                  <BarcodeCanvas code={b.pieceCode} height={40} moduleWidth={1.1} />
+                  <BarcodeCanvas code={b.pieceCode} displayWidth={200} />
                 </div>
                 <div className="text-center w-full">
                   <div className="font-mono font-bold text-xs break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
@@ -998,7 +1252,7 @@ function PrintTab({
                                   <div key={b.pieceCode} className="rounded-lg p-2.5 flex flex-col items-center gap-2 relative" style={{ background: checked ? '#faf3ea' : BRAND.bg, border: `1.5px solid ${checked ? BRAND.accent : 'rgba(200,131,74,0.2)'}` }}>
                                     <input type="checkbox" checked={checked} onChange={(e) => onTogglePiece(b.pieceCode, e.target.checked)} className="absolute top-2 left-2 w-3.5 h-3.5 accent-[#c8834a] cursor-pointer" />
                                     <div className="w-full bg-white rounded p-1.5 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
-                                      <BarcodeCanvas code={b.pieceCode} height={30} moduleWidth={0.85} showText={false} />
+                                      <BarcodeCanvas code={b.pieceCode} displayWidth={150} showText={false} />
                                     </div>
                                     <div className="text-center w-full">
                                       <div className="font-mono font-bold text-[0.65rem] break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
@@ -1246,7 +1500,7 @@ function PrintPreviewModal({ open, codes, onClose, onConfirm }) {
         <div className="p-6 max-h-[480px] overflow-y-auto flex flex-wrap gap-3 justify-center" style={{ background: '#e5e5e5' }}>
           {codes.map((code) => (
             <div key={code} className="bg-white border border-dashed border-gray-500 rounded-md flex flex-col items-center justify-center overflow-hidden" style={{ width: 200, height: 100, padding: 10 }}>
-              <BarcodeCanvas code={code} height={30} moduleWidth={0.8} showText={false} />
+              <BarcodeCanvas code={code} displayWidth={170} showText={false} />
               <div className="font-mono font-bold text-[0.65rem] mt-1">{code}</div>
             </div>
           ))}
@@ -1721,7 +1975,9 @@ export default function BarcodeManagementPage() {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             break-inside: avoid; overflow: hidden;
           }
-          .print-card canvas { max-width: 90%; max-height: 22mm; }
+          /* Inline displayWidth is a screen concern — on paper the barcode
+             prints at physical size (45mm ≈ 530px @300dpi). */
+          .print-card canvas { width: 45mm !important; max-width: 90%; height: auto !important; image-rendering: crisp-edges; }
           .print-card .card-code { font-family: monospace; font-weight: bold; font-size: 9pt; margin: 2mm 0; color: #000; }
           .print-card .card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 4mm; width: 100%; }
           .print-card .card-fields .f-label { color: #666; text-transform: uppercase; font-size: 5.5pt; font-weight: 700; }
@@ -1902,7 +2158,7 @@ export default function BarcodeManagementPage() {
                 </div>
               ) : (
                 <div className="print-card" key={b.pieceCode}>
-                  <BarcodeCanvas code={b.pieceCode} height={40} moduleWidth={1.1} showText={false} />
+                  <BarcodeCanvas code={b.pieceCode} displayWidth={200} showText={false} />
                   <div className="card-code">{b.pieceCode}</div>
                   <div className="card-fields">
                     {buildCardFields(b, activeLabels).map(([label, value]) => (
