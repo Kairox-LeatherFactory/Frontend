@@ -7,7 +7,7 @@ import {
   Lock, RefreshCw, CheckSquare, Square, X,
   Timer, CalendarDays, Shield, Zap, Filter,
   UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff,
-  Barcode, QrCode, Check
+  Barcode, QrCode, Check, Camera
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
@@ -537,6 +537,10 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
   const [isResolvingScan, setIsResolvingScan] = useState(false);
   const scanInputRef = useRef(null);
 
+  // Mobile/webcam barcode scanning (Code128) via html5-qrcode
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const html5QrRef = useRef(null);
+
   const playBeep = (freq = 880, type = 'sine') => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -685,6 +689,52 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
     setAlert({ type, message });
     if (type === 'success') setTimeout(() => setAlert(null), 6000);
   };
+
+  // Mobile/webcam Code128 scanning — starts the camera + decoder when the
+  // scan modal opens, tears it down on close/unmount either way.
+  useEffect(() => {
+    if (!cameraOpen) return;
+    let cancelled = false;
+    let handled = false;
+
+    (async () => {
+      try {
+        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
+        if (cancelled) return;
+        const scanner = new Html5Qrcode('barcode-camera-region', {
+          formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
+          verbose: false,
+        });
+        html5QrRef.current = scanner;
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 280, height: 120 } },
+          (decodedText) => {
+            if (handled) return;
+            handled = true;
+            setCameraOpen(false);
+            setScanInput(decodedText);
+            handleScanAttendance(decodedText);
+          },
+          () => {}, // per-frame "nothing decoded yet" — expected while aiming, ignore
+        );
+      } catch (err) {
+        if (!cancelled) {
+          showAlert('error', 'Camera unavailable — check browser permissions or use a USB scanner instead.');
+          setCameraOpen(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      const scanner = html5QrRef.current;
+      html5QrRef.current = null;
+      if (scanner) {
+        scanner.stop().then(() => scanner.clear()).catch(() => {});
+      }
+    };
+  }, [cameraOpen]);
 
   const handleAddWorker = async () => {
     const { name, phone, designation, wage_type, daily_rate, password } = addForm;
@@ -845,8 +895,8 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
             </div>
           </div>
 
-          <div className="flex-1 max-w-xl">
-            <div className="relative flex items-center shadow-lg rounded-2xl overflow-hidden border border-[#c8834a]/40 bg-white/10 backdrop-blur-md focus-within:border-[#f5d4a4] transition-all">
+          <div className="flex-1 max-w-xl flex items-center gap-2">
+            <div className="relative flex-1 flex items-center shadow-lg rounded-2xl overflow-hidden border border-[#c8834a]/40 bg-white/10 backdrop-blur-md focus-within:border-[#f5d4a4] transition-all">
               <QrCode className="w-5 h-5 text-[#f5d4a4] absolute left-4 pointer-events-none" />
               <input
                 ref={scanInputRef}
@@ -876,9 +926,36 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
                 )}
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => setCameraOpen(true)}
+              disabled={isResolvingScan}
+              title="Scan with phone/webcam camera"
+              className="h-12 w-12 shrink-0 flex items-center justify-center rounded-2xl border border-[#c8834a]/40 bg-white/10 backdrop-blur-md text-[#f5d4a4] hover:bg-white/20 hover:border-[#f5d4a4] active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40"
+            >
+              <Camera className="w-5 h-5" />
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Camera-based barcode scan modal — mobile/webcam alternative to the USB gun */}
+      <AnimatedModal
+        isOpen={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        zIndex={2000}
+        panelClassName="rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+        panelStyle={{ background: '#1c1207', border: '1px solid rgba(200,131,74,0.4)' }}
+      >
+        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.25)' }}>
+          <h3 className="font-bold text-sm text-white flex items-center gap-2"><Camera className="w-4 h-4 text-[#f5d4a4]" /> Scan with Camera</h3>
+          <button onClick={() => setCameraOpen(false)}><X className="w-5 h-5 text-[#e2d5c3]/70" /></button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-xs text-[#e2d5c3]/70 font-medium">Point the camera at the worker&apos;s ID barcode. It scans automatically — no need to tap anything.</p>
+          <div id="barcode-camera-region" className="w-full rounded-xl overflow-hidden bg-black" style={{ minHeight: 220 }} />
+        </div>
+      </AnimatedModal>
 
       <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-4 relative overflow-hidden rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
