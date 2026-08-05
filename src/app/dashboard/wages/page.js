@@ -2,22 +2,28 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
-import { 
-  apiGetWageStyles, 
-  apiComputeWageRun, 
-  apiGetWageRuns, 
-  apiGetRateSheet, 
+import {
+  apiGetWageStyles,
+  apiComputeWageRun,
+  apiGetWageRuns,
+  apiGetRateSheet,
   apiSetWageRatesBulk,
   apiSetWageRateSingle,
   apiGetRateHistory,
-  apiGetWageRunDetails 
+  apiGetWageRunDetails
 } from '@/lib/api';
-import { 
-  Loader2, History, Eye, X, Save, Activity, Search, 
+import {
+  Loader2, History, Eye, X, Save, Activity, Search,
   Briefcase, Scissors, CheckCircle2, AlertCircle, Coins,
   Calendar, FileText, Filter, Users, TrendingUp, ChevronRight
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
+
+const TABS = [
+  { id: 'styles', label: 'Styles & Rates' },
+  { id: 'computation', label: 'Computation' },
+  { id: 'ledger', label: 'Ledger' },
+];
 
 export default function PieceRatesAndWages() {
   const { token } = useAuth();
@@ -46,14 +52,13 @@ export default function PieceRatesAndWages() {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
-              <button 
+              <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id)} 
-                className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs sm:text-sm transition-all duration-300 ${
-                  isActive 
-                    ? 'bg-white shadow-md' 
-                    : 'hover:bg-white/40 opacity-70 hover:opacity-100'
-                }`}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-bold text-xs sm:text-sm transition-all duration-300 ${isActive
+                  ? 'bg-white shadow-md'
+                  : 'hover:bg-white/40 opacity-70 hover:opacity-100'
+                  }`}
                 style={isActive ? { color: '#c8834a' } : { color: '#4a3a2a' }}
               >
                 <Icon className={`w-4 h-4 ${isActive ? 'scale-110' : 'scale-100'} transition-transform`} />
@@ -63,7 +68,7 @@ export default function PieceRatesAndWages() {
           })}
         </div>
       </div>
-      
+
       {/* ─── ACTIVE VIEW RENDERER ─── */}
       <div className="relative z-0">
         <div className={`transition-all duration-500 ${activeTab === 'styles' ? 'opacity-100 translate-y-0 relative' : 'opacity-0 translate-y-4 absolute inset-x-0 pointer-events-none'}`}>
@@ -86,11 +91,10 @@ function Toast({ msg, type }) {
   const isSuccess = type === 'success';
   return createPortal(
     <div className="fixed bottom-4 right-4 left-4 sm:bottom-8 sm:right-8 sm:left-auto flex justify-center z-[999999] animate-fade-in pointer-events-none">
-      <div className={`px-6 py-4 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 backdrop-blur-md border max-w-sm w-full sm:w-auto ${
-        isSuccess
-          ? 'bg-emerald-50/90 border-emerald-200/50 text-emerald-900 shadow-emerald-500/10'
-          : 'bg-red-50/90 border-red-200/50 text-red-900 shadow-red-500/10'
-      }`}>
+      <div className={`px-6 py-4 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 backdrop-blur-md border max-w-sm w-full sm:w-auto ${isSuccess
+        ? 'bg-emerald-50/90 border-emerald-200/50 text-emerald-900 shadow-emerald-500/10'
+        : 'bg-red-50/90 border-red-200/50 text-red-900 shadow-red-500/10'
+        }`}>
         {isSuccess ? <CheckCircle2 className="w-5 h-5 text-emerald-500" /> : <AlertCircle className="w-5 h-5 text-red-500" />}
         {msg}
       </div>
@@ -116,8 +120,8 @@ function StylesView({ token }) {
     if (!styles || !Array.isArray(styles)) return [];
     if (!searchQuery.trim()) return styles;
     const term = searchQuery.toLowerCase().trim();
-    return styles.filter(item => 
-      String(item.style_code).toLowerCase().includes(term) || 
+    return styles.filter(item =>
+      String(item.style_code).toLowerCase().includes(term) ||
       String(item.style_name).toLowerCase().includes(term)
     );
   }, [styles, searchQuery]);
@@ -131,8 +135,8 @@ function StylesView({ token }) {
     let active = true;
     if (active) setLoading(true);
     apiGetWageStyles(token).then(data => {
-      if(active) setStyles(data);
-    }).finally(() => { if(active) setLoading(false); });
+      if (active) setStyles(data);
+    }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [token]);
 
@@ -157,10 +161,10 @@ function StylesView({ token }) {
         effective_from: new Date().toISOString().split('T')[0]
       });
       showToast(`${op.label} rate saved!`, 'success');
-    } catch (e) { 
+    } catch (e) {
       showToast('Error: ' + e.message, 'error');
-    } finally { 
-      setSavingOps(prev => ({ ...prev, [op.operation_code]: false })); 
+    } finally {
+      setSavingOps(prev => ({ ...prev, [op.operation_code]: false }));
     }
   };
 
@@ -193,7 +197,7 @@ function StylesView({ token }) {
     return (
       <div className="space-y-6 animate-fade-in">
         <Toast msg={toastMsg} type={toastType} />
-        
+
         {/* Editor Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 md:p-8 rounded-[2rem] shadow-xl border relative overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
           <div className="absolute top-0 left-0 w-1.5 h-full" style={{ background: 'linear-gradient(to bottom, #c8834a, #e8a06a)' }}></div>
@@ -205,15 +209,15 @@ function StylesView({ token }) {
               <span>Master Rate Config</span>
             </div>
           </div>
-          <button 
-            onClick={() => setSelectedStyle(null)} 
+          <button
+            onClick={() => setSelectedStyle(null)}
             className="px-6 py-3 bg-[#faf6f0] font-black text-xs uppercase tracking-widest rounded-2xl transition-all border shadow-sm hover:shadow-md hover:bg-white active:scale-95"
             style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
           >
             ← Close Editor
           </button>
         </div>
-        
+
         {/* Editor Rows */}
         <div className="grid gap-4">
           {rates.map((op, idx) => {
@@ -229,15 +233,15 @@ function StylesView({ token }) {
                   </h4>
                   <p className="text-[10px] font-bold text-slate-400 ml-10 mt-1 uppercase tracking-widest">{op.operation_code}</p>
                 </div>
-                
+
                 <div className="flex items-center gap-4 w-full md:w-auto">
                   <div className="relative flex-1 md:w-48 group-focus-within:ring-4 rounded-xl transition-all" style={{ ringColor: 'rgba(200,131,74,0.1)' }}>
                     <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm">₹</span>
-                    <input 
+                    <input
                       type="number" step="0.01" min="0"
                       className="w-full h-14 pl-9 pr-4 bg-slate-50 hover:bg-white font-black text-lg border-2 rounded-xl outline-none transition-all shadow-inner focus:bg-white focus:border-[#c8834a] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       style={{ color: '#c8834a', borderColor: 'transparent' }}
-                      value={op.rate ?? ''} 
+                      value={op.rate ?? ''}
                       onChange={(e) => {
                         const newRates = [...rates];
                         newRates[idx].rate = e.target.value;
@@ -246,9 +250,9 @@ function StylesView({ token }) {
                       placeholder="0.00"
                     />
                   </div>
-                  
-                  <button 
-                    onClick={() => handleSaveSingleRate(op)} 
+
+                  <button
+                    onClick={() => handleSaveSingleRate(op)}
                     disabled={isSaving}
                     className="w-14 h-14 rounded-xl font-bold text-white shadow-sm transition-all hover:shadow-lg hover:-translate-y-1 disabled:opacity-50 flex items-center justify-center active:scale-95 shrink-0"
                     style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
@@ -256,8 +260,8 @@ function StylesView({ token }) {
                   >
                     {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
                   </button>
-                  <button 
-                    onClick={() => handleShowHistory(op.operation_code)} 
+                  <button
+                    onClick={() => handleShowHistory(op.operation_code)}
                     className="w-14 h-14 rounded-xl bg-white shadow-sm border transition-all hover:shadow-md flex items-center justify-center shrink-0"
                     style={{ borderColor: 'rgba(200,131,74,0.2)' }}
                     title="View Rate History"
@@ -355,11 +359,11 @@ function StylesView({ token }) {
             const progress = (s.rated_operations / s.total_operations) * 100;
             const isComplete = progress === 100;
             return (
-              <SpotlightCard 
-                key={s.style_code} 
-                onClick={() => handleSelectStyle(s)} 
-                className="p-5 sm:p-6 bg-white cursor-pointer transition-all rounded-3xl shadow-sm hover:shadow-xl group hover:-translate-y-1 flex flex-col justify-between h-full" 
-                style={{ border: '1px solid rgba(200,131,74,0.15)' }} 
+              <SpotlightCard
+                key={s.style_code}
+                onClick={() => handleSelectStyle(s)}
+                className="p-5 sm:p-6 bg-white cursor-pointer transition-all rounded-3xl shadow-sm hover:shadow-xl group hover:-translate-y-1 flex flex-col justify-between h-full"
+                style={{ border: '1px solid rgba(200,131,74,0.15)' }}
                 spotlightColor="rgba(200,131,74,0.06)"
               >
                 <div>
@@ -371,11 +375,11 @@ function StylesView({ token }) {
                       Edit Rates
                     </span>
                   </div>
-                  
+
                   <h3 className="font-black text-xl mb-1 truncate" style={{ color: '#2d1f0e' }}>{s.style_code}</h3>
                   <p className="text-xs font-bold text-[#9a7a5a] mb-8 line-clamp-1">{s.style_name}</p>
                 </div>
-                
+
                 <div className="space-y-3 mt-auto">
                   <div className="flex justify-between items-end">
                     <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: isComplete ? '#10b981' : '#c8834a' }}>
@@ -384,11 +388,11 @@ function StylesView({ token }) {
                     <span className="font-black text-sm" style={{ color: '#2d1f0e' }}>{s.rated_operations}/{s.total_operations}</span>
                   </div>
                   <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
-                    <div 
+                    <div
                       className="h-full rounded-full transition-all duration-1000 ease-out"
-                      style={{ 
+                      style={{
                         width: `${progress}%`,
-                        background: isComplete ? 'linear-gradient(90deg, #34d399, #10b981)' : 'linear-gradient(90deg, #e8a06a, #c8834a)' 
+                        background: isComplete ? 'linear-gradient(90deg, #34d399, #10b981)' : 'linear-gradient(90deg, #e8a06a, #c8834a)'
                       }}
                     />
                   </div>
@@ -413,7 +417,7 @@ function ComputationView({ token }) {
   const [endDate, setEndDate] = useState('');
   const [selectedStyle, setSelectedStyle] = useState('ALL');
   const [styles, setStyles] = useState([]);
-  
+
   const [isComputing, setIsComputing] = useState(false);
   const [calculatedPayroll, setCalculatedPayroll] = useState([]);
   const [totalPayrollAmount, setTotalPayrollAmount] = useState(0);
@@ -432,7 +436,7 @@ function ComputationView({ token }) {
     setStartDate(firstDay.toISOString().split('T')[0]);
     setEndDate(today.toISOString().split('T')[0]);
     // Fetch styles for the mock dropdown
-    apiGetWageStyles(token).then(setStyles).catch(() => {});
+    apiGetWageStyles(token).then(setStyles).catch(() => { });
   }, [token]);
 
   const handleCompute = async () => {
@@ -458,44 +462,44 @@ function ComputationView({ token }) {
   return (
     <div className="space-y-6 animate-fade-in">
       <Toast msg={toastMsg} type={toastType} />
-      
+
       {/* ── ACTION CENTER ── */}
       <div className="bg-white rounded-3xl shadow-xl p-6 sm:p-8 border relative overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-[#c8834a]/10 to-transparent rounded-full blur-3xl pointer-events-none translate-x-1/2 -translate-y-1/2"></div>
-        
+
         <h3 className="text-xl font-black mb-6 flex items-center gap-2" style={{ color: '#2d1f0e' }}>
           <Activity className="w-6 h-6" style={{ color: '#c8834a' }} /> Engine Configuration
         </h3>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="space-y-2 relative z-10">
             <label className="text-[10px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>Start Date</label>
             <div className="relative">
               <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
-                type="date" 
-                value={startDate} 
+              <input
+                type="date"
+                value={startDate}
                 onChange={e => setStartDate(e.target.value)}
                 className="w-full h-14 pl-12 pr-4 bg-slate-50 rounded-xl font-bold text-sm outline-none border focus:border-[#c8834a] focus:bg-white transition-all shadow-inner"
                 style={{ borderColor: 'rgba(200,131,74,0.1)' }}
               />
             </div>
           </div>
-          
+
           <div className="space-y-2 relative z-10">
             <label className="text-[10px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>End Date</label>
             <div className="relative">
               <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input 
-                type="date" 
-                value={endDate} 
+              <input
+                type="date"
+                value={endDate}
                 onChange={e => setEndDate(e.target.value)}
                 className="w-full h-14 pl-12 pr-4 bg-slate-50 rounded-xl font-bold text-sm outline-none border focus:border-[#c8834a] focus:bg-white transition-all shadow-inner"
                 style={{ borderColor: 'rgba(200,131,74,0.1)' }}
               />
             </div>
           </div>
-          
+
           <div className="space-y-2 relative z-10">
             <label className="text-[10px] font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
               Target Style
@@ -503,7 +507,7 @@ function ComputationView({ token }) {
             </label>
             <div className="relative">
               <Filter className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <select 
+              <select
                 value={selectedStyle}
                 onChange={e => setSelectedStyle(e.target.value)}
                 className="w-full h-14 pl-12 pr-12 bg-slate-50 rounded-xl font-bold text-sm outline-none border focus:border-[#c8834a] focus:bg-white transition-all shadow-inner appearance-none cursor-pointer text-ellipsis overflow-hidden whitespace-nowrap"
@@ -519,7 +523,7 @@ function ComputationView({ token }) {
             <p className="text-[9px] font-bold text-slate-400 mt-1 leading-tight">Backend filter integration pending. Displays full ledger for now.</p>
           </div>
         </div>
-        
+
         <div className="mt-8 flex justify-end relative z-10 pt-6" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
           <button
             onClick={handleCompute}
@@ -587,16 +591,16 @@ function LedgerView({ token }) {
   useEffect(() => {
     let active = true;
     apiGetWageRuns(token).then(data => {
-      if(active) setRuns(data);
-    }).finally(() => { if(active) setLoading(false); });
+      if (active) setRuns(data);
+    }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [token]);
 
   const handleViewDetails = async (runId) => {
     console.log("Clicked handleViewDetails with runId:", runId);
     if (!runId) {
-        console.error("runId is missing! Full run object might use 'id' instead of 'run_id'");
-        return;
+      console.error("runId is missing! Full run object might use 'id' instead of 'run_id'");
+      return;
     }
     setDetailsLoading(runId);
     try {
@@ -629,44 +633,44 @@ function LedgerView({ token }) {
           {runs.map((run, i) => {
             const currentRunId = run.run_id || run.id;
             return (
-            <SpotlightCard 
-              key={i} 
-              onClick={() => handleViewDetails(currentRunId)}
-              className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 border flex flex-col justify-between min-h-[180px] h-full cursor-pointer group" 
-              style={{ borderColor: 'rgba(200,131,74,0.15)' }} 
-              spotlightColor="rgba(200,131,74,0.06)"
-            >
-              <div>
-                <div className="flex justify-between items-start mb-6">
-                  <div className="bg-[#faf6f0] p-3 rounded-2xl border group-hover:scale-110 transition-transform duration-300" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-                    <Calendar className="w-6 h-6" style={{ color: '#c8834a' }} />
-                  </div>
-                  <span className="bg-emerald-50 text-emerald-700 px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-200 shadow-sm">
-                    Frozen
-                  </span>
-                </div>
-                
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 group-hover:text-[#c8834a] transition-colors">Pay Cycle</p>
-                <h3 className="font-black text-xl" style={{ color: '#2d1f0e' }}>{run.start_date} <span className="opacity-40 px-1">to</span> {run.end_date}</h3>
-              </div>
-              
-              <div className="mt-8 pt-6 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
+              <SpotlightCard
+                key={i}
+                onClick={() => handleViewDetails(currentRunId)}
+                className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm hover:shadow-2xl hover:-translate-y-2 transition-all duration-300 border flex flex-col justify-between min-h-[180px] h-full cursor-pointer group"
+                style={{ borderColor: 'rgba(200,131,74,0.15)' }}
+                spotlightColor="rgba(200,131,74,0.06)"
+              >
                 <div>
-                  <p className="text-[10px] font-bold text-slate-400 mb-0.5">Disbursement Total</p>
-                  <p className="font-black text-lg" style={{ color: '#10b981' }}>₹{run.total_amount?.toLocaleString('en-IN') || '0.00'}</p>
+                  <div className="flex justify-between items-start mb-6">
+                    <div className="bg-[#faf6f0] p-3 rounded-2xl border group-hover:scale-110 transition-transform duration-300" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                      <Calendar className="w-6 h-6" style={{ color: '#c8834a' }} />
+                    </div>
+                    <span className="bg-emerald-50 text-emerald-700 px-3 py-1 text-[10px] font-black uppercase tracking-widest rounded-full border border-emerald-200 shadow-sm">
+                      Frozen
+                    </span>
+                  </div>
+
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 group-hover:text-[#c8834a] transition-colors">Pay Cycle</p>
+                  <h3 className="font-black text-xl" style={{ color: '#2d1f0e' }}>{run.start_date} <span className="opacity-40 px-1">to</span> {run.end_date}</h3>
                 </div>
-                
-                <div
-                  className="flex items-center justify-center w-12 h-12 bg-slate-50 group-hover:bg-[#faf6f0] group-hover:shadow-md rounded-xl transition-all duration-300 border"
-                  style={{ borderColor: 'rgba(200,131,74,0.2)' }}
-                >
-                  {detailsLoading === currentRunId 
-                    ? <Loader2 className="w-5 h-5 animate-spin text-[#c8834a]" /> 
-                    : <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-1 transition-all" />
-                  }
+
+                <div className="mt-8 pt-6 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 mb-0.5">Disbursement Total</p>
+                    <p className="font-black text-lg" style={{ color: '#10b981' }}>₹{run.total_amount?.toLocaleString('en-IN') || '0.00'}</p>
+                  </div>
+
+                  <div
+                    className="flex items-center justify-center w-12 h-12 bg-slate-50 group-hover:bg-[#faf6f0] group-hover:shadow-md rounded-xl transition-all duration-300 border"
+                    style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                  >
+                    {detailsLoading === currentRunId
+                      ? <Loader2 className="w-5 h-5 animate-spin text-[#c8834a]" />
+                      : <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-1 transition-all" />
+                    }
+                  </div>
                 </div>
-              </div>
-            </SpotlightCard>
+              </SpotlightCard>
             );
           })}
         </div>
@@ -676,15 +680,15 @@ function LedgerView({ token }) {
       {selectedRunDetails && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/60 backdrop-blur-md animate-fade-in">
           <div className="bg-slate-50 rounded-[2.5rem] w-full max-w-4xl shadow-2xl animate-scale-up overflow-hidden flex flex-col max-h-[90vh] mx-4">
-            
+
             <div className="p-6 sm:p-8 pb-10 bg-white relative">
               <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl pointer-events-none translate-x-1/2 -translate-y-1/2"></div>
-              
+
               <div className="flex justify-between items-start relative z-10">
                 <div>
                   <h3 className="font-black text-3xl" style={{ color: '#2d1f0e' }}>Ledger Manifest</h3>
                   <div className="flex gap-4 mt-3">
-                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md">ID: {selectedRunDetails.run_id?.substring(0,8)}...</span>
+                    <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md">ID: {selectedRunDetails.run_id?.substring(0, 8)}...</span>
                     <span className="text-xs font-bold text-[#c8834a] bg-[#faf6f0] px-3 py-1 rounded-md">{selectedRunDetails.start_date} to {selectedRunDetails.end_date}</span>
                   </div>
                 </div>
@@ -692,7 +696,7 @@ function LedgerView({ token }) {
                   <X className="w-5 h-5 text-slate-600" />
                 </button>
               </div>
-              
+
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-8 relative z-10">
                 <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
                   <p className="text-[10px] font-black uppercase text-emerald-600 tracking-wider">Total Disbursed</p>
@@ -714,10 +718,10 @@ function LedgerView({ token }) {
                 </div>
               </div>
             </div>
-            
+
             <div className="flex-1 overflow-y-auto p-8">
               <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 mb-4 pl-2">Detailed Line Items</h4>
-              
+
               {selectedRunDetails.lines?.length === 0 ? (
                 <div className="text-center py-10 opacity-50">
                   <p className="font-bold text-sm">No records found for this run.</p>

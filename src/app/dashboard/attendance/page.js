@@ -10,6 +10,9 @@ import {
   Barcode, QrCode, Check
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
+import AnimatedModal from '@/components/AnimatedModal';
+import { motion, AnimatePresence } from 'framer-motion';
+import { staggerContainer, fadeUpItem, tabFade, rowStagger } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
 
 // ─── API BASE ────────────────────────────────────────────────────────────────
@@ -119,7 +122,7 @@ function AlertBanner({ type, message, onClose }) {
     setMounted(true);
   }, []);
 
-  if (!message || !mounted) return null;
+  if (!mounted) return null;
   const styles = {
     success: 'bg-emerald-50/95 border-emerald-500/30 text-emerald-900 backdrop-blur-md',
     error: 'bg-red-50/95 border-red-500/30 text-red-900 backdrop-blur-md',
@@ -129,15 +132,25 @@ function AlertBanner({ type, message, onClose }) {
   const icons = { success: CheckCircle2, error: AlertCircle, warning: AlertTriangle, info: Activity };
   const Icon = icons[type] || AlertCircle;
   return createPortal(
-    <div className={`fixed bottom-6 right-4 sm:right-6 z-[999999] flex items-start gap-2.5 p-4 rounded-2xl border text-sm font-semibold shadow-2xl max-w-sm w-full animate-fade-in ${styles[type] || styles.info}`}>
-      <Icon className="w-4 h-4 mt-0.5 flex-shrink-0" />
-      <p className="flex-1">{message}</p>
-      {onClose && (
-        <button onClick={onClose} className="opacity-60 hover:opacity-100 cursor-pointer">
-          <X className="w-4 h-4" />
-        </button>
+    <AnimatePresence>
+      {message && (
+        <motion.div
+          initial={{ opacity: 0, y: 16, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 8, scale: 0.96 }}
+          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          className={`fixed bottom-6 right-4 sm:right-6 z-[999999] flex items-start gap-2.5 p-4 rounded-2xl border text-sm font-semibold shadow-2xl max-w-sm w-full ${styles[type] || styles.info}`}
+        >
+          <Icon className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <p className="flex-1">{message}</p>
+          {onClose && (
+            <button onClick={onClose} className="opacity-60 hover:opacity-100 cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </motion.div>
       )}
-    </div>,
+    </AnimatePresence>,
     document.body
   );
 }
@@ -295,20 +308,24 @@ function MyAttendanceView({ token }) {
   const busy = actionLoading || gps.loading;
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
       <div>
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>My Attendance</h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Track your shift status and review personal attendance history.</p>
       </div>
 
-      {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+      <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
       <GpsWarning error={gps.error} />
 
       {/* Hero row — Managing Director-க்கு மட்டும் இந்த ஷீல்ட் / டைமர் பேனர்கள் மறைக்கப்படும் */}
       {!isManagingDirector && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <motion.div variants={staggerContainer} className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Shift Timer */}
-          <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <SpotlightCard
+            variants={fadeUpItem}
+            whileHover={{ y: -6, scale: 1.02 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+            className="p-6 bg-white shadow-xl space-y-4 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
             <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
               <Timer className="w-4 h-4" style={{ color: '#c8834a' }} /> Shift Timer
             </h3>
@@ -338,7 +355,11 @@ function MyAttendanceView({ token }) {
           </SpotlightCard>
 
           {/* Action Terminal */}
-          <SpotlightCard className="lg:col-span-2 p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <SpotlightCard
+            variants={fadeUpItem}
+            whileHover={{ y: -6, scale: 1.02 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+            className="lg:col-span-2 p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
             <h3 className="text-sm font-extrabold uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
               <Zap className="w-4 h-4" style={{ color: '#c8834a' }} /> Action Terminal
             </h3>
@@ -374,11 +395,11 @@ function MyAttendanceView({ token }) {
               </div>
             )}
           </SpotlightCard>
-        </div>
+        </motion.div>
       )}
 
       {/* Personal History */}
-      <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
             <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Attendance History
@@ -418,9 +439,9 @@ function MyAttendanceView({ token }) {
                     <th className="p-3">Flags</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
+                <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
                   {paginated.map((row) => (
-                    <tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
+                    <motion.tr key={row.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                       <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</td>
                       <td className="p-3">{fmtTime(row.check_in_at)}</td>
                       <td className="p-3">
@@ -438,16 +459,16 @@ function MyAttendanceView({ token }) {
                           {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
-                </tbody>
+                </motion.tbody>
               </table>
             </div>
 
             {/* Mobile cards — shown only on mobile */}
-            <div className="sm:hidden space-y-3">
+            <motion.div variants={staggerContainer} initial="hidden" animate="show" className="sm:hidden space-y-3">
               {paginated.map((row) => (
-                <div key={row.id} className="rounded-xl p-4 space-y-3" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.1)' }}>
+                <motion.div key={row.id} variants={fadeUpItem} className="rounded-xl p-4 space-y-3" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.1)' }}>
                   <div className="flex items-center justify-between">
                     <span className="font-black text-sm" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</span>
                     <Badge label={row.source} type={row.source} />
@@ -479,21 +500,21 @@ function MyAttendanceView({ token }) {
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               ))}
-            </div>
+            </motion.div>
             <Paginator page={page} totalPages={totalPages} setPage={setPage} total={history.length} perPage={PER_PAGE} />
           </>
         )}
       </SpotlightCard>
-    </div>
+    </motion.div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // VIEW B — FLOOR COMMAND
 // ═══════════════════════════════════════════════════════════════════════════════
-function FloorCommandView({ workers = [], token, onWorkerAdded }) {
+function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
   const gps = useGps();
 
   const [search, setSearch] = useState('');
@@ -547,6 +568,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
         String(w.phone || '').includes(targetCode)
       );
 
+<<<<<<< HEAD
       let direction = 'in';
 
       if (matchedWorker) {
@@ -564,6 +586,46 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
         direction = !isAlreadyIn ? 'in' : 'out';
       }
 
+=======
+      let targetId = targetCode;
+      let targetName = "Unknown Worker";
+      if (matchedWorker) {
+         targetId = String(matchedWorker.id);
+         targetName = matchedWorker.name;
+      }
+
+      const isAlreadyIn = checkedInIds.has(targetId);
+      const isAlreadyOut = checkedOutIds.has(targetId);
+
+      if (isAlreadyIn && isAlreadyOut) {
+        playBeep(440, 'triangle');
+        showAlert('info', `✓ ${targetName} (${targetCode}) has already completed shift today.`);
+        setScanInput('');
+        return;
+      }
+
+      const direction = !isAlreadyIn ? 'in' : 'out';
+
+      if (isSecurity) {
+        // MOCK FLOW FOR SECURITY
+        await new Promise(r => setTimeout(r, 600)); // Simulate API delay
+        playBeep(1046, 'sine');
+
+        const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+
+
+        if (direction === 'in') {
+          setCheckedInIds(prev => new Set([...prev, targetId]));
+          showAlert('success', `🟢 AUTOMATIC CHECK-IN CONFIRMED: ${targetName} (${targetCode}) at ${timeStr}`);
+        } else {
+          setCheckedOutIds(prev => new Set([...prev, targetId]));
+          showAlert('success', `🔴 AUTOMATIC CHECK-OUT CONFIRMED: ${targetName} (${targetCode}) at ${timeStr} (Shift Complete)`);
+        }
+        setScanInput('');
+        return;
+      }
+
+>>>>>>> e3d93a16f7949ac5fd091c9a6d726ff434535d05
       let coords = null;
       let reason = undefined;
       try {
@@ -616,6 +678,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
 
   useEffect(() => {
     async function initStatus() {
+      if (isSecurity) return; // Mock: don't fetch real data if Security Workspace
       try {
         const rosterData = await apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token);
         if (rosterData && Array.isArray(rosterData)) {
@@ -715,13 +778,32 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
     if (selected.size === 0) return;
     setActionLoading(true);
     try {
-      const coords = await gps.getPosition();
       const requestedIds = [...selected];
+
+      if (isSecurity) {
+        // MOCK BATCH ACTION FOR SECURITY
+        await new Promise(r => setTimeout(r, 600)); // simulate delay
+        const normalizedRequested = requestedIds.map((id) => String(id));
+        const succeeded = normalizedRequested;
+        const failed = [];
+        
+        if (type === 'check-in') {
+          setCheckedInIds(prev => new Set([...prev, ...succeeded]));
+        } else {
+          setCheckedOutIds(prev => new Set([...prev, ...succeeded]));
+        }
+        setSelected(new Set());
+        setTimeout(() => setDiffModal({ type, succeeded, failed }), 0);
+        return;
+      }
+
+      const coords = await gps.getPosition();
       const endpoint = type === 'check-in' ? `${API}/proxy/check-in` : `${API}/proxy/check-out`;
       const result = await apiFetch(endpoint, {
         method: 'POST',
         body: JSON.stringify({ employee_ids: requestedIds, lat: coords.lat, lon: coords.lon }),
       }, token);
+      
       const succeededIds = new Set(result.map((r) => String(r.employee_id)));
       const normalizedRequested = requestedIds.map((id) => String(id));
       const succeeded = normalizedRequested.filter((id) => succeededIds.has(id));
@@ -744,7 +826,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Floor Command</h1>
@@ -758,7 +840,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
         </div>
       </div>
 
-      {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+      <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
       <GpsWarning error={gps.error} />
 
       {/* AUTOMATIC BARCODE GUN ATTENDANCE SCANNER HEADER BAR */}
@@ -818,7 +900,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
         </div>
       </div>
 
-      <SpotlightCard className="p-6 bg-white shadow-xl space-y-4 relative overflow-hidden rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-4 relative overflow-hidden rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2 flex-1" style={{ color: '#2d1f0e' }}>
             <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Daily Wage Roster
@@ -861,12 +943,12 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
                   <th className="p-3">Type</th>
                 </tr>
               </thead>
-              <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
+              <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
                 {filtered.map((w) => {
                   const isSelected = selected.has(w.id);
                   const isPieceRate = w.wage_type === 'piece_rate';
                   return (
-                    <tr key={w.id} onClick={() => toggleSelect(w.id)}
+                    <motion.tr key={w.id} variants={fadeUpItem} onClick={() => toggleSelect(w.id)}
                       className="cursor-pointer transition-colors relative" style={{ background: isSelected ? '#fff9f0' : 'transparent' }}>
                       <td className="p-3">
                         {isSelected
@@ -896,20 +978,24 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
                           </div>
                         )}
                       </td>
-                    </tr>
+                    </motion.tr>
                   );
                 })}
-              </tbody>
+              </motion.tbody>
             </table>
           </div>
         )}
       </SpotlightCard>
 
       {/* Diff result modal */}
-      {diffModal && typeof window !== 'undefined' && createPortal(
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15, 23, 42, 0.65)', padding: '16px', pointerEvents: 'auto' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', width: '100%', maxWidth: '448px', padding: '24px', position: 'relative', zIndex: 1000000, pointerEvents: 'auto' }}
-            className="space-y-4 animate-scale-up" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+      <AnimatedModal
+        isOpen={!!diffModal}
+        onClose={() => setDiffModal(null)}
+        panelClassName="space-y-4 w-full max-w-md"
+        panelStyle={{ backgroundColor: '#ffffff', borderRadius: '20px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', padding: '24px' }}
+      >
+        {diffModal && (
+          <>
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <h3 className="font-black text-slate-900 text-base sm:text-lg">
                 {diffModal.type === 'check-in' ? 'Check-In' : 'Check-Out'} Results
@@ -935,16 +1021,19 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
               )}
             </div>
             <button onClick={() => setDiffModal(null)} className="btn-primary w-full h-11 sm:h-10 text-xs font-black cursor-pointer relative z-30 pointer-events-auto">Done</button>
-          </div>
-        </div>,
-        document.body
-      )}
+          </>
+        )}
+      </AnimatedModal>
 
       {/* Add floor worker modal */}
-      {addModal && typeof window !== 'undefined' && createPortal(
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 999999, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(15, 23, 42, 0.65)', padding: '16px', pointerEvents: 'auto' }}>
-          <div style={{ backgroundColor: '#ffffff', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', width: '100%', maxWidth: '448px', maxHeight: '90vh', overflowY: 'auto', padding: '24px', position: 'relative', zIndex: 1000000, pointerEvents: 'auto' }}
-            className="space-y-4 animate-scale-up" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="add-worker-title">
+      <AnimatedModal
+        isOpen={addModal}
+        onClose={() => setAddModal(false)}
+        panelClassName="space-y-4 w-full max-w-md"
+        panelStyle={{ backgroundColor: '#ffffff', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}
+      >
+        {addModal && (
+          <>
             <div className="flex-shrink-0 flex items-center justify-between pb-3 border-b border-slate-100">
               <h3 id="add-worker-title" className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
                 <UserPlus className="w-5 h-5 text-blue-600" /> Add Floor Worker
@@ -1060,11 +1149,10 @@ function FloorCommandView({ workers = [], token, onWorkerAdded }) {
                 {addLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding...</> : <><UserPlus className="w-4 h-4" /> Add Worker</>}
               </button>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
-    </div>
+          </>
+        )}
+      </AnimatedModal>
+    </motion.div>
   );
 }
 
@@ -1168,15 +1256,15 @@ function OperationsHRView({ token }) {
   const totalPages = Math.ceil(filteredRoster.length / PER_PAGE);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
       <div>
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Operations &amp; HR</h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Live roster audit and shift policy configuration.</p>
       </div>
 
-      {alert && <AlertBanner type={alert.type} message={alert.message} onClose={() => setAlert(null)} />}
+      <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 
-      <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
             <Activity className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster
@@ -1246,9 +1334,9 @@ function OperationsHRView({ token }) {
                     <th className="p-3">Flags</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
+                <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
                   {paginated.map((row) => (
-                    <tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
+                    <motion.tr key={row.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                       <td className="p-3 font-mono text-[10px] font-black" style={{ color: '#9a7a5a' }}>
                         {String(row.employee_id).slice(0, 8)}…
                       </td>
@@ -1268,9 +1356,9 @@ function OperationsHRView({ token }) {
                           {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
                         </div>
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
-                </tbody>
+                </motion.tbody>
               </table>
             </div>
             <Paginator page={page} totalPages={totalPages} setPage={setPage} total={filteredRoster.length} perPage={PER_PAGE} />
@@ -1278,7 +1366,7 @@ function OperationsHRView({ token }) {
         )}
       </SpotlightCard>
 
-      <SpotlightCard className="p-6 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+      <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
           <Settings className="w-5 h-5" style={{ color: '#c8834a' }} /> Shift &amp; Geofence Configuration
         </h3>
@@ -1365,6 +1453,132 @@ function OperationsHRView({ token }) {
           </div>
         )}
       </SpotlightCard>
+    </motion.div>
+  );
+}
+
+function LockedView({ title, description }) {
+  return (
+    <SpotlightCard className="p-12 shadow text-center space-y-3 rounded-3xl" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)' }} spotlightColor="rgba(200,131,74,0.1)">
+      <Lock className="w-12 h-12 mx-auto" style={{ color: '#c8834a' }} />
+      <h3 className="font-black uppercase tracking-wide" style={{ color: '#9c4221' }}>{title}</h3>
+      <p className="text-xs font-semibold max-w-md mx-auto" style={{ color: '#a86022' }}>{description}</p>
+    </SpotlightCard>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIEW E — EMPLOYEES LIST (MOCKED)
+// ═══════════════════════════════════════════════════════════════════════════════
+function EmployeesListView({ workers = [] }) {
+  const [search, setSearch] = useState('');
+
+  const filteredWorkers = workers.filter(w =>
+    w.name?.toLowerCase().includes(search.toLowerCase()) ||
+    w.employee_barcode?.toLowerCase().includes(search.toLowerCase()) ||
+    w.phone?.includes(search)
+  );
+
+  return (
+    <div className="space-y-6">
+      <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+          <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Employees Directory (Mocked)
+          </h3>
+          <div className="relative w-full sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input type="text" placeholder="Search by name, ID or phone..." value={search} onChange={(e) => setSearch(e.target.value)}
+              className="w-full h-10 pl-9 pr-3 rounded-xl text-sm font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30"
+              style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs whitespace-nowrap">
+            <thead>
+              <tr style={{ borderBottom: '2px solid rgba(200,131,74,0.1)' }}>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Barcode</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Name</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Phone</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Designation</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredWorkers.length > 0 ? filteredWorkers.map(w => (
+                <tr key={w.id} className="hover:bg-[#fcfaf8] transition-colors">
+                  <td className="p-3 font-mono font-black text-slate-600">{w.employee_barcode || '—'}</td>
+                  <td className="p-3 font-black text-[#2d1f0e]">{w.name}</td>
+                  <td className="p-3 text-slate-500">{w.phone}</td>
+                  <td className="p-3 text-slate-500 capitalize">{w.designation?.replace('_', ' ')}</td>
+                  <td className="p-3"><Badge label={w.is_active !== false ? 'Active' : 'Inactive'} type={w.is_active !== false ? 'active' : 'frozen'} /></td>
+                </tr>
+              )) : (
+                <tr><td colSpan="5" className="p-8 text-center text-slate-400 font-semibold">No employees found.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </SpotlightCard>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIEW F — ATTENDANCE HISTORY (MOCKED)
+// ═══════════════════════════════════════════════════════════════════════════════
+function AttendanceHistoryView() {
+  const [history, setHistory] = useState([]);
+  
+  // Generate dummy data on mount
+  useEffect(() => {
+    const d = new Date();
+    const today = d.toISOString().split('T')[0];
+    const dummyData = [
+      { id: 1, employee_id: 'EMP-001', employee_name: 'John Doe', check_in_at: `${today}T08:50:00Z`, check_out_at: `${today}T18:05:00Z`, status: 'Present', source: 'proxy' },
+      { id: 2, employee_id: 'EMP-002', employee_name: 'Jane Smith', check_in_at: `${today}T09:15:00Z`, check_out_at: null, status: 'Late', source: 'self' },
+      { id: 3, employee_id: 'EMP-003', employee_name: 'Mike Johnson', check_in_at: `${today}T08:55:00Z`, check_out_at: `${today}T17:30:00Z`, status: 'Short', source: 'proxy' },
+    ];
+    setHistory(dummyData);
+  }, []);
+
+  return (
+    <div className="space-y-6">
+      <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+        <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2 mb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
+          <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster (Mocked)
+        </h3>
+        
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs whitespace-nowrap">
+            <thead>
+              <tr style={{ borderBottom: '2px solid rgba(200,131,74,0.1)' }}>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Barcode</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Name</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Check In</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Check Out</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Source</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {history.map(row => (
+                <tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
+                  <td className="p-3 font-mono font-black text-slate-600">{row.employee_id}</td>
+                  <td className="p-3 font-black text-[#2d1f0e]">{row.employee_name}</td>
+                  <td className="p-3 font-black" style={{ color: '#9a7a5a' }}>{fmtTime(row.check_in_at)}</td>
+                  <td className="p-3 font-black" style={{ color: '#9a7a5a' }}>{fmtTime(row.check_out_at)}</td>
+                  <td className="p-3"><Badge label={row.source} type={row.source} /></td>
+                  <td className="p-3">
+                    <Badge label={row.status} type={row.status.toLowerCase() === 'late' ? 'late' : row.status.toLowerCase() === 'short' ? 'short' : 'active'} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </SpotlightCard>
     </div>
   );
 }
@@ -1377,14 +1591,19 @@ export default function AttendancePage() {
 
   const isManager = user === 'direct_manager';
   const isSupervisor = user === 'cutting_manager' || user === 'stitching_manager' || isManager;
+  const isSecurity = user === 'security';
 
-  const tabs = [
+  const tabs = isSecurity ? [
+    { key: 'employees', label: 'Employees List', icon: Users, show: true },
+    { key: 'proxy', label: 'Floor Command', icon: QrCode, show: true },
+    { key: 'history', label: 'Attendance History', icon: CalendarDays, show: true },
+  ] : [
     { key: 'me', label: 'My Attendance', icon: Clock, show: true },
     { key: 'proxy', label: 'Floor Command', icon: Users, show: isSupervisor },
     { key: 'admin', label: 'Operations & HR', icon: Building2, show: isManager },
   ].filter((t) => t.show);
 
-  const [activeTab, setActiveTab] = useState('me');
+  const [activeTab, setActiveTab] = useState(isSecurity ? 'employees' : 'me');
   const [workers, setWorkers] = useState([]);
   const [workerRefreshKey, setWorkerRefreshKey] = useState(0);
 
@@ -1393,46 +1612,80 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    if ((activeTab === 'proxy' || activeTab === 'admin')) {
+    if (isSecurity) {
+      // MOCK DATA FOR SECURITY WORKSPACE
+      setWorkers([
+        { id: 1, name: 'John Doe', employee_barcode: 'EMP-001', phone: '9876543210', designation: 'cutting_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 2, name: 'Jane Smith', employee_barcode: 'EMP-002', phone: '9876543211', designation: 'stitching_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 3, name: 'Mike Johnson', employee_barcode: 'EMP-003', phone: '9876543212', designation: 'helper', wage_type: 'piece_rate', is_active: false },
+        { id: 12, name: 'Test User', employee_barcode: 'EMP-000012', phone: '1234567890', designation: 'operator', wage_type: 'piece_rate', is_active: true },
+        { id: 4, name: 'Arun Kumar', employee_barcode: 'EMP-004', phone: '9876543214', designation: 'supervisor', wage_type: 'piece_rate', is_active: true },
+        { id: 5, name: 'Priya Raj', employee_barcode: 'EMP-005', phone: '9876543215', designation: 'packing_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 6, name: 'Mani Kandan', employee_barcode: 'EMP-006', phone: '9876543216', designation: 'ironing_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 7, name: 'Karthik', employee_barcode: 'EMP-007', phone: '9876543217', designation: 'stitching_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 8, name: 'Selvi', employee_barcode: 'EMP-008', phone: '9876543218', designation: 'helper', wage_type: 'piece_rate', is_active: true },
+        { id: 9, name: 'Ramesh', employee_barcode: 'EMP-009', phone: '9876543219', designation: 'cutting_staff', wage_type: 'piece_rate', is_active: true },
+        { id: 10, name: 'Gowtham', employee_barcode: 'EMP-010', phone: '9876543220', designation: 'skiving_operator', wage_type: 'piece_rate', is_active: true },
+      ]);
+      return;
+    }
+
+    if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
       apiFetch('/api/v1/employees', {}, token)
         .then(setWorkers)
         .catch(() => { });
     }
-  }, [activeTab, token, workerRefreshKey]);
+  }, [activeTab, token, workerRefreshKey, isSecurity]);
 
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
-        {tabs.map(({ key, label, icon: Icon }) => (
-          <button key={key} onClick={() => setActiveTab(key)}
-            className="flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap border-b-2 transition-colors"
-            style={{
-              borderColor: activeTab === key ? '#c8834a' : 'transparent',
-              color: activeTab === key ? '#c8834a' : '#9a7a5a',
-            }}>
-            <Icon className="w-4 h-4" />
-            {label}
-          </button>
-        ))}
+        {tabs.map(({ key, label, icon: Icon }) => {
+          const isActive = activeTab === key;
+          return (
+            <button key={key} onClick={() => setActiveTab(key)}
+              className="relative flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap transition-colors"
+              style={{ color: isActive ? '#c8834a' : '#9a7a5a' }}>
+              <Icon className="w-4 h-4 relative" />
+              <span className="relative">{label}</span>
+              {isActive && (
+                <motion.span
+                  layoutId="attendanceTabUnderline"
+                  className="absolute left-0 right-0 -bottom-px h-[2px]"
+                  style={{ background: '#c8834a' }}
+                  transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                />
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      {activeTab === 'me' && <MyAttendanceView token={token} />}
+      <AnimatePresence mode="wait">
+        <motion.div key={activeTab} variants={tabFade} initial="hidden" animate="show" exit="exit">
+          {activeTab === 'me' && !isSecurity && <MyAttendanceView token={token} />}
 
-      {activeTab === 'proxy' && (
-        isSupervisor
-          ? <FloorCommandView workers={workers} token={token} onWorkerAdded={refreshWorkers} />
-          : <LockedView
-            title="Supervisor Authorization Required"
-            description="Floor Command is restricted to Supervisors and Direct Managers." />
-      )}
+          {activeTab === 'employees' && isSecurity && <EmployeesListView workers={workers} />}
 
-      {activeTab === 'admin' && (
-        isManager
-          ? <OperationsHRView token={token} />
-          : <LockedView
-            title="Direct Manager Authorization Required"
-            description="Operations & HR is restricted to Direct Managers only." />
-      )}
+          {activeTab === 'history' && isSecurity && <AttendanceHistoryView />}
+
+          {activeTab === 'proxy' && (
+            (isSupervisor || isSecurity)
+              ? <FloorCommandView workers={workers} token={token} onWorkerAdded={refreshWorkers} isSecurity={isSecurity} />
+              : <LockedView
+                title="Authorization Required"
+                description="Floor Command is restricted." />
+          )}
+
+          {activeTab === 'admin' && !isSecurity && (
+            isManager
+              ? <OperationsHRView token={token} />
+              : <LockedView
+                title="Direct Manager Authorization Required"
+                description="Operations & HR is restricted to Direct Managers only." />
+          )}
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }

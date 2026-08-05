@@ -74,13 +74,13 @@ const PANELS = [
     allowedRoles: ['direct_manager', 'managing_director', 'cutting_manager', 'stitching_manager', 'supervisor']
   },
   {
-    role: 'employee_workspace',
-    title: 'Employee\nWorkspace',
-    subtitle: 'Factory Floor Staff, Operators, Fusers & Cutters Attendance Logs Portal',
-    accent: '#7b9fc8',
-    icon: Scissors,
-    img: '/images/roles/cutting.png',
-    allowedRoles: ['employee']
+    role: 'security_workspace',
+    title: 'Security\nWorkspace',
+    subtitle: 'Gate Keepers, Security Personnel Attendance Terminal',
+    accent: '#0ea5e9',
+    icon: ShieldCheck,
+    img: '/images/roles/security.png',
+    allowedRoles: ['security']
   },
   {
     role: 'hr_workspace',
@@ -211,9 +211,21 @@ export default function Home() {
     setIsSuccess(false);
   };
 
-  // 🎯 Updated Login Submission using Centralized `apiLogin` Helper
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
+
+    // MOCK LOGIN FOR SECURITY WORKSPACE
+    if (activePanel && activePanel.role === 'security_workspace') {
+      setLoginError('');
+      setIsSubmitting(true);
+      setTimeout(() => {
+        setIsSuccess(true);
+        login('security', 'mock-security-token-12345');
+        router.push('/dashboard');
+      }, 500); // Small delay to simulate API call
+      return;
+    }
+
     if (!username || !password) return;
 
     setLoginError('');
@@ -519,8 +531,8 @@ export default function Home() {
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        required
-                        placeholder="Enter username"
+                        required={activePanel?.role !== 'security_workspace'}
+                        placeholder={activePanel?.role === 'security_workspace' ? "Not required for Security" : "Enter username"}
                         className="w-full bg-[#111] border border-[#222] text-white p-4 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
                       />
                     </div>
@@ -532,8 +544,8 @@ export default function Home() {
                           type={showPassword ? 'text' : 'password'}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          required
-                          placeholder="Enter password"
+                          required={activePanel?.role !== 'security_workspace'}
+                          placeholder={activePanel?.role === 'security_workspace' ? "Not required for Security" : "Enter password"}
                           className="w-full bg-[#111] border border-[#222] text-white p-4 pr-12 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
                         />
                         <button
