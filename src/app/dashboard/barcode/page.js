@@ -4,8 +4,10 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Barcode, Printer, History, Search, X, Download, Zap, Send, Eye,
-  RotateCcw, FileDown, ChevronRight, Users, Box,
+  RotateCcw, FileDown, ChevronRight, Users, Box, FileImage, FileText,
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 import AnimatedModal from '@/components/AnimatedModal';
 import { useAuth } from '@/context/AuthContext';
 import { apiGetEmployees } from '@/lib/api';
@@ -139,6 +141,67 @@ function downloadBarcodePNG(canvas, filename) {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+}
+
+// ─── ID CARD EXPORT (full card, not just the barcode) ────────────────────────
+// The same field set the "View" modal shows — shared so the on-screen card,
+// the single-card export, and the bulk export all render identically.
+function buildCardFields(barcode, labels) {
+  if (!barcode) return [];
+  return [
+    [labels.orderIdLabel, barcode.orderId], [labels.clientLabel, barcode.client],
+    [labels.styleLabel, barcode.style], [labels.colorLabel, barcode.color],
+    [labels.sizeLabel, barcode.size], ['Serial', barcode.serialStr],
+    ['Batch', barcode.batchNo], ['Status', barcode.printStatus],
+  ];
+}
+
+function chunkArray(arr, size) {
+  const out = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+async function captureNodeToCanvas(node) {
+  return html2canvas(node, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
+}
+
+function saveCanvasAsPng(canvas, filename) {
+  const link = document.createElement('a');
+  link.download = `${filename}.png`;
+  link.href = canvas.toDataURL('image/png');
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function saveCanvasAsPdf(canvas, filename) {
+  const orientation = canvas.width >= canvas.height ? 'landscape' : 'portrait';
+  const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height] });
+  pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, canvas.width, canvas.height);
+  pdf.save(`${filename}.pdf`);
+}
+
+// Renders one printable ID card — barcode + code + the same fields grid as the
+// "View" modal. Used both inline (View modal) and off-screen (bulk export).
+function IdCard({ barcode, labels, cardRef, width }) {
+  const fields = buildCardFields(barcode, labels);
+  return (
+    <div ref={cardRef} className="p-6 text-center bg-white" style={width ? { width } : undefined}>
+      <div className="bg-white p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
+        <BarcodeCanvas code={barcode.pieceCode} height={65} moduleWidth={1.6} />
+      </div>
+      <div className="font-mono font-bold mb-4" style={{ color: '#5a3518' }}>{barcode.pieceCode}</div>
+      <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-left text-sm p-4 rounded-lg" style={{ background: BRAND.bg }}>
+        {fields.map(([label, value]) => (
+          <div key={label} className="flex flex-col gap-0.5">
+            <span className="text-[0.68rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{label}</span>
+            <span className="font-semibold" style={{ color: BRAND.text }}>{value || '—'}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 const BRAND = {
@@ -719,8 +782,10 @@ function PrintTab({
   generatedBarcodesStore, selectedPrintBarcodes,
   expandedOrders, onToggleOrderExpand, expandedGroups, onToggleExpand,
   onToggleGroup, onTogglePiece, onSelectAll, onClearAll, onOpenPreview, onPrintGroupDirect, onOpenDetail, onPrintSingle,
+  onDownloadAll, bulkExporting = false,
   labels = CATEGORY_LABELS.style,
 }) {
+  const [downloadFormat, setDownloadFormat] = useState('png');
   const orderGroups = useMemo(() => {
     const orderMap = new Map();
     generatedBarcodesStore.forEach((b) => {
@@ -741,10 +806,27 @@ function PrintTab({
           <h3 className="text-base font-black" style={{ color: BRAND.text }}>Print Queue ({selectedPrintBarcodes.size} selected)</h3>
           <p className="text-xs" style={{ color: BRAND.textMuted }}>{labels.groupHint}</p>
         </div>
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-2 flex-wrap items-center">
           <button onClick={onSelectAll} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">Select All</button>
           <button onClick={onClearAll} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">Clear Selection</button>
           <button onClick={onOpenPreview} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs"><Eye className="w-4 h-4" /> Preview</button>
+          <select
+            value={downloadFormat}
+            onChange={(e) => setDownloadFormat(e.target.value)}
+            className="h-[42px] px-3 rounded-lg text-xs font-bold outline-none border cursor-pointer"
+            style={fieldStyle}
+            title="Download format for 'Download All'"
+          >
+            <option value="png">PNG</option>
+            <option value="pdf">PDF</option>
+          </select>
+          <button
+            onClick={() => onDownloadAll?.(downloadFormat)}
+            disabled={bulkExporting || selectedPrintBarcodes.size === 0}
+            className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs disabled:opacity-50"
+          >
+            <Download className="w-4 h-4" /> {bulkExporting ? 'Preparing…' : `Download All (${selectedPrintBarcodes.size})`}
+          </button>
           <button onClick={onOpenPreview} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs"><Printer className="w-4 h-4" /> Print Selected</button>
         </div>
       </div>
@@ -1006,16 +1088,21 @@ function HistoryTab({ batchHistoryStore, filters, setFilter, resetFilters, optio
 
 // ─── MODALS ─────────────────────────────────────────────────────────────────────
 function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style }) {
-  const canvasRef = useRef(null);
-  useEffect(() => {
-    if (barcode) drawBarcodeCanvas(canvasRef.current, barcode.pieceCode, { height: 65, moduleWidth: 1.6 });
-  }, [barcode]);
-  const fields = barcode ? [
-    [labels.orderIdLabel, barcode.orderId], [labels.clientLabel, barcode.client],
-    [labels.styleLabel, barcode.style], [labels.colorLabel, barcode.color],
-    [labels.sizeLabel, barcode.size], ['Serial', barcode.serialStr],
-    ['Batch', barcode.batchNo], ['Status', barcode.printStatus],
-  ] : [];
+  const cardRef = useRef(null);
+  const [exporting, setExporting] = useState(null); // 'png' | 'pdf' | null
+
+  const handleDownload = async (format) => {
+    if (!cardRef.current || exporting) return;
+    setExporting(format);
+    try {
+      const canvas = await captureNodeToCanvas(cardRef.current);
+      if (format === 'png') saveCanvasAsPng(canvas, barcode.pieceCode);
+      else saveCanvasAsPdf(canvas, barcode.pieceCode);
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <AnimatedModal
       isOpen={!!barcode}
@@ -1030,23 +1117,15 @@ function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style
           <h3 className="font-bold" style={{ color: '#5a3518' }}>Barcode Specification</h3>
           <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
         </div>
-        <div className="p-6 text-center">
-          <div className="bg-white p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
-            <canvas ref={canvasRef} style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />
-          </div>
-          <div className="font-mono font-bold mb-4" style={{ color: '#5a3518' }}>{barcode.pieceCode}</div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-left text-sm p-4 rounded-lg" style={{ background: BRAND.bg }}>
-            {fields.map(([label, value]) => (
-              <div key={label} className="flex flex-col gap-0.5">
-                <span className="text-[0.68rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{label}</span>
-                <span className="font-semibold" style={{ color: BRAND.text }}>{value || '—'}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="flex justify-end gap-2 px-6 py-4" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
+        <IdCard barcode={barcode} labels={labels} cardRef={cardRef} />
+        <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
           <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
-          <button onClick={() => downloadBarcodePNG(canvasRef.current, barcode.pieceCode)} className="btn-warm-secondary !min-h-0 !py-2.5"><Download className="w-4 h-4" /> Download PNG</button>
+          <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+            <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
+          </button>
+          <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+            <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
+          </button>
           <button onClick={() => onPrint(barcode.pieceCode)} className="btn-warm-primary !min-h-0 !py-2.5"><Printer className="w-4 h-4" /> Print Label</button>
         </div>
         </>
@@ -1124,8 +1203,14 @@ export default function BarcodeManagementPage() {
 
   const [detailCode, setDetailCode] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [printSheetCodes, setPrintSheetCodes] = useState([]);
+  const [printSheetItems, setPrintSheetItems] = useState([]);
   const printSheetRef = useRef(null);
+
+  // Bulk PNG/PDF export — renders the selected cards off-screen, captures them,
+  // then tears the off-screen container down again.
+  const [bulkExportItems, setBulkExportItems] = useState(null);
+  const [bulkExporting, setBulkExporting] = useState(false);
+  const bulkExportRef = useRef(null);
 
   const [toasts, setToasts] = useState([]);
   const showToast = useCallback((message, type = 'success') => {
@@ -1174,16 +1259,16 @@ export default function BarcodeManagementPage() {
 
   // ─── Print-side-effect: render the hidden sheet then trigger the browser print dialog ───
   useEffect(() => {
-    if (printSheetCodes.length === 0) return;
+    if (printSheetItems.length === 0) return;
     const sheet = printSheetRef.current;
     if (sheet) sheet.style.display = 'block';
     const t = setTimeout(() => {
       window.print();
       if (sheet) sheet.style.display = 'none';
-      setPrintSheetCodes([]);
+      setPrintSheetItems([]);
     }, 80);
     return () => clearTimeout(t);
-  }, [printSheetCodes]);
+  }, [printSheetItems]);
 
   // ─── STYLE generation handlers ───
   const generateSizeBarcodes = useCallback((orderId, styleName, sizeKey) => {
@@ -1370,15 +1455,56 @@ export default function BarcodeManagementPage() {
 
   const executeThermalPrint = useCallback((codes) => {
     if (!codes || codes.length === 0) { showToast('Please select barcodes to print!', 'error'); return; }
+    const items = codes.map((c) => activeGenerated.find((b) => b.pieceCode === c)).filter(Boolean);
     markPrinted(codes);
     setPreviewOpen(false);
-    showToast(`Sending ${codes.length} thermal sticker labels to printer...`, 'success');
-    setPrintSheetCodes(codes);
-  }, [markPrinted, showToast]);
+    showToast(`Sending ${items.length} ID card${items.length === 1 ? '' : 's'} to printer (4 per page)...`, 'success');
+    setPrintSheetItems(items);
+  }, [markPrinted, showToast, activeGenerated]);
 
   const handlePrintSingle = useCallback((pieceCode) => {
     executeThermalPrint([pieceCode]);
   }, [executeThermalPrint]);
+
+  // ─── Bulk PNG/PDF export ───
+  const handleDownloadAll = useCallback(async (format) => {
+    const codes = Array.from(activeSelectedPrint);
+    if (codes.length === 0) { showToast('Please select barcodes to download!', 'error'); return; }
+    const items = codes.map((c) => activeGenerated.find((b) => b.pieceCode === c)).filter(Boolean);
+    if (items.length === 0) return;
+
+    setBulkExporting(true);
+    setBulkExportItems(items);
+    // Let the off-screen cards mount and their barcode canvases paint before capturing.
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    try {
+      const container = bulkExportRef.current;
+      if (!container) return;
+
+      if (format === 'pdf') {
+        const pages = container.querySelectorAll('.export-page');
+        const pdf = new jsPDF({ unit: 'px', format: 'a4' });
+        const pageW = pdf.internal.pageSize.getWidth();
+        const pageH = pdf.internal.pageSize.getHeight();
+        for (let i = 0; i < pages.length; i++) {
+          const canvas = await captureNodeToCanvas(pages[i]);
+          if (i > 0) pdf.addPage();
+          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, pageH);
+        }
+        pdf.save(`barcode-cards-${category}-${Date.now()}.pdf`);
+      } else {
+        const canvas = await captureNodeToCanvas(container);
+        saveCanvasAsPng(canvas, `barcode-cards-${category}-${Date.now()}`);
+      }
+      showToast(`Downloaded ${items.length} card${items.length === 1 ? '' : 's'} as ${format.toUpperCase()}!`, 'success');
+    } catch (err) {
+      showToast('Bulk download failed — please try again.', 'error');
+    } finally {
+      setBulkExportItems(null);
+      setBulkExporting(false);
+    }
+  }, [activeSelectedPrint, activeGenerated, category, showToast]);
 
   const handleOpenPreview = useCallback(() => {
     if (activeSelectedPrint.size === 0) { showToast('Please select at least one barcode to preview/print!', 'error'); return; }
@@ -1483,12 +1609,25 @@ export default function BarcodeManagementPage() {
         }
         .btn-warm-secondary:hover { background: #fdf6ee; border-color: #c8834a; }
         @media print {
+          @page { size: A4; margin: 10mm; }
           body * { visibility: hidden; }
           #thermalPrintSheet, #thermalPrintSheet * { visibility: visible; }
           #thermalPrintSheet { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: #fff !important; }
-          .thermal-sticker-label { width: 50mm; height: 25mm; page-break-after: always; display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1px dashed #ddd; margin: 0 auto 5mm auto; padding: 2mm; box-sizing: border-box; }
-          .thermal-sticker-label canvas { max-width: 100%; max-height: 14mm; }
-          .thermal-sticker-label .label-text { font-family: monospace; font-size: 7pt; font-weight: bold; color: #000; margin-top: 1mm; }
+          .print-page {
+            display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+            gap: 8mm; width: 100%; height: 277mm; page-break-after: always; box-sizing: border-box;
+          }
+          .print-page:last-child { page-break-after: auto; }
+          .print-card {
+            border: 1px dashed #999; border-radius: 6px; padding: 4mm; box-sizing: border-box;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            break-inside: avoid; overflow: hidden;
+          }
+          .print-card canvas { max-width: 90%; max-height: 22mm; }
+          .print-card .card-code { font-family: monospace; font-weight: bold; font-size: 9pt; margin: 2mm 0; color: #000; }
+          .print-card .card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 4mm; width: 100%; }
+          .print-card .card-fields .f-label { color: #666; text-transform: uppercase; font-size: 5.5pt; font-weight: 700; }
+          .print-card .card-fields .f-value { font-weight: 600; color: #111; font-size: 7pt; }
         }
       `}</style>
 
@@ -1617,6 +1756,8 @@ export default function BarcodeManagementPage() {
           onPrintGroupDirect={handlePrintGroupDirect}
           onOpenDetail={setDetailCode}
           onPrintSingle={handlePrintSingle}
+          onDownloadAll={handleDownloadAll}
+          bulkExporting={bulkExporting}
           labels={activeLabels}
         />
       )}
@@ -1647,14 +1788,46 @@ export default function BarcodeManagementPage() {
         onConfirm={() => executeThermalPrint(Array.from(activeSelectedPrint))}
       />
 
+      {/* Print sheet — 4 ID cards per printed page */}
       <div id="thermalPrintSheet" ref={printSheetRef} style={{ display: 'none' }}>
-        {printSheetCodes.map((code) => (
-          <div className="thermal-sticker-label" key={code}>
-            <BarcodeCanvas code={code} height={40} moduleWidth={1.1} showText={false} />
-            <div className="label-text">{code}</div>
+        {chunkArray(printSheetItems, 4).map((group, pageIdx) => (
+          <div className="print-page" key={pageIdx}>
+            {group.map((b) => (
+              <div className="print-card" key={b.pieceCode}>
+                <BarcodeCanvas code={b.pieceCode} height={40} moduleWidth={1.1} showText={false} />
+                <div className="card-code">{b.pieceCode}</div>
+                <div className="card-fields">
+                  {buildCardFields(b, activeLabels).map(([label, value]) => (
+                    <div key={label}>
+                      <div className="f-label">{label}</div>
+                      <div className="f-value">{value || '—'}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </div>
+
+      {/* Off-screen renderer used only to capture the bulk PNG/PDF export */}
+      {bulkExportItems && (
+        <div style={{ position: 'fixed', top: 0, left: '-99999px', background: '#fff' }}>
+          <div ref={bulkExportRef}>
+            {chunkArray(bulkExportItems, 4).map((group, pageIdx) => (
+              <div
+                key={pageIdx}
+                className="export-page"
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, width: 800, padding: 24, background: '#fff' }}
+              >
+                {group.map((b) => (
+                  <IdCard key={b.pieceCode} barcode={b} labels={activeLabels} width={340} />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }
