@@ -1,5 +1,6 @@
 'use client';
 import { useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 
 export default function SpotlightCard({ children, className = '', spotlightColor = 'rgba(200, 131, 74, 0.15)', style, ...props }) {
   const divRef = useRef(null);
@@ -13,7 +14,7 @@ export default function SpotlightCard({ children, className = '', spotlightColor
   };
 
   return (
-    <div
+    <motion.div
       ref={divRef}
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setOpacity(1)}
@@ -35,6 +36,6 @@ export default function SpotlightCard({ children, className = '', spotlightColor
       <div className="relative z-10 h-full">
         {children}
       </div>
-    </div>
+    </motion.div>
   );
 }
