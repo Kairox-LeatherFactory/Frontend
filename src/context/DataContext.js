@@ -11,7 +11,6 @@ import {
   apiGetEvents,
   apiProductionScan,
   apiComputeWageRun,
-  apiGetUsers, 
 } from '@/lib/api';
 
 const DataContext = createContext(null);
@@ -25,7 +24,6 @@ export function DataProvider({ children }) {
   const [operations, setOperations] = useState([]);
   const [events, setEvents] = useState([]);
   const [wageRuns, setWageRuns] = useState([]);
-  const [allSystemUsers, setAllSystemUsers] = useState([]); 
   const [apiLoading, setApiLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [traceCards, setTraceCards] = useState({});
@@ -36,12 +34,11 @@ export function DataProvider({ children }) {
     setApiError(null);
     try {
       
-      const [clientsData, empData, opsData, evtsData, usersData] = await Promise.all([
+      const [clientsData, empData, opsData, evtsData] = await Promise.all([
         apiGetClients(token).catch(() => []),
         apiGetEmployees(token).catch(() => []),
         apiGetOperations(token).catch(() => []),
         apiGetEvents(token).catch(() => []),
-        apiGetUsers(token).catch(() => []),
       ]);
 
       let allOrders = [];
@@ -56,20 +53,16 @@ export function DataProvider({ children }) {
         id: e.id, 
         name: e.name, 
         role: e.designation,
+        designation: e.designation,
         wage_type: e.wage_type, 
-        monthly_salary: e.monthly_salary 
+        monthly_salary: e.monthly_salary,
+        is_checked_in: e.is_checked_in ?? null,
+        status: e.status ?? null,
       }));
       setWorkers(mappedWorkers);
       
       setOperations(opsData);
       setOrders(allOrders);
-
-   
-      const mergedUsers = [
-        ...usersData.map(u => ({ ...u, listType: 'System User', role: u.role || 'User' })),
-        ...mappedWorkers.map(w => ({ ...w, listType: 'Worker', role: w.role }))
-      ];
-      setAllSystemUsers(mergedUsers);
 
       const mappedEvents = evtsData.map((apiE) => {
         const op = opsData.find((o) => o.id === apiE.operation_id);
@@ -96,13 +89,21 @@ export function DataProvider({ children }) {
   useEffect(() => {
     fetchFromApi();
   }, [fetchFromApi]);
-
-  const createClient = useCallback(async (name, companyName, orderNumber) => {
-    const newClient = await apiCreateClient(token, name, companyName, orderNumber);
-    setClients((prev) => [...prev, { id: newClient.id, key: newClient.name, name: newClient.name, country: newClient.country || '—' }]);
+    const createClient = useCallback(async (name, companyCode, orderNumber, country) => {
+    const newClient = await apiCreateClient(token, name, country, orderNumber, companyCode);
+    
+    setClients((prev) => [
+      ...prev, 
+      { 
+        id: newClient.id, 
+        name: newClient.name,                          
+        key: newClient.code || companyCode || '—',    
+        code: newClient.code || companyCode || '—',    
+        country: newClient.country || country || '—'   
+      }
+    ]);
     return newClient;
   }, [token]);
-
   const addClientOrder = useCallback(async (clientId, payload) => {
     const newOrder = await apiAddClientOrder(token, clientId, payload);
     setOrders((prev) => [...prev, newOrder]);
@@ -121,13 +122,12 @@ export function DataProvider({ children }) {
 
  
   const refreshData = useCallback(() => {
-    fetchFromApi();
+    return fetchFromApi();
   }, [fetchFromApi]);
 
   return (
     <DataContext.Provider value={{
       events, orders, workers, operations, clients, wageRuns, traceCards,
-      allSystemUsers,
       addScanEvent, addWageRun, createClient, addClientOrder, refreshData,
       apiLoading, apiError
     }}>

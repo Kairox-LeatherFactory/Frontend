@@ -8,6 +8,7 @@ import {
   Scissors,
   Layers,
   Eye,
+  EyeOff,
   ArrowUpRight,
   ArrowRight,
   Loader2,
@@ -174,6 +175,7 @@ export default function Home() {
   // Login Form States
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -397,6 +399,63 @@ export default function Home() {
                     Sign In
                   </button>
                 </motion.div>
+
+                {/* Navigation Panels (Left and Right) */}
+                {(() => {
+                  const currentIndex = PANELS.findIndex(p => p.role === activePanel.role);
+                  const prevPanels = PANELS.slice(0, currentIndex);
+                  const nextPanels = PANELS.slice(currentIndex + 1);
+
+                  return (
+                    <>
+                      {/* Previous Panels (Left Side) */}
+                      <div className="hidden md:flex absolute left-0 top-1/2 -translate-y-1/2 pl-2 md:pl-8 gap-2 md:gap-4 z-40">
+                        {prevPanels.map(panel => (
+                          <motion.div
+                            key={panel.role}
+                            layoutId={`panel-bg-${panel.role}`}
+                            onClick={() => handlePanelClick(panel)}
+                            className="group w-[40px] md:w-[100px] h-[30vh] md:h-[50vh] cursor-pointer overflow-hidden grayscale hover:grayscale-0 transition-all duration-500 opacity-60 hover:opacity-100 border border-white/10 relative shadow-xl"
+                          >
+                            <div
+                              className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
+                              style={{ backgroundImage: `url(${panel.img})` }}
+                            />
+                            <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors duration-500" />
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300">
+                                <ArrowRight className="w-4 h-4 text-white rotate-180" />
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+
+                      {/* Next Panels (Right Side) */}
+                      <div className="hidden md:flex absolute right-0 top-1/2 -translate-y-1/2 pr-2 md:pr-8 gap-2 md:gap-4 z-40">
+                        {nextPanels.map(panel => (
+                          <motion.div
+                            key={panel.role}
+                            layoutId={`panel-bg-${panel.role}`}
+                            onClick={() => handlePanelClick(panel)}
+                            className="group w-[40px] md:w-[100px] h-[30vh] md:h-[50vh] cursor-pointer overflow-hidden grayscale hover:grayscale-0 transition-all duration-500 opacity-60 hover:opacity-100 border border-white/10 relative shadow-xl"
+                          >
+                            <div
+                              className="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-110"
+                              style={{ backgroundImage: `url(${panel.img})` }}
+                            />
+                            <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent transition-colors duration-500" />
+                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                              <div className="w-8 h-8 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 flex items-center justify-center opacity-0 scale-50 group-hover:opacity-100 group-hover:scale-100 transition-all duration-300">
+                                <ArrowRight className="w-4 h-4 text-white" />
+                              </div>
+                            </div>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
               </>
             )}
           </AnimatePresence>
@@ -416,7 +475,7 @@ export default function Home() {
                 className="absolute inset-0 bg-cover bg-center opacity-20"
                 style={{ backgroundImage: `url(${activePanel.img})` }}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent" />
+           <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-[#050505]/80 to-transparent" />
 
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
@@ -468,14 +527,24 @@ export default function Home() {
 
                     <div className="flex flex-col gap-2">
                       <label className="text-[10px] text-white/50 tracking-[0.2em] uppercase">Password</label>
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        placeholder="Enter password"
-                        className="w-full bg-[#111] border border-[#222] text-white p-4 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          required
+                          placeholder="Enter password"
+                          className="w-full bg-[#111] border border-[#222] text-white p-4 pr-12 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(prev => !prev)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors"
+                          tabIndex={-1}
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </div>
 
                     <button

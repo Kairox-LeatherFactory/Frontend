@@ -1,5 +1,6 @@
 'use client';
 import { useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 
 export default function SpotlightCard({ children, className = '', spotlightColor = 'rgba(200, 131, 74, 0.15)', style, ...props }) {
   const divRef = useRef(null);
@@ -13,25 +14,28 @@ export default function SpotlightCard({ children, className = '', spotlightColor
   };
 
   return (
-    <div
+    <motion.div
       ref={divRef}
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setOpacity(1)}
       onMouseLeave={() => setOpacity(0)}
-      className={`relative overflow-hidden transition-all duration-300 ${className}`}
+      className={`relative transition-all duration-300 ${className}`}
       style={style}
       {...props}
     >
-      <div
-        className="pointer-events-none absolute -inset-px transition-opacity duration-300 z-0"
-        style={{
-          opacity,
-          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, ${spotlightColor}, transparent 40%)`,
-        }}
-      />
+      {/* Background spotlight layer that clips to the card's border radius */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-[inherit] z-0">
+        <div
+          className="absolute -inset-px transition-opacity duration-300"
+          style={{
+            opacity,
+            background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, ${spotlightColor}, transparent 40%)`,
+          }}
+        />
+      </div>
       <div className="relative z-10 h-full">
         {children}
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -1,0 +1,105 @@
+=== MATCH AT LINE 230 ===
+row, and the original check-in time is not moved.
+9. Day 5 — Cutting · production (part 1)
+Now the interesting part.
+One endpoint, two doors, no stage buttons
+The entire factory floor logs through one endpoint:
+POST /api/v1/production/log 
+The caller sends an actor (which worker) and targets (which pieces). Both can be given as barcodes or as ids — the
+barcode door and the manual door post the identical shape, and the router resolves codes to ids before the service sees
+anything.
+The caller never sends a stage. That is worth restating: there is no "log fusing" button. The stage is determined one of
+two ways:
+On a cut screen (LEATHER_CUT / LINING_CUT), the screen fixes the stage.
+Otherwise, the stage is inferred per piece from that piece's own history — the next stage on its chain.
+So a stitching manager scans a tray of mixed pieces and each one advances to whatever it needed next. The manager
+does not have to sort them.
+The pipeline
+--- PAGE BREAK ---
+LEATHER_CUTTING ┐ 
+                ├─ parallel cut paths, per piece 
+LINING_CUTTING  ┘ 
+   → FUSING → PASTING → [ MERGE GATE ] → LINE_STITCHING → SHELL_STITCHING 
+   → FINAL_FINISH → FINAL_INSPECTION → PACKAGE_EXPORT 
+Our tray of 10
+The cutting manager opens the leather-cut screen, scans Ramesh's employee card, scans the SUEDE-A32 lot barcode,
+enters 80 dcm per piece, and scans 10 piece labels.
+POST /api/v1/production/log 
+{ "screen_context": "LEATHER_CUT", 
+  "actor":   { "employee_barcode": "EMP-000042" }, 
+  "targets": { "piece_barcodes": ["JP-…-M-001", "…-002", … ] }, 
+  "work_date": "2026-05-12", 
+  "consumption": { "qty": 80, "leather_lot_id": "…" } } 
+Response:
+{ "stage": "LEATHER_CUTTING", "count_logged": 10, 
+  "logged": ["…-001", …], "rework": [], "not_found": [], 
+  "sequence_blocked": [], "skill_blocked": [], "merge_blocked": [], 
+  "consumption_recorded": { "lot_id": "…", "qty_total": 800, "pieces_consuming": 10 } } 
+Stock dropped once, by 800 dcm, in the same transaction as the ten events. Not ten separate decrements.
+Units matter. consumption.qty is read as per piece and multiplied by the number of first-time cuts. Enter a
+tray total by mistake and stock falls 10× too far.
+The four gates
+Every scan passes four checks, ordered cheapest-and-most-likely-to-fail first. How they fail is the design.
+# Gate Question Failure
+1ROLE May this manager's role log this stage?403 for the whole request
+2SKILL May this worker's designation work this
+stage? per piece → skill_blocked
+3SEQUENCEHas this piece completed the previous stage?per piece →
+sequence_blocked
+--- PAGE BREAK ---
+# Gate Question Failure
+4MERGE (LINE_STITCHING only) Is the drawer
+
+==========================
+
+=== MATCH AT LINE 250 ===
+   → FUSING → PASTING → [ MERGE GATE ] → LINE_STITCHING → SHELL_STITCHING 
+   → FINAL_FINISH → FINAL_INSPECTION → PACKAGE_EXPORT 
+Our tray of 10
+The cutting manager opens the leather-cut screen, scans Ramesh's employee card, scans the SUEDE-A32 lot barcode,
+enters 80 dcm per piece, and scans 10 piece labels.
+POST /api/v1/production/log 
+{ "screen_context": "LEATHER_CUT", 
+  "actor":   { "employee_barcode": "EMP-000042" }, 
+  "targets": { "piece_barcodes": ["JP-…-M-001", "…-002", … ] }, 
+  "work_date": "2026-05-12", 
+  "consumption": { "qty": 80, "leather_lot_id": "…" } } 
+Response:
+{ "stage": "LEATHER_CUTTING", "count_logged": 10, 
+  "logged": ["…-001", …], "rework": [], "not_found": [], 
+  "sequence_blocked": [], "skill_blocked": [], "merge_blocked": [], 
+  "consumption_recorded": { "lot_id": "…", "qty_total": 800, "pieces_consuming": 10 } } 
+Stock dropped once, by 800 dcm, in the same transaction as the ten events. Not ten separate decrements.
+Units matter. consumption.qty is read as per piece and multiplied by the number of first-time cuts. Enter a
+tray total by mistake and stock falls 10× too far.
+The four gates
+Every scan passes four checks, ordered cheapest-and-most-likely-to-fail first. How they fail is the design.
+# Gate Question Failure
+1ROLE May this manager's role log this stage?403 for the whole request
+2SKILL May this worker's designation work this
+stage? per piece → skill_blocked
+3SEQUENCEHas this piece completed the previous stage?per piece →
+sequence_blocked
+--- PAGE BREAK ---
+# Gate Question Failure
+4MERGE (LINE_STITCHING only) Is the drawer
+SENDED? per piece → merge_blocked
+Gate 1 is whole-request because if the role is wrong it is wrong for every piece in the tray. Gates 2–4 are per-piece for
+one reason:
+One bad piece must never lose the nine good ones a manager just scanned.
+A tray of 10 with one unskilled worker mismatch returns count_logged: 9 and one entry in skill_blocked
+explaining exactly which piece and why. The manager fixes one thing instead of rescanning everything. The frontend
+must render all four blocked lists — a UI that shows only count_logged hides the reason.
+MD and DM bypass gate 1. The skill gate deliberately fails open for an unknown or un-catalogued designation, so a
+worker HR has not finished setting up does not stop the line.
+Rework is permissive: re-logging a stage a piece already has is accepted and recorded as rework, and consumes no
+new material — the second cut of the same piece does not decrement stock again.
+10. Day 6 — Storage and the merge gate ·
+drawers
+Our jackets are lined, so each one needs two cut components that were produced on two independent paths at two
+different times. They meet in a drawer.
+A drawer has a static code and a recycling state
+WAITING → MERGED (at upload) → HOLDING_LEATHER ┐ 
+                             → HOLDING_LINING  ├→ HOLDING_BOTH 
+                                                ┘ 
+        → RECEIVED (DM) → SENDED (DM) → (piece ships) → WAITING 
