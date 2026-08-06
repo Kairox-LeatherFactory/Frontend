@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import JsBarcode from 'jsbarcode';
 import AnimatedModal from '@/components/AnimatedModal';
 import { useAuth } from '@/context/AuthContext';
 import { apiGetEmployees } from '@/lib/api';
@@ -22,7 +23,12 @@ const initialOrdersStore = {};
 // — this screen groups by department, so designation doubles as the department
 // bucket until the roster carries one of its own.
 function normalizeEmployee(row) {
-  const empId = row.employee_barcode || `EMP-${String(row.id).slice(0, 8).toUpperCase()}`;
+  // employee_barcode is the code the backend registered, and is what the
+  // attendance/resolve endpoints look up — always prefer it. The fallback below
+  // is a display stopgap for a roster row that is missing one; it is derived
+  // from a UUID, so it will not resolve server-side. Kept short deliberately:
+  // the full UUID would encode to a ~40-character symbol too wide for the badge.
+  const empId = row.employee_barcode || `EMP-${String(row.id ?? '').slice(0, 8).toUpperCase()}`;
   return {
     id: row.id,
     empId,
@@ -42,95 +48,12 @@ function buildInitialState() {
   };
 }
 
-// ─── CODE 128B ENCODING ENGINE ───────────────────────────────────────────────
-const CODE128B_VALUES = {};
-const CODE128B_PATTERNS = {};
-
-(() => {
-  const patterns = [
-    '11011001100', '11001101100', '11001100110', '10010011000', '10010001100',
-    '10001001100', '10011001000', '10011000100', '10001100100', '11001001000',
-    '11001000100', '11000100100', '10110011100', '10011011100', '10011001110',
-    '10111001100', '10011101100', '10011100110', '11001110010', '11001011100',
-    '11001001110', '11011100100', '11001110100', '11101101110', '11101001100',
-    '11100101100', '11100100110', '11101100100', '11100110100', '11100110010',
-    '11011011000', '11011000110', '11000110110', '10100011000', '10001011000',
-    '10001000110', '10110001000', '10001101000', '10001100010', '11010001000',
-    '11000101000', '11000100010', '10110111000', '10110001110', '10001101110',
-    '10111011000', '10111000110', '10001110110', '11101101110', '11010001110',
-    '11000101110', '11011101000', '11011100010', '11011101110', '11101011000',
-    '11101000110', '11100010110', '11101101000', '11101100010', '11100011010',
-    '11101111010', '11001000010', '11110001010', '10100110000', '10100001100',
-    '10010110000', '10010000110', '10000101100', '10000100110', '10110010000',
-    '10110000100', '10011010000', '10011000010', '10000110100', '10000110010',
-    '11000010010', '11001010000', '11110111010', '11000010100', '10001111010',
-    '10100111100', '10010111100', '10010011110', '10111100100', '10011110100',
-    '10011110010', '11110100100', '11110010100', '11110010010', '11011011110',
-    '11011110110', '11110110110', '10101111000', '10100011110', '10001011110',
-    '10111101000', '10111100010', '11110101000', '11110100010', '10111011110',
-    '10111101110', '11101011110', '11110101110', '11010000100', '11010010000',
-    '11010011100', '11000111010',
-  ];
-
-  for (let i = 0; i <= 95; i++) {
-    const char = String.fromCharCode(i + 32);
-    CODE128B_VALUES[char] = i;
-    CODE128B_PATTERNS[i] = patterns[i];
-  }
-  CODE128B_PATTERNS['START_B'] = patterns[104];
-  CODE128B_PATTERNS['STOP'] = patterns[106];
-  CODE128B_VALUES['START_B'] = 104;
-  CODE128B_VALUES['STOP'] = 106;
-})();
-
-function encodeCode128B(text) {
-  const values = [];
-  for (let i = 0; i < text.length; i++) {
-    const val = CODE128B_VALUES[text[i]];
-    if (val !== undefined) values.push(val);
-  }
-  let checksum = CODE128B_VALUES['START_B'];
-  for (let i = 0; i < values.length; i++) {
-    checksum += values[i] * (i + 1);
-  }
-  checksum = checksum % 103;
-
-  let pattern = CODE128B_PATTERNS['START_B'];
-  values.forEach((v) => { pattern += CODE128B_PATTERNS[v]; });
-  pattern += CODE128B_PATTERNS[checksum];
-  pattern += CODE128B_PATTERNS['STOP'];
-  pattern += '11';
-
-  return pattern;
-}
-
-function drawBarcodeCanvas(canvas, text, options = {}) {
-  if (!canvas) return;
-  const { height = 55, moduleWidth = 1.4, padding = 8, showText = true } = options;
-  const pattern = encodeCode128B(text);
-  const barWidth = pattern.length * moduleWidth;
-
-  canvas.width = barWidth + padding * 2;
-  canvas.height = height + (showText ? 18 : 0) + padding;
-
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.fillStyle = '#111827';
-  for (let i = 0; i < pattern.length; i++) {
-    if (pattern[i] === '1') {
-      ctx.fillRect(padding + i * moduleWidth, padding / 2, moduleWidth, height);
-    }
-  }
-
-  if (showText) {
-    ctx.fillStyle = '#2C221E';
-    ctx.font = `600 11px 'JetBrains Mono', monospace`;
-    ctx.textAlign = 'center';
-    ctx.fillText(text, canvas.width / 2, height + padding / 2 + 13);
-  }
-}
+// ─── CODE 128 RENDERING ──────────────────────────────────────────────────────
+// Symbols are produced by the `jsbarcode` library rather than a local encoder.
+// A hand-typed pattern table used to live here, and one of its 107 entries was
+// wrong (value 48 / 'P' carried the bars for value 23 / '7'), which silently
+// broke the check digit on every "EMP-" badge. Same library, same options as
+// the Admin employee badge — see EmployeeIdCardModal in dashboard/admin/page.js.
 
 // ─── ID CARD EXPORT (full card, not just the barcode) ────────────────────────
 // The same field set the "View" modal shows — shared so the on-screen card,
@@ -354,13 +277,34 @@ function statusBadgeClass(status) {
   return 'badge badge-warning';
 }
 
-// ─── SHARED CANVAS RENDERER ───────────────────────────────────────────────────
+// ─── SHARED BARCODE RENDERER ─────────────────────────────────────────────────
+// Renders to <svg> so the bars stay sharp through the print sheet's mm-based
+// downscale and the html2canvas/jsPDF export path — a raster canvas resampled
+// to a non-integer size blurs the bar edges and costs scan reliability.
 function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true }) {
   const ref = useRef(null);
   useEffect(() => {
-    drawBarcodeCanvas(ref.current, code, { height, moduleWidth, showText });
+    if (!ref.current || !code) return;
+    try {
+      JsBarcode(ref.current, code, {
+        format: 'CODE128',
+        width: moduleWidth,
+        height,
+        displayValue: showText,
+        fontSize: 11,
+        fontOptions: 'bold',
+        font: "'JetBrains Mono', monospace",
+        // Measured in modules, so the quiet zone scales with moduleWidth at
+        // every call site. CODE128 needs at least 10.
+        margin: 10,
+        background: '#FFFFFF',
+        lineColor: '#111827',
+      });
+    } catch (err) {
+      console.error('JsBarcode error:', err);
+    }
   }, [code, height, moduleWidth, showText]);
-  return <canvas ref={ref} style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />;
+  return <svg ref={ref} style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />;
 }
 
 // ─── TOASTS ────────────────────────────────────────────────────────────────────
@@ -1456,7 +1400,7 @@ export default function BarcodeManagementPage() {
       // empId is already the backend card code (EMP-000123) — don't re-prefix it.
       // The barcode itself only encodes the Employee ID, not the name — empId
       // is already unique per employee, so this stays a safe key/print target.
-      pieceCode: emp.empId.startsWith('EMP-') ? emp.empId : `EMP-${emp.empId}`,
+      pieceCode: /^EMP-/i.test(emp.empId) ? emp.empId : `EMP-${emp.empId}`,
       orderId: deptCode, client: departmentName, style: emp.name, color: emp.designation, size: emp.empId,
       serial: idx + 1, serialStr: String(idx + 1).padStart(3, '0'), batchNo: batchId,
       createdDate: new Date().toLocaleString(), generatedBy: operatorLabel, printStatus: 'PENDING', printCount: 0,
@@ -1721,7 +1665,9 @@ export default function BarcodeManagementPage() {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             break-inside: avoid; overflow: hidden;
           }
-          .print-card canvas { max-width: 90%; max-height: 22mm; }
+          /* Width only — capping the height too squashes the aspect ratio and
+             narrows the bars past what a handheld scanner will read. */
+          .print-card svg { max-width: 90%; height: auto; }
           .print-card .card-code { font-family: monospace; font-weight: bold; font-size: 9pt; margin: 2mm 0; color: #000; }
           .print-card .card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 4mm; width: 100%; }
           .print-card .card-fields .f-label { color: #666; text-transform: uppercase; font-size: 5.5pt; font-weight: 700; }
