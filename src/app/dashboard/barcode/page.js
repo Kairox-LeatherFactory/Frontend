@@ -4,19 +4,19 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Barcode, Printer, History, Search, X, Download, Zap, Send, Eye,
-  RotateCcw, FileDown, ChevronRight, Users, Box, FileImage, FileText,
+  RotateCcw, FileDown, ChevronRight, ChevronLeft, Users, Box, FileImage, FileText,
+  Loader2, ScanLine, PackageSearch,
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import AnimatedModal from '@/components/AnimatedModal';
 import { useAuth } from '@/context/AuthContext';
-import { apiGetEmployees } from '@/lib/api';
+import {
+  apiGetEmployees, apiResolveBarcode, apiGetBarcodeDetail, apiPrintBarcodes,
+  apiGetBarcodeOrders, apiGetOrderBarcodeSkus, apiGetOrderBarcodeAnalytics, apiGetOrderBarcodes,
+} from '@/lib/api';
 import { staggerContainer, fadeUpItem, tabFade } from '@/lib/motionVariants';
-
-// ─── PRODUCTION ORDER / EMPLOYEE ROSTER DATASETS ─────────────────────────────
-// Populated from the backend — no seed/demo data.
-const initialOrdersStore = {};
 
 // The employee roster comes from GET /api/v1/employees (apiGetEmployees).
 // That row is { id, name, designation, wage_type, is_active, employee_barcode }
@@ -35,16 +35,6 @@ function normalizeEmployee(row) {
     name: row.name || 'Unnamed',
     designation: row.designation || 'Unassigned',
     department: row.department || row.designation || 'Unassigned',
-  };
-}
-
-// Builds a fresh, empty store. Orders/styles/sizes and any generated barcode
-// history are expected to come from the backend once wired up.
-function buildInitialState() {
-  return {
-    ordersStore: JSON.parse(JSON.stringify(initialOrdersStore)),
-    generatedBarcodesStore: [],
-    batchHistoryStore: [],
   };
 }
 
@@ -361,6 +351,7 @@ const CATEGORY_LABELS = {
 };
 
 const DEFAULT_HISTORY_FILTERS = { orderId: 'ALL', style: 'ALL', client: 'ALL', size: 'ALL', operator: 'ALL', status: 'ALL', sort: 'NEWEST' };
+const EMPTY_LIST = [];
 
 const selectCls = 'w-full px-3 py-2.5 rounded-lg text-sm font-semibold outline-none border transition-all focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]';
 const inputCls = 'w-full px-3 py-2.5 rounded-lg text-sm font-medium outline-none border transition-all focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]';
@@ -427,211 +418,693 @@ function ToastStack({ toasts }) {
   );
 }
 
-// ─── SIZE / SUB-GROUP CARD (reused for style sizes and employee departments) ──
-function SizeCard({ sizeKey, sizeData, active, onSelect, onGenerate, generateLabel = 'Generate Barcode' }) {
-  const isDone = sizeData.remaining === 0;
+// ─── LIVE BARCODE REGISTRY (mounted at /api/v1/barcode) ─────────────────────
+// Piece barcodes are pre-minted during Cutting — this backend surface has no
+// "generate" endpoint, only resolve / print / browse-by-order / audit. Style
+// category is powered entirely by these live calls; Employee/Bucket keep
+// their own local flows below, untouched.
+
+const BARCODE_TYPE_LABELS = { PIECE: 'Piece', EMPLOYEE: 'Employee', DRAWER: 'Drawer', MATERIAL_LOT: 'Material Lot' };
+
+function humanizeKey(key) {
+  return key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function formatRegistryValue(value) {
+  if (value === null || value === undefined || value === '') return '—';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+// Shared renderer for a GET /barcode/resolve or /barcode/detail payload.
+// The sub-object (piece/employee/drawer/lot) is an intentionally loose
+// passthrough dict server-side, so this dumps whatever keys are present
+// instead of hard-coding fields that might not exist for every code type.
+function LiveBarcodeDetailModal({ open, loading, error, data, onClose }) {
+  const cardRef = useRef(null);
+  const [exporting, setExporting] = useState(null);
+  const payload = data ? (data.piece || data.employee || data.drawer || data.lot) : null;
+
+  const handleDownload = async (format) => {
+    if (!cardRef.current || exporting || !data) return;
+    setExporting(format);
+    try {
+      const canvas = await captureNodeToCanvas(cardRef.current);
+      if (format === 'png') await saveCanvasAsPng(canvas, data.code);
+      else await saveCanvasAsPdf(canvas, data.code);
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
-    <motion.div
-      variants={fadeUpItem}
-      whileHover={{ y: -6, scale: 1.02 }}
-      transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-      onClick={onSelect}
-      className="rounded-xl p-4 flex flex-col gap-3 cursor-pointer"
-      style={{
-        background: active ? 'linear-gradient(180deg, #fff 0%, #fdf0e0 100%)' : '#ffffff',
-        border: `1.8px solid ${active ? BRAND.accent : 'rgba(200,131,74,0.25)'}`,
-        boxShadow: active ? '0 6px 20px rgba(200,131,74,0.22)' : '0 2px 8px rgba(90,56,37,0.05)',
-      }}
+    <AnimatedModal
+      isOpen={open}
+      onClose={onClose}
+      zIndex={2000}
+      panelClassName="rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+      panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
     >
-      <div className="flex items-center justify-between">
-        <div
-          className="px-3 h-11 min-w-11 rounded-lg flex items-center justify-center font-black text-sm text-white text-center"
-          style={{ background: '#3d2b1a' }}
-        >
-          {sizeKey}
+      <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+        <h3 className="font-bold flex items-center gap-2" style={{ color: '#5a3518' }}>
+          <ScanLine className="w-4 h-4" style={{ color: BRAND.accent }} /> Barcode Registry Lookup
+        </h3>
+        <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+      </div>
+
+      {loading ? (
+        <div className="py-16 flex flex-col items-center gap-2">
+          <Loader2 className="w-6 h-6 animate-spin" style={{ color: BRAND.accent }} />
+          <p className="text-sm" style={{ color: BRAND.textMuted }}>Resolving…</p>
         </div>
-        <span className={statusBadgeClass(isDone ? 'PRINTED' : 'PENDING')}>{isDone ? 'Generated' : 'Pending'}</span>
-      </div>
-      <div className="rounded-lg p-3 text-xs space-y-1.5" style={{ background: BRAND.bg, border: '1px solid rgba(200,131,74,0.15)' }}>
-        <div className="flex justify-between"><span style={{ color: BRAND.textMuted }}>Ordered:</span><strong>{sizeData.ordered} pcs</strong></div>
-        <div className="flex justify-between"><span style={{ color: BRAND.textMuted }}>Generated:</span><strong>{sizeData.generated} pcs</strong></div>
-        <div className="flex justify-between"><span style={{ color: BRAND.textMuted }}>Remaining:</span><strong style={{ color: '#c8834a' }}>{sizeData.remaining} pcs</strong></div>
-      </div>
-      <button
-        onClick={(e) => { e.stopPropagation(); onGenerate(); }}
-        disabled={isDone}
-        className="w-full py-2.5 rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 transition-all disabled:cursor-default"
-        style={isDone
-          ? { background: '#dcfce7', color: '#166534' }
-          : { background: 'linear-gradient(135deg, #c8834a, #a86530)', color: '#fff' }}
-      >
-        <Zap className="w-3.5 h-3.5" /> {isDone ? 'Barcodes Ready' : generateLabel}
-      </button>
-    </motion.div>
+      ) : error ? (
+        <div className="py-16 text-center px-6">
+          <p className="font-bold" style={{ color: '#b91c1c' }}>{error}</p>
+        </div>
+      ) : data ? (
+        <>
+          <div ref={cardRef} className="p-6 text-center" style={{ background: '#ffffff' }}>
+            <div className="p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
+              <BarcodeCanvas code={data.code} displayWidth={260} />
+            </div>
+            <div className="font-mono font-bold mb-2" style={{ color: '#5a3518' }}>{data.code}</div>
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <span className="text-[0.65rem] px-2.5 py-1 rounded-full font-black uppercase tracking-wide" style={{ background: BRAND.bg, color: BRAND.accent, border: `1px solid ${BRAND.border}` }}>
+                {BARCODE_TYPE_LABELS[data.type] || data.type}
+              </span>
+              <span className={statusBadgeClass(data.active ? 'PRINTED' : 'PENDING')}>{data.active ? 'Active' : 'Retired'}</span>
+            </div>
+            {data.caption && <div className="text-sm font-semibold mb-4" style={{ color: BRAND.textMuted }}>{data.caption}</div>}
+            {payload && Object.keys(payload).length > 0 ? (
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-left text-sm p-4 rounded-lg" style={{ background: BRAND.bg }}>
+                {Object.entries(payload).map(([key, value]) => (
+                  <div key={key} className="flex flex-col gap-0.5">
+                    <span className="text-[0.68rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{humanizeKey(key)}</span>
+                    <span className="font-semibold break-words" style={{ color: BRAND.text }}>{formatRegistryValue(value)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs" style={{ color: BRAND.textMuted }}>No additional detail on record for this code.</p>
+            )}
+          </div>
+          <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
+            <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
+            <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
+            </button>
+            <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </AnimatedModal>
   );
 }
 
-// ─── STYLE: BATCH GENERATION TAB ───────────────────────────────────────────────
-function GenerationTab({
-  ordersStore, selectedOrderId, setSelectedOrderId, selectedStyleName, setSelectedStyleName,
-  selectedSizeFilter, setSelectedSizeFilter, generatedBarcodesStore, gridSearch, setGridSearch,
-  onGenerateSize, onGenerateOverallSize, onGenerateAllSizes, onSendToPrintCenter, onOpenDetail, onPrintSingle,
-}) {
-  const order = ordersStore[selectedOrderId];
+// Page-level "scan or type a code" lookup — GET /barcode/resolve. Available
+// regardless of which category tab is active, since a code can be any type.
+function ResolveBarcodeWidget({ token, showToast }) {
+  const [code, setCode] = useState('');
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [data, setData] = useState(null);
 
-  const sizeMap = useMemo(() => {
-    if (!order) return {};
-    if (selectedStyleName === 'ALL_STYLES') {
-      const map = {};
-      Object.values(order.styles).forEach((st) => {
-        Object.entries(st.sizes).forEach(([sz, data]) => {
-          if (!map[sz]) map[sz] = { ordered: 0, generated: 0, remaining: 0 };
-          map[sz].ordered += data.ordered;
-          map[sz].generated += data.generated;
-          map[sz].remaining += data.remaining;
-        });
-      });
-      return map;
+  const handleResolve = async (e) => {
+    e.preventDefault();
+    const trimmed = code.trim();
+    if (!trimmed) return;
+    setOpen(true);
+    setLoading(true);
+    setError(null);
+    setData(null);
+    try {
+      const result = await apiResolveBarcode(token, trimmed);
+      setData(result);
+    } catch (err) {
+      setError(err.message || 'Failed to resolve barcode.');
+    } finally {
+      setLoading(false);
     }
-    return order.styles[selectedStyleName]?.sizes || {};
-  }, [order, selectedStyleName]);
+  };
 
-  const totals = useMemo(() => {
-    return Object.values(sizeMap).reduce((acc, s) => ({ ordered: acc.ordered + s.ordered, generated: acc.generated + s.generated }), { ordered: 0, generated: 0 });
-  }, [sizeMap]);
+  return (
+    <>
+      <form onSubmit={handleResolve} className="flex items-center gap-2 rounded-2xl p-1.5 pl-4 w-fit" style={{ background: '#fff', border: `1px solid ${BRAND.border}` }}>
+        <ScanLine className="w-4 h-4 flex-shrink-0" style={{ color: BRAND.textMuted }} />
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder="Scan or type a barcode to look up…"
+          className="text-sm font-medium outline-none bg-transparent w-52"
+          style={{ color: BRAND.text }}
+        />
+        <button type="submit" className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs flex-shrink-0">Resolve</button>
+      </form>
+      <LiveBarcodeDetailModal open={open} loading={loading} error={error} data={data} onClose={() => setOpen(false)} />
+    </>
+  );
+}
 
-  const barcodes = useMemo(() => {
-    let list = generatedBarcodesStore.filter((b) => b.orderId === selectedOrderId);
-    if (selectedStyleName !== 'ALL_STYLES') list = list.filter((b) => b.style === selectedStyleName);
-    if (selectedSizeFilter !== 'ALL') list = list.filter((b) => b.size === selectedSizeFilter);
-    const q = gridSearch.trim().toLowerCase();
-    if (q) list = list.filter((b) => b.pieceCode.toLowerCase().includes(q) || b.serialStr.includes(q));
-    return list;
-  }, [generatedBarcodesStore, selectedOrderId, selectedStyleName, selectedSizeFilter, gridSearch]);
+function BarcodePagination({ page, pages, setPage }) {
+  if (!pages || pages <= 1) return null;
+  return (
+    <div className="flex items-center justify-center gap-3 mt-5">
+      <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-40">
+        <ChevronLeft className="w-3.5 h-3.5" /> Prev
+      </button>
+      <span className="text-xs font-bold" style={{ color: BRAND.textMuted }}>Page {page} of {pages}</span>
+      <button onClick={() => setPage((p) => Math.min(pages, p + 1))} disabled={page >= pages} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-40">
+        Next <ChevronRight className="w-3.5 h-3.5" />
+      </button>
+    </div>
+  );
+}
 
-  if (!order) {
-    return (
-      <div className="text-center py-16 rounded-2xl animate-fade-in" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)' }}>
-        <Barcode className="w-10 h-10 mx-auto mb-2 opacity-30" style={{ color: BRAND.textMuted }} />
-        <p className="font-bold" style={{ color: BRAND.textMuted }}>No production orders found.</p>
-        <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Connect the backend to load production orders for barcode generation.</p>
+// ─── STYLE: Batch Generation sub-view — card grid of the order's registered barcodes ──
+function StyleGenerationGrid({
+  rows, historyLoading, historyError, search, setSearch,
+  selectedCodes, toggleCode, selectAllVisible, clearSelection,
+  page, setPage, pages, total, onOpenDetail, onPrintSingle, onPrintSelected, onPrintOrder, printing,
+}) {
+  const filteredRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((r) => r.code.toLowerCase().includes(q));
+  }, [rows, search]);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+        <div>
+          <h3 className="text-base font-black" style={{ color: BRAND.text }}>Registered Barcodes</h3>
+          <p className="text-xs" style={{ color: BRAND.textMuted }}>{total} total on this order • page {page} of {pages || 1}</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter code..." className={`${inputCls} !pl-8 !w-44 !py-2`} style={fieldStyle} />
+          </div>
+          <button onClick={selectAllVisible} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Select Page</button>
+          <button onClick={clearSelection} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Clear</button>
+          <button onClick={onPrintSelected} disabled={printing || selectedCodes.size === 0} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-50">
+            <Printer className="w-3.5 h-3.5" /> Print Selected ({selectedCodes.size})
+          </button>
+          <button onClick={onPrintOrder} disabled={printing} className="btn-warm-primary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-50">
+            <Printer className="w-3.5 h-3.5" /> Print Entire Order
+          </button>
+        </div>
       </div>
-    );
-  }
+
+      {historyLoading ? (
+        <div className="text-center py-12 rounded-xl flex items-center justify-center gap-2" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)', color: BRAND.textMuted }}>
+          <Loader2 className="w-4 h-4 animate-spin" /> Loading barcodes…
+        </div>
+      ) : historyError ? (
+        <div className="text-center py-12 rounded-xl" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)' }}>
+          <p className="font-bold" style={{ color: '#b91c1c' }}>{historyError}</p>
+        </div>
+      ) : filteredRows.length === 0 ? (
+        <div className="text-center py-12 rounded-xl" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)' }}>
+          <p className="font-bold" style={{ color: BRAND.textMuted }}>No barcodes match this filter.</p>
+        </div>
+      ) : (
+        <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }} variants={staggerContainer} initial="hidden" animate="show">
+          {filteredRows.map((r) => {
+            const checked = selectedCodes.has(r.code);
+            return (
+              <motion.div
+                key={r.code}
+                variants={fadeUpItem}
+                whileHover={{ y: -6, scale: 1.02 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+                className="rounded-xl p-4 flex flex-col items-center gap-3 relative"
+                style={{ background: checked ? '#faf3ea' : '#fff', border: `1.5px solid ${checked ? BRAND.accent : BRAND.border}` }}
+              >
+                <input type="checkbox" checked={checked} onChange={() => toggleCode(r.code)} className="absolute top-3 left-3 w-4 h-4 accent-[#c8834a] cursor-pointer" />
+                <div className="w-full bg-white rounded-lg p-2 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
+                  <BarcodeCanvas code={r.code} displayWidth={190} />
+                </div>
+                <div className="text-center w-full">
+                  <div className="font-mono font-bold text-xs break-all" style={{ color: '#5a3518' }}>{r.code}</div>
+                  <div className="flex items-center justify-center gap-1.5 mt-1.5 flex-wrap">
+                    {r.style_name && <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>{r.style_name}</span>}
+                    {r.size && <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>Size {r.size}</span>}
+                    <span className={statusBadgeClass(r.status === 'active' ? 'PRINTED' : 'PENDING')}>{r.status === 'active' ? 'Active' : 'Retired'}</span>
+                  </div>
+                </div>
+                <div className="flex gap-2 w-full">
+                  <button onClick={() => onOpenDetail(r.code)} className="flex-1 btn-warm-secondary !min-h-0 !py-1.5 text-xs">View</button>
+                  <button onClick={() => onPrintSingle(r.code)} className="flex-1 btn-warm-primary !min-h-0 !py-1.5 text-xs">Print</button>
+                </div>
+              </motion.div>
+            );
+          })}
+        </motion.div>
+      )}
+
+      <BarcodePagination page={page} pages={pages} setPage={setPage} />
+    </div>
+  );
+}
+
+// ─── STYLE: Print Center sub-view — the codes queued from the grid above ──────
+function StylePrintQueue({ selectedCodes, rowByCode, onRemove, onClear, onPrintSelected, onPrintOrder, printing }) {
+  const codes = Array.from(selectedCodes);
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl p-5 shadow-sm flex items-center justify-between flex-wrap gap-4" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+        <div>
+          <h3 className="text-base font-black" style={{ color: BRAND.text }}>Print Queue ({codes.length} selected)</h3>
+          <p className="text-xs" style={{ color: BRAND.textMuted }}>Check codes in the Batch Generation grid, then send them to the label printer.</p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={onClear} disabled={codes.length === 0} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs disabled:opacity-50">Clear Queue</button>
+          <button onClick={onPrintSelected} disabled={printing || codes.length === 0} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs disabled:opacity-50">
+            <Printer className="w-4 h-4" /> Print Selected
+          </button>
+          <button onClick={onPrintOrder} disabled={printing} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs disabled:opacity-50">
+            <Printer className="w-4 h-4" /> Print Entire Order
+          </button>
+        </div>
+      </div>
+
+      {codes.length === 0 ? (
+        <div className="text-center py-12 rounded-xl" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)' }}>
+          <p className="font-bold" style={{ color: BRAND.textMuted }}>No barcodes queued for printing yet.</p>
+          <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Check codes in the Batch Generation grid to queue them here.</p>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {codes.map((code) => {
+            const row = rowByCode.get(code);
+            return (
+              <div key={code} className="flex items-center gap-2 pl-3 pr-2 py-1.5 rounded-full text-xs font-mono font-bold" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}`, color: '#5a3518' }}>
+                {code}{row?.size ? ` · ${row.size}` : ''}
+                <button onClick={() => onRemove(code)} className="w-4 h-4 rounded-full flex items-center justify-center" style={{ background: BRAND.bg }}>
+                  <X className="w-3 h-3" style={{ color: BRAND.textMuted }} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── STYLE: Batch History sub-view — dense table over the same live page ─────
+function StyleHistoryTable({ rows, historyLoading, historyError, page, setPage, pages, total, onOpenDetail, onPrintSingle, onExportCSV }) {
+  return (
+    <div className="rounded-2xl p-5 shadow-sm" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h3 className="text-base font-black" style={{ color: BRAND.text }}>Barcode History</h3>
+          <p className="text-xs" style={{ color: BRAND.textMuted }}>{total} total • page {page} of {pages || 1}</p>
+        </div>
+        <button onClick={onExportCSV} className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs"><FileDown className="w-4 h-4" /> Export CSV (this page)</button>
+      </div>
+
+      {historyLoading ? (
+        <div className="text-center py-8 flex items-center justify-center gap-2" style={{ color: BRAND.textMuted }}><Loader2 className="w-4 h-4 animate-spin" /> Loading…</div>
+      ) : historyError ? (
+        <div className="text-center py-8" style={{ color: '#b91c1c' }}>{historyError}</div>
+      ) : rows.length === 0 ? (
+        <div className="text-center py-8" style={{ color: BRAND.textMuted }}>No barcode history records match the selected filters.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr style={{ background: '#fff' }}>
+                {['Code', 'SKU', 'Style', 'Colour', 'Size', 'Seq', 'Current Stage', 'Status', 'Generated At', 'Actions'].map((h) => (
+                  <th key={h} className="text-left px-3 py-2.5 text-[0.7rem] font-bold uppercase tracking-wide whitespace-nowrap" style={{ color: BRAND.textMuted, borderBottom: `1.5px solid ${BRAND.border}` }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <motion.tbody variants={staggerContainer} initial="hidden" animate="show">
+              {rows.map((r) => (
+                <motion.tr key={r.code} variants={fadeUpItem} className="hover:bg-[#fdf6ee]">
+                  <td className="px-3 py-2.5 font-mono font-bold whitespace-nowrap" style={{ color: '#5a3518', borderBottom: '1px solid #f0e8d7' }}>{r.code}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap" style={{ borderBottom: '1px solid #f0e8d7' }}>{r.sku_code || '—'}</td>
+                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{r.style_name || '—'}</td>
+                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{r.colour || '—'}</td>
+                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{r.size || '—'}</td>
+                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{r.seq ?? '—'}</td>
+                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{r.current_stage || '—'}</td>
+                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}><span className={statusBadgeClass(r.status === 'active' ? 'PRINTED' : 'PENDING')}>{r.status === 'active' ? 'Active' : 'Retired'}</span></td>
+                  <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ borderBottom: '1px solid #f0e8d7' }}>{r.generated_at ? new Date(r.generated_at).toLocaleString() : '—'}</td>
+                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>
+                    <div className="flex gap-1.5">
+                      <button onClick={() => onOpenDetail(r.code)} className="btn-warm-secondary !min-h-0 !py-1.5 !px-2.5 text-xs">View</button>
+                      <button onClick={() => onPrintSingle(r.code)} className="btn-warm-primary !min-h-0 !py-1.5 !px-2.5 text-xs">Print</button>
+                    </div>
+                  </td>
+                </motion.tr>
+              ))}
+            </motion.tbody>
+          </table>
+        </div>
+      )}
+      <BarcodePagination page={page} pages={pages} setPage={setPage} />
+    </div>
+  );
+}
+
+const STYLE_HISTORY_PAGE_SIZE = 24;
+const DEFAULT_STYLE_FILTERS = { styleId: 'ALL', size: 'ALL', status: 'ALL', dateFrom: '', dateTo: '' };
+
+// ─── STYLE: Registry Panel — one always-mounted component covering all three
+// tabs (Batch Generation / Print Center / Batch History) so the selected
+// order, filters and print queue survive switching between them. ───────────
+function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems }) {
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState(null);
+  const [selectedOrderId, setSelectedOrderId] = useState('');
+
+  const [skuOptions, setSkuOptions] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
+  const [orderMetaLoading, setOrderMetaLoading] = useState(false);
+  const [orderMetaError, setOrderMetaError] = useState(null);
+
+  const [filters, setFiltersState] = useState(DEFAULT_STYLE_FILTERS);
+  const [page, setPage] = useState(1);
+  const [historyData, setHistoryData] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(null);
+
+  const [selectedCodes, setSelectedCodes] = useState(() => new Set());
+  const [search, setSearch] = useState('');
+  const [printing, setPrinting] = useState(false);
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState(null);
+  const [detailData, setDetailData] = useState(null);
+
+  // GET /barcode/orders — the order picker.
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    (async () => {
+      setOrdersLoading(true);
+      setOrdersError(null);
+      try {
+        const rows = await apiGetBarcodeOrders(token);
+        if (!cancelled) setOrders(Array.isArray(rows) ? rows : []);
+      } catch (err) {
+        if (!cancelled) setOrdersError(err.message || 'Failed to load orders.');
+      } finally {
+        if (!cancelled) setOrdersLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token]);
+
+  // GET /barcode/orders/{id}/skus + GET /barcode/orders/{id}/analytics — order metadata.
+  useEffect(() => {
+    if (!token || !selectedOrderId) return;
+    let cancelled = false;
+    (async () => {
+      setOrderMetaLoading(true);
+      setOrderMetaError(null);
+      try {
+        const [skus, an] = await Promise.all([
+          apiGetOrderBarcodeSkus(token, selectedOrderId),
+          apiGetOrderBarcodeAnalytics(token, selectedOrderId),
+        ]);
+        if (cancelled) return;
+        setSkuOptions(Array.isArray(skus) ? skus : []);
+        setAnalytics(an);
+      } catch (err) {
+        if (!cancelled) setOrderMetaError(err.message || 'Failed to load order analytics.');
+      } finally {
+        if (!cancelled) setOrderMetaLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token, selectedOrderId]);
+
+  // GET /barcode/orders/{id}/barcodes — the filterable, paginated history page.
+  useEffect(() => {
+    if (!token || !selectedOrderId) return;
+    let cancelled = false;
+    (async () => {
+      setHistoryLoading(true);
+      setHistoryError(null);
+      try {
+        const data = await apiGetOrderBarcodes(token, selectedOrderId, {
+          styleId: filters.styleId !== 'ALL' ? filters.styleId : undefined,
+          size: filters.size !== 'ALL' ? filters.size : undefined,
+          status: filters.status !== 'ALL' ? filters.status : undefined,
+          dateFrom: filters.dateFrom || undefined,
+          dateTo: filters.dateTo || undefined,
+          page,
+          pageSize: STYLE_HISTORY_PAGE_SIZE,
+        });
+        if (!cancelled) setHistoryData(data);
+      } catch (err) {
+        if (!cancelled) setHistoryError(err.message || 'Failed to load barcode history.');
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [token, selectedOrderId, filters, page]);
+
+  const handleSelectOrder = (id) => {
+    setSelectedOrderId(id);
+    setFiltersState(DEFAULT_STYLE_FILTERS);
+    setPage(1);
+    setSelectedCodes(new Set());
+    setSearch('');
+    setSkuOptions([]);
+    setAnalytics(null);
+    setHistoryData(null);
+  };
+
+  const setFilter = (field, value) => { setFiltersState((prev) => ({ ...prev, [field]: value })); setPage(1); };
+  const resetFilters = () => { setFiltersState(DEFAULT_STYLE_FILTERS); setPage(1); };
+
+  const rows = useMemo(() => historyData?.items || [], [historyData]);
+
+  const toggleCode = (code) => setSelectedCodes((prev) => { const next = new Set(prev); next.has(code) ? next.delete(code) : next.add(code); return next; });
+  const selectAllVisible = () => setSelectedCodes((prev) => { const next = new Set(prev); rows.forEach((r) => next.add(r.code)); return next; });
+  const clearSelection = () => setSelectedCodes(new Set());
+
+  const openDetail = useCallback(async (code) => {
+    setDetailOpen(true);
+    setDetailLoading(true);
+    setDetailError(null);
+    setDetailData(null);
+    try {
+      const data = await apiGetBarcodeDetail(token, code);
+      setDetailData(data);
+    } catch (err) {
+      setDetailError(err.message || 'Failed to load barcode detail.');
+    } finally {
+      setDetailLoading(false);
+    }
+  }, [token]);
+
+  const currentOrder = useMemo(() => orders.find((o) => o.order_id === selectedOrderId), [orders, selectedOrderId]);
+  const rowByCode = useMemo(() => new Map(rows.map((r) => [r.code, r])), [rows]);
+
+  const buildPrintCards = useCallback((labels) => labels.map((l) => {
+    const row = rowByCode.get(l.code);
+    return {
+      pieceCode: l.code,
+      orderId: currentOrder?.order_number || '—',
+      client: currentOrder?.client_name || '—',
+      style: row?.style_name || l.caption || '—',
+      color: row?.colour || '—',
+      size: row?.size || '—',
+      serialStr: row?.seq != null ? String(row.seq).padStart(3, '0') : '—',
+      batchNo: currentOrder?.order_number || '—',
+      printStatus: row?.status === 'retired' ? 'PARTIAL' : 'PENDING',
+    };
+  }), [rowByCode, currentOrder]);
+
+  // POST /barcode/print — provide exactly one of { codes, sku_id, order_id }.
+  const handlePrint = useCallback(async (args) => {
+    setPrinting(true);
+    try {
+      const labels = await apiPrintBarcodes(token, args);
+      const cards = buildPrintCards(labels);
+      if (cards.length === 0) { showToast('No labels returned for this selection.', 'info'); return; }
+      setPrintSheetItems(cards);
+      showToast(`Sending ${cards.length} label${cards.length === 1 ? '' : 's'} to printer (4 per page)…`, 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to generate print labels.', 'error');
+    } finally {
+      setPrinting(false);
+    }
+  }, [token, buildPrintCards, setPrintSheetItems, showToast]);
+
+  const handlePrintSelected = () => {
+    if (selectedCodes.size === 0) { showToast('Select at least one barcode to print!', 'error'); return; }
+    handlePrint({ codes: Array.from(selectedCodes) });
+  };
+  const handlePrintSingleCode = (code) => handlePrint({ codes: [code] });
+  const handlePrintEntireOrder = () => {
+    if (!selectedOrderId) return;
+    handlePrint({ order_id: selectedOrderId });
+  };
+
+  const handleExportCSV = () => {
+    const header = ['Code', 'Status', 'SKU', 'Style', 'Colour', 'Size', 'Seq', 'Current Stage', 'Generated At'];
+    const csvRows = [header, ...rows.map((r) => [r.code, r.status, r.sku_code, r.style_name, r.colour, r.size, r.seq, r.current_stage, r.generated_at])];
+    const csv = csvRows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url; link.download = `barcode-history-${currentOrder?.order_number || selectedOrderId}-page${page}.csv`;
+    document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const styleFilterOptions = useMemo(() => {
+    const map = new Map();
+    skuOptions.forEach((s) => { if (!map.has(s.style_id)) map.set(s.style_id, s.style_name || s.style_id); });
+    return Array.from(map.entries());
+  }, [skuOptions]);
+  const sizeFilterOptions = useMemo(() => Array.from(new Set(skuOptions.map((s) => s.size).filter(Boolean))), [skuOptions]);
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="rounded-2xl p-6 shadow-sm" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
-        <div className="grid gap-5" style={{ gridTemplateColumns: '240px 260px 1fr' }}>
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>1. Production Order (PO)</label>
-            <select className={selectCls} style={fieldStyle} value={selectedOrderId} onChange={(e) => { setSelectedOrderId(e.target.value); setSelectedStyleName('ALL_STYLES'); setSelectedSizeFilter('ALL'); }}>
-              {Object.values(ordersStore).map((o) => (
-                <option key={o.orderId} value={o.orderId}>{o.orderId} — {o.client}</option>
+        <h3 className="text-base font-black flex items-center gap-2" style={{ color: BRAND.text }}>
+          <PackageSearch className="w-4 h-4" style={{ color: BRAND.accent }} /> Live Barcode Registry
+        </h3>
+        <p className="text-xs mt-0.5" style={{ color: BRAND.textMuted }}>Piece barcodes are minted automatically during Cutting — this screen browses, audits, and prints what&apos;s already registered.</p>
+        <div className="mt-4">
+          <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Production Order</label>
+          {ordersLoading ? (
+            <div className="flex items-center gap-2 text-sm py-2.5" style={{ color: BRAND.textMuted }}><Loader2 className="w-4 h-4 animate-spin" /> Loading orders…</div>
+          ) : ordersError ? (
+            <p className="text-sm" style={{ color: '#b91c1c' }}>{ordersError}</p>
+          ) : orders.length === 0 ? (
+            <p className="text-sm" style={{ color: BRAND.textMuted }}>No orders have generated barcodes yet.</p>
+          ) : (
+            <select className={`${selectCls} sm:!w-[420px]`} style={fieldStyle} value={selectedOrderId} onChange={(e) => handleSelectOrder(e.target.value)}>
+              <option value="">-- Select an order --</option>
+              {orders.map((o) => (
+                <option key={o.order_id} value={o.order_id}>{o.order_number} — {o.client_name} ({o.minted} pcs)</option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>2. Filter Style (Optional)</label>
-            <select className={selectCls} style={fieldStyle} value={selectedStyleName} onChange={(e) => { setSelectedStyleName(e.target.value); setSelectedSizeFilter('ALL'); }}>
-              <option value="ALL_STYLES">-- Overall PO Generation --</option>
-              {Object.keys(order.styles).map((st) => <option key={st} value={st}>{st}</option>)}
-            </select>
-          </div>
-          <div className="rounded-lg flex items-center gap-6 px-5 flex-wrap" style={{ background: BRAND.bg, border: '1px solid rgba(200,131,74,0.2)' }}>
-            <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Scope</p><p className="font-bold" style={{ color: BRAND.accent }}>{selectedStyleName === 'ALL_STYLES' ? `Overall PO (${order.orderId})` : selectedStyleName}</p></div>
-            <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Client</p><p className="font-bold" style={{ color: BRAND.text }}>{order.client}</p></div>
-            <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Ordered</p><p className="font-bold" style={{ color: BRAND.text }}>{totals.ordered} pcs</p></div>
-            <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Generated</p><p className="font-bold" style={{ color: BRAND.text }}>{totals.generated} pcs</p></div>
-            <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Remaining</p><p className="font-bold" style={{ color: '#d97706' }}>{totals.ordered - totals.generated} pcs</p></div>
-          </div>
+          )}
         </div>
       </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-          <div>
-            <h3 className="text-lg font-black" style={{ color: BRAND.text }}>Size Breakdown & Generation</h3>
-            <p className="text-xs" style={{ color: BRAND.textMuted }}>Click a size card to filter barcodes below, or generate piece-level barcodes.</p>
-          </div>
-          <div className="flex gap-2">
-            <button onClick={() => onGenerateAllSizes(selectedOrderId, selectedStyleName)} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs">
-              <Zap className="w-4 h-4" /> Generate All Sizes
-            </button>
-            <button onClick={() => onSendToPrintCenter(selectedOrderId, selectedStyleName, false)} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">
-              <Send className="w-4 h-4" /> Send All to Print Center
-            </button>
-          </div>
+      {!selectedOrderId ? (
+        <div className="text-center py-16 rounded-2xl" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)' }}>
+          <Barcode className="w-10 h-10 mx-auto mb-2 opacity-30" style={{ color: BRAND.textMuted }} />
+          <p className="font-bold" style={{ color: BRAND.textMuted }}>Select an order above to browse its barcode registry.</p>
         </div>
-        <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-          {Object.entries(sizeMap).map(([sz, data]) => (
-            <SizeCard
-              key={sz}
-              sizeKey={sz}
-              sizeData={data}
-              active={selectedSizeFilter === sz}
-              onSelect={() => setSelectedSizeFilter(selectedSizeFilter === sz ? 'ALL' : sz)}
-              onGenerate={() => selectedStyleName === 'ALL_STYLES' ? onGenerateOverallSize(selectedOrderId, sz) : onGenerateSize(selectedOrderId, selectedStyleName, sz)}
-            />
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
-          <div>
-            <h3 className="text-base font-black" style={{ color: BRAND.text }}>Generated Barcode Cards</h3>
-            <p className="text-xs" style={{ color: BRAND.textMuted }}>Showing {barcodes.length} barcodes {selectedSizeFilter !== 'ALL' ? `for Size ${selectedSizeFilter}` : ''}</p>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => setSelectedSizeFilter('ALL')} className="px-3 py-1.5 rounded-full text-xs font-bold transition-all" style={selectedSizeFilter === 'ALL' ? { background: BRAND.accent, color: '#fff' } : { background: '#fff', border: '1.5px solid rgba(200,131,74,0.3)', color: BRAND.textMuted }}>All Sizes</button>
-            {Object.keys(sizeMap).map((sz) => (
-              <button key={sz} onClick={() => setSelectedSizeFilter(selectedSizeFilter === sz ? 'ALL' : sz)} className="px-3 py-1.5 rounded-full text-xs font-bold transition-all" style={selectedSizeFilter === sz ? { background: BRAND.accent, color: '#fff' } : { background: '#fff', border: '1.5px solid rgba(200,131,74,0.3)', color: BRAND.textMuted }}>Size {sz}</button>
-            ))}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />
-              <input value={gridSearch} onChange={(e) => setGridSearch(e.target.value)} placeholder="Filter serial/code..." className={`${inputCls} !pl-8 !w-52 !py-2`} style={fieldStyle} />
-            </div>
-          </div>
-        </div>
-
-        {barcodes.length === 0 ? (
-          <div className="text-center py-12 rounded-xl" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)' }}>
-            <p className="font-bold" style={{ color: BRAND.textMuted }}>No generated barcodes found for this selection.</p>
-            <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Click &quot;Generate Barcode&quot; on a size card above to create piece codes.</p>
-          </div>
-        ) : (
-          <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }} variants={staggerContainer} initial="hidden" animate="show">
-            {barcodes.slice(0, 60).map((b) => (
-              <motion.div
-                key={b.pieceCode}
-                variants={fadeUpItem}
-                whileHover={{ y: -6, scale: 1.02 }}
-                transition={{ type: 'spring', stiffness: 320, damping: 22 }}
-                onClick={() => onOpenDetail(b.pieceCode)}
-                className="rounded-xl p-4 flex flex-col items-center gap-3 cursor-pointer"
-                style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}
-              >
-                <div className="w-full bg-white rounded-lg p-2 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
-                  <BarcodeCanvas code={b.pieceCode} displayWidth={200} />
+      ) : (
+        <>
+          <div className="rounded-2xl p-6 shadow-sm" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+            {orderMetaLoading ? (
+              <div className="flex items-center gap-2 text-sm py-4" style={{ color: BRAND.textMuted }}><Loader2 className="w-4 h-4 animate-spin" /> Loading analytics…</div>
+            ) : orderMetaError ? (
+              <p className="text-sm" style={{ color: '#b91c1c' }}>{orderMetaError}</p>
+            ) : analytics ? (
+              <>
+                <div className="flex items-center gap-6 flex-wrap">
+                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Planned</p><p className="font-bold" style={{ color: BRAND.text }}>{analytics.order_total.planned} pcs</p></div>
+                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Generated</p><p className="font-bold" style={{ color: BRAND.text }}>{analytics.order_total.generated} pcs</p></div>
+                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Balance</p><p className="font-bold" style={{ color: '#d97706' }}>{analytics.order_total.balance} pcs</p></div>
+                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Active</p><p className="font-bold" style={{ color: '#16a34a' }}>{analytics.order_total.active}</p></div>
+                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Retired</p><p className="font-bold" style={{ color: BRAND.textMuted }}>{analytics.order_total.retired}</p></div>
+                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Duplicates</p><p className="font-bold" style={{ color: analytics.order_total.duplicates > 0 ? '#b91c1c' : '#16a34a' }}>{analytics.order_total.duplicates}</p></div>
+                  <span className={statusBadgeClass(analytics.order_total.fully_generated ? 'PRINTED' : 'PARTIAL')}>
+                    {analytics.order_total.fully_generated ? 'Fully Generated' : analytics.order_total.half_minted ? 'Partially Minted' : 'Pending Cutting'}
+                  </span>
                 </div>
-                <div className="text-center w-full">
-                  <div className="font-mono font-bold text-xs break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
-                  <div className="flex items-center justify-center gap-1.5 mt-1.5 flex-wrap">
-                    <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>Size {b.size}</span>
-                    <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>#{b.serialStr}</span>
-                    <span className={statusBadgeClass(b.printStatus)}>{b.printStatus}</span>
+                {analytics.by_style.length > 0 && (
+                  <div className="grid gap-3 mt-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
+                    {analytics.by_style.map((st) => (
+                      <div key={st.style_id} className="rounded-lg p-3 text-xs space-y-1.5" style={{ background: BRAND.bg, border: '1px solid rgba(200,131,74,0.15)' }}>
+                        <div className="font-bold text-sm truncate" style={{ color: '#5a3518' }}>{st.style_name}</div>
+                        <div className="flex justify-between"><span style={{ color: BRAND.textMuted }}>Planned:</span><strong>{st.planned}</strong></div>
+                        <div className="flex justify-between"><span style={{ color: BRAND.textMuted }}>Minted:</span><strong>{st.minted}</strong></div>
+                        <div className="flex justify-between"><span style={{ color: BRAND.textMuted }}>Balance:</span><strong style={{ color: '#c8834a' }}>{st.balance}</strong></div>
+                      </div>
+                    ))}
                   </div>
-                </div>
-                <div className="flex gap-2 w-full" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => onOpenDetail(b.pieceCode)} className="flex-1 btn-warm-secondary !min-h-0 !py-1.5 text-xs">View</button>
-                  <button onClick={() => onPrintSingle(b.pieceCode)} className="flex-1 btn-warm-primary !min-h-0 !py-1.5 text-xs">Print</button>
-                </div>
-              </motion.div>
-            ))}
-          </motion.div>
-        )}
-      </div>
+                )}
+              </>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl p-5 shadow-sm grid gap-4 items-end" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}`, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+            <div>
+              <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Style</label>
+              <select className={selectCls} style={fieldStyle} value={filters.styleId} onChange={(e) => setFilter('styleId', e.target.value)}>
+                <option value="ALL">All Styles</option>
+                {styleFilterOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Size</label>
+              <select className={selectCls} style={fieldStyle} value={filters.size} onChange={(e) => setFilter('size', e.target.value)}>
+                <option value="ALL">All Sizes</option>
+                {sizeFilterOptions.map((sz) => <option key={sz} value={sz}>{sz}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Status</label>
+              <select className={selectCls} style={fieldStyle} value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
+                <option value="ALL">All Statuses</option>
+                <option value="active">Active</option>
+                <option value="retired">Retired</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Generated From</label>
+              <input type="date" className={inputCls} style={fieldStyle} value={filters.dateFrom} onChange={(e) => setFilter('dateFrom', e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Generated To</label>
+              <input type="date" className={inputCls} style={fieldStyle} value={filters.dateTo} onChange={(e) => setFilter('dateTo', e.target.value)} />
+            </div>
+            <button onClick={resetFilters} className="btn-warm-secondary !min-h-0 !py-2.5"><RotateCcw className="w-4 h-4" /> Reset</button>
+          </div>
+
+          <AnimatePresence mode="wait">
+            <motion.div key={activeTab} variants={tabFade} initial="hidden" animate="show" exit="exit">
+              {activeTab === 'generation' && (
+                <StyleGenerationGrid
+                  rows={rows} historyLoading={historyLoading} historyError={historyError}
+                  search={search} setSearch={setSearch}
+                  selectedCodes={selectedCodes} toggleCode={toggleCode} selectAllVisible={selectAllVisible} clearSelection={clearSelection}
+                  page={page} setPage={setPage} pages={historyData?.pages || 1} total={historyData?.total || 0}
+                  onOpenDetail={openDetail} onPrintSingle={handlePrintSingleCode}
+                  onPrintSelected={handlePrintSelected} onPrintOrder={handlePrintEntireOrder} printing={printing}
+                />
+              )}
+              {activeTab === 'print' && (
+                <StylePrintQueue
+                  selectedCodes={selectedCodes} rowByCode={rowByCode} onRemove={toggleCode} onClear={clearSelection}
+                  onPrintSelected={handlePrintSelected} onPrintOrder={handlePrintEntireOrder} printing={printing}
+                />
+              )}
+              {activeTab === 'history' && (
+                <StyleHistoryTable
+                  rows={rows} historyLoading={historyLoading} historyError={historyError}
+                  page={page} setPage={setPage} pages={historyData?.pages || 1} total={historyData?.total || 0}
+                  onOpenDetail={openDetail} onPrintSingle={handlePrintSingleCode} onExportCSV={handleExportCSV}
+                />
+              )}
+            </motion.div>
+          </AnimatePresence>
+        </>
+      )}
+
+      <LiveBarcodeDetailModal open={detailOpen} loading={detailLoading} error={detailError} data={detailData} onClose={() => setDetailOpen(false)} />
     </div>
   );
 }
@@ -821,7 +1294,7 @@ function BucketGenerationTab({ bucketGenerated, onGenerateRange, onSendToPrintCe
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="rounded-2xl p-6 shadow-sm" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
-        <div className="grid gap-5" style={{ gridTemplateColumns: '200px 200px 1fr' }}>
+        <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
           <div>
             <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>1. Start Bucket No.</label>
             <input type="number" min="1" value={startNo} onChange={(e) => setStartNo(Math.max(1, parseInt(e.target.value, 10) || 1))} className={inputCls} style={fieldStyle} />
@@ -1290,12 +1763,8 @@ export default function BarcodeManagementPage() {
   const [category, setCategory] = useState('style');
   const [activeTab, setActiveTab] = useState('generation');
 
-  // Style category data (own store, never touched by other categories)
-  const [{ ordersStore, generatedBarcodesStore, batchHistoryStore }, setState] = useState(() => buildInitialState());
-  const [selectedOrderId, setSelectedOrderId] = useState('');
-  const [selectedStyleName, setSelectedStyleName] = useState('ALL_STYLES');
-  const [selectedSizeFilter, setSelectedSizeFilter] = useState('ALL');
-  const [gridSearch, setGridSearch] = useState('');
+  // Style category is powered live by the /barcode registry — see
+  // StyleRegistryPanel, which owns its own order/analytics/history state.
 
   // Employee category data — fully separate store
   const [employeeStore, setEmployeeStore] = useState(() => ({ generated: [], history: [] }));
@@ -1338,9 +1807,10 @@ export default function BarcodeManagementPage() {
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 3500);
   }, []);
 
-  // ─── Derived: whichever category is active right now ───
-  const activeGenerated = category === 'style' ? generatedBarcodesStore : category === 'employee' ? employeeStore.generated : bucketStore.generated;
-  const activeHistory = category === 'style' ? batchHistoryStore : category === 'employee' ? employeeStore.history : bucketStore.history;
+  // ─── Derived: whichever category is active right now (style is live-fetched
+  // by StyleRegistryPanel itself and never touches these local stores) ───
+  const activeGenerated = category === 'employee' ? employeeStore.generated : category === 'bucket' ? bucketStore.generated : EMPTY_LIST;
+  const activeHistory = category === 'employee' ? employeeStore.history : category === 'bucket' ? bucketStore.history : EMPTY_LIST;
   const activeSelectedPrint = printSelections[category];
   const activeExpandedOrders = expandedOrdersByCat[category];
   const activeExpandedGroups = expandedGroupsByCat[category];
@@ -1388,85 +1858,6 @@ export default function BarcodeManagementPage() {
     }, 80);
     return () => clearTimeout(t);
   }, [printSheetItems]);
-
-  // ─── STYLE generation handlers ───
-  const generateSizeBarcodes = useCallback((orderId, styleName, sizeKey) => {
-    setState((prev) => {
-      const ordersStore = structuredClone(prev.ordersStore);
-      const ord = ordersStore[orderId];
-      const styleData = ord?.styles[styleName];
-      const sizeData = styleData?.sizes[sizeKey];
-      if (!sizeData || sizeData.remaining <= 0) return prev;
-
-      const generateCount = sizeData.remaining;
-      const batchId = `BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${Math.floor(1000 + Math.random() * 9000)}`;
-      const newBarcodes = [];
-      for (let i = 1; i <= generateCount; i++) {
-        const serialStr = String(i).padStart(3, '0');
-        const pieceCode = `${orderId}-${styleName.replace(/\s+/g, '_')}-${styleData.color.replace(/\s+/g, '_')}-${sizeKey}-${serialStr}`;
-        newBarcodes.push({
-          pieceCode, orderId, client: ord.client, style: styleName, color: styleData.color,
-          size: sizeKey, serial: i, serialStr, batchNo: batchId,
-          createdDate: new Date().toLocaleString(), generatedBy: operatorLabel, printStatus: 'PENDING', printCount: 0,
-        });
-      }
-      sizeData.generated += generateCount;
-      sizeData.remaining = 0;
-
-      const historyEntry = {
-        batchNo: batchId, orderId, client: ord.client, style: styleName, color: styleData.color,
-        size: sizeKey, qty: generateCount, generatedBy: operatorLabel, createdDate: new Date().toLocaleString(), printStatus: 'PENDING',
-      };
-
-      return {
-        ordersStore,
-        generatedBarcodesStore: [...prev.generatedBarcodesStore, ...newBarcodes],
-        batchHistoryStore: [historyEntry, ...prev.batchHistoryStore],
-      };
-    });
-  }, [operatorLabel]);
-
-  const handleGenerateSize = useCallback((orderId, styleName, sizeKey) => {
-    const sizeData = ordersStore[orderId]?.styles[styleName]?.sizes[sizeKey];
-    if (!sizeData || sizeData.remaining <= 0) return;
-    const qty = sizeData.remaining;
-    generateSizeBarcodes(orderId, styleName, sizeKey);
-    setSelectedSizeFilter(sizeKey);
-    showToast(`Generated ${qty} barcodes for ${styleName} (Size ${sizeKey})!`, 'success');
-  }, [ordersStore, generateSizeBarcodes, showToast]);
-
-  const handleGenerateOverallSize = useCallback((orderId, sizeKey) => {
-    const ord = ordersStore[orderId];
-    let count = 0;
-    Object.keys(ord.styles).forEach((st) => {
-      if (ord.styles[st].sizes[sizeKey] && ord.styles[st].sizes[sizeKey].remaining > 0) {
-        generateSizeBarcodes(orderId, st, sizeKey);
-        count++;
-      }
-    });
-    setSelectedSizeFilter(sizeKey);
-    if (count > 0) showToast(`Generated Size ${sizeKey} barcodes across all styles!`, 'success');
-    else showToast(`Size ${sizeKey} is already fully generated across all styles!`, 'info');
-  }, [ordersStore, generateSizeBarcodes, showToast]);
-
-  const handleGenerateAllSizes = useCallback((orderId, styleName) => {
-    const ord = ordersStore[orderId];
-    let count = 0;
-    if (styleName === 'ALL_STYLES') {
-      Object.keys(ord.styles).forEach((st) => {
-        Object.keys(ord.styles[st].sizes).forEach((sz) => {
-          if (ord.styles[st].sizes[sz].remaining > 0) { generateSizeBarcodes(orderId, st, sz); count++; }
-        });
-      });
-    } else {
-      const styleData = ord.styles[styleName];
-      Object.keys(styleData.sizes).forEach((sz) => {
-        if (styleData.sizes[sz].remaining > 0) { generateSizeBarcodes(orderId, styleName, sz); count++; }
-      });
-    }
-    if (count > 0) showToast('Generated barcodes for all remaining sizes!', 'success');
-    else showToast('All barcodes for this selection are already generated!', 'info');
-  }, [ordersStore, generateSizeBarcodes, showToast]);
 
   // ─── EMPLOYEE generation handlers ───
   const generateEmployeeDept = useCallback((departmentName, employees) => {
@@ -1553,23 +1944,12 @@ export default function BarcodeManagementPage() {
     setActiveTab('print');
   }, [bucketStore, showToast]);
 
-  // ─── STYLE: send-to-print (order/style scoped) ───
-  const handleSendToPrintCenter = useCallback((orderId, styleName, onlyVisible) => {
-    let codes = generatedBarcodesStore.filter((b) => b.orderId === orderId && (styleName === 'ALL_STYLES' || b.style === styleName));
-    if (onlyVisible && selectedSizeFilter !== 'ALL') codes = codes.filter((b) => b.size === selectedSizeFilter);
-    if (codes.length === 0) { showToast('No barcodes available to send to Print Center!', 'error'); return; }
-    setPrintSelections((prev) => { const next = new Set(prev.style); codes.forEach((b) => next.add(b.pieceCode)); return { ...prev, style: next }; });
-    showToast(`Queued ${codes.length} barcodes to Print Center!`, 'success');
-    setActiveTab('print');
-  }, [generatedBarcodesStore, selectedSizeFilter, showToast]);
-
-  // ─── Shared print/preview machinery (acts on whichever category is active) ───
+  // ─── Shared print/preview machinery (Employee/Bucket only — Style's live
+  // registry has its own print flow via StyleRegistryPanel/POST /barcode/print) ───
   const markPrinted = useCallback((codes) => {
-    if (category === 'style') {
-      setState((prev) => ({ ...prev, generatedBarcodesStore: prev.generatedBarcodesStore.map((b) => codes.includes(b.pieceCode) ? { ...b, printStatus: 'PRINTED', printCount: b.printCount + 1 } : b) }));
-    } else if (category === 'employee') {
+    if (category === 'employee') {
       setEmployeeStore((prev) => ({ ...prev, generated: prev.generated.map((b) => codes.includes(b.pieceCode) ? { ...b, printStatus: 'PRINTED', printCount: b.printCount + 1 } : b) }));
-    } else {
+    } else if (category === 'bucket') {
       setBucketStore((prev) => ({ ...prev, generated: prev.generated.map((b) => codes.includes(b.pieceCode) ? { ...b, printStatus: 'PRINTED', printCount: b.printCount + 1 } : b) }));
     }
   }, [category]);
@@ -1662,21 +2042,6 @@ export default function BarcodeManagementPage() {
   const toggleExpandedGroup = useCallback((key) => setExpandedGroupsByCat((prev) => { const s = new Set(prev[category]); s.has(key) ? s.delete(key) : s.add(key); return { ...prev, [category]: s }; }), [category]);
   const toggleExpandedHistoryOrder = useCallback((id) => setExpandedHistoryOrdersByCat((prev) => { const s = new Set(prev[category]); s.has(id) ? s.delete(id) : s.add(id); return { ...prev, [category]: s }; }), [category]);
 
-  const styleHistoryOptions = useMemo(() => {
-    const clients = new Set(); const styles = new Set(); const sizes = new Set();
-    Object.values(ordersStore).forEach((o) => {
-      clients.add(o.client);
-      Object.entries(o.styles).forEach(([st, data]) => { styles.add(st); Object.keys(data.sizes).forEach((sz) => sizes.add(sz)); });
-    });
-    return {
-      orderIds: Object.keys(ordersStore),
-      clients: Array.from(clients),
-      styles: Array.from(styles),
-      sizes: Array.from(sizes).sort((a, b) => Number(a) - Number(b)),
-      operators: Array.from(new Set(batchHistoryStore.map((b) => b.generatedBy))),
-    };
-  }, [ordersStore, batchHistoryStore]);
-
   const employeeHistoryOptions = useMemo(() => {
     const depts = Array.from(new Set(employeeDirectory.map((e) => e.department)));
     return {
@@ -1696,16 +2061,11 @@ export default function BarcodeManagementPage() {
     operators: Array.from(new Set(bucketStore.history.map((b) => b.generatedBy))),
   }), [bucketStore.history]);
 
-  const activeHistoryOptions = category === 'style' ? styleHistoryOptions : category === 'employee' ? employeeHistoryOptions : bucketHistoryOptions;
+  const activeHistoryOptions = category === 'employee' ? employeeHistoryOptions : bucketHistoryOptions;
 
-  const handleViewFromHistory = useCallback((orderId, styleName) => {
-    if (category === 'style') {
-      setSelectedOrderId(orderId);
-      setSelectedStyleName(styleName);
-      setSelectedSizeFilter('ALL');
-    }
+  const handleViewFromHistory = useCallback(() => {
     setActiveTab('generation');
-  }, [category]);
+  }, []);
 
   const handleReprintFromHistory = useCallback((b) => {
     setPrintSelections((prev) => { const next = new Set(activeGenerated.filter((x) => x.batchNo === b.batchNo).map((x) => x.pieceCode)); return { ...prev, [category]: next }; });
@@ -1765,12 +2125,15 @@ export default function BarcodeManagementPage() {
 
       <ToastStack toasts={toasts} />
 
-      <motion.div variants={fadeUpItem}>
-        <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: BRAND.accent }}>Production · Piece-Level Traceability</p>
-        <h1 className="text-3xl font-black tracking-tight flex items-center gap-3" style={{ color: BRAND.text }}>
-          <Barcode className="w-8 h-8" style={{ color: BRAND.accent }} /> Barcode Management
-        </h1>
-        <p className="font-medium mt-0.5" style={{ color: BRAND.textMuted }}>{CATEGORY_SUBTITLES[category]}</p>
+      <motion.div variants={fadeUpItem} className="flex items-start justify-between flex-wrap gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: BRAND.accent }}>Production · Piece-Level Traceability</p>
+          <h1 className="text-3xl font-black tracking-tight flex items-center gap-3" style={{ color: BRAND.text }}>
+            <Barcode className="w-8 h-8" style={{ color: BRAND.accent }} /> Barcode Management
+          </h1>
+          <p className="font-medium mt-0.5" style={{ color: BRAND.textMuted }}>{CATEGORY_SUBTITLES[category]}</p>
+        </div>
+        <ResolveBarcodeWidget token={token} showToast={showToast} />
       </motion.div>
 
       {/* ─── Category slider: Style / Employee / Bucket — each keeps its own data, never merged ─── */}
@@ -1824,93 +2187,78 @@ export default function BarcodeManagementPage() {
         })}
       </motion.div>
 
-      <AnimatePresence mode="wait">
-        <motion.div key={`${category}-${activeTab}`} variants={tabFade} initial="hidden" animate="show" exit="exit">
-          {activeTab === 'generation' && category === 'style' && (
-            <GenerationTab
-              ordersStore={ordersStore}
-              selectedOrderId={selectedOrderId}
-              setSelectedOrderId={setSelectedOrderId}
-              selectedStyleName={selectedStyleName}
-              setSelectedStyleName={setSelectedStyleName}
-              selectedSizeFilter={selectedSizeFilter}
-              setSelectedSizeFilter={setSelectedSizeFilter}
-              generatedBarcodesStore={generatedBarcodesStore}
-              gridSearch={gridSearch}
-              setGridSearch={setGridSearch}
-              onGenerateSize={handleGenerateSize}
-              onGenerateOverallSize={handleGenerateOverallSize}
-              onGenerateAllSizes={handleGenerateAllSizes}
-              onSendToPrintCenter={handleSendToPrintCenter}
-              onOpenDetail={setDetailCode}
-              onPrintSingle={handlePrintSingle}
-            />
-          )}
+      {category === 'style' && (
+        <StyleRegistryPanel activeTab={activeTab} token={token} showToast={showToast} setPrintSheetItems={setPrintSheetItems} />
+      )}
 
-          {activeTab === 'generation' && category === 'employee' && (
-            <EmployeeGenerationTab
-              employees={employeeDirectory}
-              employeesLoading={employeesLoading}
-              employeesError={token ? employeesError : 'Sign in to load the employee roster.'}
-              onRetryEmployees={reloadEmployees}
-              employeeGenerated={employeeStore.generated}
-              onGenerateSelected={generateSelectedEmployees}
-              onGenerateAllRemaining={generateAllRemainingEmployees}
-              onSendToPrintCenter={sendEmployeesToPrintCenter}
-              onOpenDetail={setDetailCode}
-              onPrintSingle={handlePrintSingle}
-            />
-          )}
+      {category !== 'style' && (
+        <AnimatePresence mode="wait">
+          <motion.div key={`${category}-${activeTab}`} variants={tabFade} initial="hidden" animate="show" exit="exit">
+            {activeTab === 'generation' && category === 'employee' && (
+              <EmployeeGenerationTab
+                employees={employeeDirectory}
+                employeesLoading={employeesLoading}
+                employeesError={token ? employeesError : 'Sign in to load the employee roster.'}
+                onRetryEmployees={reloadEmployees}
+                employeeGenerated={employeeStore.generated}
+                onGenerateSelected={generateSelectedEmployees}
+                onGenerateAllRemaining={generateAllRemainingEmployees}
+                onSendToPrintCenter={sendEmployeesToPrintCenter}
+                onOpenDetail={setDetailCode}
+                onPrintSingle={handlePrintSingle}
+              />
+            )}
 
-          {activeTab === 'generation' && category === 'bucket' && (
-            <BucketGenerationTab
-              bucketGenerated={bucketStore.generated}
-              onGenerateRange={generateBucketRange}
-              onSendToPrintCenter={sendBucketsToPrintCenter}
-              onOpenDetail={setDetailCode}
-              onPrintSingle={handlePrintSingle}
-            />
-          )}
+            {activeTab === 'generation' && category === 'bucket' && (
+              <BucketGenerationTab
+                bucketGenerated={bucketStore.generated}
+                onGenerateRange={generateBucketRange}
+                onSendToPrintCenter={sendBucketsToPrintCenter}
+                onOpenDetail={setDetailCode}
+                onPrintSingle={handlePrintSingle}
+              />
+            )}
 
-          {activeTab === 'print' && (
-            <PrintTab
-              generatedBarcodesStore={activeGenerated}
-              selectedPrintBarcodes={activeSelectedPrint}
-              expandedOrders={activeExpandedOrders}
-              onToggleOrderExpand={toggleExpandedOrder}
-              expandedGroups={activeExpandedGroups}
-              onToggleExpand={toggleExpandedGroup}
-              onToggleGroup={(items, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); items.forEach((i) => checked ? next.add(i.pieceCode) : next.delete(i.pieceCode)); return { ...prev, [category]: next }; })}
-              onTogglePiece={(code, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); checked ? next.add(code) : next.delete(code); return { ...prev, [category]: next }; })}
-              onSelectAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set(activeGenerated.map((b) => b.pieceCode)) }))}
-              onClearAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set() }))}
-              onOpenPreview={handleOpenPreview}
-              onPrintGroupDirect={handlePrintGroupDirect}
-              onOpenDetail={setDetailCode}
-              onPrintSingle={handlePrintSingle}
-              onDownloadAll={handleDownloadAll}
-              bulkExporting={bulkExporting}
-              labels={activeLabels}
-            />
-          )}
+            {activeTab === 'print' && (
+              <PrintTab
+                generatedBarcodesStore={activeGenerated}
+                selectedPrintBarcodes={activeSelectedPrint}
+                expandedOrders={activeExpandedOrders}
+                onToggleOrderExpand={toggleExpandedOrder}
+                expandedGroups={activeExpandedGroups}
+                onToggleExpand={toggleExpandedGroup}
+                onToggleGroup={(items, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); items.forEach((i) => checked ? next.add(i.pieceCode) : next.delete(i.pieceCode)); return { ...prev, [category]: next }; })}
+                onTogglePiece={(code, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); checked ? next.add(code) : next.delete(code); return { ...prev, [category]: next }; })}
+                onSelectAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set(activeGenerated.map((b) => b.pieceCode)) }))}
+                onClearAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set() }))}
+                onOpenPreview={handleOpenPreview}
+                onPrintGroupDirect={handlePrintGroupDirect}
+                onOpenDetail={setDetailCode}
+                onPrintSingle={handlePrintSingle}
+                onDownloadAll={handleDownloadAll}
+                bulkExporting={bulkExporting}
+                labels={activeLabels}
+              />
+            )}
 
-          {activeTab === 'history' && (
-            <HistoryTab
-              batchHistoryStore={activeHistory}
-              filters={activeHistoryFilters}
-              setFilter={setHistoryFilter}
-              resetFilters={resetHistoryFilters}
-              options={activeHistoryOptions}
-              onView={handleViewFromHistory}
-              onReprint={handleReprintFromHistory}
-              onExportCSV={() => handleExportCSV(activeHistory)}
-              expandedOrders={activeExpandedHistoryOrders}
-              onToggleOrderExpand={toggleExpandedHistoryOrder}
-              labels={activeLabels}
-            />
-          )}
-        </motion.div>
-      </AnimatePresence>
+            {activeTab === 'history' && (
+              <HistoryTab
+                batchHistoryStore={activeHistory}
+                filters={activeHistoryFilters}
+                setFilter={setHistoryFilter}
+                resetFilters={resetHistoryFilters}
+                options={activeHistoryOptions}
+                onView={handleViewFromHistory}
+                onReprint={handleReprintFromHistory}
+                onExportCSV={() => handleExportCSV(activeHistory)}
+                expandedOrders={activeExpandedHistoryOrders}
+                onToggleOrderExpand={toggleExpandedHistoryOrder}
+                labels={activeLabels}
+              />
+            )}
+          </motion.div>
+        </AnimatePresence>
+      )}
 
       <DetailModal barcode={detailBarcode} onClose={() => setDetailCode(null)} onPrint={handlePrintSingle} labels={activeLabels} category={category} />
       <PrintPreviewModal
