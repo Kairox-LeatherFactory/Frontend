@@ -74,8 +74,69 @@ function chunkArray(arr, size) {
   return out;
 }
 
+// ─── EXPORT DPI SPEC ──────────────────────────────────────────────────────────
+const CSS_DPI = 96;               // what a browser assumes 1 CSS px is worth
+const BARCODE_SPEC = { dpi: 400 }; // target print density for exported cards
+
+// ─── PNG DENSITY METADATA ────────────────────────────────────────────────────
+// A canvas has no notion of DPI, so the PNG it hands back is implicitly 96 DPI.
+// Word, Illustrator and most label software would then place a 560 px barcode
+// at ~5.8 inches wide. Writing a pHYs chunk stamps the real density on the file
+// so it lands at its intended physical size.
+const PNG_CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c >>> 0;
+  }
+  return table;
+})();
+
+function pngCrc32(bytes) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) crc = PNG_CRC_TABLE[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function stampPngDpi(buffer, dpi = BARCODE_SPEC.dpi) {
+  const src = new Uint8Array(buffer);
+  const perMetre = Math.round(dpi / 0.0254); // 400 DPI → 15748 px/m
+
+  const chunk = new Uint8Array(21);
+  const cv = new DataView(chunk.buffer);
+  cv.setUint32(0, 9);                       // data length
+  chunk.set([0x70, 0x48, 0x59, 0x73], 4);   // "pHYs"
+  cv.setUint32(8, perMetre);                // x axis
+  cv.setUint32(12, perMetre);               // y axis
+  chunk[16] = 1;                            // unit specifier: metre
+  cv.setUint32(17, pngCrc32(chunk.subarray(4, 17)));
+
+  // Walk the chunk list so an existing pHYs is replaced, not duplicated.
+  const dv = new DataView(src.buffer, src.byteOffset, src.byteLength);
+  let pos = 8; // past the PNG signature
+  while (pos + 12 <= src.length) {
+    const len = dv.getUint32(pos);
+    const type = String.fromCharCode(src[pos + 4], src[pos + 5], src[pos + 6], src[pos + 7]);
+    if (type === 'pHYs') {
+      const out = src.slice();
+      out.set(chunk, pos);
+      return out;
+    }
+    if (type === 'IDAT' || type === 'IEND') break; // pHYs has to precede IDAT
+    pos += 12 + len;
+  }
+  if (pos + 12 > src.length) pos = 33; // signature + IHDR, if the walk ran off
+
+  const out = new Uint8Array(src.length + chunk.length);
+  out.set(src.subarray(0, pos), 0);
+  out.set(chunk, pos);
+  out.set(src.subarray(pos), pos + chunk.length);
+  return out;
+}
+
 // scale 2 gave ~192 DPI, which is soft once printed. Capturing at dpi/96
-// (3.125x for 300 DPI) means the exported card is genuinely 300 DPI.
+// (4.167x for 400 DPI) means the exported card is genuinely 400 DPI.
 async function captureNodeToCanvas(node, { dpi = BARCODE_SPEC.dpi } = {}) {
   const canvas = await html2canvas(node, {
     backgroundColor: '#ffffff',
@@ -219,15 +280,25 @@ function TicketRow({ label, value }) {
 // Designation, perforated tear line, barcode. Used for the "employee" category
 // in the View modal, bulk export, and the printed sheet.
 function EmployeeTicketCard({ barcode, cardRef, width }) {
+  // The wordmark's size/tracking is tuned for the 440px default (single-card
+  // view, print sheet). Bulk export renders this same card at 340px — at that
+  // width the untouched sizing overflows past the card edge and gets clipped
+  // by overflow-hidden below. Scale it down instead for narrower cards.
+  const compact = (width || 440) < 400;
   return (
     <div
       ref={cardRef}
       className="overflow-hidden"
       style={{ width: width || 440, maxWidth: '100%', background: '#ffffff', border: `1px solid ${TICKET.line}`, borderRadius: 0, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
     >
-      <div className="flex items-center justify-between px-6 py-4" style={{ background: TICKET.black }}>
-        <CompanyMark />
-        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: 'rgba(255,255,255,0.7)' }}>Employee ID</span>
+      <div className="px-6 py-4 flex items-center gap-3" style={{ background: TICKET.black }}>
+        <CompanyMark size={compact ? 40 : 56} />
+        <div className="flex-1 min-w-0">
+          <span className={`font-serif font-normal uppercase whitespace-nowrap ${compact ? 'text-sm tracking-[0.04em]' : 'text-xl tracking-[0.15em]'}`} style={{ color: '#ffffff' }}>Pakkar Tanveer Exports</span>
+          <div className="mt-1 text-right">
+            <span className={`font-bold uppercase ${compact ? 'text-[9px] tracking-wide' : 'text-xs tracking-widest'}`} style={{ color: 'rgba(255,255,255,0.7)' }}>Employee ID</span>
+          </div>
+        </div>
       </div>
       <div className="px-7 pt-7">
         <TicketRow label="Name" value={barcode.style} />
@@ -238,7 +309,7 @@ function EmployeeTicketCard({ barcode, cardRef, width }) {
         <TicketPerforation />
       </div>
       <div className="px-7 pb-8 flex flex-col items-center">
-        <BarcodeCanvas code={barcode.pieceCode} displayWidth={300} />
+        <BarcodeCanvas code={barcode.pieceCode} height={70} moduleWidth={2} />
       </div>
     </div>
   );
@@ -567,9 +638,7 @@ function GenerationTab({
 
 // ─── EMPLOYEE: BATCH GENERATION TAB ────────────────────────────────────────────
 function EmployeeGenerationTab({ employees, employeesLoading, employeesError, onRetryEmployees, employeeGenerated, onGenerateSelected, onGenerateAllRemaining, onSendToPrintCenter, onOpenDetail, onPrintSingle }) {
-  const departments = useMemo(() => Array.from(new Set(employees.map((e) => e.department))), [employees]);
   const designations = useMemo(() => Array.from(new Set(employees.map((e) => e.designation))), [employees]);
-  const [deptFilter, setDeptFilter] = useState('ALL');
   const [designationFilter, setDesignationFilter] = useState('ALL');
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [search, setSearch] = useState('');
@@ -578,12 +647,11 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
 
   const filteredEmployees = useMemo(() => {
     let list = employees;
-    if (deptFilter !== 'ALL') list = list.filter((e) => e.department === deptFilter);
     if (designationFilter !== 'ALL') list = list.filter((e) => e.designation === designationFilter);
     const q = search.trim().toLowerCase();
     if (q) list = list.filter((e) => e.name.toLowerCase().includes(q) || e.empId.toLowerCase().includes(q));
     return list;
-  }, [employees, deptFilter, designationFilter, search]);
+  }, [employees, designationFilter, search]);
 
   const totals = useMemo(() => ({ ordered: employees.length, generated: employeeGenerated.length }), [employees, employeeGenerated]);
 
@@ -608,10 +676,6 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
     return list;
   }, [employeeGenerated, search]);
 
-  const pillStyle = (active) => active
-    ? { background: BRAND.accent, color: '#fff' }
-    : { background: '#fff', border: '1.5px solid rgba(200,131,74,0.3)', color: BRAND.textMuted };
-
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="rounded-2xl p-6 shadow-sm flex items-center gap-6 flex-wrap" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
@@ -625,7 +689,7 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
         <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
           <div>
             <h3 className="text-lg font-black" style={{ color: BRAND.text }}>Select Employees to Generate</h3>
-            <p className="text-xs" style={{ color: BRAND.textMuted }}>Click a Department or Designation to filter the list, check employees, then generate.</p>
+            <p className="text-xs" style={{ color: BRAND.textMuted }}>Filter by designation, check employees, then generate.</p>
           </div>
           <div className="flex gap-2 flex-wrap">
             <button onClick={handleGenerateClick} disabled={selectedIds.size === 0} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs disabled:opacity-50 disabled:cursor-default">
@@ -636,22 +700,14 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap mb-2.5">
-          <span className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Department:</span>
-          <button onClick={() => setDeptFilter('ALL')} className="px-3 py-1 rounded-full text-xs font-bold transition-all" style={pillStyle(deptFilter === 'ALL')}>All</button>
-          {departments.map((d) => (
-            <button key={d} onClick={() => setDeptFilter(deptFilter === d ? 'ALL' : d)} className="px-3 py-1 rounded-full text-xs font-bold transition-all" style={pillStyle(deptFilter === d)}>{d}</button>
-          ))}
-        </div>
-        <div className="flex items-center gap-2 flex-wrap mb-4">
-          <span className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Designation:</span>
-          <button onClick={() => setDesignationFilter('ALL')} className="px-3 py-1 rounded-full text-xs font-bold transition-all" style={pillStyle(designationFilter === 'ALL')}>All</button>
-          {designations.map((d) => (
-            <button key={d} onClick={() => setDesignationFilter(designationFilter === d ? 'ALL' : d)} className="px-3 py-1 rounded-full text-xs font-bold transition-all" style={pillStyle(designationFilter === d)}>{d}</button>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[0.68rem] font-bold uppercase whitespace-nowrap" style={{ color: BRAND.textMuted }}>Designation:</span>
+            <select value={designationFilter} onChange={(e) => setDesignationFilter(e.target.value)} className={`${selectCls} !w-56`} style={fieldStyle}>
+              <option value="ALL">All Designations</option>
+              {designations.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
           <p className="text-xs" style={{ color: BRAND.textMuted }}>{filteredEmployees.length} employee{filteredEmployees.length === 1 ? '' : 's'} match this filter</p>
           <div className="flex gap-2">
             <button onClick={selectAllVisible} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Select All Visible</button>
@@ -659,42 +715,39 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
           </div>
         </div>
 
-        <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
-          {employeesLoading ? (
-            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>Loading employee roster…</div>
-          ) : employeesError ? (
-            <div className="text-center py-8 text-sm space-y-2" style={{ color: BRAND.textMuted }}>
-              <p style={{ color: '#b91c1c' }}>{employeesError}</p>
-              <button onClick={onRetryEmployees} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Retry</button>
-            </div>
-          ) : filteredEmployees.length === 0 ? (
-            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>
-              {employees.length === 0 ? 'No employees on the roster yet.' : 'No employees match this filter.'}
-            </div>
-          ) : filteredEmployees.map((e, idx) => {
-            const isGenerated = generatedIds.has(e.empId);
-            const isChecked = selectedIds.has(e.empId);
-            return (
-              <label
-                key={e.empId}
-                className="flex items-center justify-between px-4 py-3 cursor-pointer"
-                style={{
-                  background: isChecked ? '#faf3ea' : '#fff',
-                  borderTop: idx === 0 ? 'none' : '1px solid rgba(200,131,74,0.15)',
-                }}
-              >
-                <div className="flex items-center gap-3">
-                  <input type="checkbox" disabled={isGenerated} checked={isChecked} onChange={() => toggleSelect(e.empId)} className="w-4 h-4 accent-[#c8834a] cursor-pointer disabled:cursor-default" />
-                  <div>
-                    <div className="font-bold text-sm" style={{ color: '#5a3518' }}>{e.name}</div>
-                    <div className="text-xs" style={{ color: BRAND.textMuted }}>{e.department} • {e.designation} • {e.empId}</div>
+        {employeesLoading ? (
+          <div className="text-center py-8 text-sm rounded-lg" style={{ color: BRAND.textMuted, border: `1px solid ${BRAND.border}` }}>Loading employee roster…</div>
+        ) : employeesError ? (
+          <div className="text-center py-8 text-sm space-y-2 rounded-lg" style={{ color: BRAND.textMuted, border: `1px solid ${BRAND.border}` }}>
+            <p style={{ color: '#b91c1c' }}>{employeesError}</p>
+            <button onClick={onRetryEmployees} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Retry</button>
+          </div>
+        ) : filteredEmployees.length === 0 ? (
+          <div className="text-center py-8 text-sm rounded-lg" style={{ color: BRAND.textMuted, border: `1px solid ${BRAND.border}` }}>
+            {employees.length === 0 ? 'No employees on the roster yet.' : 'No employees match this filter.'}
+          </div>
+        ) : (
+          <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))' }}>
+            {filteredEmployees.map((e) => {
+              const isGenerated = generatedIds.has(e.empId);
+              const isChecked = selectedIds.has(e.empId);
+              return (
+                <label
+                  key={e.empId}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg cursor-pointer"
+                  style={{ background: isChecked ? '#faf3ea' : '#fff', border: `1.5px solid ${isChecked ? BRAND.accent : BRAND.border}` }}
+                >
+                  <input type="checkbox" disabled={isGenerated} checked={isChecked} onChange={() => toggleSelect(e.empId)} className="w-4 h-4 accent-[#c8834a] cursor-pointer disabled:cursor-default flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-sm truncate" style={{ color: '#5a3518' }}>{e.name}</div>
+                    <div className="text-xs truncate" style={{ color: BRAND.textMuted }}>{e.designation} • {e.empId}</div>
                   </div>
-                </div>
-                <span className={statusBadgeClass(isGenerated ? 'PRINTED' : 'PENDING')}>{isGenerated ? 'Generated' : 'Pending'}</span>
-              </label>
-            );
-          })}
-        </div>
+                  <span className={`${statusBadgeClass(isGenerated ? 'PRINTED' : 'PENDING')} flex-shrink-0`}>{isGenerated ? 'Done' : 'Pending'}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <div>
@@ -1554,11 +1607,15 @@ export default function BarcodeManagementPage() {
         const pages = container.querySelectorAll('.export-page');
         const pdf = new jsPDF({ unit: 'px', format: 'a4' });
         const pageW = pdf.internal.pageSize.getWidth();
-        const pageH = pdf.internal.pageSize.getHeight();
         for (let i = 0; i < pages.length; i++) {
           const canvas = await captureNodeToCanvas(pages[i]);
           if (i > 0) pdf.addPage();
-          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, pageH);
+          // Draw at the page's width but the image's own aspect ratio — a
+          // trailing page with fewer cards (e.g. 1 instead of 4) is shorter
+          // than a full page, and forcing it to the full page height (as
+          // before) stretched that last row of cards taller than the rest.
+          const imgH = pageW * (canvas.height / canvas.width);
+          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, pageW, imgH);
         }
         await savePdfBlob(pdf, `barcode-cards-${category}-${Date.now()}`);
       } else {
