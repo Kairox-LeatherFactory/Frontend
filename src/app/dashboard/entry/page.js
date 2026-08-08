@@ -1980,7 +1980,7 @@ export default function ProductionLogEntry() {
 
               {/* 7 Operation Stage Banners */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['Cutting', 'Fusing', 'Pasting', 'Shell Stitch', 'Lining Stitch', 'Final Finish'].map((stage) => {
+                {['Cutting', 'Fusing', 'Pasting', 'Lining', 'Shell Stitch', 'Lining Stitch', 'Final Finish'].map((stage) => {
                   const isSelected = selectedStage === stage;
                   return (
                     <button
@@ -2562,15 +2562,17 @@ export default function ProductionLogEntry() {
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {(() => {
-                    const stageOrder = ['cut', 'fusing', 'pasting', 'linestitch', 'shellstitch', 'finalfinish'];
+                    const stageOrder = ['cut', 'fusing', 'pasting', 'lining', 'store', 'shellstitch', 'linestitch', 'finalfinish'];
                     const normalizeStageName = (str) => {
                       const s = String(str || '').toLowerCase().replace(/[^a-z]/g, '');
+                      if (s === 'lining') return 'lining';
                       if (s.includes('cut')) return 'cut';
                       if (s.includes('fuse')) return 'fusing';
                       if (s.includes('paste')) return 'pasting';
-                      if (s.includes('line') || s.includes('lining')) return 'linestitch';
+                      if (s.includes('line') || s.includes('liningstitch')) return 'linestitch';
                       if (s.includes('shell') || s.includes('stitch') || s.includes('sew')) return 'shellstitch';
                       if (s.includes('finish') || s.includes('final')) return 'finalfinish';
+                      if (s.includes('store') || s.includes('sended')) return 'store';
                       return s;
                     };
 
@@ -2579,6 +2581,19 @@ export default function ProductionLogEntry() {
                       const activeNorm = normalizeStageName(selectedStage);
                       const activeOpIdx = stageOrder.indexOf(activeNorm);
                       const pieceNorm = normalizeStageName(p.current_stage_label || p.current_stage);
+
+                      // Parallel start rule: Pending pieces can go to Cutting or Lining
+                      if (!pieceNorm || pieceNorm === 'pending') {
+                        if (activeNorm !== 'cut' && activeNorm !== 'lining') return false;
+                      }
+
+                      // Factory Rule: Store Verification
+                      // Shell Stitch cannot begin unless piece has passed store (sended)
+                      if (activeNorm === 'shellstitch') {
+                        if (pieceNorm === 'cut' || pieceNorm === 'fusing' || pieceNorm === 'pasting' || pieceNorm === 'lining') {
+                           return false;
+                        }
+                      }
 
                       // Factory Rule: Pieces at Cutting ('cut') are ONLY enabled in Cutting (0) & Fusing (1).
                       // From Pasting (2) onwards, Cutting pieces are BLOCKED & DISABLED!
