@@ -1070,47 +1070,41 @@ export async function apiGetAnalyticsConsumption(token, params = {}) {
   return res.json();
 }
 
-
 /**
- * Store Scanner: Post piece part (Leather/Lining) to a Drawer
- * POST /api/v1/drawers/store-scan
+ * 15. GET /api/v1/drawers
+ * List drawers for printable barcodes & labels
+ * Query: state, seq_from, seq_to, limit, offset
+ * Response: DrawerLabelPage { total, count, items: DrawerLabel[] }
  */
-export async function apiStoreScan(token, drawer_barcode, piece_barcode, part) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/store-scan`, {
-    method: 'POST',
+export async function apiListDrawers(token, params = {}) {
+  const query = new URLSearchParams();
+  if (params.state && params.state !== 'ALL') query.append('state', params.state);
+  if (params.seq_from !== undefined && params.seq_from !== null && params.seq_from !== '') query.append('seq_from', params.seq_from);
+  if (params.seq_to !== undefined && params.seq_to !== null && params.seq_to !== '') query.append('seq_to', params.seq_to);
+  if (params.limit !== undefined && params.limit !== null) query.append('limit', params.limit);
+  if (params.offset !== undefined && params.offset !== null) query.append('offset', params.offset);
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers${qs}`, {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ drawer_barcode, piece_barcode, part }),
   });
   if (!res.ok) {
-    const errText = await res.text().catch(() => 'Store scan failed');
-    const err = new Error(errText || `Store scan failed (${res.status})`);
-    err.status = res.status;
-    throw err;
+    // Fallback attempt to /api/drawers if not prefixed with /api/v1
+    const fallbackRes = await fetch(`${API_BASE_URL}/api/drawers${qs}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }).catch(() => null);
+    if (fallbackRes && fallbackRes.ok) {
+      return fallbackRes.json();
+    }
+    const errText = await res.text().catch(() => 'Failed to list drawers');
+    throw new Error(errText || `Failed to list drawers (${res.status})`);
   }
   return res.json();
 }
 
-/**
- * Manager Release: Transition a Drawer to RECEIVED or SENDED
- * POST /api/v1/drawers/
- */
-export async function apiStoreRelease(token, drawer_barcode, transition) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ drawer_barcode, transition }),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => 'Store release failed');
-    const err = new Error(errText || `Store release failed (${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
