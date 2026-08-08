@@ -37,11 +37,12 @@ export default function StyleStageProgress() {
       .finally(() => { setProgressLoading(false); });
   }, [token, effectiveOrderId, activeOrder?.style_id]);
 
-  // Define operational stages
   const operations = [
     { name: 'Cutting',       desc: 'Raw leather hides die-cut into design panels' },
     { name: 'Fusing',        desc: 'Heat-bonding structural interlining to panels' },
     { name: 'Pasting',       desc: 'Adhering seams and align components temporarily' },
+    { name: 'Lining',        desc: 'Inner satin lining cut and prepared (Parallel)' },
+    { name: 'Store',         desc: 'Centralized drawer verification (Merge point)' },
     { name: 'Shell stitch',  desc: 'Primary leather exterior structure stitch' },
     { name: 'Lining attach', desc: 'Inner satin lining matched and sewn to leather shell' },
     { name: 'Lining stitch', desc: 'Closing inner seams and pocket bag fittings' },

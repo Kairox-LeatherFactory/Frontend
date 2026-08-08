@@ -8,7 +8,6 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
-import JsBarcode from 'jsbarcode';
 import AnimatedModal from '@/components/AnimatedModal';
 import { useAuth } from '@/context/AuthContext';
 import { apiGetEmployees } from '@/lib/api';
@@ -23,12 +22,7 @@ const initialOrdersStore = {};
 // — this screen groups by department, so designation doubles as the department
 // bucket until the roster carries one of its own.
 function normalizeEmployee(row) {
-  // employee_barcode is the code the backend registered, and is what the
-  // attendance/resolve endpoints look up — always prefer it. The fallback below
-  // is a display stopgap for a roster row that is missing one; it is derived
-  // from a UUID, so it will not resolve server-side. Kept short deliberately:
-  // the full UUID would encode to a ~40-character symbol too wide for the badge.
-  const empId = row.employee_barcode || `EMP-${String(row.id ?? '').slice(0, 8).toUpperCase()}`;
+  const empId = row.employee_barcode || `EMP-${String(row.id).slice(0, 8).toUpperCase()}`;
   return {
     id: row.id,
     empId,
@@ -48,12 +42,95 @@ function buildInitialState() {
   };
 }
 
-// ─── CODE 128 RENDERING ──────────────────────────────────────────────────────
-// Symbols are produced by the `jsbarcode` library rather than a local encoder.
-// A hand-typed pattern table used to live here, and one of its 107 entries was
-// wrong (value 48 / 'P' carried the bars for value 23 / '7'), which silently
-// broke the check digit on every "EMP-" badge. Same library, same options as
-// the Admin employee badge — see EmployeeIdCardModal in dashboard/admin/page.js.
+// ─── CODE 128B ENCODING ENGINE ───────────────────────────────────────────────
+const CODE128B_VALUES = {};
+const CODE128B_PATTERNS = {};
+
+(() => {
+  const patterns = [
+    '11011001100', '11001101100', '11001100110', '10010011000', '10010001100',
+    '10001001100', '10011001000', '10011000100', '10001100100', '11001001000',
+    '11001000100', '11000100100', '10110011100', '10011011100', '10011001110',
+    '10111001100', '10011101100', '10011100110', '11001110010', '11001011100',
+    '11001001110', '11011100100', '11001110100', '11101101110', '11101001100',
+    '11100101100', '11100100110', '11101100100', '11100110100', '11100110010',
+    '11011011000', '11011000110', '11000110110', '10100011000', '10001011000',
+    '10001000110', '10110001000', '10001101000', '10001100010', '11010001000',
+    '11000101000', '11000100010', '10110111000', '10110001110', '10001101110',
+    '10111011000', '10111000110', '10001110110', '11101101110', '11010001110',
+    '11000101110', '11011101000', '11011100010', '11011101110', '11101011000',
+    '11101000110', '11100010110', '11101101000', '11101100010', '11100011010',
+    '11101111010', '11001000010', '11110001010', '10100110000', '10100001100',
+    '10010110000', '10010000110', '10000101100', '10000100110', '10110010000',
+    '10110000100', '10011010000', '10011000010', '10000110100', '10000110010',
+    '11000010010', '11001010000', '11110111010', '11000010100', '10001111010',
+    '10100111100', '10010111100', '10010011110', '10111100100', '10011110100',
+    '10011110010', '11110100100', '11110010100', '11110010010', '11011011110',
+    '11011110110', '11110110110', '10101111000', '10100011110', '10001011110',
+    '10111101000', '10111100010', '11110101000', '11110100010', '10111011110',
+    '10111101110', '11101011110', '11110101110', '11010000100', '11010010000',
+    '11010011100', '11000111010',
+  ];
+
+  for (let i = 0; i <= 95; i++) {
+    const char = String.fromCharCode(i + 32);
+    CODE128B_VALUES[char] = i;
+    CODE128B_PATTERNS[i] = patterns[i];
+  }
+  CODE128B_PATTERNS['START_B'] = patterns[104];
+  CODE128B_PATTERNS['STOP'] = patterns[106];
+  CODE128B_VALUES['START_B'] = 104;
+  CODE128B_VALUES['STOP'] = 106;
+})();
+
+function encodeCode128B(text) {
+  const values = [];
+  for (let i = 0; i < text.length; i++) {
+    const val = CODE128B_VALUES[text[i]];
+    if (val !== undefined) values.push(val);
+  }
+  let checksum = CODE128B_VALUES['START_B'];
+  for (let i = 0; i < values.length; i++) {
+    checksum += values[i] * (i + 1);
+  }
+  checksum = checksum % 103;
+
+  let pattern = CODE128B_PATTERNS['START_B'];
+  values.forEach((v) => { pattern += CODE128B_PATTERNS[v]; });
+  pattern += CODE128B_PATTERNS[checksum];
+  pattern += CODE128B_PATTERNS['STOP'];
+  pattern += '11';
+
+  return pattern;
+}
+
+function drawBarcodeCanvas(canvas, text, options = {}) {
+  if (!canvas) return;
+  const { height = 55, moduleWidth = 1.4, padding = 8, showText = true } = options;
+  const pattern = encodeCode128B(text);
+  const barWidth = pattern.length * moduleWidth;
+
+  canvas.width = barWidth + padding * 2;
+  canvas.height = height + (showText ? 18 : 0) + padding;
+
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#111827';
+  for (let i = 0; i < pattern.length; i++) {
+    if (pattern[i] === '1') {
+      ctx.fillRect(padding + i * moduleWidth, padding / 2, moduleWidth, height);
+    }
+  }
+
+  if (showText) {
+    ctx.fillStyle = '#2C221E';
+    ctx.font = `600 11px 'JetBrains Mono', monospace`;
+    ctx.textAlign = 'center';
+    ctx.fillText(text, canvas.width / 2, height + padding / 2 + 13);
+  }
+}
 
 // ─── ID CARD EXPORT (full card, not just the barcode) ────────────────────────
 // The same field set the "View" modal shows — shared so the on-screen card,
@@ -277,34 +354,13 @@ function statusBadgeClass(status) {
   return 'badge badge-warning';
 }
 
-// ─── SHARED BARCODE RENDERER ─────────────────────────────────────────────────
-// Renders to <svg> so the bars stay sharp through the print sheet's mm-based
-// downscale and the html2canvas/jsPDF export path — a raster canvas resampled
-// to a non-integer size blurs the bar edges and costs scan reliability.
+// ─── SHARED CANVAS RENDERER ───────────────────────────────────────────────────
 function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true }) {
   const ref = useRef(null);
   useEffect(() => {
-    if (!ref.current || !code) return;
-    try {
-      JsBarcode(ref.current, code, {
-        format: 'CODE128',
-        width: moduleWidth,
-        height,
-        displayValue: showText,
-        fontSize: 11,
-        fontOptions: 'bold',
-        font: "'JetBrains Mono', monospace",
-        // Measured in modules, so the quiet zone scales with moduleWidth at
-        // every call site. CODE128 needs at least 10.
-        margin: 10,
-        background: '#FFFFFF',
-        lineColor: '#111827',
-      });
-    } catch (err) {
-      console.error('JsBarcode error:', err);
-    }
+    drawBarcodeCanvas(ref.current, code, { height, moduleWidth, showText });
   }, [code, height, moduleWidth, showText]);
-  return <svg ref={ref} style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />;
+  return <canvas ref={ref} style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />;
 }
 
 // ─── TOASTS ────────────────────────────────────────────────────────────────────
@@ -900,71 +956,71 @@ function PrintTab({
                   </div>
                 </div>
                 <AnimatePresence initial={false}>
-                {expanded && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: 'hidden' }}
-                  >
-                  <div className="p-4 flex flex-col gap-3" style={{ background: BRAND.bg, borderTop: '1px solid rgba(200,131,74,0.15)' }}>
-                    {og.styles.map((g) => {
-                      const sSelectedCount = g.items.filter((i) => selectedPrintBarcodes.has(i.pieceCode)).length;
-                      const sAllSelected = sSelectedCount === g.items.length;
-                      const sPrintedAll = g.items.every((i) => i.printStatus === 'PRINTED');
-                      const sExpanded = expandedGroups.has(g.key);
-                      return (
-                        <div key={g.key} className="rounded-lg overflow-hidden" style={{ background: '#fff', border: '1.5px solid rgba(200,131,74,0.2)' }}>
-                          <div className="p-3 flex items-center justify-between flex-wrap gap-3">
-                            <div className="flex items-center gap-3">
-                              <input type="checkbox" checked={sAllSelected} onChange={(e) => onToggleGroup(g.items, e.target.checked)} className="w-4 h-4 accent-[#c8834a] cursor-pointer" />
-                              <div>
-                                <div className="font-bold text-sm" style={{ color: '#5a3518' }}>{g.style}{g.color ? ` — ${g.color}` : ''}</div>
-                                <div className="text-xs" style={{ color: BRAND.textMuted }}>{g.items.length} barcodes</div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <span className={statusBadgeClass(sPrintedAll ? 'PRINTED' : 'PENDING')}>{sPrintedAll ? 'Printed' : 'Ready'}</span>
-                              <button onClick={() => onToggleExpand(g.key)} className="btn-warm-secondary !min-h-0 !py-1.5 !px-2.5 text-xs">
-                                <ChevronRight className="w-3.5 h-3.5 transition-transform" style={{ transform: sExpanded ? 'rotate(90deg)' : 'none' }} /> View ({g.items.length})
-                              </button>
-                              <button onClick={() => onPrintGroupDirect(g.items)} className="btn-warm-primary !min-h-0 !py-1.5 !px-2.5 text-xs"><Printer className="w-3.5 h-3.5" /> Print All</button>
-                            </div>
-                          </div>
-                          <AnimatePresence initial={false}>
-                          {sExpanded && (
-                            <motion.div
-                              initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                              transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: 'hidden' }}
-                            >
-                            <div className="p-3 grid gap-3" style={{ background: '#fff', borderTop: '1px solid rgba(200,131,74,0.15)', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
-                              {g.items.map((b) => {
-                                const checked = selectedPrintBarcodes.has(b.pieceCode);
-                                return (
-                                  <div key={b.pieceCode} className="rounded-lg p-2.5 flex flex-col items-center gap-2 relative" style={{ background: checked ? '#faf3ea' : BRAND.bg, border: `1.5px solid ${checked ? BRAND.accent : 'rgba(200,131,74,0.2)'}` }}>
-                                    <input type="checkbox" checked={checked} onChange={(e) => onTogglePiece(b.pieceCode, e.target.checked)} className="absolute top-2 left-2 w-3.5 h-3.5 accent-[#c8834a] cursor-pointer" />
-                                    <div className="w-full bg-white rounded p-1.5 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
-                                      <BarcodeCanvas code={b.pieceCode} height={30} moduleWidth={0.85} showText={false} />
-                                    </div>
-                                    <div className="text-center w-full">
-                                      <div className="font-mono font-bold text-[0.65rem] break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
-                                      <span className={`${statusBadgeClass(b.printStatus)} mt-1`}>{b.printStatus}</span>
-                                    </div>
-                                    <div className="flex gap-1 w-full">
-                                      <button onClick={() => onOpenDetail(b.pieceCode)} className="flex-1 btn-warm-secondary !min-h-0 !py-1 !px-1 text-[0.65rem]">View</button>
-                                      <button onClick={() => onPrintSingle(b.pieceCode)} className="flex-1 btn-warm-primary !min-h-0 !py-1 !px-1 text-[0.65rem]">Print</button>
-                                    </div>
+                  {expanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: 'hidden' }}
+                    >
+                      <div className="p-4 flex flex-col gap-3" style={{ background: BRAND.bg, borderTop: '1px solid rgba(200,131,74,0.15)' }}>
+                        {og.styles.map((g) => {
+                          const sSelectedCount = g.items.filter((i) => selectedPrintBarcodes.has(i.pieceCode)).length;
+                          const sAllSelected = sSelectedCount === g.items.length;
+                          const sPrintedAll = g.items.every((i) => i.printStatus === 'PRINTED');
+                          const sExpanded = expandedGroups.has(g.key);
+                          return (
+                            <div key={g.key} className="rounded-lg overflow-hidden" style={{ background: '#fff', border: '1.5px solid rgba(200,131,74,0.2)' }}>
+                              <div className="p-3 flex items-center justify-between flex-wrap gap-3">
+                                <div className="flex items-center gap-3">
+                                  <input type="checkbox" checked={sAllSelected} onChange={(e) => onToggleGroup(g.items, e.target.checked)} className="w-4 h-4 accent-[#c8834a] cursor-pointer" />
+                                  <div>
+                                    <div className="font-bold text-sm" style={{ color: '#5a3518' }}>{g.style}{g.color ? ` — ${g.color}` : ''}</div>
+                                    <div className="text-xs" style={{ color: BRAND.textMuted }}>{g.items.length} barcodes</div>
                                   </div>
-                                );
-                              })}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className={statusBadgeClass(sPrintedAll ? 'PRINTED' : 'PENDING')}>{sPrintedAll ? 'Printed' : 'Ready'}</span>
+                                  <button onClick={() => onToggleExpand(g.key)} className="btn-warm-secondary !min-h-0 !py-1.5 !px-2.5 text-xs">
+                                    <ChevronRight className="w-3.5 h-3.5 transition-transform" style={{ transform: sExpanded ? 'rotate(90deg)' : 'none' }} /> View ({g.items.length})
+                                  </button>
+                                  <button onClick={() => onPrintGroupDirect(g.items)} className="btn-warm-primary !min-h-0 !py-1.5 !px-2.5 text-xs"><Printer className="w-3.5 h-3.5" /> Print All</button>
+                                </div>
+                              </div>
+                              <AnimatePresence initial={false}>
+                                {sExpanded && (
+                                  <motion.div
+                                    initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                                    transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: 'hidden' }}
+                                  >
+                                    <div className="p-3 grid gap-3" style={{ background: '#fff', borderTop: '1px solid rgba(200,131,74,0.15)', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
+                                      {g.items.map((b) => {
+                                        const checked = selectedPrintBarcodes.has(b.pieceCode);
+                                        return (
+                                          <div key={b.pieceCode} className="rounded-lg p-2.5 flex flex-col items-center gap-2 relative" style={{ background: checked ? '#faf3ea' : BRAND.bg, border: `1.5px solid ${checked ? BRAND.accent : 'rgba(200,131,74,0.2)'}` }}>
+                                            <input type="checkbox" checked={checked} onChange={(e) => onTogglePiece(b.pieceCode, e.target.checked)} className="absolute top-2 left-2 w-3.5 h-3.5 accent-[#c8834a] cursor-pointer" />
+                                            <div className="w-full bg-white rounded p-1.5 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
+                                              <BarcodeCanvas code={b.pieceCode} height={30} moduleWidth={0.85} showText={false} />
+                                            </div>
+                                            <div className="text-center w-full">
+                                              <div className="font-mono font-bold text-[0.65rem] break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
+                                              <span className={`${statusBadgeClass(b.printStatus)} mt-1`}>{b.printStatus}</span>
+                                            </div>
+                                            <div className="flex gap-1 w-full">
+                                              <button onClick={() => onOpenDetail(b.pieceCode)} className="flex-1 btn-warm-secondary !min-h-0 !py-1 !px-1 text-[0.65rem]">View</button>
+                                              <button onClick={() => onPrintSingle(b.pieceCode)} className="flex-1 btn-warm-primary !min-h-0 !py-1 !px-1 text-[0.65rem]">Print</button>
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </motion.div>
+                                )}
+                              </AnimatePresence>
                             </div>
-                            </motion.div>
-                          )}
-                          </AnimatePresence>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  </motion.div>
-                )}
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
                 </AnimatePresence>
               </div>
             );
@@ -1075,43 +1131,43 @@ function HistoryTab({ batchHistoryStore, filters, setFilter, resetFilters, optio
                     </div>
                   </div>
                   <AnimatePresence initial={false}>
-                  {expanded && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: 'hidden' }}
-                    >
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr style={{ background: '#fff' }}>
-                            {['Batch No', `${labels.styleLabel} & ${labels.colorLabel}`, labels.sizeLabel, 'Qty', 'Generated By', 'Created', 'Status', 'Actions'].map((h) => (
-                              <th key={h} className="text-left px-3 py-2.5 text-[0.7rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted, borderBottom: `1.5px solid ${BRAND.border}` }}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <motion.tbody variants={staggerContainer} initial="hidden" animate="show">
-                          {og.batches.map((b) => (
-                            <motion.tr key={b.batchNo} variants={fadeUpItem} className="hover:bg-[#fdf6ee]">
-                              <td className="px-3 py-2.5 font-mono font-bold" style={{ color: '#5a3518', borderBottom: '1px solid #f0e8d7' }}>{b.batchNo}</td>
-                              <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.style}{b.color ? ` (${b.color})` : ''}</td>
-                              <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.size}</td>
-                              <td className="px-3 py-2.5 font-bold" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.qty} pcs</td>
-                              <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.generatedBy}</td>
-                              <td className="px-3 py-2.5 text-xs" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.createdDate}</td>
-                              <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}><span className={statusBadgeClass(b.printStatus)}>{b.printStatus}</span></td>
-                              <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>
-                                <div className="flex gap-1.5">
-                                  <button onClick={() => onView(b.orderId, b.style)} className="btn-warm-secondary !min-h-0 !py-1.5 !px-2.5 text-xs">View</button>
-                                  <button onClick={() => onReprint(b)} className="btn-warm-primary !min-h-0 !py-1.5 !px-2.5 text-xs">Reprint</button>
-                                </div>
-                              </td>
-                            </motion.tr>
-                          ))}
-                        </motion.tbody>
-                      </table>
-                    </div>
-                    </motion.div>
-                  )}
+                    {expanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: 'hidden' }}
+                      >
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr style={{ background: '#fff' }}>
+                                {['Batch No', `${labels.styleLabel} & ${labels.colorLabel}`, labels.sizeLabel, 'Qty', 'Generated By', 'Created', 'Status', 'Actions'].map((h) => (
+                                  <th key={h} className="text-left px-3 py-2.5 text-[0.7rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted, borderBottom: `1.5px solid ${BRAND.border}` }}>{h}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <motion.tbody variants={staggerContainer} initial="hidden" animate="show">
+                              {og.batches.map((b) => (
+                                <motion.tr key={b.batchNo} variants={fadeUpItem} className="hover:bg-[#fdf6ee]">
+                                  <td className="px-3 py-2.5 font-mono font-bold" style={{ color: '#5a3518', borderBottom: '1px solid #f0e8d7' }}>{b.batchNo}</td>
+                                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.style}{b.color ? ` (${b.color})` : ''}</td>
+                                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.size}</td>
+                                  <td className="px-3 py-2.5 font-bold" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.qty} pcs</td>
+                                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.generatedBy}</td>
+                                  <td className="px-3 py-2.5 text-xs" style={{ borderBottom: '1px solid #f0e8d7' }}>{b.createdDate}</td>
+                                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}><span className={statusBadgeClass(b.printStatus)}>{b.printStatus}</span></td>
+                                  <td className="px-3 py-2.5" style={{ borderBottom: '1px solid #f0e8d7' }}>
+                                    <div className="flex gap-1.5">
+                                      <button onClick={() => onView(b.orderId, b.style)} className="btn-warm-secondary !min-h-0 !py-1.5 !px-2.5 text-xs">View</button>
+                                      <button onClick={() => onReprint(b)} className="btn-warm-primary !min-h-0 !py-1.5 !px-2.5 text-xs">Reprint</button>
+                                    </div>
+                                  </td>
+                                </motion.tr>
+                              ))}
+                            </motion.tbody>
+                          </table>
+                        </div>
+                      </motion.div>
+                    )}
                   </AnimatePresence>
                 </div>
               );
@@ -1151,23 +1207,23 @@ function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style
     >
       {barcode && (
         <>
-        <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
-          <h3 className="font-bold" style={{ color: '#5a3518' }}>Barcode Specification</h3>
-          <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
-        </div>
-        {isEmployee
-          ? <div className="p-6 flex justify-center"><EmployeeTicketCard barcode={barcode} cardRef={cardRef} /></div>
-          : <IdCard barcode={barcode} labels={labels} cardRef={cardRef} />}
-        <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
-          <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
-          <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
-            <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
-          </button>
-          <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
-            <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
-          </button>
-          <button onClick={() => onPrint(barcode.pieceCode)} className="btn-warm-primary !min-h-0 !py-2.5"><Printer className="w-4 h-4" /> Print Label</button>
-        </div>
+          <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+            <h3 className="font-bold" style={{ color: '#5a3518' }}>Barcode Specification</h3>
+            <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+          </div>
+          {isEmployee
+            ? <div className="p-6 flex justify-center"><EmployeeTicketCard barcode={barcode} cardRef={cardRef} /></div>
+            : <IdCard barcode={barcode} labels={labels} cardRef={cardRef} />}
+          <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
+            <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
+            <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
+            </button>
+            <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
+            </button>
+            <button onClick={() => onPrint(barcode.pieceCode)} className="btn-warm-primary !min-h-0 !py-2.5"><Printer className="w-4 h-4" /> Print Label</button>
+          </div>
         </>
       )}
     </AnimatedModal>
@@ -1183,22 +1239,22 @@ function PrintPreviewModal({ open, codes, onClose, onConfirm }) {
       panelClassName="rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden"
       panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
     >
-        <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
-          <h3 className="font-bold" style={{ color: '#5a3518' }}>Thermal Sticker Print Preview ({codes.length})</h3>
-          <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
-        </div>
-        <div className="p-6 max-h-[480px] overflow-y-auto flex flex-wrap gap-3 justify-center" style={{ background: '#e5e5e5' }}>
-          {codes.map((code) => (
-            <div key={code} className="bg-white border border-dashed border-gray-500 rounded-md flex flex-col items-center justify-center overflow-hidden" style={{ width: 200, height: 100, padding: 10 }}>
-              <BarcodeCanvas code={code} height={30} moduleWidth={0.8} showText={false} />
-              <div className="font-mono font-bold text-[0.65rem] mt-1">{code}</div>
-            </div>
-          ))}
-        </div>
-        <div className="flex justify-end gap-2 px-6 py-4" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
-          <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Cancel</button>
-          <button onClick={onConfirm} className="btn-warm-primary !min-h-0 !py-2.5"><Printer className="w-4 h-4" /> Confirm &amp; Send to Printer</button>
-        </div>
+      <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+        <h3 className="font-bold" style={{ color: '#5a3518' }}>Thermal Sticker Print Preview ({codes.length})</h3>
+        <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+      </div>
+      <div className="p-6 max-h-[480px] overflow-y-auto flex flex-wrap gap-3 justify-center" style={{ background: '#e5e5e5' }}>
+        {codes.map((code) => (
+          <div key={code} className="bg-white border border-dashed border-gray-500 rounded-md flex flex-col items-center justify-center overflow-hidden" style={{ width: 200, height: 100, padding: 10 }}>
+            <BarcodeCanvas code={code} height={30} moduleWidth={0.8} showText={false} />
+            <div className="font-mono font-bold text-[0.65rem] mt-1">{code}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex justify-end gap-2 px-6 py-4" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
+        <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Cancel</button>
+        <button onClick={onConfirm} className="btn-warm-primary !min-h-0 !py-2.5"><Printer className="w-4 h-4" /> Confirm &amp; Send to Printer</button>
+      </div>
     </AnimatedModal>
   );
 }
@@ -1400,7 +1456,7 @@ export default function BarcodeManagementPage() {
       // empId is already the backend card code (EMP-000123) — don't re-prefix it.
       // The barcode itself only encodes the Employee ID, not the name — empId
       // is already unique per employee, so this stays a safe key/print target.
-      pieceCode: /^EMP-/i.test(emp.empId) ? emp.empId : `EMP-${emp.empId}`,
+      pieceCode: emp.empId.startsWith('EMP-') ? emp.empId : `EMP-${emp.empId}`,
       orderId: deptCode, client: departmentName, style: emp.name, color: emp.designation, size: emp.empId,
       serial: idx + 1, serialStr: String(idx + 1).padStart(3, '0'), batchNo: batchId,
       createdDate: new Date().toLocaleString(), generatedBy: operatorLabel, printStatus: 'PENDING', printCount: 0,
@@ -1665,9 +1721,7 @@ export default function BarcodeManagementPage() {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             break-inside: avoid; overflow: hidden;
           }
-          /* Width only — capping the height too squashes the aspect ratio and
-             narrows the bars past what a handheld scanner will read. */
-          .print-card svg { max-width: 90%; height: auto; }
+          .print-card canvas { max-width: 90%; max-height: 22mm; }
           .print-card .card-code { font-family: monospace; font-weight: bold; font-size: 9pt; margin: 2mm 0; color: #000; }
           .print-card .card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 4mm; width: 100%; }
           .print-card .card-fields .f-label { color: #666; text-transform: uppercase; font-size: 5.5pt; font-weight: 700; }
@@ -1742,91 +1796,91 @@ export default function BarcodeManagementPage() {
       </motion.div>
 
       <AnimatePresence mode="wait">
-      <motion.div key={`${category}-${activeTab}`} variants={tabFade} initial="hidden" animate="show" exit="exit">
-      {activeTab === 'generation' && category === 'style' && (
-        <GenerationTab
-          ordersStore={ordersStore}
-          selectedOrderId={selectedOrderId}
-          setSelectedOrderId={setSelectedOrderId}
-          selectedStyleName={selectedStyleName}
-          setSelectedStyleName={setSelectedStyleName}
-          selectedSizeFilter={selectedSizeFilter}
-          setSelectedSizeFilter={setSelectedSizeFilter}
-          generatedBarcodesStore={generatedBarcodesStore}
-          gridSearch={gridSearch}
-          setGridSearch={setGridSearch}
-          onGenerateSize={handleGenerateSize}
-          onGenerateOverallSize={handleGenerateOverallSize}
-          onGenerateAllSizes={handleGenerateAllSizes}
-          onSendToPrintCenter={handleSendToPrintCenter}
-          onOpenDetail={setDetailCode}
-          onPrintSingle={handlePrintSingle}
-        />
-      )}
+        <motion.div key={`${category}-${activeTab}`} variants={tabFade} initial="hidden" animate="show" exit="exit">
+          {activeTab === 'generation' && category === 'style' && (
+            <GenerationTab
+              ordersStore={ordersStore}
+              selectedOrderId={selectedOrderId}
+              setSelectedOrderId={setSelectedOrderId}
+              selectedStyleName={selectedStyleName}
+              setSelectedStyleName={setSelectedStyleName}
+              selectedSizeFilter={selectedSizeFilter}
+              setSelectedSizeFilter={setSelectedSizeFilter}
+              generatedBarcodesStore={generatedBarcodesStore}
+              gridSearch={gridSearch}
+              setGridSearch={setGridSearch}
+              onGenerateSize={handleGenerateSize}
+              onGenerateOverallSize={handleGenerateOverallSize}
+              onGenerateAllSizes={handleGenerateAllSizes}
+              onSendToPrintCenter={handleSendToPrintCenter}
+              onOpenDetail={setDetailCode}
+              onPrintSingle={handlePrintSingle}
+            />
+          )}
 
-      {activeTab === 'generation' && category === 'employee' && (
-        <EmployeeGenerationTab
-          employees={employeeDirectory}
-          employeesLoading={employeesLoading}
-          employeesError={token ? employeesError : 'Sign in to load the employee roster.'}
-          onRetryEmployees={reloadEmployees}
-          employeeGenerated={employeeStore.generated}
-          onGenerateSelected={generateSelectedEmployees}
-          onGenerateAllRemaining={generateAllRemainingEmployees}
-          onSendToPrintCenter={sendEmployeesToPrintCenter}
-          onOpenDetail={setDetailCode}
-          onPrintSingle={handlePrintSingle}
-        />
-      )}
+          {activeTab === 'generation' && category === 'employee' && (
+            <EmployeeGenerationTab
+              employees={employeeDirectory}
+              employeesLoading={employeesLoading}
+              employeesError={token ? employeesError : 'Sign in to load the employee roster.'}
+              onRetryEmployees={reloadEmployees}
+              employeeGenerated={employeeStore.generated}
+              onGenerateSelected={generateSelectedEmployees}
+              onGenerateAllRemaining={generateAllRemainingEmployees}
+              onSendToPrintCenter={sendEmployeesToPrintCenter}
+              onOpenDetail={setDetailCode}
+              onPrintSingle={handlePrintSingle}
+            />
+          )}
 
-      {activeTab === 'generation' && category === 'bucket' && (
-        <BucketGenerationTab
-          bucketGenerated={bucketStore.generated}
-          onGenerateRange={generateBucketRange}
-          onSendToPrintCenter={sendBucketsToPrintCenter}
-          onOpenDetail={setDetailCode}
-          onPrintSingle={handlePrintSingle}
-        />
-      )}
+          {activeTab === 'generation' && category === 'bucket' && (
+            <BucketGenerationTab
+              bucketGenerated={bucketStore.generated}
+              onGenerateRange={generateBucketRange}
+              onSendToPrintCenter={sendBucketsToPrintCenter}
+              onOpenDetail={setDetailCode}
+              onPrintSingle={handlePrintSingle}
+            />
+          )}
 
-      {activeTab === 'print' && (
-        <PrintTab
-          generatedBarcodesStore={activeGenerated}
-          selectedPrintBarcodes={activeSelectedPrint}
-          expandedOrders={activeExpandedOrders}
-          onToggleOrderExpand={toggleExpandedOrder}
-          expandedGroups={activeExpandedGroups}
-          onToggleExpand={toggleExpandedGroup}
-          onToggleGroup={(items, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); items.forEach((i) => checked ? next.add(i.pieceCode) : next.delete(i.pieceCode)); return { ...prev, [category]: next }; })}
-          onTogglePiece={(code, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); checked ? next.add(code) : next.delete(code); return { ...prev, [category]: next }; })}
-          onSelectAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set(activeGenerated.map((b) => b.pieceCode)) }))}
-          onClearAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set() }))}
-          onOpenPreview={handleOpenPreview}
-          onPrintGroupDirect={handlePrintGroupDirect}
-          onOpenDetail={setDetailCode}
-          onPrintSingle={handlePrintSingle}
-          onDownloadAll={handleDownloadAll}
-          bulkExporting={bulkExporting}
-          labels={activeLabels}
-        />
-      )}
+          {activeTab === 'print' && (
+            <PrintTab
+              generatedBarcodesStore={activeGenerated}
+              selectedPrintBarcodes={activeSelectedPrint}
+              expandedOrders={activeExpandedOrders}
+              onToggleOrderExpand={toggleExpandedOrder}
+              expandedGroups={activeExpandedGroups}
+              onToggleExpand={toggleExpandedGroup}
+              onToggleGroup={(items, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); items.forEach((i) => checked ? next.add(i.pieceCode) : next.delete(i.pieceCode)); return { ...prev, [category]: next }; })}
+              onTogglePiece={(code, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); checked ? next.add(code) : next.delete(code); return { ...prev, [category]: next }; })}
+              onSelectAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set(activeGenerated.map((b) => b.pieceCode)) }))}
+              onClearAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set() }))}
+              onOpenPreview={handleOpenPreview}
+              onPrintGroupDirect={handlePrintGroupDirect}
+              onOpenDetail={setDetailCode}
+              onPrintSingle={handlePrintSingle}
+              onDownloadAll={handleDownloadAll}
+              bulkExporting={bulkExporting}
+              labels={activeLabels}
+            />
+          )}
 
-      {activeTab === 'history' && (
-        <HistoryTab
-          batchHistoryStore={activeHistory}
-          filters={activeHistoryFilters}
-          setFilter={setHistoryFilter}
-          resetFilters={resetHistoryFilters}
-          options={activeHistoryOptions}
-          onView={handleViewFromHistory}
-          onReprint={handleReprintFromHistory}
-          onExportCSV={() => handleExportCSV(activeHistory)}
-          expandedOrders={activeExpandedHistoryOrders}
-          onToggleOrderExpand={toggleExpandedHistoryOrder}
-          labels={activeLabels}
-        />
-      )}
-      </motion.div>
+          {activeTab === 'history' && (
+            <HistoryTab
+              batchHistoryStore={activeHistory}
+              filters={activeHistoryFilters}
+              setFilter={setHistoryFilter}
+              resetFilters={resetHistoryFilters}
+              options={activeHistoryOptions}
+              onView={handleViewFromHistory}
+              onReprint={handleReprintFromHistory}
+              onExportCSV={() => handleExportCSV(activeHistory)}
+              expandedOrders={activeExpandedHistoryOrders}
+              onToggleOrderExpand={toggleExpandedHistoryOrder}
+              labels={activeLabels}
+            />
+          )}
+        </motion.div>
       </AnimatePresence>
 
       <DetailModal barcode={detailBarcode} onClose={() => setDetailCode(null)} onPrint={handlePrintSingle} labels={activeLabels} category={category} />
