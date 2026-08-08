@@ -191,139 +191,6 @@ function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSe
   );
 }
 
-function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSeqs }) {
-  useEffect(() => {
-    if (!token || !sku) return;
-    
-    let isMounted = true;
-    const loadData = async () => {
-      setData({ loading: true, detail: null, error: null });
-      try {
-        const exploreData = await apiGetAnalyticsExplore(token);
-        
-        let targetStyleId = null;
-        for (const client of (exploreData?.clients || [])) {
-          for (const order of (client.orders || [])) {
-            if (sku.order_number && String(order.order_number) !== String(sku.order_number)) continue;
-            
-            const matchedStyle = (order.styles || []).find(s => 
-              String(s.style_name || '').toLowerCase() === String(sku.style_name || '').toLowerCase()
-            );
-            
-            if (matchedStyle) {
-              targetStyleId = matchedStyle.style_id || matchedStyle.id;
-              break;
-            }
-          }
-          if (targetStyleId) break;
-        }
-
-        if (!targetStyleId) {
-          throw new Error('Analytics data not found for this style.');
-        }
-
-        const detail = await apiGetStyleDetail(token, targetStyleId);
-        if (isMounted) setData({ loading: false, detail, error: null });
-        
-      } catch (err) {
-        if (isMounted) setData({ loading: false, detail: null, error: err.message });
-      }
-    };
-    
-    loadData();
-    return () => { isMounted = false; };
-  }, [token, sku, setData]);
-
-  if (!sku) return <div className="text-slate-500 italic p-4 text-center">No SKU Selected</div>;
-  if (data.loading) return <div className="flex justify-center items-center p-12"><Loader2 className="w-8 h-8 animate-spin text-[#c8834a]" /></div>;
-  if (data.error) return <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-2 font-bold"><XCircle className="w-5 h-5"/> {data.error}</div>;
-  if (!data.detail) return null;
-
-  let pieces = data.detail.pieces || [];
-  if (!Array.isArray(pieces)) pieces = pieces.pieces || [];
-
-  const isFilteredBySubmission = lastSubmittedPieceSeqs && lastSubmittedPieceSeqs.length > 0;
-
-  if (sku) {
-    pieces = pieces.filter(p => {
-      const pSize = String(p.size || '').trim().toLowerCase();
-      const skuSize = String(sku.size || '').trim().toLowerCase();
-      const sizeMatch = !skuSize || skuSize === 'n/a' || skuSize === 'default' || pSize === skuSize;
-
-      const pColor = String(p.colour || p.color_code || p.color_name || '').trim().toLowerCase();
-      const skuColor = String(sku.color_code || '').trim().toLowerCase();
-      const colorMatch = !skuColor || skuColor === 'n/a' || skuColor === 'default' || pColor === skuColor || pColor.includes(skuColor) || skuColor.includes(pColor);
-
-      const pSeq = p.seq ?? p.piece_seq ?? p.seq_no ?? p.sequence;
-      const pieceSeqMatch = !isFilteredBySubmission || lastSubmittedPieceSeqs.map(String).includes(String(pSeq));
-
-      return sizeMatch && colorMatch && pieceSeqMatch;
-    });
-  }
-
-  return (
-    <div className="space-y-6">
-      {isFilteredBySubmission && (
-        <div className="bg-amber-50 border border-amber-200/80 rounded-2xl p-4 text-xs flex items-center justify-between shadow-sm">
-          <div className="flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-            <span className="font-bold text-amber-900">
-              Showing Analytics for {pieces.length} Recently Submitted Pieces (#{lastSubmittedPieceSeqs.join(', #')})
-            </span>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-           <div className="text-xs text-slate-500 font-bold mb-1">Article / Style Name</div>
-           <div className="text-sm font-black text-slate-800">{sku.style_name}</div>
-        </div>
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-           <div className="text-xs text-slate-500 font-bold mb-1">Total Pieces</div>
-           <div className="text-sm font-black text-slate-800 bg-amber-100 text-amber-800 px-2 py-0.5 rounded w-max">{pieces.length}</div>
-        </div>
-      </div>
-
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-        <div className="bg-slate-50 border-b border-slate-200 px-4 py-3 font-bold text-slate-700 text-xs uppercase tracking-wider">
-          Pieces Progress Tracker
-        </div>
-        <div className="overflow-x-auto max-h-[40vh] overflow-y-auto">
-          <table className="w-full text-left text-xs relative">
-            <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
-              <tr>
-                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Seq</th>
-                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Piece Code</th>
-                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Colour</th>
-                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Size</th>
-                <th className="p-3 text-slate-500 font-bold uppercase text-[9px] tracking-wider">Current Stage</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {pieces.map(p => (
-                <tr key={p.bundle_id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-3 font-bold text-slate-400">#{p.seq}</td>
-                  <td className="p-3 font-bold text-slate-700">{p.bundle_id}</td>
-                  <td className="p-3">{p.colour}</td>
-                  <td className="p-3">{p.size}</td>
-                  <td className="p-3">
-                    <span className="bg-emerald-50 text-emerald-700 border border-emerald-100 px-2 py-0.5 rounded-full text-[9px] font-black">
-                      {p.current_stage || 'Pending'}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {pieces.length === 0 && (
-                <tr><td colSpan="5" className="p-6 text-center text-slate-400 italic">No pieces found.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function DynamicDataViewer({ data }) {
   if (!data) return <div className="text-slate-400 italic text-center p-4">No data available</div>;
@@ -1980,7 +1847,7 @@ export default function ProductionLogEntry() {
 
               {/* 7 Operation Stage Banners */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['Cutting', 'Fusing', 'Pasting', 'Shell Stitch', 'Lining Stitch', 'Final Finish'].map((stage) => {
+                {['Cutting', 'Fusing', 'Pasting', 'Lining', 'Shell Stitch', 'Lining Stitch', 'Final Finish'].map((stage) => {
                   const isSelected = selectedStage === stage;
                   return (
                     <button
@@ -2562,29 +2429,38 @@ export default function ProductionLogEntry() {
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {(() => {
-                    const stageOrder = ['cut', 'fusing', 'pasting', 'linestitch', 'shellstitch', 'finalfinish'];
+                    const stageOrder = ['cut', 'fusing', 'pasting', 'lining', 'store', 'shellstitch', 'linestitch', 'finalfinish'];
                     const normalizeStageName = (str) => {
                       const s = String(str || '').toLowerCase().replace(/[^a-z]/g, '');
+                      if (s === 'lining') return 'lining';
                       if (s.includes('cut')) return 'cut';
                       if (s.includes('fuse')) return 'fusing';
                       if (s.includes('paste')) return 'pasting';
-                      if (s.includes('line') || s.includes('lining')) return 'linestitch';
+                      if (s.includes('line') || s.includes('liningstitch')) return 'linestitch';
                       if (s.includes('shell') || s.includes('stitch') || s.includes('sew')) return 'shellstitch';
                       if (s.includes('finish') || s.includes('final')) return 'finalfinish';
+                      if (s.includes('store') || s.includes('sended')) return 'store';
                       return s;
                     };
 
                     const isPieceEligible = (p) => {
                       if (p.done_at_op) return false;
                       const activeNorm = normalizeStageName(selectedStage);
-                      const activeOpIdx = stageOrder.indexOf(activeNorm);
                       const pieceNorm = normalizeStageName(p.current_stage_label || p.current_stage);
 
-                      // Factory Rule: Pieces at Cutting ('cut') are ONLY enabled in Cutting (0) & Fusing (1).
-                      // From Pasting (2) onwards, Cutting pieces are BLOCKED & DISABLED!
-                      if (pieceNorm === 'cut' && activeOpIdx >= 2) {
-                        return false;
+                      // Parallel start rule: Pending pieces can go to Cutting or Lining
+                      if (!pieceNorm || pieceNorm === 'pending') {
+                        if (activeNorm !== 'cut' && activeNorm !== 'lining') return false;
                       }
+
+                      // Factory Rule: Store Verification
+                      // Shell Stitch cannot begin unless piece has passed store (sended)
+                      if (activeNorm === 'shellstitch') {
+                        if (pieceNorm === 'cut' || pieceNorm === 'fusing' || pieceNorm === 'pasting' || pieceNorm === 'lining') {
+                           return false;
+                        }
+                      }
+
                       return true;
                     };
 

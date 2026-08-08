@@ -549,7 +549,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.15);
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const handleScanAttendance = async (codeToResolve) => {
@@ -560,8 +560,8 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
 
     try {
       const targetCode = rawCode.toUpperCase();
-      
-      const matchedWorker = workers.find(w => 
+
+      const matchedWorker = workers.find(w =>
         String(w.employee_barcode || '').toUpperCase() === targetCode ||
         String(w.id).toUpperCase() === targetCode ||
         String(w.id).toUpperCase() === targetCode.replace('EMP-', '') ||
@@ -571,8 +571,8 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       let targetId = targetCode;
       let targetName = "Unknown Worker";
       if (matchedWorker) {
-         targetId = String(matchedWorker.id);
-         targetName = matchedWorker.name;
+        targetId = String(matchedWorker.id);
+        targetName = matchedWorker.name;
       }
 
       const isAlreadyIn = checkedInIds.has(targetId);
@@ -665,10 +665,10 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
           // One-time per day logic:
           // 1. If they have ANY record today, they have already checked in (disable Check-In)
           const inIds = rosterData.map(r => String(r.employee_id));
-          
+
           // 2. If their record has check_out_at, they have already checked out (disable Check-Out)
           const outIds = rosterData.filter(r => r.check_out_at).map(r => String(r.employee_id));
-          
+
           setCheckedInIds(prev => new Set([...prev, ...inIds]));
           setCheckedOutIds(prev => new Set([...prev, ...outIds]));
         }
@@ -766,7 +766,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
         const normalizedRequested = requestedIds.map((id) => String(id));
         const succeeded = normalizedRequested;
         const failed = [];
-        
+
         if (type === 'check-in') {
           setCheckedInIds(prev => new Set([...prev, ...succeeded]));
         } else {
@@ -783,12 +783,12 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
         method: 'POST',
         body: JSON.stringify({ employee_ids: requestedIds, lat: coords.lat, lon: coords.lon }),
       }, token);
-      
+
       const succeededIds = new Set(result.map((r) => String(r.employee_id)));
       const normalizedRequested = requestedIds.map((id) => String(id));
       const succeeded = normalizedRequested.filter((id) => succeededIds.has(id));
       const failed = normalizedRequested.filter((id) => !succeededIds.has(id));
-      
+
       if (type === 'check-in') {
         setCheckedInIds(prev => new Set([...prev, ...succeeded]));
       } else {
@@ -826,7 +826,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       {/* AUTOMATIC BARCODE GUN ATTENDANCE SCANNER HEADER BAR */}
       <div className="bg-gradient-to-r from-[#2d1f0e] via-[#3a2817] to-[#1c1207] p-5 sm:p-6 rounded-3xl shadow-2xl text-white relative overflow-hidden border border-[#c8834a]/30">
         <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
-        
+
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 relative z-10">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center shrink-0 shadow-inner">
@@ -941,9 +941,9 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
                       </td>
                       <td className="p-3 font-semibold" style={{ color: '#a86022' }}>{w.designation || '—'}</td>
                       <td className="p-3 relative">
-                        <Badge 
-                          label={isPieceRate ? 'Daily Wage' : 'Monthly'} 
-                          type={isPieceRate ? 'proxy' : 'active'} 
+                        <Badge
+                          label={isPieceRate ? 'Daily Wage' : 'Monthly'}
+                          type={isPieceRate ? 'proxy' : 'active'}
                         />
                         {isSelected && isPieceRate && (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-20" onClick={(e) => e.stopPropagation()}>
@@ -1510,7 +1510,7 @@ function EmployeesListView({ workers = [] }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 function AttendanceHistoryView() {
   const [history, setHistory] = useState([]);
-  
+
   // Generate dummy data on mount
   useEffect(() => {
     const d = new Date();
@@ -1529,7 +1529,7 @@ function AttendanceHistoryView() {
         <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2 mb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
           <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster (Mocked)
         </h3>
-        
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead>
@@ -1569,21 +1569,22 @@ function AttendanceHistoryView() {
 export default function AttendancePage() {
   const { user, token } = useAuth();
 
-  const isManager = user === 'direct_manager';
+  const isManager = user === 'direct_manager' || user === 'managing_director';
   const isSupervisor = user === 'cutting_manager' || user === 'stitching_manager' || isManager;
   const isSecurity = user === 'security';
+  const isMD = user === 'managing_director';
 
   const tabs = isSecurity ? [
     { key: 'employees', label: 'Employees List', icon: Users, show: true },
     { key: 'proxy', label: 'Floor Command', icon: QrCode, show: true },
     { key: 'history', label: 'Attendance History', icon: CalendarDays, show: true },
   ] : [
-    { key: 'me', label: 'My Attendance', icon: Clock, show: true },
+    { key: 'me', label: 'My Attendance', icon: Clock, show: !isMD },
     { key: 'proxy', label: 'Floor Command', icon: Users, show: isSupervisor },
     { key: 'admin', label: 'Operations & HR', icon: Building2, show: isManager },
   ].filter((t) => t.show);
 
-  const [activeTab, setActiveTab] = useState(isSecurity ? 'employees' : 'me');
+  const [activeTab, setActiveTab] = useState(isSecurity ? 'employees' : (isMD ? 'admin' : 'me'));
   const [workers, setWorkers] = useState([]);
   const [workerRefreshKey, setWorkerRefreshKey] = useState(0);
 

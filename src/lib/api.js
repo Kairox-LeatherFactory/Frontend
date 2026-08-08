@@ -1,5 +1,5 @@
 // API service for Kairox Leather Platform backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+const API_BASE_URL = '';
 
 /**
  * Login with username and password
@@ -1067,5 +1067,50 @@ export async function apiGetAnalyticsConsumption(token, params = {}) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to fetch consumption analytics (${res.status})`);
+  return res.json();
+}
+
+
+/**
+ * Store Scanner: Post piece part (Leather/Lining) to a Drawer
+ * POST /api/v1/drawers/store-scan
+ */
+export async function apiStoreScan(token, drawer_barcode, piece_barcode, part) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/store-scan`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ drawer_barcode, piece_barcode, part }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Store scan failed');
+    const err = new Error(errText || `Store scan failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/**
+ * Manager Release: Transition a Drawer to RECEIVED or SENDED
+ * POST /api/v1/drawers/
+ */
+export async function apiStoreRelease(token, drawer_barcode, transition) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ drawer_barcode, transition }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Store release failed');
+    const err = new Error(errText || `Store release failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
