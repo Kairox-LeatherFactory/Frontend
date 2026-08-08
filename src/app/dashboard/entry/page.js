@@ -4,24 +4,24 @@ import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { 
-  apiGetSkus, 
-  apiGetSkuPieces, 
-  apiProductionCutting, 
-  apiImportPreview, 
-  apiImportCommit, 
-  apiGetAnalyticsExplore, 
+import {
+  apiGetSkus,
+  apiGetSkuPieces,
+  apiProductionCutting,
+  apiImportPreview,
+  apiImportCommit,
+  apiGetAnalyticsExplore,
   apiGetStyleDetail,
   apiBarcodeResolve,
   apiProductionLogTwoDoor,
   apiStoreDrawerScan,
   apiReceiveDrawer
 } from '@/lib/api';
-import { 
-  Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, 
-  Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, 
+import {
+  Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar,
+  Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3,
   Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check,
-  Store, Layers, ArrowRight, ShieldCheck, RefreshCw, Sparkles, Box, 
+  Store, Layers, ArrowRight, ShieldCheck, RefreshCw, Sparkles, Box,
   CheckCheck, PackageCheck, Eye, ShieldAlert, ArrowLeftRight, CheckSquare, Square
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
@@ -68,22 +68,22 @@ function TravelerPieceItem({ piece }) {
 function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSeqs }) {
   useEffect(() => {
     if (!token || !sku) return;
-    
+
     let isMounted = true;
     const loadData = async () => {
       setData({ loading: true, detail: null, error: null });
       try {
         const exploreData = await apiGetAnalyticsExplore(token);
-        
+
         let targetStyleId = null;
         for (const client of (exploreData?.clients || [])) {
           for (const order of (client.orders || [])) {
             if (sku.order_number && String(order.order_number) !== String(sku.order_number)) continue;
-            
-            const matchedStyle = (order.styles || []).find(s => 
+
+            const matchedStyle = (order.styles || []).find(s =>
               String(s.style_name || '').toLowerCase() === String(sku.style_name || '').toLowerCase()
             );
-            
+
             if (matchedStyle) {
               targetStyleId = matchedStyle.style_id || matchedStyle.id;
               break;
@@ -98,19 +98,19 @@ function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSe
 
         const detail = await apiGetStyleDetail(token, targetStyleId);
         if (isMounted) setData({ loading: false, detail, error: null });
-        
+
       } catch (err) {
         if (isMounted) setData({ loading: false, detail: null, error: err.message });
       }
     };
-    
+
     loadData();
     return () => { isMounted = false; };
   }, [token, sku, setData]);
 
   if (!sku) return <div className="text-slate-500 italic p-4 text-center">No SKU Selected</div>;
   if (data.loading) return <div className="flex justify-center items-center p-12"><Loader2 className="w-8 h-8 animate-spin text-[#c8834a]" /></div>;
-  if (data.error) return <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-2 font-bold"><XCircle className="w-5 h-5"/> {data.error}</div>;
+  if (data.error) return <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-2 font-bold"><XCircle className="w-5 h-5" /> {data.error}</div>;
   if (!data.detail) return null;
 
   let pieces = data.detail.pieces || [];
@@ -150,12 +150,12 @@ function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSe
 
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-           <div className="text-xs text-slate-500 font-bold mb-1">Article / Style Name</div>
-           <div className="text-sm font-black text-slate-800">{sku.style_name}</div>
+          <div className="text-xs text-slate-500 font-bold mb-1">Article / Style Name</div>
+          <div className="text-sm font-black text-slate-800">{sku.style_name}</div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-           <div className="text-xs text-slate-500 font-bold mb-1">Total Pieces</div>
-           <div className="text-sm font-black text-slate-800 bg-amber-100 text-amber-800 px-2 py-0.5 rounded w-max">{pieces.length}</div>
+          <div className="text-xs text-slate-500 font-bold mb-1">Total Pieces</div>
+          <div className="text-sm font-black text-slate-800 bg-amber-100 text-amber-800 px-2 py-0.5 rounded w-max">{pieces.length}</div>
         </div>
       </div>
 
@@ -475,7 +475,7 @@ export default function ProductionLogEntry() {
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(60);
-  
+
   useEffect(() => {
     setVisibleCount(60);
   }, [skuSearchQuery]);
@@ -609,10 +609,10 @@ export default function ProductionLogEntry() {
       }
 
       setScanResolutionResult(res);
-      
+
       if (res.type === 'EMPLOYEE') {
-        const matchedWorker = workers.find(w => 
-          String(w.id) === String(res.employee?.id || res.employee_id) || 
+        const matchedWorker = workers.find(w =>
+          String(w.id) === String(res.employee?.id || res.employee_id) ||
           String(w.employee_barcode || '').toLowerCase() === targetCode.toLowerCase()
         );
         if (matchedWorker) {
@@ -649,8 +649,8 @@ export default function ProductionLogEntry() {
 
     try {
       const queryLower = query.toLowerCase();
-      const matchedWorker = workers.find(w => 
-        String(w.id) === query || 
+      const matchedWorker = workers.find(w =>
+        String(w.id) === query ||
         String(w.employee_barcode || '').toLowerCase() === queryLower ||
         String(w.name || '').toLowerCase().includes(queryLower)
       );
@@ -702,7 +702,7 @@ export default function ProductionLogEntry() {
     setErrorMsg('');
 
     try {
-      let matched = fetchedSkus.find(s => 
+      let matched = fetchedSkus.find(s =>
         s.code.toLowerCase() === val ||
         String(s.order_number || '').toLowerCase() === val ||
         s.code.toLowerCase().includes(val)
@@ -1296,7 +1296,7 @@ export default function ProductionLogEntry() {
       });
       setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${activeOp}.`);
       setLastSubmittedPieceSeqs(parsedSeqs);
-      
+
       setPieceSeqs('');
       setWorkerId('');
       setCuttingCount('');
@@ -1440,7 +1440,7 @@ export default function ProductionLogEntry() {
 
       setSuccessMsg(`✅ Cut ${result.count || parsedCount} pieces successfully saved.`);
       setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
-      
+
       setShowPrintModal(false);
       setCuttingPieces([]);
       setSkuCode('');
@@ -1488,7 +1488,7 @@ export default function ProductionLogEntry() {
     }) || operations[0];
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
     const currentWorker = workers.find(w => w.id === workerId);
-    
+
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
@@ -1509,7 +1509,7 @@ export default function ProductionLogEntry() {
     } catch (e) {
       console.warn("Failed to verify attendance", e);
     }
-    
+
     setChecklistSubmitting(true);
     try {
       let bucketRes = null;
@@ -1530,9 +1530,9 @@ export default function ProductionLogEntry() {
         await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: selectedPieces });
       }
 
-      setSuccessMsg("Success!"); 
+      setSuccessMsg("Success!");
       setLastSubmittedPieceSeqs([...selectedPieces]);
-      setShowChecklistModal(false); 
+      setShowChecklistModal(false);
       setSelectedPieces([]);
       setScannedBarcodes([]);
       setPieceSeqs('');
@@ -1718,7 +1718,7 @@ export default function ProductionLogEntry() {
           }}
         >
           <Users className="w-4 h-4" />
-          Manual Logger 
+          Manual Logger
         </button>
         <button
           type="button"
@@ -1730,7 +1730,7 @@ export default function ProductionLogEntry() {
           }}
         >
           <Barcode className="w-4 h-4" />
-          Barcode Gun Scanner 
+          Barcode Gun Scanner
         </button>
         <button
           type="button"
@@ -1812,11 +1812,10 @@ export default function ProductionLogEntry() {
               <button
                 type="button"
                 onClick={() => setStoreCriteria('received_items')}
-                className={`w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                  storeCriteria === 'received_items'
+                className={`w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${storeCriteria === 'received_items'
                     ? 'bg-white text-slate-900 shadow-md border border-[#c8834a]/30'
                     : 'text-slate-600 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 <PackageCheck className="w-4 h-4 text-[#c8834a]" />
                 1. 📦 Received Items (Store Receiving Inbox &amp; Check-In)
@@ -1828,11 +1827,10 @@ export default function ProductionLogEntry() {
               <button
                 type="button"
                 onClick={() => setStoreCriteria('verification_gate')}
-                className={`w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                  storeCriteria === 'verification_gate'
+                className={`w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${storeCriteria === 'verification_gate'
                     ? 'bg-white text-slate-900 shadow-md border border-emerald-500/30'
                     : 'text-slate-600 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 <ShieldCheck className="w-4 h-4 text-emerald-600" />
                 2. 🛡️ Store Verification Gate &amp; Shell Stitch Dispatch
@@ -1845,7 +1843,7 @@ export default function ProductionLogEntry() {
             {/* CRITERION 1: COMPONENT SUBMISSION & BUCKET ASSIGNMENT (SEND TO STORE) */}
             {storeCriteria === 'received_items' && (
               <div className="space-y-6 animate-fade-in">
-                
+
                 {/* 1. SELECT STYLE / SKU BAR */}
                 <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
@@ -1877,11 +1875,10 @@ export default function ProductionLogEntry() {
                           onClick={() => {
                             setSkuCode(sku.code);
                           }}
-                          className={`px-3.5 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all cursor-pointer border ${
-                            isSelected
+                          className={`px-3.5 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all cursor-pointer border ${isSelected
                               ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-105'
                               : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50/50'
-                          }`}
+                            }`}
                         >
                           <span>{sku.style_name || sku.code}</span>
                           <span className="ml-1 text-[10px] opacity-75 font-mono">({sku.size || '38'})</span>
@@ -1904,11 +1901,11 @@ export default function ProductionLogEntry() {
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                       <button
                         type="button"
                         onClick={handleSelectAllBuckets}
-                        className="px-3 py-1.5 rounded-xl text-[11px] font-black uppercase bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer shrink-0"
+                        className="px-3 py-2.5 rounded-xl text-[11px] font-black uppercase bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer shrink-0 text-center"
                       >
                         {selectedBucketIds.length === productionBuckets.length ? 'Deselect All' : 'Select Every Bucket'}
                       </button>
@@ -1950,7 +1947,7 @@ export default function ProductionLogEntry() {
                           }
                         }}
                         disabled={selectedBucketIds.length === 0 || storeSubmitting}
-                        className="px-4 py-2 rounded-xl text-xs font-black text-white bg-[#c8834a] hover:bg-[#b0723e] disabled:opacity-40 transition-all shadow-sm cursor-pointer shrink-0 flex items-center gap-1.5"
+                        className="px-4 py-2.5 rounded-xl text-xs font-black text-white bg-[#c8834a] hover:bg-[#b0723e] disabled:opacity-40 transition-all shadow-sm cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
                       >
                         <PackageCheck className="w-4 h-4" />
                         Send Selected ({selectedBucketIds.length}) to Store ➔
@@ -1969,13 +1966,12 @@ export default function ProductionLogEntry() {
                         <div
                           key={bkt.id}
                           onClick={() => handleSelectBucket(bkt.id)}
-                          className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer relative flex flex-col justify-between gap-3 ${
-                            isSelected
+                          className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer relative flex flex-col justify-between gap-3 ${isSelected
                               ? 'bg-white border-2 border-[#c8834a] shadow-xl ring-4 ring-[#c8834a]/20 scale-[1.02]'
                               : isBothHeld
-                              ? 'bg-emerald-50/40 border-emerald-300 text-slate-900 hover:border-emerald-400'
-                              : 'bg-white border-slate-200 text-slate-900 hover:border-[#c8834a]/50 hover:bg-amber-50/20'
-                          }`}
+                                ? 'bg-emerald-50/40 border-emerald-300 text-slate-900 hover:border-emerald-400'
+                                : 'bg-white border-slate-200 text-slate-900 hover:border-[#c8834a]/50 hover:bg-amber-50/20'
+                            }`}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2">
@@ -1986,18 +1982,16 @@ export default function ProductionLogEntry() {
                                 onClick={(e) => e.stopPropagation()}
                                 className="w-4 h-4 rounded text-[#c8834a] cursor-pointer"
                               />
-                              <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg ${
-                                isSelected ? 'bg-[#c8834a] text-white' : 'bg-slate-100 text-slate-800'
-                              }`}>
+                              <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg ${isSelected ? 'bg-[#c8834a] text-white' : 'bg-slate-100 text-slate-800'
+                                }`}>
                                 {bkt.id}
                               </span>
                             </div>
 
-                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                              isBothHeld
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${isBothHeld
                                 ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                                 : 'bg-amber-100 text-amber-900 border border-amber-300'
-                            }`}>
+                              }`}>
                               {isBothHeld ? '📦 Sent to Store' : '⏳ Components In Progress'}
                             </span>
                           </div>
@@ -2022,11 +2016,10 @@ export default function ProductionLogEntry() {
                                 e.stopPropagation();
                                 handleToggleLeather(bkt.id);
                               }}
-                              className={`py-1.5 px-2 rounded-lg font-black text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                bkt.hold_leather
+                              className={`py-1.5 px-2 rounded-lg font-black text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1 ${bkt.hold_leather
                                   ? 'bg-emerald-500 text-white'
                                   : 'bg-amber-100 hover:bg-amber-200 text-amber-900'
-                              }`}
+                                }`}
                             >
                               {bkt.hold_leather ? <CheckCheck className="w-3 h-3" /> : <Square className="w-3 h-3" />}
                               Leather {bkt.hold_leather ? '✓' : 'Hold'}
@@ -2038,11 +2031,10 @@ export default function ProductionLogEntry() {
                                 e.stopPropagation();
                                 handleToggleLining(bkt.id);
                               }}
-                              className={`py-1.5 px-2 rounded-lg font-black text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                bkt.hold_lining
+                              className={`py-1.5 px-2 rounded-lg font-black text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1 ${bkt.hold_lining
                                   ? 'bg-emerald-500 text-white'
                                   : 'bg-sky-100 hover:bg-sky-200 text-sky-900'
-                              }`}
+                                }`}
                             >
                               {bkt.hold_lining ? <CheckCheck className="w-3 h-3" /> : <Square className="w-3 h-3" />}
                               Lining {bkt.hold_lining ? '✓' : 'Hold'}
@@ -2066,11 +2058,10 @@ export default function ProductionLogEntry() {
                           Garment Barcode: <strong className="font-mono text-slate-800">{activeBucket.garment_barcode}</strong>
                         </p>
                       </div>
-                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
-                        activeBucket.hold_leather && activeBucket.hold_lining
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${activeBucket.hold_leather && activeBucket.hold_lining
                           ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
                           : 'bg-amber-100 text-amber-800 border border-amber-200'
-                      }`}>
+                        }`}>
                         {activeBucket.hold_leather && activeBucket.hold_lining ? '🟢 BOTH COMPONENTS READY' : '🟡 AWAITING COMPONENTS'}
                       </span>
                     </div>
@@ -2102,11 +2093,10 @@ export default function ProductionLogEntry() {
                               key={preset.label}
                               type="button"
                               onClick={() => handleUpdateBucketQty(activeBucket.id, preset.qty)}
-                              className={`h-12 px-3 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
-                                activeBucket.qty_cleared === preset.qty
+                              className={`h-12 px-3 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${activeBucket.qty_cleared === preset.qty
                                   ? 'bg-[#c8834a] text-white shadow-sm'
                                   : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
-                              }`}
+                                }`}
                             >
                               {preset.label}
                             </button>
@@ -2132,9 +2122,8 @@ export default function ProductionLogEntry() {
                         <button
                           type="button"
                           onClick={() => handleToggleLeather(activeBucket.id)}
-                          className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs ${
-                            activeBucket.hold_leather ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-[#c8834a] hover:bg-[#b0723e] text-white'
-                          }`}
+                          className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs ${activeBucket.hold_leather ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-[#c8834a] hover:bg-[#b0723e] text-white'
+                            }`}
                         >
                           {activeBucket.hold_leather ? <CheckCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                           {activeBucket.hold_leather ? 'Hold Leather Active (Received)' : 'Mark Leather Received (Hold Leather)'}
@@ -2156,9 +2145,8 @@ export default function ProductionLogEntry() {
                         <button
                           type="button"
                           onClick={() => handleToggleLining(activeBucket.id)}
-                          className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs ${
-                            activeBucket.hold_lining ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-sky-600 hover:bg-sky-500 text-white'
-                          }`}
+                          className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs ${activeBucket.hold_lining ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-sky-600 hover:bg-sky-500 text-white'
+                            }`}
                         >
                           {activeBucket.hold_lining ? <CheckCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                           {activeBucket.hold_lining ? 'Hold Lining Active (Received)' : 'Mark Lining Received (Hold Lining)'}
@@ -2210,7 +2198,7 @@ export default function ProductionLogEntry() {
             {/* CRITERION 2: STORE VERIFICATION GATE (RECEIVE IN STORE & SEND TO SHELL STITCH) */}
             {storeCriteria === 'verification_gate' && (
               <div className="space-y-6 animate-fade-in">
-                
+
                 {/* Gate Header Banner */}
                 <div className="p-5 rounded-2xl bg-[#faf6f0] border border-[#c8834a]/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                   <div>
@@ -2241,29 +2229,26 @@ export default function ProductionLogEntry() {
                       <div
                         key={bkt.id}
                         onClick={() => handleSelectBucket(bkt.id)}
-                        className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer relative flex flex-col justify-between gap-3 ${
-                          isSelected
+                        className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer relative flex flex-col justify-between gap-3 ${isSelected
                             ? 'bg-white border-2 border-[#c8834a] shadow-xl ring-4 ring-[#c8834a]/20 scale-[1.02]'
                             : bkt.is_sended
-                            ? 'bg-indigo-50/40 border-indigo-200 text-slate-900'
-                            : bkt.is_received
-                            ? 'bg-emerald-50/40 border-emerald-300 text-slate-900 hover:border-emerald-400'
-                            : 'bg-white border-slate-200 text-slate-900 hover:border-amber-300'
-                        }`}
+                              ? 'bg-indigo-50/40 border-indigo-200 text-slate-900'
+                              : bkt.is_received
+                                ? 'bg-emerald-50/40 border-emerald-300 text-slate-900 hover:border-emerald-400'
+                                : 'bg-white border-slate-200 text-slate-900 hover:border-amber-300'
+                          }`}
                       >
                         <div className="flex items-start justify-between gap-2">
-                          <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg ${
-                            isSelected ? 'bg-[#c8834a] text-white' : 'bg-slate-100 text-slate-800'
-                          }`}>
+                          <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg ${isSelected ? 'bg-[#c8834a] text-white' : 'bg-slate-100 text-slate-800'
+                            }`}>
                             {bkt.id}
                           </span>
-                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
-                            bkt.is_sended
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${bkt.is_sended
                               ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
                               : bkt.is_received
-                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                              : 'bg-amber-100 text-amber-800 border border-amber-200'
-                          }`}>
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                            }`}>
                             {bkt.is_sended ? '🚀 Released' : bkt.is_received ? '🏬 In Store' : '⏳ Awaiting Store Receipt'}
                           </span>
                         </div>
@@ -2300,11 +2285,10 @@ export default function ProductionLogEntry() {
                           Garment Style: <strong className="text-slate-800">{activeBucket.style_name}</strong> · Color: <strong className="text-slate-800">{activeBucket.color_code}</strong> · Size: <strong className="text-slate-800">{activeBucket.size}</strong>
                         </p>
                       </div>
-                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
-                        activeBucket.is_received && isHoldBoth
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${activeBucket.is_received && isHoldBoth
                           ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
                           : 'bg-amber-50 text-amber-800 border border-amber-200'
-                      }`}>
+                        }`}>
                         {activeBucket.is_received && isHoldBoth ? '🟢 HOLD BOTH · VERIFIED' : '🟡 PENDING VERIFICATION'}
                       </span>
                     </div>
@@ -2325,11 +2309,10 @@ export default function ProductionLogEntry() {
                         type="button"
                         onClick={() => handleStoreReceivedAction(activeBucket.id)}
                         disabled={storeSubmitting || activeBucket.is_received}
-                        className={`px-5 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shrink-0 border ${
-                          activeBucket.is_received
+                        className={`px-5 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shrink-0 border ${activeBucket.is_received
                             ? 'bg-emerald-100 border-emerald-300 text-emerald-800 cursor-default'
                             : 'bg-[#c8834a] hover:bg-[#b0723e] text-white border-transparent shadow-sm active:scale-95'
-                        }`}
+                          }`}
                       >
                         {storeSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : activeBucket.is_received ? '✅ Received in Store' : '🏬 Check-In to Store'}
                       </button>
@@ -2365,11 +2348,10 @@ export default function ProductionLogEntry() {
                         type="button"
                         onClick={() => handleSendToShellStitchAction(activeBucket.id)}
                         disabled={!isHoldBoth || !activeBucket.is_received || storeSubmitting}
-                        className={`w-full h-14 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer active:scale-95 ${
-                          isHoldBoth && activeBucket.is_received
+                        className={`w-full min-h-[56px] h-auto py-2 rounded-2xl font-black text-sm transition-all flex items-center justify-center text-center gap-2 shadow-lg cursor-pointer active:scale-95 flex-wrap ${isHoldBoth && activeBucket.is_received
                             ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-500/20 hover:brightness-105'
                             : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
-                        }`}
+                          }`}
                       >
                         {storeSubmitting ? (
                           <Loader2 className="w-4 h-4 animate-spin" />
@@ -2579,11 +2561,10 @@ export default function ProductionLogEntry() {
                         key={flt.id}
                         type="button"
                         onClick={() => setActiveLineFilter(flt.id)}
-                        className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                          activeLineFilter === flt.id
+                        className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activeLineFilter === flt.id
                             ? 'bg-[#c8834a] text-white shadow-xs'
                             : 'bg-white text-slate-600 border border-slate-200 hover:border-[#c8834a]/40'
-                        }`}
+                          }`}
                       >
                         {flt.label}
                       </button>
@@ -2630,11 +2611,10 @@ export default function ProductionLogEntry() {
                     </div>
 
                     {/* Store Verification Gate (2 cols) */}
-                    <div className={`lg:col-span-2 p-2 rounded-xl border shadow-2xs space-y-1 transition-all ${
-                      isHoldBoth 
-                        ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-500/20' 
+                    <div className={`lg:col-span-2 p-2 rounded-xl border shadow-2xs space-y-1 transition-all ${isHoldBoth
+                        ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-500/20'
                         : 'bg-white/90 border-emerald-300 text-slate-800'
-                    }`}>
+                      }`}>
                       <span className={`text-[10px] font-black uppercase flex items-center justify-center gap-1 ${isHoldBoth ? 'text-white' : 'text-emerald-800'}`}>
                         <Store className="w-3 h-3" /> Store Gate
                       </span>
@@ -2680,17 +2660,16 @@ export default function ProductionLogEntry() {
                           key={stage}
                           type="button"
                           onClick={() => setBarcodeStage(stage)}
-                          className={`p-3 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-xs relative flex flex-col items-center justify-center gap-1 min-h-[72px] ${
-                            isSelected
+                          className={`p-3 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-xs relative flex flex-col items-center justify-center gap-1 min-h-[72px] ${isSelected
                               ? isStoreStage && isHoldBoth
                                 ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white border-emerald-400 scale-[1.02] shadow-md ring-2 ring-emerald-400/40'
                                 : 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
                               : isStoreStage
-                              ? isHoldBoth
-                                ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
-                                : 'bg-amber-50/60 text-amber-900 border-amber-200 hover:bg-amber-100/50'
-                              : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
-                          }`}
+                                ? isHoldBoth
+                                  ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
+                                  : 'bg-amber-50/60 text-amber-900 border-amber-200 hover:bg-amber-100/50'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
+                            }`}
                         >
                           {(isCuttingStage || isLiningStage) && (
                             <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-200/60 text-amber-900 absolute top-1">
@@ -2698,9 +2677,8 @@ export default function ProductionLogEntry() {
                             </span>
                           )}
                           {isStoreStage && (
-                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded absolute top-1 ${
-                              isHoldBoth ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-amber-200 text-amber-950'
-                            }`}>
+                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded absolute top-1 ${isHoldBoth ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-amber-200 text-amber-950'
+                              }`}>
                               {isHoldBoth ? '🟢 Hold Both' : 'Store Gate'}
                             </span>
                           )}
@@ -2715,7 +2693,7 @@ export default function ProductionLogEntry() {
                 {/* STEP 3A: CUTTING OR LINING STAGE FLOW */}
                 {(barcodeStage === 'Cutting' || barcodeStage === 'Lining') ? (
                   <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
-                    
+
                     {/* Header Banner for Parallel Stage */}
                     <div className="p-3.5 rounded-xl bg-amber-50/80 border border-[#c8834a]/30 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
@@ -2826,7 +2804,7 @@ export default function ProductionLogEntry() {
                     {/* ORDER DETAILS SUMMARY & 3 MATERIAL SPEC DROPDOWNS */}
                     {barcodeSelectedSku && barcodeDcmConfirmed && barcodeDcm && (
                       <div className="p-6 rounded-2xl bg-white border-2 border-[#c8834a]/30 shadow-md space-y-5 animate-fade-in">
-                        
+
                         {/* Order Details Header */}
                         <div className="p-4 rounded-xl bg-[#faf6f0] border border-[#c8834a]/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                           <div>
@@ -3079,561 +3057,556 @@ export default function ProductionLogEntry() {
         {activeDoor === 'manual' && (
           <form onSubmit={handleSubmit} className="space-y-8 animate-fade-in">
 
-          {/* STEP 1: Worker Selection */}
-          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
-            <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-            <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
-              Worker Selection
-            </h3>
-            
-            <div className="pt-2">
-              <div className="flex flex-col gap-2 relative z-40 self-start w-full" ref={workerModalRef}>
-                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                  <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker *
-                </label>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsWorkerOpen(!isWorkerOpen);
-                    setWorkerSearchQuery('');
-                  }}
-                  className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
-                >
-                  <span className={currentSelectedWorker ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
-                    {currentSelectedWorker ? currentSelectedWorker.name : `-- Select / Search Worker --`}
-                  </span>
-                  <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isWorkerOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isWorkerOpen && (
-                  <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl z-[99999] p-3 space-y-3 animate-fade-in">
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="Search Worker Name..."
-                        value={workerSearchQuery}
-                        onChange={(e) => setWorkerSearchQuery(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                        className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
-                      />
-                    </div>
-
-                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
-                      {searchFilteredWorkers.length > 0 ? (
-                        searchFilteredWorkers.map((w) => {
-                          const isSelected = workerId === w.id;
-                          return (
-                            <button
-                              key={w.id}
-                              type="button"
-                              onClick={() => {
-                                setWorkerId(w.id);
-                                setIsWorkerOpen(false);
-                              }}
-                              className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
-                            >
-                              <span>{w.name}</span>
-                              {isSelected && <span className="font-black text-sm">✓</span>}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="p-4 text-center text-xs font-bold text-slate-400">
-                          No workers match "{workerSearchQuery}"
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* STEP 2: Garment Details & Operation Stage */}
-          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
-            <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-[#c8834a]/15">
-              <h3 className="text-sm font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#2d1f0e' }}>
-                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
-                Operation Stage &amp; Garment Details
+            {/* STEP 1: Worker Selection */}
+            <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+              <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
+              <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
+                Worker Selection
               </h3>
 
-              {/* Line Switcher Filter Pills */}
-              <div className="flex items-center gap-1.5 flex-wrap">
-                {[
-                  { id: 'all', label: 'All Stages (8)' },
-                  { id: 'leather', label: '✂️ Leather Line' },
-                  { id: 'lining', label: '🧵 Lining Line' },
-                  { id: 'store', label: '🏬 Store Gate' },
-                  { id: 'stitching', label: '🪡 Stitch & Finish' },
-                ].map((flt) => (
-                  <button
-                    key={flt.id}
-                    type="button"
-                    onClick={() => setActiveLineFilter(flt.id)}
-                    className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                      activeLineFilter === flt.id
-                        ? 'bg-[#c8834a] text-white shadow-xs'
-                        : 'bg-white text-slate-600 border border-slate-200 hover:border-[#c8834a]/40'
-                    }`}
-                  >
-                    {flt.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* VISUAL PROCESS FLOW MANUAL BANNER */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50/90 via-orange-50/50 to-emerald-50/80 border border-[#c8834a]/25 text-xs space-y-3">
-              <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-[#4a3a2a]">
-                <span className="flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-[#c8834a]" /> Dual Production Tracks &amp; Store Verification Gate
-                </span>
-                <span className="text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md font-extrabold">
-                  Simultaneous Parallel Process Flow
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center text-center">
-                {/* Leather Line Branch (5 cols) */}
-                <div className="lg:col-span-5 p-2 rounded-xl bg-white/80 border border-amber-200 shadow-2xs space-y-1">
-                  <span className="text-[10px] font-black uppercase text-amber-800 flex items-center justify-center gap-1">
-                    <Scissors className="w-3 h-3 text-amber-600" /> Leather Line (Simultaneous Start)
-                  </span>
-                  <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-slate-700">
-                    <span className={`px-2 py-0.5 rounded ${selectedStage === 'Cutting' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Cutting</span>
-                    <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
-                    <span className={`px-2 py-0.5 rounded ${selectedStage === 'Fusing' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Fusing</span>
-                    <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
-                    <span className={`px-2 py-0.5 rounded ${selectedStage === 'Pasting' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Pasting</span>
-                  </div>
-                </div>
-
-                {/* Lining Line Branch (2 cols) */}
-                <div className="lg:col-span-2 p-2 rounded-xl bg-white/80 border border-sky-200 shadow-2xs space-y-1">
-                  <span className="text-[10px] font-black uppercase text-sky-800 flex items-center justify-center gap-1">
-                    <Layers className="w-3 h-3 text-sky-600" /> Lining Line
-                  </span>
-                  <div className="flex items-center justify-center">
-                    <span className={`px-2.5 py-0.5 rounded text-[10px] ${selectedStage === 'Lining' ? 'bg-sky-600 text-white font-black' : 'bg-sky-50 text-sky-800 font-bold'}`}>
-                      🧵 Lining
-                    </span>
-                  </div>
-                </div>
-
-                {/* Store Verification Gate (2 cols) */}
-                <div className={`lg:col-span-2 p-2 rounded-xl border shadow-2xs space-y-1 transition-all ${
-                  isHoldBoth 
-                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-500/20' 
-                    : 'bg-white/90 border-emerald-300 text-slate-800'
-                }`}>
-                  <span className={`text-[10px] font-black uppercase flex items-center justify-center gap-1 ${isHoldBoth ? 'text-white' : 'text-emerald-800'}`}>
-                    <Store className="w-3 h-3" /> Store Gate
-                  </span>
-                  <div className="text-[9px] font-black">
-                    {isHoldBoth ? '🟢 HOLD BOTH' : '🟡 Store Check'}
-                  </div>
-                </div>
-
-                {/* Assembly Line Branch (3 cols) */}
-                <div className="lg:col-span-3 p-2 rounded-xl bg-white/80 border border-indigo-200 shadow-2xs space-y-1">
-                  <span className="text-[10px] font-black uppercase text-indigo-800">
-                    Assembly &amp; Finish
-                  </span>
-                  <div className="flex items-center justify-center gap-1 text-[9px] font-bold text-slate-700">
-                    <span className={`px-1.5 py-0.5 rounded ${selectedStage === 'Shell Stitch' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Shell</span>
-                    <ArrowRight className="w-2 h-2 text-slate-400" />
-                    <span className={`px-1.5 py-0.5 rounded ${selectedStage === 'Lining Stitch' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Lining St.</span>
-                    <ArrowRight className="w-2 h-2 text-slate-400" />
-                    <span className={`px-1.5 py-0.5 rounded ${selectedStage === 'Final Finish' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Finish</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-4 pt-2">
-              <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
-              </label>
-
-              {/* 8 Operation Stage Buttons */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
-                {stagesList
-                  .filter((stage) => {
-                    if (activeLineFilter === 'leather') return ['Cutting', 'Fusing', 'Pasting'].includes(stage);
-                    if (activeLineFilter === 'lining') return stage === 'Lining';
-                    if (activeLineFilter === 'store') return stage === 'Store';
-                    if (activeLineFilter === 'stitching') return ['Shell Stitch', 'Lining Stitch', 'Final Finish'].includes(stage);
-                    return true;
-                  })
-                  .map((stage) => {
-                    const isSelected = selectedStage === stage;
-                    const isStoreStage = stage === 'Store';
-                    const isLiningStage = stage === 'Lining';
-                    const isCuttingStage = stage === 'Cutting';
-
-                    return (
-                      <button
-                        key={stage}
-                        type="button"
-                        onClick={() => {
-                          setSelectedStage(stage);
-                          setPieceSeqs('');
-                        }}
-                        className={`p-3 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-xs relative flex flex-col items-center justify-center gap-1 min-h-[72px] ${
-                          isSelected
-                            ? isStoreStage && isHoldBoth
-                              ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white border-emerald-400 scale-[1.02] shadow-md ring-2 ring-emerald-400/40'
-                              : 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]' 
-                            : isStoreStage
-                            ? isHoldBoth
-                              ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
-                              : 'bg-amber-50/60 text-amber-900 border-amber-200 hover:bg-amber-100/50'
-                            : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
-                        }`}
-                      >
-                        {(isCuttingStage || isLiningStage) && (
-                          <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-200/60 text-amber-900 absolute top-1">
-                            Parallel Start
-                          </span>
-                        )}
-                        {isStoreStage && (
-                          <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded absolute top-1 ${
-                            isHoldBoth ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-amber-200 text-amber-950'
-                          }`}>
-                            {isHoldBoth ? '🟢 Hold Both' : 'Store Gate'}
-                          </span>
-                        )}
-                        <span className={isCuttingStage || isLiningStage || isStoreStage ? 'mt-3' : ''}>
-                          {stage}
-                        </span>
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 gap-8 pt-4">
-              <div className="flex flex-col gap-2 relative w-full" ref={skuModalRef}>
-                <div className="flex items-center justify-between">
+              <div className="pt-2">
+                <div className="flex flex-col gap-2 relative z-40 self-start w-full" ref={workerModalRef}>
                   <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                    <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
+                    <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker *
                   </label>
+
                   <button
                     type="button"
-                    onClick={() => setSkuRefreshKey(k => k + 1)}
-                    className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                    style={{ color: '#c8834a', background: 'rgba(200,131,74,0.08)', border: '1px solid rgba(200,131,74,0.2)' }}
+                    onClick={() => {
+                      setIsWorkerOpen(!isWorkerOpen);
+                      setWorkerSearchQuery('');
+                    }}
+                    className="w-full min-h-[56px] h-auto py-2 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
                   >
-                    {skusLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Refresh'}
+                    <span className={currentSelectedWorker ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
+                      {currentSelectedWorker ? currentSelectedWorker.name : `-- Select / Search Worker --`}
+                    </span>
+                    <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isWorkerOpen ? 'rotate-180' : ''}`} />
                   </button>
-                </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSkuOpen(!isSkuOpen);
-                    if (!isSkuOpen) setSkuSearchQuery('');
-                  }}
-                  className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
-                >
-                  <span className={currentSelectedSku ? "text-slate-900 font-extrabold text-left break-words whitespace-normal" : "text-slate-400"}>
-                    {currentSelectedSku
-                      ? `[Order #${currentSelectedSku.order_number || 'N/A'}] ${currentSelectedSku.label || `${currentSelectedSku.style_name || ''} · ${currentSelectedSku.color_code || ''} · ${currentSelectedSku.size}`}`
-                      : "-- Select / Search Garment SKU --"
-                    }
-                  </span>
-                  <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isSkuOpen ? 'rotate-180' : ''}`} />
-                </button>
+                  {isWorkerOpen && (
+                    <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl z-[99999] p-3 space-y-3 animate-fade-in">
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="Search Worker Name..."
+                          value={workerSearchQuery}
+                          onChange={(e) => setWorkerSearchQuery(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                          className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+                        />
+                      </div>
 
-                {isSkuOpen && (
-                  <div className="absolute z-[999] top-full mt-2 left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl p-3 space-y-3 animate-fade-in">
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        placeholder="Type Style, SKU, Order No, or Color..."
-                        value={skuSearchQuery}
-                        onChange={(e) => setSkuSearchQuery(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                        className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
-                        autoFocus
-                      />
-                    </div>
-
-                    <div 
-                      className="max-h-56 overflow-y-auto pr-1"
-                      onScroll={(e) => {
-                        const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
-                        if (bottom && visibleCount < searchFilteredSkus.length) {
-                          setVisibleCount(prev => prev + 60);
-                        }
-                      }}
-                    >
-                      {skusLoading ? (
-                        <div className="p-6 flex flex-col items-center gap-2">
-                          <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
-                          <span className="text-xs font-bold text-slate-400">Loading SKUs...</span>
-                        </div>
-                      ) : searchFilteredSkus.length > 0 ? (
-                        <>
-                          {searchFilteredSkus.slice(0, visibleCount).map((s, idx) => {
-                            const isSelected = skuCode === s.code;
+                      <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
+                        {searchFilteredWorkers.length > 0 ? (
+                          searchFilteredWorkers.map((w) => {
+                            const isSelected = workerId === w.id;
                             return (
                               <button
-                                key={s.code}
+                                key={w.id}
                                 type="button"
                                 onClick={() => {
-                                  setSkuCode(s.code);
-                                  setIsSkuOpen(false);
+                                  setWorkerId(w.id);
+                                  setIsWorkerOpen(false);
                                 }}
-                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-1 cursor-pointer border ${
-                                  isSelected 
-                                    ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm' 
-                                    : 'hover:bg-amber-50/60 text-slate-800 border-transparent'
-                                }`}
+                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
                               >
-                                <div className="pr-2 break-words whitespace-normal text-left flex flex-col gap-0.5">
-                                  {isSelected && (
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-amber-200">
-                                      ★ Current Active Style
-                                    </span>
-                                  )}
-                                  <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
-                                </div>
-                                {isSelected && <span className="font-black text-sm shrink-0">✓</span>}
+                                <span>{w.name}</span>
+                                {isSelected && <span className="font-black text-sm">✓</span>}
                               </button>
                             );
-                          })}
-                        </>
-                      ) : (
-                        <div className="p-4 text-center text-xs font-bold text-slate-400">
-                          No SKU matches "{skuSearchQuery}"
-                        </div>
-                      )}
+                          })
+                        ) : (
+                          <div className="p-4 text-center text-xs font-bold text-slate-400">
+                            No workers match "{workerSearchQuery}"
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {currentSelectedSku && (
-                  <div className="mt-1 px-4 py-2.5 bg-[#faf6f0] border border-[#c8834a]/20 rounded-xl flex items-center justify-between shadow-sm animate-fade-in">
-                    <span className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider flex items-center gap-1.5">
-                      Target Quantity
-                    </span>
-                    <span className="text-sm font-black text-[#c8834a]">{currentSelectedSku.qty_ordered || 0} pcs</span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* STEP 3: Quantities, Verification & Submission */}
-          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
-            <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-            <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span>
-              Quantities &amp; Submission ({selectedStage})
-            </h3>
+            {/* STEP 2: Garment Details & Operation Stage */}
+            <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+              <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-[#c8834a]/15">
+                <h3 className="text-sm font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+                  <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
+                  Operation Stage &amp; Garment Details
+                </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-
-              {selectedStage === 'Cutting' ? (
-                /* CUTTING STAGE */
-                <div className="flex flex-col gap-3 md:col-span-2">
-                  <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Scissors className="w-4 h-4 text-amber-600" /> Leather Cut Piece Count (Total Quantity) *
-                  </label>
-                  <p className="text-[10px] text-slate-500 -mt-2">Enter the exact total number of cut leather pieces. (Runs parallel to Lining).</p>
-                  <input
-                    type="number"
-                    id="cutting-count-input"
-                    placeholder="e.g. 50"
-                    value={cuttingCount}
-                    onChange={(e) => setCuttingCount(e.target.value)}
-                    className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm transition-all rounded-xl outline-none"
-                    required
-                    min="1"
-                  />
+                {/* Line Switcher Filter Pills */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {[
+                    { id: 'all', label: 'All Stages (8)' },
+                    { id: 'leather', label: '✂️ Leather Line' },
+                    { id: 'lining', label: '🧵 Lining Line' },
+                    { id: 'store', label: '🏬 Store Gate' },
+                    { id: 'stitching', label: '🪡 Stitch & Finish' },
+                  ].map((flt) => (
+                    <button
+                      key={flt.id}
+                      type="button"
+                      onClick={() => setActiveLineFilter(flt.id)}
+                      className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg transition-all cursor-pointer ${activeLineFilter === flt.id
+                          ? 'bg-[#c8834a] text-white shadow-xs'
+                          : 'bg-white text-slate-600 border border-slate-200 hover:border-[#c8834a]/40'
+                        }`}
+                    >
+                      {flt.label}
+                    </button>
+                  ))}
                 </div>
-              ) : selectedStage === 'Lining' ? (
-                /* LINING STAGE (PARALLEL PROCESS) */
-                <div className="space-y-5 md:col-span-2">
-                  <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-sky-600" />
-                      <span className="font-extrabold text-sky-950">
-                        Lining Production Line (Simultaneous with Cutting)
-                      </span>
-                    </div>
-                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-sky-200 text-sky-900">
-                      Inner Components
+              </div>
+
+              {/* VISUAL PROCESS FLOW MANUAL BANNER */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50/90 via-orange-50/50 to-emerald-50/80 border border-[#c8834a]/25 text-xs space-y-3">
+                <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-[#4a3a2a]">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-[#c8834a]" /> Dual Production Tracks &amp; Store Verification Gate
+                  </span>
+                  <span className="text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md font-extrabold">
+                    Simultaneous Parallel Process Flow
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center text-center">
+                  {/* Leather Line Branch (5 cols) */}
+                  <div className="lg:col-span-5 p-2 rounded-xl bg-white/80 border border-amber-200 shadow-2xs space-y-1">
+                    <span className="text-[10px] font-black uppercase text-amber-800 flex items-center justify-center gap-1">
+                      <Scissors className="w-3 h-3 text-amber-600" /> Leather Line (Simultaneous Start)
                     </span>
+                    <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-slate-700">
+                      <span className={`px-2 py-0.5 rounded ${selectedStage === 'Cutting' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Cutting</span>
+                      <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
+                      <span className={`px-2 py-0.5 rounded ${selectedStage === 'Fusing' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Fusing</span>
+                      <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
+                      <span className={`px-2 py-0.5 rounded ${selectedStage === 'Pasting' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Pasting</span>
+                    </div>
                   </div>
 
-                  <div className="flex flex-col gap-2">
-                    <label htmlFor="lining-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-sky-600" /> Lining Cut Piece Count *
+                  {/* Lining Line Branch (2 cols) */}
+                  <div className="lg:col-span-2 p-2 rounded-xl bg-white/80 border border-sky-200 shadow-2xs space-y-1">
+                    <span className="text-[10px] font-black uppercase text-sky-800 flex items-center justify-center gap-1">
+                      <Layers className="w-3 h-3 text-sky-600" /> Lining Line
+                    </span>
+                    <div className="flex items-center justify-center">
+                      <span className={`px-2.5 py-0.5 rounded text-[10px] ${selectedStage === 'Lining' ? 'bg-sky-600 text-white font-black' : 'bg-sky-50 text-sky-800 font-bold'}`}>
+                        🧵 Lining
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Store Verification Gate (2 cols) */}
+                  <div className={`lg:col-span-2 p-2 rounded-xl border shadow-2xs space-y-1 transition-all ${isHoldBoth
+                      ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-500/20'
+                      : 'bg-white/90 border-emerald-300 text-slate-800'
+                    }`}>
+                    <span className={`text-[10px] font-black uppercase flex items-center justify-center gap-1 ${isHoldBoth ? 'text-white' : 'text-emerald-800'}`}>
+                      <Store className="w-3 h-3" /> Store Gate
+                    </span>
+                    <div className="text-[9px] font-black">
+                      {isHoldBoth ? '🟢 HOLD BOTH' : '🟡 Store Check'}
+                    </div>
+                  </div>
+
+                  {/* Assembly Line Branch (3 cols) */}
+                  <div className="lg:col-span-3 p-2 rounded-xl bg-white/80 border border-indigo-200 shadow-2xs space-y-1">
+                    <span className="text-[10px] font-black uppercase text-indigo-800">
+                      Assembly &amp; Finish
+                    </span>
+                    <div className="flex items-center justify-center gap-1 text-[9px] font-bold text-slate-700">
+                      <span className={`px-1.5 py-0.5 rounded ${selectedStage === 'Shell Stitch' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Shell</span>
+                      <ArrowRight className="w-2 h-2 text-slate-400" />
+                      <span className={`px-1.5 py-0.5 rounded ${selectedStage === 'Lining Stitch' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Lining St.</span>
+                      <ArrowRight className="w-2 h-2 text-slate-400" />
+                      <span className={`px-1.5 py-0.5 rounded ${selectedStage === 'Final Finish' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Finish</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4 pt-2">
+                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                  <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
+                </label>
+
+                {/* 8 Operation Stage Buttons */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                  {stagesList
+                    .filter((stage) => {
+                      if (activeLineFilter === 'leather') return ['Cutting', 'Fusing', 'Pasting'].includes(stage);
+                      if (activeLineFilter === 'lining') return stage === 'Lining';
+                      if (activeLineFilter === 'store') return stage === 'Store';
+                      if (activeLineFilter === 'stitching') return ['Shell Stitch', 'Lining Stitch', 'Final Finish'].includes(stage);
+                      return true;
+                    })
+                    .map((stage) => {
+                      const isSelected = selectedStage === stage;
+                      const isStoreStage = stage === 'Store';
+                      const isLiningStage = stage === 'Lining';
+                      const isCuttingStage = stage === 'Cutting';
+
+                      return (
+                        <button
+                          key={stage}
+                          type="button"
+                          onClick={() => {
+                            setSelectedStage(stage);
+                            setPieceSeqs('');
+                          }}
+                          className={`p-3 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-xs relative flex flex-col items-center justify-center gap-1 min-h-[72px] ${isSelected
+                              ? isStoreStage && isHoldBoth
+                                ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white border-emerald-400 scale-[1.02] shadow-md ring-2 ring-emerald-400/40'
+                                : 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]'
+                              : isStoreStage
+                                ? isHoldBoth
+                                  ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
+                                  : 'bg-amber-50/60 text-amber-900 border-amber-200 hover:bg-amber-100/50'
+                                : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
+                            }`}
+                        >
+                          {(isCuttingStage || isLiningStage) && (
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-200/60 text-amber-900 absolute top-1">
+                              Parallel Start
+                            </span>
+                          )}
+                          {isStoreStage && (
+                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded absolute top-1 ${isHoldBoth ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-amber-200 text-amber-950'
+                              }`}>
+                              {isHoldBoth ? '🟢 Hold Both' : 'Store Gate'}
+                            </span>
+                          )}
+                          <span className={isCuttingStage || isLiningStage || isStoreStage ? 'mt-3' : ''}>
+                            {stage}
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-8 pt-4">
+                <div className="flex flex-col gap-2 relative w-full" ref={skuModalRef}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                      <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
                     </label>
+                    <button
+                      type="button"
+                      onClick={() => setSkuRefreshKey(k => k + 1)}
+                      className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                      style={{ color: '#c8834a', background: 'rgba(200,131,74,0.08)', border: '1px solid rgba(200,131,74,0.2)' }}
+                    >
+                      {skusLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Refresh'}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSkuOpen(!isSkuOpen);
+                      if (!isSkuOpen) setSkuSearchQuery('');
+                    }}
+                    className="w-full min-h-[56px] h-auto py-2 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
+                  >
+                    <span className={currentSelectedSku ? "text-slate-900 font-extrabold text-left break-words whitespace-normal" : "text-slate-400"}>
+                      {currentSelectedSku
+                        ? `[Order #${currentSelectedSku.order_number || 'N/A'}] ${currentSelectedSku.label || `${currentSelectedSku.style_name || ''} · ${currentSelectedSku.color_code || ''} · ${currentSelectedSku.size}`}`
+                        : "-- Select / Search Garment SKU --"
+                      }
+                    </span>
+                    <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isSkuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isSkuOpen && (
+                    <div className="absolute z-[999] top-full mt-2 left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl p-3 space-y-3 animate-fade-in">
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Type Style, SKU, Order No, or Color..."
+                          value={skuSearchQuery}
+                          onChange={(e) => setSkuSearchQuery(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                          className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+                          autoFocus
+                        />
+                      </div>
+
+                      <div
+                        className="max-h-56 overflow-y-auto pr-1"
+                        onScroll={(e) => {
+                          const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
+                          if (bottom && visibleCount < searchFilteredSkus.length) {
+                            setVisibleCount(prev => prev + 60);
+                          }
+                        }}
+                      >
+                        {skusLoading ? (
+                          <div className="p-6 flex flex-col items-center gap-2">
+                            <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
+                            <span className="text-xs font-bold text-slate-400">Loading SKUs...</span>
+                          </div>
+                        ) : searchFilteredSkus.length > 0 ? (
+                          <>
+                            {searchFilteredSkus.slice(0, visibleCount).map((s, idx) => {
+                              const isSelected = skuCode === s.code;
+                              return (
+                                <button
+                                  key={s.code}
+                                  type="button"
+                                  onClick={() => {
+                                    setSkuCode(s.code);
+                                    setIsSkuOpen(false);
+                                  }}
+                                  className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-1 cursor-pointer border ${isSelected
+                                      ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm'
+                                      : 'hover:bg-amber-50/60 text-slate-800 border-transparent'
+                                    }`}
+                                >
+                                  <div className="pr-2 break-words whitespace-normal text-left flex flex-col gap-0.5">
+                                    {isSelected && (
+                                      <span className="text-[9px] font-black uppercase tracking-wider text-amber-200">
+                                        ★ Current Active Style
+                                      </span>
+                                    )}
+                                    <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
+                                  </div>
+                                  {isSelected && <span className="font-black text-sm shrink-0">✓</span>}
+                                </button>
+                              );
+                            })}
+                          </>
+                        ) : (
+                          <div className="p-4 text-center text-xs font-bold text-slate-400">
+                            No SKU matches "{skuSearchQuery}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentSelectedSku && (
+                    <div className="mt-1 px-4 py-2.5 bg-[#faf6f0] border border-[#c8834a]/20 rounded-xl flex items-center justify-between shadow-sm animate-fade-in">
+                      <span className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider flex items-center gap-1.5">
+                        Target Quantity
+                      </span>
+                      <span className="text-sm font-black text-[#c8834a]">{currentSelectedSku.qty_ordered || 0} pcs</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* STEP 3: Quantities, Verification & Submission */}
+            <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+              <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
+              <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span>
+                Quantities &amp; Submission ({selectedStage})
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+
+                {selectedStage === 'Cutting' ? (
+                  /* CUTTING STAGE */
+                  <div className="flex flex-col gap-3 md:col-span-2">
+                    <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Scissors className="w-4 h-4 text-amber-600" /> Leather Cut Piece Count (Total Quantity) *
+                    </label>
+                    <p className="text-[10px] text-slate-500 -mt-2">Enter the exact total number of cut leather pieces. (Runs parallel to Lining).</p>
                     <input
                       type="number"
-                      id="lining-count-input"
+                      id="cutting-count-input"
                       placeholder="e.g. 50"
                       value={cuttingCount}
                       onChange={(e) => setCuttingCount(e.target.value)}
-                      className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-sky-300 focus:border-sky-500 shadow-sm transition-all rounded-xl outline-none"
+                      className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm transition-all rounded-xl outline-none"
                       required
                       min="1"
                     />
                   </div>
+                ) : selectedStage === 'Lining' ? (
+                  /* LINING STAGE (PARALLEL PROCESS) */
+                  <div className="space-y-5 md:col-span-2">
+                    <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        <Layers className="w-4 h-4 text-sky-600" />
+                        <span className="font-extrabold text-sky-950">
+                          Lining Production Line (Simultaneous with Cutting)
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-sky-200 text-sky-900">
+                        Inner Components
+                      </span>
+                    </div>
 
-                  </div>
-              ) : selectedStage === 'Store' ? (
-                /* STORE MANAGER HUB REDIRECT */
-                <div className="p-8 rounded-3xl bg-[#faf6f0] border-2 border-[#c8834a]/30 text-center space-y-4 animate-fade-in text-slate-900 md:col-span-2">
-                  <div className="w-16 h-16 rounded-3xl bg-[#c8834a] text-white flex items-center justify-center mx-auto shadow-lg shadow-[#c8834a]/20">
-                    <Store className="w-8 h-8" />
-                  </div>
-                  <div className="max-w-md mx-auto">
-                    <h4 className="text-base font-black text-slate-900">
-                      Store Manager Hub Active
-                    </h4>
-                    <p className="text-xs text-slate-600 mt-1">
-                      Store receiving, style/bucket component submission (Leather &amp; Lining), and Shell Stitch release are centralized in the Store Manager Hub.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveDoor('store')}
-                    className="px-6 py-3.5 rounded-2xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] transition-all shadow-md active:scale-95 cursor-pointer inline-flex items-center gap-2"
-                  >
-                    <Store className="w-4 h-4" /> Open Store Manager Hub ➔
-                  </button>
-                </div>
-              ) : (
-                /* STANDARD STAGE: PIECE SEQUENCE & CHECKLIST */
-                <div className="flex flex-col gap-3 md:col-span-2">
-                  <div className="flex justify-between items-end">
-                    <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
-                    </label>
-                    <button
-                      type="button"
-                      onClick={openChecklistModal}
-                      className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                      style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#fff' }}
-                    >
-                      <ListChecks className="w-3.5 h-3.5" /> Select from Checklist
-                    </button>
-                  </div>
-                  <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8), or use the checklist.</p>
-                  <div className="flex flex-col sm:flex-row items-stretch gap-4">
-                    <div className="relative flex-1">
+                    <div className="flex flex-col gap-2">
+                      <label htmlFor="lining-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Layers className="w-4 h-4 text-sky-600" /> Lining Cut Piece Count *
+                      </label>
                       <input
-                        type="text"
-                        id="piece-seq-input"
-                        placeholder="e.g. 1, 2, 5-8"
-                        value={pieceSeqs}
-                        onChange={(e) => setPieceSeqs(e.target.value)}
-                        className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all rounded-xl outline-none"
+                        type="number"
+                        id="lining-count-input"
+                        placeholder="e.g. 50"
+                        value={cuttingCount}
+                        onChange={(e) => setCuttingCount(e.target.value)}
+                        className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-sky-300 focus:border-sky-500 shadow-sm transition-all rounded-xl outline-none"
+                        required
+                        min="1"
                       />
                     </div>
-                    <div className="flex gap-2 w-1/4">
+
+                  </div>
+                ) : selectedStage === 'Store' ? (
+                  /* STORE MANAGER HUB REDIRECT */
+                  <div className="p-8 rounded-3xl bg-[#faf6f0] border-2 border-[#c8834a]/30 text-center space-y-4 animate-fade-in text-slate-900 md:col-span-2">
+                    <div className="w-16 h-16 rounded-3xl bg-[#c8834a] text-white flex items-center justify-center mx-auto shadow-lg shadow-[#c8834a]/20">
+                      <Store className="w-8 h-8" />
+                    </div>
+                    <div className="max-w-md mx-auto">
+                      <h4 className="text-base font-black text-slate-900">
+                        Store Manager Hub Active
+                      </h4>
+                      <p className="text-xs text-slate-600 mt-1">
+                        Store receiving, style/bucket component submission (Leather &amp; Lining), and Shell Stitch release are centralized in the Store Manager Hub.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveDoor('store')}
+                      className="px-6 py-3.5 rounded-2xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] transition-all shadow-md active:scale-95 cursor-pointer inline-flex items-center gap-2"
+                    >
+                      <Store className="w-4 h-4" /> Open Store Manager Hub ➔
+                    </button>
+                  </div>
+                ) : (
+                  /* STANDARD STAGE: PIECE SEQUENCE & CHECKLIST */
+                  <div className="flex flex-col gap-3 md:col-span-2">
+                    <div className="flex justify-between items-end">
+                      <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
+                      </label>
                       <button
                         type="button"
-                        onClick={() => setPieceSeqs('')}
-                        className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                        onClick={openChecklistModal}
+                        className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                        style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#fff' }}
                       >
-                        Clear
+                        <ListChecks className="w-3.5 h-3.5" /> Select from Checklist
                       </button>
                     </div>
+                    <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8), or use the checklist.</p>
+                    <div className="flex flex-col sm:flex-row items-stretch gap-4">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          id="piece-seq-input"
+                          placeholder="e.g. 1, 2, 5-8"
+                          value={pieceSeqs}
+                          onChange={(e) => setPieceSeqs(e.target.value)}
+                          className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all rounded-xl outline-none"
+                        />
+                      </div>
+                      <div className="flex gap-2 w-1/4">
+                        <button
+                          type="button"
+                          onClick={() => setPieceSeqs('')}
+                          className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="date-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-emerald-500" /> Transaction Date *
-                </label>
-                <input
-                  type="date"
-                  id="date-input"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="input-field h-14 bg-white font-bold border-2 border-slate-200 shadow-sm px-4 rounded-xl outline-none"
-                  required
-                />
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="date-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-emerald-500" /> Transaction Date *
+                  </label>
+                  <input
+                    type="date"
+                    id="date-input"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="input-field h-14 bg-white font-bold border-2 border-slate-200 shadow-sm px-4 rounded-xl outline-none"
+                    required
+                  />
+                </div>
+
+              </div>
+            </div>
+
+            {/* Form Actions */}
+            <div className="pt-4 flex flex-col gap-3">
+              <div className="flex gap-3 w-full">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPieceSeqs('');
+                    setSkuCode('');
+                    setCuttingCount('');
+                  }}
+                  className="flex-1 h-14 font-bold rounded-xl text-base transition-all cursor-pointer active:scale-95"
+                  style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
+                >
+                  Reset All
+                </button>
+
+                <button
+                  type="submit"
+                  className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                  style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
+                >
+                  {selectedStage === 'Cutting' ? (
+                    <>
+                      <Scissors className="w-5 h-5" /> ✂️ Send Leather to Store ➔
+                    </>
+                  ) : selectedStage === 'Lining' ? (
+                    <>
+                      <Layers className="w-5 h-5" /> 🧵 Send Lining to Store ➔
+                    </>
+                  ) : (
+                    <>
+                      <Rocket className="w-5 h-5" /> Submit {selectedStage} Event
+                    </>
+                  )}
+                </button>
               </div>
 
-            </div>
-          </div>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!currentSelectedSku) return;
+                    setShowAnalyticsModal(true);
+                  }}
+                  className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
+                  style={{ color: '#c8834a' }}
+                >
+                  <BarChart3 className="w-4 h-4" />
+                  View Analytics {currentSelectedSku ? `for ${currentSelectedSku.style_name || skuCode}` : 'Page'}
+                </button>
 
-          {/* Form Actions */}
-          <div className="pt-4 flex flex-col gap-3">
-            <div className="flex gap-3 w-full">
-              <button
-                type="button"
-                onClick={() => {
-                  setPieceSeqs('');
-                  setSkuCode('');
-                  setCuttingCount('');
-                }}
-                className="flex-1 h-14 font-bold rounded-xl text-base transition-all cursor-pointer active:scale-95"
-                style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
-              >
-                Reset All
-              </button>
-
-              <button
-                type="submit"
-                className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
-              >
-                {selectedStage === 'Cutting' ? (
-                  <>
-                    <Scissors className="w-5 h-5" /> ✂️ Send Leather to Store ➔
-                  </>
-                ) : selectedStage === 'Lining' ? (
-                  <>
-                    <Layers className="w-5 h-5" /> 🧵 Send Lining to Store ➔
-                  </>
-                ) : (
-                  <>
-                    <Rocket className="w-5 h-5" /> Submit {selectedStage} Event
-                  </>
-                )}
-              </button>
+                {/* <button
+                  type="button"
+                  onClick={() => setShowStoreModal(true)}
+                  className="text-xs font-black px-4 py-2 rounded-xl transition-all bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Store className="w-4 h-4 text-emerald-600" />
+                  Open Store Verification Modal {isHoldBoth ? '🟢 (Hold Both)' : '🟡'}
+                </button> */}
+              </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!currentSelectedSku) return;
-                  setShowAnalyticsModal(true);
-                }}
-                className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
-                style={{ color: '#c8834a' }}
-              >
-                <BarChart3 className="w-4 h-4" />
-                View Analytics {currentSelectedSku ? `for ${currentSelectedSku.style_name || skuCode}` : 'Page'}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowStoreModal(true)}
-                className="text-xs font-black px-4 py-2 rounded-xl transition-all bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 cursor-pointer"
-              >
-                <Store className="w-4 h-4 text-emerald-600" />
-                Open Store Verification Modal {isHoldBoth ? '🟢 (Hold Both)' : '🟡'}
-              </button>
-            </div>
-          </div>
-
-        </form>
+          </form>
         )}
 
       </SpotlightCard>
@@ -3755,13 +3728,13 @@ export default function ProductionLogEntry() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto bg-slate-50 flex-1">
-              <AnalyticsPopupContent 
-                token={token} 
-                sku={currentSelectedSku} 
-                data={analyticsData} 
-                setData={setAnalyticsData} 
+              <AnalyticsPopupContent
+                token={token}
+                sku={currentSelectedSku}
+                data={analyticsData}
+                setData={setAnalyticsData}
                 lastSubmittedPieceSeqs={lastSubmittedPieceSeqs}
               />
             </div>
@@ -4028,7 +4001,7 @@ export default function ProductionLogEntry() {
                                   : !isEligible
                                     ? 'border-slate-100 bg-slate-50 opacity-50'
                                     : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
-                              }`}
+                                }`}
                             >
                               <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (!isEligible ? '#94a3b8' : '#2d1f0e') }}>
                                 #{piece.seq}
@@ -4273,11 +4246,10 @@ export default function ProductionLogEntry() {
                     key={flt.id}
                     type="button"
                     onClick={() => setBucketFilter(flt.id)}
-                    className={`text-[11px] font-black uppercase px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
-                      bucketFilter === flt.id
+                    className={`text-[11px] font-black uppercase px-3 py-1.5 rounded-xl transition-all cursor-pointer ${bucketFilter === flt.id
                         ? 'bg-slate-900 text-white shadow-xs'
                         : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
-                    }`}
+                      }`}
                   >
                     {flt.label}
                   </button>
@@ -4359,15 +4331,14 @@ export default function ProductionLogEntry() {
                     <div
                       key={bkt.id}
                       onClick={() => handleSelectBucket(bkt.id)}
-                      className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer relative flex flex-col justify-between gap-3 ${
-                        isSelected
+                      className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer relative flex flex-col justify-between gap-3 ${isSelected
                           ? isReady
                             ? 'bg-emerald-950 text-white border-emerald-400 shadow-xl ring-4 ring-emerald-500/30 scale-[1.02]'
                             : 'bg-[#2d1f0e] text-white border-[#c8834a] shadow-xl ring-4 ring-[#c8834a]/30 scale-[1.02]'
                           : isReady
-                          ? 'bg-emerald-50/70 border-emerald-300 text-slate-900 hover:border-emerald-400'
-                          : 'bg-white border-slate-200 text-slate-900 hover:border-[#c8834a]/50'
-                      }`}
+                            ? 'bg-emerald-50/70 border-emerald-300 text-slate-900 hover:border-emerald-400'
+                            : 'bg-white border-slate-200 text-slate-900 hover:border-[#c8834a]/50'
+                        }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2">
@@ -4378,9 +4349,8 @@ export default function ProductionLogEntry() {
                             onClick={(e) => e.stopPropagation()}
                             className="w-4 h-4 rounded text-emerald-600 cursor-pointer"
                           />
-                          <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg ${
-                            isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-800'
-                          }`}>
+                          <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-800'
+                            }`}>
                             {bkt.id}
                           </span>
                         </div>
@@ -4405,14 +4375,12 @@ export default function ProductionLogEntry() {
                         </div>
 
                         <div className="grid grid-cols-2 gap-1 text-[9px] font-extrabold text-center">
-                          <span className={`px-1.5 py-0.5 rounded ${
-                            bkt.hold_leather ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
-                          }`}>
+                          <span className={`px-1.5 py-0.5 rounded ${bkt.hold_leather ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                            }`}>
                             {bkt.hold_leather ? '✂️ Leather ✓' : '✂️ Leather ⏳'}
                           </span>
-                          <span className={`px-1.5 py-0.5 rounded ${
-                            bkt.hold_lining ? 'bg-emerald-500/20 text-emerald-300' : 'bg-sky-500/20 text-sky-300'
-                          }`}>
+                          <span className={`px-1.5 py-0.5 rounded ${bkt.hold_lining ? 'bg-emerald-500/20 text-emerald-300' : 'bg-sky-500/20 text-sky-300'
+                            }`}>
                             {bkt.hold_lining ? '🧵 Lining ✓' : '🧵 Lining ⏳'}
                           </span>
                         </div>
@@ -4424,12 +4392,11 @@ export default function ProductionLogEntry() {
 
             {/* ACTIVE SELECTED BUCKET CLEARANCE & ACTIONS CARD */}
             {activeBucket && (
-              <div className={`p-6 sm:p-7 rounded-3xl transition-all duration-500 shadow-xl space-y-5 ${
-                isHoldBoth
+              <div className={`p-6 sm:p-7 rounded-3xl transition-all duration-500 shadow-xl space-y-5 ${isHoldBoth
                   ? 'bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-900 border-2 border-emerald-400 shadow-emerald-500/25 ring-4 ring-emerald-500/20 text-white'
                   : 'bg-slate-50 border-2 border-slate-200 text-slate-900'
-              }`}>
-                
+                }`}>
+
                 {/* Active Bucket Header */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-current/15">
                   <div>
@@ -4440,17 +4407,15 @@ export default function ProductionLogEntry() {
                       Barcode: <strong className="font-mono">{activeBucket.garment_barcode}</strong>
                     </p>
                   </div>
-                  <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
-                    isHoldBoth ? 'bg-emerald-400/30 text-emerald-200 border border-emerald-400/50' : 'bg-amber-100 text-amber-800'
-                  }`}>
+                  <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${isHoldBoth ? 'bg-emerald-400/30 text-emerald-200 border border-emerald-400/50' : 'bg-amber-100 text-amber-800'
+                    }`}>
                     {isHoldBoth ? '🟢 HOLD BOTH · READY' : '🟡 PENDING MATERIALS'}
                   </span>
                 </div>
 
                 {/* QUANTITY CLEARANCE INPUT FIELD */}
-                <div className={`p-4 rounded-2xl border ${
-                  isHoldBoth ? 'bg-white/10 border-emerald-400/30 text-white' : 'bg-white border-slate-200 text-slate-800'
-                }`}>
+                <div className={`p-4 rounded-2xl border ${isHoldBoth ? 'bg-white/10 border-emerald-400/30 text-white' : 'bg-white border-slate-200 text-slate-800'
+                  }`}>
                   <div className="flex items-center justify-between gap-2 mb-2">
                     <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
                       <Box className="w-4 h-4 text-emerald-400" />
@@ -4478,11 +4443,10 @@ export default function ProductionLogEntry() {
                           key={preset.label}
                           type="button"
                           onClick={() => handleUpdateBucketQty(activeBucket.id, preset.qty)}
-                          className={`h-12 px-3 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
-                            activeBucket.qty_cleared === preset.qty
+                          className={`h-12 px-3 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${activeBucket.qty_cleared === preset.qty
                               ? 'bg-emerald-600 text-white shadow-sm'
                               : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
-                          }`}
+                            }`}
                         >
                           {preset.label}
                         </button>
@@ -4493,11 +4457,10 @@ export default function ProductionLogEntry() {
 
                 {/* 2 COMPONENT TOGGLES */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className={`p-4 rounded-2xl border space-y-2 ${
-                    activeBucket.hold_leather
+                  <div className={`p-4 rounded-2xl border space-y-2 ${activeBucket.hold_leather
                       ? isHoldBoth ? 'bg-emerald-900/50 border-emerald-400' : 'bg-emerald-50 border-emerald-400 text-slate-800'
                       : 'bg-white/5 border-amber-300/40'
-                  }`}>
+                    }`}>
                     <div className="flex items-center justify-between text-xs font-black">
                       <span className="flex items-center gap-1.5"><Scissors className="w-4 h-4 text-amber-500" /> Leather Line</span>
                       <span>{activeBucket.hold_leather ? '✅ Verified' : '⏳ Pending'}</span>
@@ -4505,20 +4468,18 @@ export default function ProductionLogEntry() {
                     <button
                       type="button"
                       onClick={() => handleToggleLeather(activeBucket.id)}
-                      className={`w-full py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                        activeBucket.hold_leather ? 'bg-emerald-500 text-white' : 'bg-[#c8834a] text-white'
-                      }`}
+                      className={`w-full py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${activeBucket.hold_leather ? 'bg-emerald-500 text-white' : 'bg-[#c8834a] text-white'
+                        }`}
                     >
                       {activeBucket.hold_leather ? <CheckCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                       {activeBucket.hold_leather ? 'Hold Leather Active' : 'Mark Leather Received'}
                     </button>
                   </div>
 
-                  <div className={`p-4 rounded-2xl border space-y-2 ${
-                    activeBucket.hold_lining
+                  <div className={`p-4 rounded-2xl border space-y-2 ${activeBucket.hold_lining
                       ? isHoldBoth ? 'bg-emerald-900/50 border-emerald-400' : 'bg-emerald-50 border-emerald-400 text-slate-800'
                       : 'bg-white/5 border-amber-300/40'
-                  }`}>
+                    }`}>
                     <div className="flex items-center justify-between text-xs font-black">
                       <span className="flex items-center gap-1.5"><Layers className="w-4 h-4 text-sky-500" /> Lining Line</span>
                       <span>{activeBucket.hold_lining ? '✅ Verified' : '⏳ Pending'}</span>
@@ -4526,9 +4487,8 @@ export default function ProductionLogEntry() {
                     <button
                       type="button"
                       onClick={() => handleToggleLining(activeBucket.id)}
-                      className={`w-full py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                        activeBucket.hold_lining ? 'bg-emerald-500 text-white' : 'bg-sky-600 text-white'
-                      }`}
+                      className={`w-full py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${activeBucket.hold_lining ? 'bg-emerald-500 text-white' : 'bg-sky-600 text-white'
+                        }`}
                     >
                       {activeBucket.hold_lining ? <CheckCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
                       {activeBucket.hold_lining ? 'Hold Lining Active' : 'Mark Lining Received'}
@@ -4563,11 +4523,10 @@ export default function ProductionLogEntry() {
                     type="button"
                     onClick={() => handleSendToShellStitchAction(activeBucket.id)}
                     disabled={!isHoldBoth || storeSubmitting}
-                    className={`flex-1 py-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
-                      isHoldBoth
+                    className={`flex-1 min-h-[56px] h-auto py-3.5 px-2 rounded-xl text-xs font-black transition-all flex items-center justify-center text-center flex-wrap gap-2 shadow-lg cursor-pointer ${isHoldBoth
                         ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 shadow-emerald-500/40 hover:brightness-110'
                         : 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-50'
-                    }`}
+                      }`}
                   >
                     {isHoldBoth ? <Rocket className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                     Send {activeBucket.id} ({activeBucket.qty_cleared} pcs) to Shell Stitch ➔
