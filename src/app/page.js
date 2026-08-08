@@ -13,7 +13,7 @@ import {
   ArrowRight,
   Loader2,
 } from 'lucide-react';
-import { apiLogin } from '@/lib/api'; // 👈 Centralized API helper பயன்படுத்தப்படுகிறது
+import { apiLogin } from '@/lib/api'; 
 
 /* ─── Animated Gold Text Component ────────────────── */
 function AnimatedGoldText({ text }) {

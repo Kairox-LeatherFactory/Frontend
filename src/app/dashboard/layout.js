@@ -162,7 +162,6 @@ export default function DashboardLayout({ children }) {
         { name: 'Dashboard Home', href: '/dashboard' },
         { name: 'Analytics & Alerts', href: '/dashboard/analytics' },
         { name: 'Production Logger', href: '/dashboard/entry' },
-        { name: 'Store Verification', href: '/dashboard/store' },
         { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
         { name: 'Client SKU Tree', href: '/dashboard/orders' },
         { name: 'Payroll & Rates', href: '/dashboard/wages' },
