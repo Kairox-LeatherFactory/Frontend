@@ -2843,110 +2843,58 @@ export default function ProductionLogEntry() {
                           </div>
                         </div>
 
-                        {/* 3 Material Spec Dropdowns */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          {barcodeStage === 'Lining' ? (
-                            <>
-                              {/* 1. Lining Article */}
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. Lining Material *</label>
-                                <select
-                                  value={liningMaterialType}
-                                  onChange={(e) => setLiningMaterialType(e.target.value)}
-                                  className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                                >
-                                  <option value="SATIN_LINING">Satin Lining</option>
-                                  <option value="COTTON_TWILL">Cotton Twill</option>
-                                  <option value="SILK_LINING">Silk Lining</option>
-                                  <option value="POLY_TAFFETA">Poly Taffeta</option>
-                                  <option value="VISCOSE_JACQUARD">Viscose Jacquard</option>
-                                </select>
-                              </div>
+                        {/* 3 Material Spec Dropdowns (Only for Cutting stage) */}
+                        {barcodeStage === 'Cutting' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {/* 1. Leather Article */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. Leather Article *</label>
+                              <select
+                                value={barcodeArticle}
+                                onChange={(e) => setBarcodeArticle(e.target.value)}
+                                className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                              >
+                                <option value="SUEDE_LEATHER">Suede Leather</option>
+                                <option value="NAPPA_LEATHER">Nappa Leather</option>
+                                <option value="NUBUCK_LEATHER">Nubuck Leather</option>
+                                <option value="FULL_GRAIN">Full Grain Leather</option>
+                                <option value="PULL_UP">Pull-Up Leather</option>
+                                <option value="CROCO_EMBOSSED">Embossed Croc</option>
+                              </select>
+                            </div>
 
-                              {/* 2. Lining Color */}
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. Lining Color *</label>
-                                <select
-                                  value={liningColor}
-                                  onChange={(e) => setLiningColor(e.target.value)}
-                                  className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                                >
-                                  <option value="DARK_BROWN">Dark Brown</option>
-                                  <option value="JET_BLACK">Jet Black</option>
-                                  <option value="CAMEL">Camel</option>
-                                  <option value="CHAMPAGNE">Champagne Gold</option>
-                                  <option value="SILVER_GREY">Silver Grey</option>
-                                  <option value="BURGUNDY">Burgundy</option>
-                                </select>
-                              </div>
+                            {/* 2. Leather Color */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. Leather Color *</label>
+                              <select
+                                value={barcodeColor}
+                                onChange={(e) => setBarcodeColor(e.target.value)}
+                                className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                              >
+                                <option value="DARK_BROWN">Dark Brown</option>
+                                <option value="TAN_COGNAC">Tan / Cognac</option>
+                                <option value="JET_BLACK">Jet Black</option>
+                                <option value="BURGUNDY">Burgundy</option>
+                                <option value="CAMEL">Camel</option>
+                                <option value="OLIVE_GREEN">Olive Green</option>
+                              </select>
+                            </div>
 
-                              {/* 3. Lining Thickness */}
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">3. Thickness / GSM *</label>
-                                <select
-                                  value={liningThickness}
-                                  onChange={(e) => setLiningThickness(e.target.value)}
-                                  className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                                >
-                                  <option value="0.4 - 0.6 mm">0.4 - 0.6 mm (80 GSM)</option>
-                                  <option value="0.6 - 0.8 mm">0.6 - 0.8 mm (110 GSM)</option>
-                                  <option value="0.8 - 1.0 mm">0.8 - 1.0 mm (140 GSM)</option>
-                                </select>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              {/* 1. Leather Article */}
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. Leather Article *</label>
-                                <select
-                                  value={barcodeArticle}
-                                  onChange={(e) => setBarcodeArticle(e.target.value)}
-                                  className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                                >
-                                  <option value="SUEDE_LEATHER">Suede Leather</option>
-                                  <option value="NAPPA_LEATHER">Nappa Leather</option>
-                                  <option value="NUBUCK_LEATHER">Nubuck Leather</option>
-                                  <option value="FULL_GRAIN">Full Grain Leather</option>
-                                  <option value="PULL_UP">Pull-Up Leather</option>
-                                  <option value="CROCO_EMBOSSED">Embossed Croc</option>
-                                </select>
-                              </div>
-
-                              {/* 2. Leather Color */}
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. Leather Color *</label>
-                                <select
-                                  value={barcodeColor}
-                                  onChange={(e) => setBarcodeColor(e.target.value)}
-                                  className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                                >
-                                  <option value="DARK_BROWN">Dark Brown</option>
-                                  <option value="TAN_COGNAC">Tan / Cognac</option>
-                                  <option value="JET_BLACK">Jet Black</option>
-                                  <option value="BURGUNDY">Burgundy</option>
-                                  <option value="CAMEL">Camel</option>
-                                  <option value="OLIVE_GREEN">Olive Green</option>
-                                </select>
-                              </div>
-
-                              {/* 3. Thickness */}
-                              <div className="space-y-1.5">
-                                <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">3. Thickness (mm) *</label>
-                                <select
-                                  value={barcodeThickness}
-                                  onChange={(e) => setBarcodeThickness(e.target.value)}
-                                  className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                                >
-                                  <option value="1.0 - 1.2 mm">1.0 - 1.2 mm</option>
-                                  <option value="1.2 - 1.4 mm">1.2 - 1.4 mm</option>
-                                  <option value="1.4 - 1.6 mm">1.4 - 1.6 mm</option>
-                                  <option value="1.6 - 1.8 mm">1.6 - 1.8 mm</option>
-                                </select>
-                              </div>
-                            </>
-                          )}
-                        </div>
+                            {/* 3. Thickness */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">3. Thickness (mm) *</label>
+                              <select
+                                value={barcodeThickness}
+                                onChange={(e) => setBarcodeThickness(e.target.value)}
+                                className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                              >
+                                <option value="1.0 - 1.2 mm">1.0 - 1.2 mm (Soft)</option>
+                                <option value="1.2 - 1.4 mm">1.2 - 1.4 mm (Standard)</option>
+                                <option value="1.4 - 1.6 mm">1.4 - 1.6 mm (Heavy)</option>
+                              </select>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Submit Cutting / Lining Button */}
                         <button
@@ -3542,53 +3490,7 @@ export default function ProductionLogEntry() {
                     />
                   </div>
 
-                  {/* 3 Lining Material Specs */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. Lining Material *</label>
-                      <select
-                        value={liningMaterialType}
-                        onChange={(e) => setLiningMaterialType(e.target.value)}
-                        className="w-full h-12 px-3 bg-white font-bold text-xs border border-sky-200 rounded-xl focus:outline-none cursor-pointer"
-                      >
-                        <option value="SATIN_LINING">Satin Lining</option>
-                        <option value="COTTON_TWILL">Cotton Twill</option>
-                        <option value="SILK_LINING">Silk Lining</option>
-                        <option value="POLY_TAFFETA">Poly Taffeta</option>
-                        <option value="VISCOSE_JACQUARD">Viscose Jacquard</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. Lining Color *</label>
-                      <select
-                        value={liningColor}
-                        onChange={(e) => setLiningColor(e.target.value)}
-                        className="w-full h-12 px-3 bg-white font-bold text-xs border border-sky-200 rounded-xl focus:outline-none cursor-pointer"
-                      >
-                        <option value="DARK_BROWN">Dark Brown</option>
-                        <option value="JET_BLACK">Jet Black</option>
-                        <option value="CAMEL">Camel</option>
-                        <option value="CHAMPAGNE">Champagne Gold</option>
-                        <option value="SILVER_GREY">Silver Grey</option>
-                        <option value="BURGUNDY">Burgundy</option>
-                      </select>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">3. Thickness / GSM *</label>
-                      <select
-                        value={liningThickness}
-                        onChange={(e) => setLiningThickness(e.target.value)}
-                        className="w-full h-12 px-3 bg-white font-bold text-xs border border-sky-200 rounded-xl focus:outline-none cursor-pointer"
-                      >
-                        <option value="0.4 - 0.6 mm">0.4 - 0.6 mm (80 GSM)</option>
-                        <option value="0.6 - 0.8 mm">0.6 - 0.8 mm (110 GSM)</option>
-                        <option value="0.8 - 1.0 mm">0.8 - 1.0 mm (140 GSM)</option>
-                      </select>
-                    </div>
                   </div>
-                </div>
               ) : selectedStage === 'Store' ? (
                 /* STORE MANAGER HUB REDIRECT */
                 <div className="p-8 rounded-3xl bg-[#faf6f0] border-2 border-[#c8834a]/30 text-center space-y-4 animate-fade-in text-slate-900 md:col-span-2">

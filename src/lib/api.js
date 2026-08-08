@@ -1069,3 +1069,42 @@ export async function apiGetAnalyticsConsumption(token, params = {}) {
   if (!res.ok) throw new Error(`Failed to fetch consumption analytics (${res.status})`);
   return res.json();
 }
+
+/**
+ * 15. GET /api/v1/drawers
+ * List drawers for printable barcodes & labels
+ * Query: state, seq_from, seq_to, limit, offset
+ * Response: DrawerLabelPage { total, count, items: DrawerLabel[] }
+ */
+export async function apiListDrawers(token, params = {}) {
+  const query = new URLSearchParams();
+  if (params.state && params.state !== 'ALL') query.append('state', params.state);
+  if (params.seq_from !== undefined && params.seq_from !== null && params.seq_from !== '') query.append('seq_from', params.seq_from);
+  if (params.seq_to !== undefined && params.seq_to !== null && params.seq_to !== '') query.append('seq_to', params.seq_to);
+  if (params.limit !== undefined && params.limit !== null) query.append('limit', params.limit);
+  if (params.offset !== undefined && params.offset !== null) query.append('offset', params.offset);
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers${qs}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+  if (!res.ok) {
+    // Fallback attempt to /api/drawers if not prefixed with /api/v1
+    const fallbackRes = await fetch(`${API_BASE_URL}/api/drawers${qs}`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }).catch(() => null);
+    if (fallbackRes && fallbackRes.ok) {
+      return fallbackRes.json();
+    }
+    const errText = await res.text().catch(() => 'Failed to list drawers');
+    throw new Error(errText || `Failed to list drawers (${res.status})`);
+  }
+  return res.json();
+}
+

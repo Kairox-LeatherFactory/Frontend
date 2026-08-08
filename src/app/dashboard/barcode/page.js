@@ -11,7 +11,7 @@ import jsPDF from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import AnimatedModal from '@/components/AnimatedModal';
 import { useAuth } from '@/context/AuthContext';
-import { apiGetEmployees } from '@/lib/api';
+import { apiGetEmployees, apiListDrawers } from '@/lib/api';
 import { staggerContainer, fadeUpItem, tabFade } from '@/lib/motionVariants';
 
 // ─── PRODUCTION ORDER / EMPLOYEE ROSTER DATASETS ─────────────────────────────
@@ -220,6 +220,34 @@ function EmployeeTicketCard({ barcode, cardRef, width }) {
   );
 }
 
+// Drawer label card (barcode + drawer_id UUID + state + code)
+function DrawerTicketCard({ barcode, cardRef, width }) {
+  return (
+    <div
+      ref={cardRef}
+      className="overflow-hidden"
+      style={{ width: width || 440, maxWidth: '100%', background: '#ffffff', border: `1px solid ${TICKET.line}`, borderRadius: 0, boxShadow: '0 8px 24px rgba(0,0,0,0.08)' }}
+    >
+      <div className="flex items-center justify-between px-6 py-4" style={{ background: '#3d2b1a' }}>
+        <CompanyMark />
+        <span className="text-xs font-bold uppercase tracking-widest text-white">Drawer Barcode Label</span>
+      </div>
+      <div className="px-7 pt-7">
+        <TicketRow label="Drawer Code" value={barcode.style || barcode.pieceCode} />
+        <TicketRow label="Drawer ID (UUID)" value={barcode.size || barcode.drawer_id || '—'} />
+        <TicketRow label="State" value={barcode.color || barcode.state || 'ACTIVE'} />
+        <TicketRow label="Sequence" value={`#${barcode.serialStr || barcode.serial}`} />
+      </div>
+      <div className="px-7">
+        <TicketPerforation />
+      </div>
+      <div className="px-7 pb-8 flex flex-col items-center">
+        <BarcodeCanvas code={barcode.pieceCode} height={70} moduleWidth={1.7} />
+      </div>
+    </div>
+  );
+}
+
 const BRAND = {
   darkGrad: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)',
   accent: '#c8834a',
@@ -238,13 +266,14 @@ const TABS = [
 const CATEGORIES = [
   { id: 'style', label: 'Style Barcodes', icon: Barcode },
   { id: 'employee', label: 'Employee Barcodes', icon: Users },
-  { id: 'bucket', label: 'Bucket Barcodes', icon: Box },
+  { id: 'drawer', label: 'Drawer Barcodes', icon: Box },
 ];
 
 const CATEGORY_SUBTITLES = {
   style: 'Generate, print, and audit piece-level Code128 barcodes across production orders.',
   employee: 'Generate, print, and audit employee ID badge barcodes across departments.',
-  bucket: 'Generate, print, and audit production bucket/lot barcodes across manufacturing stages.',
+  drawer: 'Fetch live drawers from /api/v1/drawers, generate printable Code128 barcodes, and audit drawer states.',
+  bucket: 'Fetch live drawers from /api/v1/drawers, generate printable Code128 barcodes, and audit drawer states.',
 };
 
 const CATEGORY_LABELS = {
@@ -258,10 +287,15 @@ const CATEGORY_LABELS = {
     groupHint: 'Grouped by Department — click a card to view employee ID badges',
     subGroupNounPlural: 'Employees',
   },
+  drawer: {
+    orderIdLabel: 'Drawer State', clientLabel: 'Drawer Code', styleLabel: 'Drawer / Code', colorLabel: 'State', sizeLabel: 'Drawer ID / UUID',
+    groupHint: 'Grouped by Drawer State — click a card to view drawer barcodes',
+    subGroupNounPlural: 'Drawers',
+  },
   bucket: {
-    orderIdLabel: 'Batch Group', clientLabel: 'Category', styleLabel: 'Bucket Range', colorLabel: 'Notes', sizeLabel: 'Bucket No.',
-    groupHint: 'Grouped by Batch — click a card to view generated ranges',
-    subGroupNounPlural: 'Ranges',
+    orderIdLabel: 'Drawer State', clientLabel: 'Drawer Code', styleLabel: 'Drawer / Code', colorLabel: 'State', sizeLabel: 'Drawer ID / UUID',
+    groupHint: 'Grouped by Drawer State — click a card to view drawer barcodes',
+    subGroupNounPlural: 'Drawers',
   },
 };
 
@@ -724,64 +758,248 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
   );
 }
 
-// ─── BUCKET: BATCH GENERATION TAB ──────────────────────────────────────────────
-function BucketGenerationTab({ bucketGenerated, onGenerateRange, onSendToPrintCenter, onOpenDetail, onPrintSingle }) {
-  const [startNo, setStartNo] = useState(1);
-  const [endNo, setEndNo] = useState(10);
+// ─── DRAWER: BATCH GENERATION TAB (Live GET /api/v1/drawers) ─────────────────
+function DrawerGenerationTab({
+  drawers,
+  drawersLoading,
+  drawersError,
+  onRetryDrawers,
+  drawerGenerated,
+  onGenerateSelected,
+  onGenerateAllRemaining,
+  onSendToPrintCenter,
+  onOpenDetail,
+  onPrintSingle,
+  stateFilter,
+  setStateFilter,
+  seqFrom,
+  setSeqFrom,
+  seqTo,
+  setSeqTo,
+  drawerTotal,
+}) {
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [search, setSearch] = useState('');
 
-  const filteredBuckets = useMemo(() => {
-    let list = bucketGenerated;
-    const q = search.trim().toLowerCase();
-    if (q) list = list.filter((b) => b.pieceCode.toLowerCase().includes(q));
-    return list;
-  }, [bucketGenerated, search]);
+  const generatedCodes = useMemo(() => new Set(drawerGenerated.map((r) => r.pieceCode)), [drawerGenerated]);
+  const generatedDrawerIds = useMemo(() => new Set(drawerGenerated.map((r) => r.size)), [drawerGenerated]);
 
-  const rangeCount = Math.max(0, endNo - startNo + 1);
+  const filteredDrawers = useMemo(() => {
+    let list = drawers || [];
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((d) =>
+        (d.code && d.code.toLowerCase().includes(q)) ||
+        (d.drawer_id && d.drawer_id.toLowerCase().includes(q)) ||
+        (d.barcode && d.barcode.toLowerCase().includes(q)) ||
+        String(d.seq).includes(q)
+      );
+    }
+    return list;
+  }, [drawers, search]);
+
+  const toggleSelect = (drawerId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(drawerId) ? next.delete(drawerId) : next.add(drawerId);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      filteredDrawers.forEach((d) => {
+        const id = d.drawer_id || d.code || String(d.seq);
+        next.add(id);
+      });
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleGenerateClick = () => {
+    const chosen = (drawers || []).filter((d) => selectedIds.has(d.drawer_id || d.code || String(d.seq)));
+    onGenerateSelected(chosen);
+    setSelectedIds(new Set());
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl p-6 shadow-sm" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
-        <div className="grid gap-5" style={{ gridTemplateColumns: '200px 200px 1fr' }}>
+      {/* Overview Stat Cards */}
+      <div className="rounded-2xl p-6 shadow-sm flex items-center gap-6 flex-wrap" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Total in Database</p><p className="font-bold" style={{ color: BRAND.text }}>{drawerTotal || (drawers ? drawers.length : 0)}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Loaded in View</p><p className="font-bold" style={{ color: BRAND.text }}>{drawers ? drawers.length : 0}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Queued / Generated</p><p className="font-bold" style={{ color: BRAND.text }}>{drawerGenerated.length}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Remaining</p><p className="font-bold" style={{ color: '#d97706' }}>{Math.max(0, (drawers ? drawers.length : 0) - drawerGenerated.length)}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Selected</p><p className="font-bold" style={{ color: BRAND.accent }}>{selectedIds.size}</p></div>
+      </div>
+
+      {/* Backend Controls & Filter Box */}
+      <div className="rounded-2xl p-6 shadow-sm space-y-4" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>1. Start Bucket No.</label>
-            <input type="number" min="1" value={startNo} onChange={(e) => setStartNo(Math.max(1, parseInt(e.target.value, 10) || 1))} className={inputCls} style={fieldStyle} />
+            <h3 className="text-lg font-black" style={{ color: BRAND.text }}>Live Drawers &amp; Barcode Labels</h3>
+            <p className="text-xs" style={{ color: BRAND.textMuted }}>
+              Fetched directly from <code className="font-mono font-bold text-xs bg-amber-50 px-1 py-0.5 rounded text-[#a86530]">GET /api/v1/drawers</code>. Filter by state or sequence range, select drawers, then generate Code128 barcodes.
+            </p>
           </div>
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>2. End Bucket No.</label>
-            <input type="number" min={startNo} value={endNo} onChange={(e) => setEndNo(Math.max(startNo, parseInt(e.target.value, 10) || startNo))} className={inputCls} style={fieldStyle} />
-          </div>
-          <div className="rounded-lg flex items-center gap-6 px-5 flex-wrap" style={{ background: BRAND.bg, border: '1px solid rgba(200,131,74,0.2)' }}>
-            <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Total Generated</p><p className="font-bold" style={{ color: BRAND.text }}>{bucketGenerated.length}</p></div>
-            <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Range Selected</p><p className="font-bold" style={{ color: BRAND.accent }}>{rangeCount} buckets</p></div>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={handleGenerateClick} disabled={selectedIds.size === 0} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs disabled:opacity-50 disabled:cursor-default">
+              <Zap className="w-4 h-4" /> Generate Selected ({selectedIds.size})
+            </button>
+            <button onClick={onGenerateAllRemaining} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">Generate All Remaining</button>
+            <button onClick={onSendToPrintCenter} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs"><Send className="w-4 h-4" /> Send All to Print Center</button>
+            <button onClick={onRetryDrawers} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs"><RotateCcw className="w-4 h-4" /> Refresh</button>
           </div>
         </div>
-        <div className="flex gap-2 mt-5">
-          <button onClick={() => onGenerateRange(startNo, endNo)} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs"><Zap className="w-4 h-4" /> Generate Bucket Barcodes</button>
-          <button onClick={onSendToPrintCenter} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs"><Send className="w-4 h-4" /> Send All to Print Center</button>
+
+        {/* State & Range Filters */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>1. Drawer State Filter</label>
+            <select
+              value={stateFilter}
+              onChange={(e) => setStateFilter(e.target.value)}
+              className={selectCls}
+              style={fieldStyle}
+            >
+              <option value="ALL">All States (All Drawers)</option>
+              <option value="waiting">waiting (Awaiting Store / Pieces)</option>
+              <option value="ready">ready (Ready for Dispatch)</option>
+              <option value="in_store">in_store (Checked-In to Store)</option>
+              <option value="released">released (Released to Shell Stitch)</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>2. Seq From (Optional)</label>
+            <input
+              type="number"
+              placeholder="e.g. 1"
+              value={seqFrom}
+              onChange={(e) => setSeqFrom(e.target.value)}
+              className={inputCls}
+              style={fieldStyle}
+              min="1"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>3. Seq To (Optional)</label>
+            <input
+              type="number"
+              placeholder="e.g. 50"
+              value={seqTo}
+              onChange={(e) => setSeqTo(e.target.value)}
+              className={inputCls}
+              style={fieldStyle}
+              min="1"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-xs" style={{ color: BRAND.textMuted }}>{filteredDrawers.length} drawer{filteredDrawers.length === 1 ? '' : 's'} loaded for current filter</p>
+          <div className="flex gap-2">
+            <button onClick={selectAllVisible} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Select All Visible</button>
+            <button onClick={clearSelection} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Clear</button>
+          </div>
+        </div>
+
+        {/* Drawer Roster Table / List */}
+        <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
+          {drawersLoading ? (
+            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>Loading drawers from server…</div>
+          ) : drawersError ? (
+            <div className="text-center py-8 text-sm space-y-2" style={{ color: BRAND.textMuted }}>
+              <p style={{ color: '#b91c1c' }}>{drawersError}</p>
+              <button onClick={onRetryDrawers} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Retry</button>
+            </div>
+          ) : filteredDrawers.length === 0 ? (
+            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>
+              {drawers && drawers.length === 0 ? 'No drawers found matching the filter.' : 'No drawers match your search.'}
+            </div>
+          ) : (
+            <div className="divide-y divide-[rgba(200,131,74,0.15)] max-h-96 overflow-y-auto">
+              {filteredDrawers.map((drw) => {
+                const uniqueKey = drw.drawer_id || drw.code || String(drw.seq);
+                const codeToEncode = drw.barcode || drw.code || `DRW-${String(drw.seq).padStart(3, '0')}`;
+                const isGenerated = generatedCodes.has(codeToEncode) || generatedDrawerIds.has(drw.drawer_id);
+                const isChecked = selectedIds.has(uniqueKey);
+
+                return (
+                  <label
+                    key={uniqueKey}
+                    className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-[#fdfaf5] transition-colors"
+                    style={{ background: isChecked ? '#faf3ea' : '#fff' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        disabled={isGenerated}
+                        checked={isChecked}
+                        onChange={() => toggleSelect(uniqueKey)}
+                        className="w-4 h-4 accent-[#c8834a] cursor-pointer disabled:cursor-default"
+                      />
+                      <div>
+                        <div className="font-bold text-sm flex items-center gap-2" style={{ color: '#5a3518' }}>
+                          <span>{drw.code || `Drawer #${drw.seq}`}</span>
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
+                            Seq #{drw.seq}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                            drw.state === 'ready' ? 'bg-emerald-100 text-emerald-800' :
+                            drw.state === 'waiting' ? 'bg-amber-100 text-amber-800' :
+                            drw.state === 'released' ? 'bg-purple-100 text-purple-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {drw.state || 'active'}
+                          </span>
+                        </div>
+                        <div className="text-xs font-mono mt-0.5" style={{ color: BRAND.textMuted }}>
+                          ID: <span className="font-semibold">{drw.drawer_id}</span>
+                          {drw.barcode && (
+                            <span className="ml-2">· Barcode: <span className="text-[#a86530] font-bold">{drw.barcode}</span></span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={statusBadgeClass(isGenerated ? 'PRINTED' : 'PENDING')}>
+                        {isGenerated ? 'Queued / Ready' : (drw.barcode_status || 'Unqueued')}
+                      </span>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Generated Drawer Barcodes Grid */}
       <div>
         <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
           <div>
-            <h3 className="text-base font-black" style={{ color: BRAND.text }}>Generated Bucket Barcodes</h3>
-            <p className="text-xs" style={{ color: BRAND.textMuted }}>Showing {filteredBuckets.length} buckets</p>
+            <h3 className="text-base font-black" style={{ color: BRAND.text }}>Generated Drawer Barcodes &amp; Labels</h3>
+            <p className="text-xs" style={{ color: BRAND.textMuted }}>Showing {drawerGenerated.length} barcodes</p>
           </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter bucket code..." className={`${inputCls} !pl-8 !w-52 !py-2`} style={fieldStyle} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter code/ID..." className={`${inputCls} !pl-8 !w-52 !py-2`} style={fieldStyle} />
           </div>
         </div>
 
-        {filteredBuckets.length === 0 ? (
+        {drawerGenerated.length === 0 ? (
           <div className="text-center py-12 rounded-xl" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)' }}>
-            <p className="font-bold" style={{ color: BRAND.textMuted }}>No bucket barcodes generated yet.</p>
-            <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Type a bucket number range above and click &quot;Generate Bucket Barcodes&quot;.</p>
+            <p className="font-bold" style={{ color: BRAND.textMuted }}>No drawer barcodes generated yet.</p>
+            <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Select drawers above and click &quot;Generate Selected&quot;.</p>
           </div>
         ) : (
           <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }} variants={staggerContainer} initial="hidden" animate="show">
-            {filteredBuckets.map((b) => (
+            {drawerGenerated.map((b) => (
               <motion.div
                 key={b.pieceCode}
                 variants={fadeUpItem}
@@ -797,8 +1015,12 @@ function BucketGenerationTab({ bucketGenerated, onGenerateRange, onSendToPrintCe
                 <div className="text-center w-full">
                   <div className="font-mono font-bold text-xs break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
                   <div className="flex items-center justify-center gap-1.5 mt-1.5 flex-wrap">
-                    <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>{b.size}</span>
+                    <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>{b.style}</span>
+                    <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold uppercase" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>{b.color}</span>
                     <span className={statusBadgeClass(b.printStatus)}>{b.printStatus}</span>
+                  </div>
+                  <div className="font-mono text-[9px] text-slate-400 mt-1 truncate max-w-full" title={b.size}>
+                    UUID: {b.size}
                   </div>
                 </div>
                 <div className="flex gap-2 w-full" onClick={(e) => e.stopPropagation()}>
@@ -813,6 +1035,7 @@ function BucketGenerationTab({ bucketGenerated, onGenerateRange, onSendToPrintCe
     </div>
   );
 }
+
 
 // ─── PRINT CENTER TAB (generic across categories) ──────────────────────────────
 function PrintTab({
@@ -1229,16 +1452,50 @@ export default function BarcodeManagementPage() {
   const [employeesReloadKey, setEmployeesReloadKey] = useState(0);
   const reloadEmployees = useCallback(() => setEmployeesReloadKey((k) => k + 1), []);
 
-  // Bucket category data — fully separate store
+  // Bucket / Drawer category data — fully separate store
   const [bucketStore, setBucketStore] = useState(() => ({ generated: [], history: [] }));
 
+  // Live Drawer roster from GET /api/v1/drawers
+  const [drawerDirectory, setDrawerDirectory] = useState([]);
+  const [drawerTotal, setDrawerTotal] = useState(0);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState(null);
+  const [drawerReloadKey, setDrawerReloadKey] = useState(0);
+  const [drawerStateFilter, setDrawerStateFilter] = useState('ALL');
+  const [drawerSeqFrom, setDrawerSeqFrom] = useState('');
+  const [drawerSeqTo, setDrawerSeqTo] = useState('');
+  const reloadDrawers = useCallback(() => setDrawerReloadKey((k) => k + 1), []);
+
   // Per-category UI state (selection/expansion/filters never bleed across categories)
-  const [printSelections, setPrintSelections] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set() }));
-  const [expandedOrdersByCat, setExpandedOrdersByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set() }));
-  const [expandedGroupsByCat, setExpandedGroupsByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set() }));
-  const [expandedHistoryOrdersByCat, setExpandedHistoryOrdersByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set() }));
+  const [printSelections, setPrintSelections] = useState(() => ({
+    style: new Set(),
+    employee: new Set(),
+    drawer: new Set(),
+    bucket: new Set(),
+  }));
+  const [expandedOrdersByCat, setExpandedOrdersByCat] = useState(() => ({
+    style: new Set(),
+    employee: new Set(),
+    drawer: new Set(),
+    bucket: new Set(),
+  }));
+  const [expandedGroupsByCat, setExpandedGroupsByCat] = useState(() => ({
+    style: new Set(),
+    employee: new Set(),
+    drawer: new Set(),
+    bucket: new Set(),
+  }));
+  const [expandedHistoryOrdersByCat, setExpandedHistoryOrdersByCat] = useState(() => ({
+    style: new Set(),
+    employee: new Set(),
+    drawer: new Set(),
+    bucket: new Set(),
+  }));
   const [historyFiltersByCat, setHistoryFiltersByCat] = useState(() => ({
-    style: { ...DEFAULT_HISTORY_FILTERS }, employee: { ...DEFAULT_HISTORY_FILTERS }, bucket: { ...DEFAULT_HISTORY_FILTERS },
+    style: { ...DEFAULT_HISTORY_FILTERS },
+    employee: { ...DEFAULT_HISTORY_FILTERS },
+    drawer: { ...DEFAULT_HISTORY_FILTERS },
+    bucket: { ...DEFAULT_HISTORY_FILTERS },
   }));
 
   const [detailCode, setDetailCode] = useState(null);
@@ -1260,19 +1517,65 @@ export default function BarcodeManagementPage() {
   }, []);
 
   // ─── Derived: whichever category is active right now ───
-  const activeGenerated = category === 'style' ? generatedBarcodesStore : category === 'employee' ? employeeStore.generated : bucketStore.generated;
-  const activeHistory = category === 'style' ? batchHistoryStore : category === 'employee' ? employeeStore.history : bucketStore.history;
-  const activeSelectedPrint = printSelections[category];
-  const activeExpandedOrders = expandedOrdersByCat[category];
-  const activeExpandedGroups = expandedGroupsByCat[category];
-  const activeExpandedHistoryOrders = expandedHistoryOrdersByCat[category];
-  const activeHistoryFilters = historyFiltersByCat[category];
-  const activeLabels = CATEGORY_LABELS[category];
+  const activeGenerated = category === 'style'
+    ? generatedBarcodesStore
+    : category === 'employee'
+    ? employeeStore.generated
+    : bucketStore.generated;
+  const activeHistory = category === 'style'
+    ? batchHistoryStore
+    : category === 'employee'
+    ? employeeStore.history
+    : bucketStore.history;
+  const activeSelectedPrint = printSelections[category] || new Set();
+  const activeExpandedOrders = expandedOrdersByCat[category] || new Set();
+  const activeExpandedGroups = expandedGroupsByCat[category] || new Set();
+  const activeExpandedHistoryOrders = expandedHistoryOrdersByCat[category] || new Set();
+  const activeHistoryFilters = historyFiltersByCat[category] || DEFAULT_HISTORY_FILTERS;
+  const activeLabels = CATEGORY_LABELS[category] || CATEGORY_LABELS.style;
 
   const switchCategory = useCallback((cat) => {
     setCategory(cat);
     setActiveTab('generation');
   }, []);
+
+  // ─── Live Drawer roster fetch: GET /api/v1/drawers ───
+  useEffect(() => {
+    if (category !== 'drawer' && category !== 'bucket') return;
+    if (!token) return;
+    let cancelled = false;
+    const loadDrawers = async () => {
+      setDrawerLoading(true);
+      setDrawerError(null);
+      try {
+        const params = { limit: 500 };
+        if (drawerStateFilter !== 'ALL') params.state = drawerStateFilter;
+        if (drawerSeqFrom) params.seq_from = parseInt(drawerSeqFrom, 10);
+        if (drawerSeqTo) params.seq_to = parseInt(drawerSeqTo, 10);
+
+        const res = await apiListDrawers(token, params);
+        if (cancelled) return;
+        if (res && Array.isArray(res.items)) {
+          setDrawerDirectory(res.items);
+          setDrawerTotal(res.total ?? res.items.length);
+        } else if (Array.isArray(res)) {
+          setDrawerDirectory(res);
+          setDrawerTotal(res.length);
+        } else {
+          setDrawerDirectory([]);
+          setDrawerTotal(0);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDrawerDirectory([]);
+        setDrawerError(err?.message || 'Failed to load drawers from server.');
+      } finally {
+        if (!cancelled) setDrawerLoading(false);
+      }
+    };
+    loadDrawers();
+    return () => { cancelled = true; };
+  }, [category, token, drawerReloadKey, drawerStateFilter, drawerSeqFrom, drawerSeqTo]);
 
   // ─── Employee roster fetch: GET /api/v1/employees (active roster only) ───
   useEffect(() => {
