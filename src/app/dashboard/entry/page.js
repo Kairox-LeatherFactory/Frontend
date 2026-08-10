@@ -16,7 +16,7 @@ import {
   apiProductionLogTwoDoor,
 
 } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Store, Layers, PackageCheck, ChevronRight } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Store, Layers, PackageCheck, ChevronRight, Camera } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import Link from 'next/link';
 import JsBarcode from 'jsbarcode';
@@ -299,7 +299,14 @@ function DynamicDataViewer({ data }) {
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
   const { workers, addScanEvent, operations } = useData();
-  const[storeDrawerScan,setStoreDrawerScan]=useState('');
+  const [storeDrawerInput, setStoreDrawerInput] = useState('');
+  const [storePieceInput, setStorePieceInput] = useState('');
+  const [storeCurrentScan, setStoreCurrentScan] = useState('');
+  const [storeVerifyResult, setStoreVerifyResult] = useState(null); 
+  const [holdCuttingOk, setHoldCuttingOk] = useState(false);
+  const [holdLiningOk, setHoldLiningOk] = useState(false);
+  const [storeReceiveStatus, setStoreReceiveStatus] = useState('pending'); // 'pending', 'received', 'sended'
+  const [storeApiLoading, setStoreApiLoading] = useState(false);
 
   const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
@@ -308,9 +315,9 @@ export default function ProductionLogEntry() {
   const [selectedStage, setSelectedStage] = useState('Cutting');
   const [customDesignation, setCustomDesignation] = useState('');
 
-  const stagesList = useMemo(() => [
-    'Cutting', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'
-  ], []);
+  const manualStages = [
+    'Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'
+  ];
 
   const [workerId, setWorkerId] = useState('');
   const [skuCode, setSkuCode] = useState('');
@@ -352,6 +359,63 @@ export default function ProductionLogEntry() {
   // Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
+
+  // --- Store Hub Backend-Driven Flow ---
+  const handleStoreVerify = async () => {
+    setStoreApiLoading(true);
+    setErrorMsg('');
+    try {
+      const payload = {
+        drawer_barcode: storeDrawerInput.trim().toUpperCase(),
+        piece_barcode: storePieceInput.trim().toUpperCase(),
+        part: 'LEATHER'
+      };
+      const res = await apiStoreDrawerScan(token, payload);
+      setStoreVerifyResult(res);
+      setHoldCuttingOk(true);
+      setSuccessMsg(`Scan logged successfully! (${res.state || 'OK'})`);
+    } catch (err) {
+      if (err.message.includes('409')) {
+        setErrorMsg('409 CONFLICT: Piece does not belong to this drawer, or drawer already processed!');
+      } else {
+        setErrorMsg(err.message || 'Verification Failed');
+      }
+    } finally {
+      setStoreApiLoading(false);
+    }
+  };
+
+  const handleStoreTransition = async (transition) => {
+    setStoreApiLoading(true);
+    setErrorMsg('');
+    try {
+      const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
+      const res = await apiTransitionDrawer(token, drawerCode, transition);
+      
+      setStoreReceiveStatus(transition.toLowerCase());
+      setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
+      
+      if (transition === 'SENDED') {
+        setTimeout(() => {
+          setStoreDrawerInput('');
+          setStorePieceInput('');
+          setStoreVerifyResult(null);
+          setHoldCuttingOk(false);
+          setHoldLiningOk(false);
+          setStoreReceiveStatus('pending');
+        }, 1500);
+      }
+    } catch (err) {
+      if (err.message.includes('409')) {
+        setErrorMsg('409 CONFLICT: Drawer already in this state or cannot be transitioned!');
+      } else {
+        setErrorMsg(err.message || 'Transition Failed');
+      }
+    } finally {
+      setStoreApiLoading(false);
+    }
+  };
+
   const [visibleCount, setVisibleCount] = useState(60);
 
   useEffect(() => {
@@ -1452,7 +1516,7 @@ export default function ProductionLogEntry() {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                  {stagesList.map((stage) => {
+                  {['Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'].map((stage) => {
                     const isSelected = barcodeStage === stage;
                     return (
                       <button
@@ -1887,7 +1951,7 @@ export default function ProductionLogEntry() {
 
                 {/* 7 Operation Stage Banners */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {['Cutting', 'Fusing', 'Pasting', 'Shell Stitch', 'Lining Stitch', 'Final Finish'].map((stage) => {
+                  {manualStages.map((stage) => {
                     const isSelected = selectedStage === stage;
                     return (
                       <button
@@ -2770,7 +2834,7 @@ export default function ProductionLogEntry() {
               <div className="text-2xl font-black text-purple-800">{storeBoth}</div>
             </div>
             <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
-              <div className="text-xs text-indigo-700 font-bold mb-1">Upcoming Drawers</div>
+              <div className="text-xs text-indigo-700 font-bold mb-1">Upcoming Bundles</div>
               <div className="text-2xl font-black text-indigo-800">8</div>
             </div>
           </div>
@@ -2778,106 +2842,194 @@ export default function ProductionLogEntry() {
           {/* Barcode Scanner & Filters */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
             <div className="flex flex-col md:flex-row gap-4 items-end">
-              <div className="flex-1">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 ml-1">
-                  Drawer Barcode Scanner
-                </label>
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="relative flex-1">
-                    <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder="Scan Drawer Barcode here..."
-                      value={storeDrawerScan}
-                      onChange={(e) => setStoreDrawerScan(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          const scanned = e.target.value.trim().toUpperCase();
-                          const found = storeDrawers.find(d => d.id === scanned);
-                          if (found) {
-                            setExpandedDrawer(found.id);
-                            setStoreDrawerScan('');
-                          } else {
-                            alert('Drawer not found: ' + scanned);
-                            setStoreDrawerScan('');
+              
+              {/* --- Backend-Driven Store Verification Gateway --- */}
+              {storeTotal >= 200 && (
+                <div className="mb-4 p-3 bg-red-100 border-l-4 border-red-500 text-red-800 text-xs font-bold rounded shadow-sm">
+                  ⚠️ ALERT: Drawer Capacity Full (200/200). Cannot assign more pieces!
+                </div>
+              )}
+              <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Store Verification Gateway</h3>
+                </div>
+                
+                <div className="flex flex-col gap-4 mt-2">
+                  <div className="relative">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block">Scanner Input</label>
+                    <div className="relative flex items-center">
+                      <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder={!storeDrawerInput ? "Scan Drawer ID first..." : "Scan Piece Barcode..."}
+                        value={storeCurrentScan}
+                        onChange={(e) => setStoreCurrentScan(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const val = storeCurrentScan.trim().toUpperCase();
+                            if (!val) return;
+                            if (val.startsWith('DRW-')) {
+                              setStoreDrawerInput(val);
+                            } else {
+                              setStorePieceInput(val);
+                            }
+                            setStoreCurrentScan('');
                           }
-                        }
-                      }}
-                      className="w-full h-14 pl-12 pr-4 bg-white font-mono font-bold text-base text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
-                    />
+                        }}
+                        autoFocus
+                        className="w-full h-16 pl-12 pr-12 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all"
+                      />
+                      <button className="absolute right-3 text-slate-400 hover:text-[#c8834a] p-2 transition-colors">
+                        <Camera className="w-5 h-5" />
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Status Badges */}
+                  <div className="flex items-center gap-3">
+                    <div className={`flex-1 p-3 rounded-lg border flex justify-between items-center ${storeDrawerInput ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+                      <span className="text-xs font-bold uppercase">Drawer</span>
+                      <span className="font-mono text-xs font-black">{storeDrawerInput || 'Waiting...'}</span>
+                    </div>
+                    <div className={`flex-1 p-3 rounded-lg border flex justify-between items-center ${storePieceInput ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+                      <span className="text-xs font-bold uppercase">Piece</span>
+                      <span className="font-mono text-xs font-black">{storePieceInput || 'Waiting...'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Verify Button */}
+                {storeDrawerInput && storePieceInput && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const scanned = storeDrawerScan.trim().toUpperCase();
-                      if (!scanned) return;
-                      const found = storeDrawers.find(d => d.id === scanned);
-                      if (found) {
-                        setExpandedDrawer(found.id);
-                        setStoreDrawerScan('');
-                      } else {
-                        alert('Drawer not found: ' + scanned);
-                        setStoreDrawerScan('');
-                      }
-                    }}
-                    className="h-14 px-6 rounded-xl font-black text-xs text-white shadow-md cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
+                    onClick={handleStoreVerify}
+                    disabled={storeApiLoading || storeTotal >= 200}
+                    className="w-full h-14 mt-5 rounded-xl font-black text-sm text-white shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     style={{ background: '#c8834a' }}
                   >
-                    <CheckCircle2 className="w-5 h-5" />
-                    Verify
+                    {storeApiLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+                    Verify & Log Scan
                   </button>
-                </div>
-              </div>
-              <div className="w-full md:w-48">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Client Filter</label>
-                <select 
-                  value={storeFilterClient} 
-                  onChange={(e) => setStoreFilterClient(e.target.value)}
-                  className="w-full h-14 px-4 bg-white font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none cursor-pointer transition-all"
-                >
-                  <option value="All">All Clients</option>
-                  <option value="AURA">AURA</option>
-                  <option value="NEXUS">NEXUS</option>
-                </select>
-              </div>
-              <div className="w-full md:w-48">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Style Filter</label>
-                <select 
-                  value={storeFilterStyle} 
-                  onChange={(e) => setStoreFilterStyle(e.target.value)}
-                  className="w-full h-14 px-4 bg-white font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none cursor-pointer transition-all"
-                >
-                  <option value="All">All Styles</option>
-                  <option value="AURA-JKT">AURA-JKT</option>
-                  <option value="NEX-PANT">NEX-PANT</option>
-                  <option value="AURA-COAT">AURA-COAT</option>
-                </select>
-              </div>
-              <div className="w-full md:w-48">
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Drawer Content</label>
-                <select 
-                  value={storeFilterType} 
-                  onChange={(e) => setStoreFilterType(e.target.value)}
-                  className="w-full h-14 px-4 bg-white font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none cursor-pointer transition-all"
-                >
-                  <option value="All">All Drawers ({storeTotal})</option>
-                  <option value="Leather">Leather ({storeLeather})</option>
-                  <option value="Lining">Lining ({storeLining})</option>
-                  <option value="Both">Both ({storeBoth})</option>
-                  <option value="Free">Free ({storeFree})</option>
-                </select>
+                )}
+
+                {/* Server-Driven Status Panel & 3-Hold Logic */}
+                {storeVerifyResult && (
+                  <div className="mt-6 bg-slate-50 border-2 border-[#c8834a]/30 rounded-2xl p-5 shadow-inner space-y-4 animate-fade-in">
+                    <div className="flex items-center justify-between border-b border-[#c8834a]/20 pb-3">
+                      <div>
+                        <h4 className="text-sm font-black text-slate-800">Scan Verified</h4>
+                        <p className="text-[11px] font-bold text-slate-500 mt-0.5">
+                          Drawer: {storeVerifyResult.drawer_code} | Piece: {storeVerifyResult.piece_code}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className={`text-xs font-black px-3 py-1 rounded uppercase ${holdCuttingOk && holdLiningOk ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                          {holdCuttingOk && holdLiningOk ? 'Hold Both' : storeVerifyResult.state?.replace('_', ' ') || 'Hold Cutting'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* 3-Hold Status Cards */}
+                    <div className="grid grid-cols-3 gap-2 py-1">
+                      {/* Hold Cutting */}
+                      <button
+                        type="button"
+                        onClick={() => setHoldCuttingOk(!holdCuttingOk)}
+                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${holdCuttingOk ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-400'}`}
+                      >
+                        <div className="text-[10px] font-black uppercase">Cutting Hold</div>
+                        <div className="text-xs font-black mt-1">{holdCuttingOk ? '✓ Confirmed' : '+ Confirm OK'}</div>
+                      </button>
+
+                      {/* Hold Lining */}
+                      <button
+                        type="button"
+                        onClick={() => setHoldLiningOk(!holdLiningOk)}
+                        className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${holdLiningOk ? 'bg-emerald-50 border-emerald-300 text-emerald-800' : 'bg-white border-slate-200 text-slate-500 hover:border-amber-400'}`}
+                      >
+                        <div className="text-[10px] font-black uppercase">Lining Hold</div>
+                        <div className="text-xs font-black mt-1">{holdLiningOk ? '✓ Confirmed' : '+ Confirm OK'}</div>
+                      </button>
+
+                      {/* Hold Both */}
+                      <div className={`p-3 rounded-xl border text-center ${holdCuttingOk && holdLiningOk ? 'bg-indigo-50 border-indigo-300 text-indigo-800 font-bold' : 'bg-slate-100 border-slate-200 text-slate-400'}`}>
+                        <div className="text-[10px] font-black uppercase">Hold Both</div>
+                        <div className="text-xs font-black mt-1">{holdCuttingOk && holdLiningOk ? '★ Ready Both' : 'Waiting...'}</div>
+                      </div>
+                    </div>
+                    
+                    {/* Receive/Send Action Buttons */}
+                    <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center gap-3">
+                      <button 
+                        type="button"
+                        onClick={() => handleStoreTransition('RECEIVED')}
+                        disabled={!(holdCuttingOk && holdLiningOk) || storeReceiveStatus !== 'pending' || storeApiLoading}
+                        className="flex-1 w-full py-3 bg-[#c8834a] hover:bg-[#b07038] text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        {storeReceiveStatus !== 'pending' ? <CheckCircle2 className="w-4 h-4" /> : <PackageCheck className="w-4 h-4" />}
+                        {storeReceiveStatus !== 'pending' ? 'Received' : 'Receive'}
+                      </button>
+
+                      <button 
+                        type="button"
+                        onClick={() => handleStoreTransition('SENDED')}
+                        disabled={storeReceiveStatus !== 'received' || storeApiLoading}
+                        className="flex-1 w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        <Send className="w-4 h-4" />
+                        Send to Shell Stitch
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-
-          {/* Drawers List / Accordion */}
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="bg-slate-50 border-b border-slate-200 px-5 py-4 flex items-center justify-between">
+            <div className="bg-slate-50 border-b border-slate-200 px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <h3 className="font-black text-slate-800 flex items-center gap-2">
                 <Layers className="w-5 h-5 text-[#c8834a]" />
-                Store Data (Drawers)
+                Drawers
               </h3>
+              
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Client Filter */}
+                <select
+                  value={storeFilterClient}
+                  onChange={(e) => setStoreFilterClient(e.target.value)}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a]"
+                >
+                  <option value="All">All Clients</option>
+                  <option value="Armani">Armani</option>
+                  <option value="Hugo Boss">Hugo Boss</option>
+                  <option value="Zara">Zara</option>
+                </select>
+
+                {/* Style Filter */}
+                <select
+                  value={storeFilterStyle}
+                  onChange={(e) => setStoreFilterStyle(e.target.value)}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a]"
+                >
+                  <option value="All">All Styles</option>
+                  <option value="Jkt-Biker">Jkt-Biker</option>
+                  <option value="Jkt-Slim">Jkt-Slim</option>
+                  <option value="Jkt-Bomber">Jkt-Bomber</option>
+                </select>
+
+                {/* Type/Status Filter */}
+                <select
+                  value={storeFilterType}
+                  onChange={(e) => setStoreFilterType(e.target.value)}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a]"
+                >
+                  <option value="All">All Types</option>
+                  <option value="Leather">Leather Only ({storeLeather})</option>
+                  <option value="Lining">Lining Only ({storeLining})</option>
+                  <option value="Both">Both ({storeBoth})</option>
+                  <option value="Free">Empty Drawers ({storeFree})</option>
+                </select>
+              </div>
             </div>
             <div className="divide-y divide-slate-100">
               {storeDrawers
@@ -2934,6 +3086,24 @@ export default function ProductionLogEntry() {
                                 <div className="text-[10px] text-slate-500 font-bold uppercase">Style</div>
                                 <div className="text-sm font-black text-slate-800">{drawer.style}</div>
                               </div>
+                              {drawer.cuttingDetail && (
+                                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                  <div className="text-[10px] text-slate-500 font-bold uppercase">Cutting Detail</div>
+                                  <div className="text-sm font-black text-slate-800">{drawer.cuttingDetail}</div>
+                                </div>
+                              )}
+                              {drawer.styleDetail && (
+                                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                  <div className="text-[10px] text-slate-500 font-bold uppercase">Style Detail</div>
+                                  <div className="text-sm font-black text-slate-800">{drawer.styleDetail}</div>
+                                </div>
+                              )}
+                              {drawer.currentProcess && (
+                                <div className="col-span-2 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100">
+                                  <div className="text-[10px] text-indigo-500 font-bold uppercase">Incoming Process</div>
+                                  <div className="text-sm font-black text-indigo-700">{drawer.currentProcess}</div>
+                                </div>
+                              )}
                             </div>
                             <div className="flex justify-end pt-2 border-t border-slate-100">
                               <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-black text-sm shadow-md transition-all flex items-center gap-2">

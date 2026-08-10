@@ -1240,3 +1240,21 @@ export async function apiListDrawers(token, params = {}) {
   return res.json();
 }
 
+
+export async function apiTransitionDrawer(token, drawerId, transition) {
+  // transition: 'RECEIVED' | 'SENDED'
+  // Note: the spec says POST /drawers/ (with transition in body). We use /api/v1/drawers/${drawerId} based on REST conventions unless the backend ignores the ID.
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/${encodeURIComponent(drawerId)}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ transition }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Transition failed');
+    throw new Error(errText || `Transition failed (${res.status})`);
+  }
+  return res.json();
+}

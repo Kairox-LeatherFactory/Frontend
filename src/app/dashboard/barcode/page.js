@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import JsBarcode from 'jsbarcode';
 import AnimatedModal from '@/components/AnimatedModal';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -382,14 +383,25 @@ function statusBadgeClass(status) {
 }
 
 // ─── SHARED CANVAS RENDERER ───────────────────────────────────────────────────
-function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true }) {
+function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true, displayWidth }) {
   const ref = useRef(null);
-  const [naturalCss, setNaturalCss] = useState(null);
 
   useEffect(() => {
-    drawBarcodeCanvas(ref.current, code, { height, moduleWidth, showText });
+    if (ref.current && code) {
+      try {
+        JsBarcode(ref.current, code, {
+          format: 'CODE128',
+          width: moduleWidth,
+          height: height,
+          displayValue: showText,
+          margin: 0,
+        });
+      } catch (err) {
+        console.error(err);
+      }
+    }
   }, [code, height, moduleWidth, showText]);
-  return <canvas ref={ref} style={{ maxWidth: '100%', height: 'auto', display: 'block' }} />;
+  return <canvas ref={ref} style={{ maxWidth: '100%', height: 'auto', display: 'block', width: displayWidth ? `${displayWidth}px` : undefined }} />;
 }
 
 // ─── TOASTS ────────────────────────────────────────────────────────────────────
