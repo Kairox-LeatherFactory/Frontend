@@ -231,7 +231,7 @@ export async function apiProductionCutting(token, payload) {
     },
     work_date: payload.work_date,
     consumption: {
-      leather_lot_id: payload.leather_lot_id || payload.lot_id || null,
+      ...(payload.leather_lot_id || payload.lot_id ? { leather_lot_id: payload.leather_lot_id || payload.lot_id } : {}),
       dcm: payload.dcm ? Number(payload.dcm) : 10
     }
   };

@@ -5,8 +5,8 @@ export async function POST(request) {
     const body = await request.json();
     console.log('[MOCK API] Received production log request:', body);
 
-    // Mock validation
-    if (!body.screen_context || !body.operation_stage) {
+    // Mock validation per official spec
+    if (!body.screen_context && !body.operation_stage && !body.stage) {
       return NextResponse.json({ detail: "Missing context or stage" }, { status: 422 });
     }
 
@@ -15,14 +15,22 @@ export async function POST(request) {
     }
 
     // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 800));
+    await new Promise(resolve => setTimeout(resolve, 300));
 
-    // Return a mocked success response
+    const count = body.targets.piece_barcodes?.length || body.targets.piece_seqs?.length || 1;
+
+    // Return a mocked success response matching official 201 spec
     return NextResponse.json({
-      message: "Successfully logged pieces",
-      count_logged: body.targets.piece_barcodes?.length || 0,
-      operation_stage: body.operation_stage,
-      mock: true
+      stage: body.operation_stage || body.stage || "LEATHER_CUTTING",
+      count_logged: count,
+      logged: body.targets.piece_barcodes || (body.targets.piece_seqs ? body.targets.piece_seqs.map(s => `JP-M-${s}`) : []),
+      rework: [],
+      not_found: [],
+      sequence_blocked: [],
+      merge_blocked: [],
+      screen_role_warning: null,
+      skill_blocked: [],
+      consumption_recorded: body.consumption ? { lot_id: body.consumption.leather_lot_id || "lot-123", qty_total: 100, pieces_consuming: count } : null
     }, { status: 201 });
     
   } catch (err) {
