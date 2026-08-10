@@ -1100,11 +1100,13 @@ export default function ProductionLogEntry() {
     try {
       let bucketRes = null;
       try {
+        const isCutStage = selectedStage.toUpperCase().includes('CUT');
         const logPayload = {
-          screen_context: selectedStage.toUpperCase().includes('CUT') ? 'LEATHER_CUT' : 'PIPELINE',
+          screen_context: isCutStage ? 'LEATHER_CUT' : 'PIPELINE',
           actor: currentWorker?.employee_barcode ? { employee_barcode: currentWorker.employee_barcode } : { employee_id: workerId },
           targets: scannedBarcodes.length > 0 ? { piece_barcodes: scannedBarcodes } : { sku_id: skuObj.sku_id, piece_seqs: selectedPieces },
-          work_date: date
+          work_date: date,
+          ...(isCutStage ? { consumption: { dcm: Number(barcodeDcm || 10) } } : {})
         };
         bucketRes = await apiProductionLogTwoDoor(token, logPayload);
         if (bucketRes && (bucketRes.logged || bucketRes.sequence_blocked || bucketRes.skill_blocked || bucketRes.merge_blocked)) {
