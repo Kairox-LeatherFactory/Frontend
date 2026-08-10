@@ -949,12 +949,9 @@ export default function ProductionLogEntry() {
     }
 
     const params = {
-      category,
-      sku_id: currentSku,
       article: lotArticle,
       colour: lotColor,
-      thickness: lotThickness,
-      ...(requiredQty > 0 ? { required: requiredQty } : {})
+      thickness: lotThickness
     };
 
     let isMounted = true;
@@ -1874,7 +1871,6 @@ export default function ProductionLogEntry() {
                               value={lotColor}
                               onChange={(e) => { setLotColor(e.target.value); setLotThickness(''); }}
                               className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                              disabled={!lotArticle}
                             >
                               <option value="">-- Select Color --</option>
                               {lotOptions.colour?.map(c => <option key={c} value={c}>{c}</option>)}
@@ -1887,7 +1883,6 @@ export default function ProductionLogEntry() {
                               value={lotThickness}
                               onChange={(e) => setLotThickness(e.target.value)}
                               className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                              disabled={!lotColor}
                             >
                               <option value="">-- Select Thickness --</option>
                               {lotOptions.thickness?.map(t => <option key={t} value={t}>{t}</option>)}
@@ -2366,7 +2361,6 @@ export default function ProductionLogEntry() {
                               value={lotColor}
                               onChange={(e) => { setLotColor(e.target.value); setLotThickness(''); }}
                               className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
-                              disabled={!lotArticle}
                             >
                               <option value="">-- Select Color --</option>
                               {lotOptions.colour?.map(c => <option key={c} value={c}>{c}</option>)}
@@ -2378,7 +2372,6 @@ export default function ProductionLogEntry() {
                               value={lotThickness}
                               onChange={(e) => setLotThickness(e.target.value)}
                               className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
-                              disabled={!lotColor}
                             >
                               <option value="">-- Select Thickness --</option>
                               {lotOptions.thickness?.map(t => <option key={t} value={t}>{t}</option>)}
