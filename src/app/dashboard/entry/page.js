@@ -291,7 +291,6 @@ function DynamicDataViewer({ data }) {
     </div>
   );
 }
-
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
   const { workers, addScanEvent, operations } = useData();
@@ -303,6 +302,10 @@ export default function ProductionLogEntry() {
   const [holdLiningOk, setHoldLiningOk] = useState(false);
   const [storeReceiveStatus, setStoreReceiveStatus] = useState('pending'); // 'pending', 'received', 'sended'
   const [storeApiLoading, setStoreApiLoading] = useState(false);
+
+  // Manual Checklists for Store Hub
+  const [isCheckedLeather, setIsCheckedLeather] = useState(false);
+  const [isCheckedLining, setIsCheckedLining] = useState(false);
 
   const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
@@ -360,17 +363,15 @@ export default function ProductionLogEntry() {
       console.log('[Store Hub] GET /api/v1/drawers response:', res);
       const drawerItems = res?.items || (Array.isArray(res) ? res : []);
       if (Array.isArray(drawerItems)) {
-        const mapped = drawerItems.map(d => {
-          const state = String(d.state || '').toUpperCase();
-          return {
-            id: d.code || d.barcode || `DRW-${String(d.seq).padStart(4, '0')}`,
-            type: state.includes('BOTH') ? 'Both' : (state.includes('LEATHER') ? 'Leather' : (state.includes('LINING') ? 'Lining' : 'Empty')),
-            status: (!state || state === 'WAITING') ? 'Free' : state,
-            client: d.caption || 'Store Rack',
-            style: d.code || '-',
-            pieces: d.seq || 0
-          };
-        });
+        const mapped = drawerItems.map(d => ({
+          id: d.code || d.barcode || `DRW-${String(d.seq).padStart(4, '0')}`,
+          drawer_id: d.drawer_id || d.id, // Keep the UUID for API calls
+          type: d.state?.includes('both') ? 'Both' : (d.state?.includes('leather') ? 'Leather' : (d.state?.includes('lining') ? 'Lining' : 'Empty')),
+          status: d.state || 'Free',
+          client: d.caption || 'Store Rack',
+          style: d.code || '-',
+          pieces: d.seq || 0
+        }));
         setStoreDrawers(mapped);
       }
     } catch (err) {
@@ -394,13 +395,33 @@ export default function ProductionLogEntry() {
     setStoreApiLoading(true);
     setErrorMsg('');
     try {
+      const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+
+      const drawerVal = storeDrawerInput.trim().toUpperCase();
+      const pieceVal = storePieceInput.trim();
+
       const payload = {
-        drawer_barcode: storeDrawerInput.trim().toUpperCase(),
-        piece_barcode: storePieceInput.trim(),
         part: 'LEATHER'
       };
+
+      if (isUUID(drawerVal)) {
+        payload.drawer_id = drawerVal.toLowerCase();
+      } else {
+        payload.drawer_barcode = drawerVal;
+      }
+
+      if (isUUID(pieceVal)) {
+        payload.piece_id = pieceVal.toLowerCase();
+      } else {
+        payload.piece_barcode = pieceVal;
+      }
+
       const res = await apiStoreDrawerScan(token, payload);
       setStoreVerifyResult(res);
+
+      // Auto-refresh the live drawers list so we immediately have the drawer's UUID
+      await fetchLiveDrawers();
+
       setHoldCuttingOk(true);
       setSuccessMsg(`Scan logged successfully! (${res.state || 'OK'})`);
       fetchLiveDrawers();
@@ -415,12 +436,25 @@ export default function ProductionLogEntry() {
     }
   };
 
-  const handleStoreTransition = async (transition) => {
+  const handleStoreTransition = async (transition, overrideDrawerId = null) => {
     setStoreApiLoading(true);
     setErrorMsg('');
     try {
       const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
-      const res = await apiReceiveDrawer(token, drawerCode, transition);
+      let drawerId = overrideDrawerId;
+
+      if (!drawerId) {
+        // The API requires a UUID, so we must resolve the DRW-xxx code to its UUID
+        const matchingDrawer = storeDrawers.find(d =>
+          (d.barcode?.toUpperCase() === drawerCode) ||
+          (d.code?.toUpperCase() === drawerCode) ||
+          (d.id === drawerCode) ||
+          (d.drawer_id === drawerCode)
+        );
+        drawerId = matchingDrawer ? (matchingDrawer.drawer_id || matchingDrawer.id) : drawerCode;
+      }
+
+      const res = await apiReceiveDrawer(token, drawerId, transition);
 
       setStoreReceiveStatus(transition.toLowerCase());
       setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
@@ -437,6 +471,8 @@ export default function ProductionLogEntry() {
           setStoreVerifyResult(null);
           setHoldCuttingOk(false);
           setHoldLiningOk(false);
+          setIsCheckedLeather(false);
+          setIsCheckedLining(false);
           setStoreDrawerSearch(''); // Clear list filter after reset
         }, 1500);
       }
@@ -889,7 +925,7 @@ export default function ProductionLogEntry() {
 
     const category = isLining ? 'LINING' : 'LEATHER';
     setLotCategory(category);
-    
+
     // Only fetch if a SKU is selected
     const currentSku = activeDoor === 'manual' ? skuCode : barcodeSelectedSku?.code;
     if (!currentSku) return;
@@ -927,7 +963,7 @@ export default function ProductionLogEntry() {
       if (!isMounted) return;
       setLotOptions(data.options || { article: [], colour: [], thickness: [], size: [] });
       setLotResults(data.lots || []);
-      
+
       // Auto-select if suggested
       if (data.suggested_lot_id && data.lots) {
         const suggestedLot = data.lots.find(l => l.lot_id === data.suggested_lot_id);
@@ -945,7 +981,7 @@ export default function ProductionLogEntry() {
 
     return () => { isMounted = false; };
   }, [
-    activeDoor, selectedStage, barcodeStage, skuCode, barcodeSelectedSku, 
+    activeDoor, selectedStage, barcodeStage, skuCode, barcodeSelectedSku,
     lotArticle, lotColor, lotThickness, barcodeDcm, cuttingCount, barcodePieceInput, token
   ]);
 
@@ -3254,8 +3290,38 @@ export default function ProductionLogEntry() {
                     </div>
                     <div className="flex flex-col items-end">
                       <span className="text-xs font-black px-3 py-1 rounded uppercase bg-emerald-100 text-emerald-800">
-                        {storeVerifyResult.state?.replace('_', ' ') || 'MERGED'}
+                        {isCheckedLeather && isCheckedLining
+                          ? 'HOLD BOTH'
+                          : (storeVerifyResult.state?.replace('_', ' ') || 'MERGED')}
                       </span>
+                    </div>
+                  </div>
+
+                  {/* Manual Checklist for Hold States */}
+                  <div className="py-2 space-y-3">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Drawer Contents Validation</p>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLeather
+                            ? 'bg-emerald-500 border-emerald-500 text-white'
+                            : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
+                          }`}>
+                          <Check className="w-4 h-4" />
+                        </div>
+                        <input type="checkbox" className="hidden" checked={isCheckedLeather} onChange={(e) => setIsCheckedLeather(e.target.checked)} />
+                        <span className="text-sm font-bold text-slate-700">Hold Leather (Manual Check)</span>
+                      </label>
+
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLining
+                            ? 'bg-emerald-500 border-emerald-500 text-white'
+                            : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
+                          }`}>
+                          <Check className="w-4 h-4" />
+                        </div>
+                        <input type="checkbox" className="hidden" checked={isCheckedLining} onChange={(e) => setIsCheckedLining(e.target.checked)} />
+                        <span className="text-sm font-bold text-slate-700">Hold Lining (Manual Check)</span>
+                      </label>
                     </div>
                   </div>
 
@@ -3264,7 +3330,12 @@ export default function ProductionLogEntry() {
                     <button
                       type="button"
                       onClick={() => handleStoreTransition('RECEIVED')}
-                      disabled={storeReceiveStatus !== 'pending' || storeApiLoading}
+                      disabled={
+                        storeReceiveStatus !== 'pending' ||
+                        storeApiLoading ||
+                        !isCheckedLeather ||
+                        !isCheckedLining
+                      }
                       className="flex-1 w-full py-3 bg-[#c8834a] hover:bg-[#b07038] text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
                     >
                       {storeReceiveStatus !== 'pending' ? <CheckCircle2 className="w-4 h-4" /> : <PackageCheck className="w-4 h-4" />}
@@ -3432,7 +3503,7 @@ export default function ProductionLogEntry() {
                                         <button
                                           onClick={() => {
                                             setStoreDrawerInput(drawer.id);
-                                            handleStoreTransition('RECEIVED');
+                                            handleStoreTransition('RECEIVED', drawer.id);
                                           }}
                                           disabled={storeApiLoading}
                                           className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-200 text-xs font-black rounded-lg transition-all disabled:opacity-50 cursor-pointer"
@@ -3444,7 +3515,7 @@ export default function ProductionLogEntry() {
                                         <button
                                           onClick={() => {
                                             setStoreDrawerInput(drawer.id);
-                                            handleStoreTransition('SENDED');
+                                            handleStoreTransition('SENDED', drawer.id);
                                           }}
                                           disabled={storeApiLoading}
                                           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg shadow-sm transition-all disabled:opacity-50 cursor-pointer"
