@@ -231,8 +231,10 @@ export async function apiProductionScan(token, payload) {
 export async function apiProductionCutting(token, payload) {
   console.warn('[apiProductionCutting] payload:', JSON.stringify(payload));
   const countNum = parseInt(payload.count || 1, 10);
+  const isLining = payload.stage === 'Lining';
+  
   const logPayload = {
-    screen_context: 'LEATHER_CUT',
+    screen_context: isLining ? 'LINING_CUT' : 'LEATHER_CUT',
     actor: {
       employee_id: payload.employee_id
     },
@@ -242,10 +244,15 @@ export async function apiProductionCutting(token, payload) {
     },
     work_date: payload.work_date,
     consumption: {
-      ...(payload.leather_lot_id || payload.lot_id ? { leather_lot_id: payload.leather_lot_id || payload.lot_id } : {}),
       dcm: payload.dcm ? Number(payload.dcm) : 10
     }
   };
+
+  if (isLining) {
+    logPayload.consumption.lining_lot_id = payload.lot_id;
+  } else {
+    logPayload.consumption.leather_lot_id = payload.lot_id;
+  }
   const res = await fetch(`${API_BASE_URL}/api/v1/production/log`, {
     method: 'POST',
     headers: {
@@ -258,12 +265,17 @@ export async function apiProductionCutting(token, payload) {
     let errText;
     try {
       const errObj = await res.json();
-      errText = errObj.detail || errObj.message || JSON.stringify(errObj);
+      if (Array.isArray(errObj.detail)) {
+        // Pydantic validation errors: [{loc, msg, type}, ...]
+        errText = errObj.detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+      } else {
+        errText = errObj.detail || errObj.message || JSON.stringify(errObj);
+      }
     } catch {
       errText = await res.text().catch(() => 'Failed to create cutting event');
     }
     console.warn('[apiProductionCutting] error response:', errText);
-    throw new Error(errText || `Failed to create cutting event (${res.status})`);
+    throw new Error(typeof errText === 'string' ? errText : JSON.stringify(errText) || `Failed to create cutting event (${res.status})`);
   }
   return res.json();
 }
@@ -949,6 +961,23 @@ export async function apiCreateMaterialLot(token, lotData) {
 }
 
 /**
+ * 5b. GET /api/v1/materials/lots
+ * Fetch available material lots based on category and filters
+ */
+export async function apiGetMaterialLots(token, params = {}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.append(key, value);
+  }
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/lots?${query.toString()}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch material lots (${res.status})`);
+  return res.json();
+}
+
+/**
  * 6. GET /api/v1/materials/stock
  * Check stock on-hand, reserved, available, shortfall
  */
@@ -1259,24 +1288,4 @@ export async function apiListDrawers(token) {
   }
   return res.json();
 }
-
-
-export async function apiTransitionDrawer(token, drawerId, transition) {
-  // transition: 'RECEIVED' | 'SENDED'
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({
-      drawer_barcode: drawerId,
-      transition: transition
-    }),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => 'Transition failed');
-    throw new Error(errText || `Transition failed (${res.status})`);
-  }
-  return res.json();
-}
+
