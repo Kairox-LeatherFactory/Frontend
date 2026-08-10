@@ -190,13 +190,24 @@ export async function apiGetSkuPieces(token, skuId, operationId) {
  */
 export async function apiProductionScan(token, payload) {
   console.warn('[apiProductionScan] payload:', JSON.stringify(payload));
-  const res = await fetch(`${API_BASE_URL}/api/v1/production/scan`, {
+  const logPayload = {
+    screen_context: 'PIPELINE',
+    actor: {
+      employee_id: payload.employee_id
+    },
+    targets: {
+      sku_id: payload.sku_id,
+      piece_seqs: payload.piece_seqs || []
+    },
+    work_date: payload.work_date
+  };
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/log`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(logPayload),
   });
   if (!res.ok) {
     let errText;
