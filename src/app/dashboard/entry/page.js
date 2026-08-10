@@ -18,7 +18,7 @@ import {
   apiTransitionDrawer,
 
 } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Store, Layers, PackageCheck, ChevronRight, Camera } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Store, Layers, PackageCheck, ChevronRight, Camera, Send } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import Link from 'next/link';
 import JsBarcode from 'jsbarcode';
@@ -332,6 +332,8 @@ export default function ProductionLogEntry() {
   const [cuttingPieces, setCuttingPieces] = useState([]);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isSavingCutting, setIsSavingCutting] = useState(false);
+  const [submittedStageMap, setSubmittedStageMap] = useState({});
+  const [mintedCountMap, setMintedCountMap] = useState({});
 
   // Check-in Warning Modal
   const [showCheckInWarning, setShowCheckInWarning] = useState(false);
@@ -854,8 +856,8 @@ export default function ProductionLogEntry() {
     const activeOp = selectedStage;
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
-    // 1. CUTTING STAGE
-    if (activeOp === 'Cutting') {
+    // 1. CUTTING & LINING STAGES (Mint / Initial Cut Count)
+    if (activeOp === 'Cutting' || activeOp === 'Lining') {
       const parsedCount = parseInt(cuttingCount, 10);
       if (!cuttingCount || isNaN(parsedCount) || parsedCount <= 0) {
         return setErrorMsg('Please enter a valid total Cut Piece Count');
@@ -979,6 +981,10 @@ export default function ProductionLogEntry() {
 
       setSuccessMsg(`✅ Cut ${result.count || parsedCount} pieces successfully saved.`);
       setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
+      setMintedCountMap(prev => ({
+        ...prev,
+        [skuObj.sku_id]: Math.max(prev[skuObj.sku_id] || 0, parsedCount)
+      }));
       setCuttingCount('');
       setPieceSeqs('');
     } catch (err) {
@@ -1054,15 +1060,34 @@ export default function ProductionLogEntry() {
     setLoadingPieces(true); setShowChecklistModal(true);
     try {
       const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
-      setChecklistPieces(Array.isArray(data) ? data : (data.pieces || []));
-      if (data && data.meta) {
-        setPiecesMeta(data.meta);
-      } else {
-        const piecesArr = Array.isArray(data) ? data : (data.pieces || []);
-        const total = piecesArr.length;
-        const done = piecesArr.filter(p => p.done_at_op).length;
-        setPiecesMeta({ total, done, pending: total - done });
+      let piecesArr = Array.isArray(data) ? data : (data.pieces || []);
+
+      // Dynamically sync piece list with submitted count for this SKU (e.g. 12 pieces)
+      const maxCount = mintedCountMap[skuObj.sku_id] || 0;
+      if (maxCount > 0 && piecesArr.length < maxCount) {
+        piecesArr = Array.from({ length: maxCount }, (_, i) => {
+          const seqNum = i + 1;
+          const existing = piecesArr.find(p => p.seq === seqNum);
+          return existing || {
+            piece_id: `piece-${skuObj.sku_id}-${seqNum}`,
+            seq: seqNum,
+            current_stage_label: 'Cutting',
+            done_at_op: false
+          };
+        });
       }
+
+      // Store Gate Check: Line Stitching / Shell Stitching REQUIRES Store Hub SENDED status!
+      if (searchOp.includes('line') || searchOp.includes('shell') || searchOp.includes('stitch')) {
+        if (storeReceiveStatus !== 'sended' && (!data || !data.store_sended)) {
+          piecesArr = piecesArr.filter(p => p.store_sended || p.current_stage_label === 'SENDED');
+        }
+      }
+
+      setChecklistPieces(piecesArr);
+      const total = piecesArr.length;
+      const done = piecesArr.filter(p => p.done_at_op).length;
+      setPiecesMeta({ total, done, pending: total - done });
     } catch (err) { setChecklistError(err.message); }
     finally { setLoadingPieces(false); }
   };
@@ -1122,6 +1147,10 @@ export default function ProductionLogEntry() {
 
       setSuccessMsg("Success!");
       setLastSubmittedPieceSeqs([...selectedPieces]);
+      setSubmittedStageMap(prev => ({
+        ...prev,
+        [selectedStage]: Array.from(new Set([...(prev[selectedStage] || []), ...selectedPieces]))
+      }));
       setShowChecklistModal(false);
       setSelectedPieces([]);
       setScannedBarcodes([]);
@@ -2102,7 +2131,7 @@ export default function ProductionLogEntry() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
-                {selectedStage === 'Cutting' ? (
+                {selectedStage === 'Cutting' || selectedStage === 'Lining' ? (
                   <div className="flex flex-col gap-3 md:col-span-2">
                     <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                       <Scissors className="w-4 h-4 text-amber-600" /> Cut Piece Count (Total Quantity) *
@@ -2528,9 +2557,18 @@ export default function ProductionLogEntry() {
                   >Retry</button>
                 </div>
               ) : checklistPieces.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-32 gap-2">
-                  <p className="text-sm font-bold text-slate-400">No pieces found for this SKU/stage.</p>
-                  <p className="text-xs text-slate-400">Run Cutting first to mint pieces for this SKU.</p>
+                <div className="flex flex-col items-center justify-center h-36 gap-2 text-center p-4">
+                  <AlertTriangle className="w-8 h-8 text-amber-500" />
+                  <p className="text-sm font-bold text-slate-700">
+                    {selectedStage.toLowerCase().includes('line') || selectedStage.toLowerCase().includes('stitch')
+                      ? "No pieces sent from Store Hub yet!"
+                      : "No pending pieces found for this SKU/stage."}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {selectedStage.toLowerCase().includes('line') || selectedStage.toLowerCase().includes('stitch')
+                      ? "Drawers must be Received and SENDED from Store Hub before Line Stitching can begin."
+                      : "Complete the previous stage first to advance pieces."}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -2548,17 +2586,26 @@ export default function ProductionLogEntry() {
                     };
 
                     const isPieceEligible = (p) => {
-                      if (p.done_at_op) return false;
                       const activeNorm = normalizeStageName(selectedStage);
-                      const activeOpIdx = stageOrder.indexOf(activeNorm);
-                      const pieceNorm = normalizeStageName(p.current_stage_label || p.current_stage);
+                      const isFusingDone = submittedStageMap['Fusing']?.includes(p.seq) || p.fusing_done;
+                      const isPastingDone = submittedStageMap['Pasting']?.includes(p.seq) || p.pasting_done;
+                      const isThisStageDone = submittedStageMap[selectedStage]?.includes(p.seq) || p.done_at_op;
 
-                      // Factory Rule: Pieces at Cutting ('cut') are ONLY enabled in Cutting (0) & Fusing (1).
-                      // From Pasting (2) onwards, Cutting pieces are BLOCKED & DISABLED!
-                      if (pieceNorm === 'cut' && activeOpIdx >= 2) {
-                        return false;
+                      if (isThisStageDone) return false;
+
+                      if (activeNorm === 'fusing') {
+                        return !isFusingDone;
                       }
-                      return true;
+
+                      if (activeNorm === 'pasting') {
+                        return isFusingDone && !isPastingDone;
+                      }
+
+                      if (activeNorm === 'linestitch' || activeNorm === 'shellstitch') {
+                        return isPastingDone && !isThisStageDone;
+                      }
+
+                      return !isThisStageDone;
                     };
 
                     return (
@@ -2587,8 +2634,62 @@ export default function ProductionLogEntry() {
 
                         {checklistPieces.map((piece) => {
                           const isSelected = selectedPieces.includes(piece.seq);
-                          const isDone = piece.done_at_op;
-                          const isEligible = isPieceEligible(piece);
+                          const activeNorm = normalizeStageName(selectedStage);
+
+                          const isFusingDone = submittedStageMap['Fusing']?.includes(piece.seq) || piece.fusing_done;
+                          const isPastingDone = submittedStageMap['Pasting']?.includes(piece.seq) || piece.pasting_done;
+                          const isThisStageDone = submittedStageMap[selectedStage]?.includes(piece.seq) || piece.done_at_op;
+
+                          let isDone = false;
+                          let isEligible = true;
+                          let stageBadgeText = 'Cutting';
+
+                          if (activeNorm === 'fusing') {
+                            if (isFusingDone) {
+                              isDone = true;
+                              isEligible = false;
+                              stageBadgeText = 'Fusing Done';
+                            } else {
+                              isDone = false;
+                              isEligible = true;
+                              stageBadgeText = 'Cutting';
+                            }
+                          } else if (activeNorm === 'pasting') {
+                            if (isPastingDone) {
+                              isDone = true;
+                              isEligible = false;
+                              stageBadgeText = 'Pasting Done';
+                            } else if (!isFusingDone) {
+                              isDone = false;
+                              isEligible = false;
+                              stageBadgeText = 'Needs Fusing';
+                            } else {
+                              isDone = false;
+                              isEligible = true;
+                              stageBadgeText = 'Fusing';
+                            }
+                          } else if (activeNorm === 'linestitch' || activeNorm === 'shellstitch') {
+                            if (isThisStageDone) {
+                              isDone = true;
+                              isEligible = false;
+                              stageBadgeText = `${selectedStage} Done`;
+                            } else if (!isPastingDone) {
+                              isDone = false;
+                              isEligible = false;
+                              stageBadgeText = 'Needs Pasting';
+                            } else {
+                              isDone = false;
+                              isEligible = true;
+                              stageBadgeText = 'Store Sended';
+                            }
+                          } else {
+                            if (isThisStageDone) {
+                              isDone = true;
+                              isEligible = false;
+                              stageBadgeText = `${selectedStage} Done`;
+                            }
+                          }
+
                           const isDisabled = isDone || !isEligible;
 
                           return (
@@ -2597,34 +2698,35 @@ export default function ProductionLogEntry() {
                               type="button"
                               disabled={isDisabled}
                               onClick={() => {
+                                if (isDisabled) return;
                                 setSelectedPieces(prev =>
                                   prev.includes(piece.seq)
                                     ? prev.filter(s => s !== piece.seq)
                                     : [...prev, piece.seq]
                                 );
                               }}
-                              className={`relative p-3 rounded-xl border-2 text-left transition-all ${!isDisabled ? 'cursor-pointer' : 'cursor-not-allowed'} ${isSelected
+                              className={`relative p-3 rounded-xl border-2 text-left transition-all ${!isDisabled ? 'cursor-pointer hover:border-[#c8834a]' : 'cursor-not-allowed opacity-60 bg-slate-100'} ${isSelected
                                 ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
                                 : isDone
-                                  ? 'border-emerald-200 bg-emerald-50 opacity-70'
+                                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
                                   : !isEligible
-                                    ? 'border-slate-100 bg-slate-50 opacity-50'
-                                    : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
+                                    ? 'border-slate-200 bg-slate-100 text-slate-400'
+                                    : 'border-slate-200 bg-white'
                                 }`}
                             >
-                              <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (!isEligible ? '#94a3b8' : '#2d1f0e') }}>
+                              <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (isDone ? '#047857' : !isEligible ? '#94a3b8' : '#2d1f0e') }}>
                                 #{piece.seq}
                               </p>
-                              <p className={`text-[9px] truncate ${isDone ? 'font-black text-emerald-700' : isSelected ? 'font-bold text-[#c8834a]' : 'font-semibold text-slate-400'}`}>
-                                {isDone ? selectedStage : (piece.current_stage_label || piece.current_stage || selectedStage)}
+                              <p className={`text-[9px] font-bold truncate ${isDone ? 'text-emerald-700 font-extrabold' : isSelected ? 'text-[#c8834a]' : 'text-slate-500'}`}>
+                                {stageBadgeText}
                               </p>
-                              {isDone && !isSelected && (
-                                <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
-                                  <CheckCircle2 className="w-2.5 h-2.5 text-white" />
+                              {isDone && (
+                                <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm">
+                                  <CheckCircle2 className="w-3 h-3 text-white" />
                                 </span>
                               )}
-                              {isSelected && (
-                                <span className="absolute top-1 right-1 w-3 h-3 rounded-full flex items-center justify-center" style={{ background: '#c8834a' }}>
+                              {isSelected && !isDone && (
+                                <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow-sm" style={{ background: '#c8834a' }}>
                                   <span className="w-1.5 h-1.5 rounded-full bg-white" />
                                 </span>
                               )}
