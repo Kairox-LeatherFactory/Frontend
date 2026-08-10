@@ -43,13 +43,6 @@ function TravelerPieceItem({ piece }) {
   }, [piece]);
 
 
-  // --- Store Dynamic Metrics ---
-  const storeTotal = storeDrawers.length;
-  const storeFree = storeDrawers.filter(d => d.status === 'Free').length;
-  const storeLeather = storeDrawers.filter(d => d.type === 'Leather').length;
-  const storeLining = storeDrawers.filter(d => d.type === 'Lining').length;
-  const storeBoth = storeDrawers.filter(d => d.type === 'Both').length;
-
   return (
     <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-2xs">
       <div className="space-y-0.5">
@@ -366,14 +359,17 @@ export default function ProductionLogEntry() {
       console.log('[Store Hub] GET /api/v1/drawers response:', res);
       const drawerItems = res?.items || (Array.isArray(res) ? res : []);
       if (Array.isArray(drawerItems)) {
-        const mapped = drawerItems.map(d => ({
-          id: d.code || d.barcode || `DRW-${String(d.seq).padStart(4, '0')}`,
-          type: d.state?.includes('both') ? 'Both' : (d.state?.includes('leather') ? 'Leather' : (d.state?.includes('lining') ? 'Lining' : 'Empty')),
-          status: d.state || 'Free',
-          client: d.caption || 'Store Rack',
-          style: d.code || '-',
-          pieces: d.seq || 0
-        }));
+        const mapped = drawerItems.map(d => {
+          const state = String(d.state || '').toUpperCase();
+          return {
+            id: d.code || d.barcode || `DRW-${String(d.seq).padStart(4, '0')}`,
+            type: state.includes('BOTH') ? 'Both' : (state.includes('LEATHER') ? 'Leather' : (state.includes('LINING') ? 'Lining' : 'Empty')),
+            status: (!state || state === 'WAITING') ? 'Free' : state,
+            client: d.caption || 'Store Rack',
+            style: d.code || '-',
+            pieces: d.seq || 0
+          };
+        });
         setStoreDrawers(mapped);
       }
     } catch (err) {
@@ -406,6 +402,7 @@ export default function ProductionLogEntry() {
       setStoreVerifyResult(res);
       setHoldCuttingOk(true);
       setSuccessMsg(`Scan logged successfully! (${res.state || 'OK'})`);
+      fetchLiveDrawers();
     } catch (err) {
       if (err.message.includes('409')) {
         setErrorMsg('409 CONFLICT: Piece does not belong to this drawer, or drawer already processed!');
@@ -426,6 +423,7 @@ export default function ProductionLogEntry() {
 
       setStoreReceiveStatus(transition.toLowerCase());
       setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
+      fetchLiveDrawers();
 
       if (transition === 'SENDED') {
         if (skuCode) {
