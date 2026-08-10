@@ -562,6 +562,7 @@ export default function AdminDashboard() {
                     <option value="direct_manager">Direct Manager</option>
                     <option value="managing_director">Managing Director</option>
                     <option value="client">Client</option>
+                    <option value="security">Security</option>
                   </select>
                 </Field>
               </div>

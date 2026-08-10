@@ -1070,40 +1070,172 @@ export async function apiGetAnalyticsConsumption(token, params = {}) {
   return res.json();
 }
 
+// ─── BARCODE REGISTRY (mounted at /api/v1/barcode) ───
+// Every printed code (piece / employee / drawer / material lot) resolves
+// through this one registry. Piece barcodes are pre-minted during Cutting —
+// there is no "generate" endpoint here, only resolve/print/browse/audit.
+
 /**
- * 15. GET /api/v1/drawers
- * List drawers for printable barcodes & labels
- * Query: state, seq_from, seq_to, limit, offset
- * Response: DrawerLabelPage { total, count, items: DrawerLabel[] }
+ * 15. GET /api/v1/barcode/resolve
+ * Resolve one scanned code to its full detail (piece/employee/drawer/lot).
+ * A retired code responds 410; an unknown code responds 404 — both are
+ * surfaced as thrown Errors with the backend's message.
+ * @returns {{ code, type, active, caption, piece, employee, drawer, lot }}
+ */
+export async function apiResolveBarcode(token, code) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/resolve?code=${encodeURIComponent(code)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to resolve barcode (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * 16. GET /api/v1/barcode/detail
+ * Full detail for one clicked/scanned code — reuses the /resolve payload shape.
+ * @returns {{ code, type, active, caption, piece, employee, drawer, lot }}
+ */
+export async function apiGetBarcodeDetail(token, code) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/detail?code=${encodeURIComponent(code)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to fetch barcode detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * 17. POST /api/v1/barcode/print
+ * Produce printable label payloads for explicit codes, a whole SKU, or a
+ * whole order. Provide exactly one of { codes, sku_id, order_id }.
+ * @returns {Array<{ code, symbology, caption, known }>} labels
+ */
+export async function apiPrintBarcodes(token, { codes, sku_id, order_id } = {}) {
+  const body = {};
+  if (codes) body.codes = codes;
+  if (sku_id) body.sku_id = sku_id;
+  if (order_id) body.order_id = order_id;
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/print`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail?.[0]?.msg || JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to generate print labels (${res.status})`);
+  }
+  const data = await res.json();
+  return data.labels;
+}
+
+/**
+ * 18. GET /api/v1/barcode/orders
+ * The order picker — every order that has generated barcodes.
+ * @returns {Array<{ order_id, order_number, client_name, minted, first_generated_at, last_generated_at }>}
+ */
+export async function apiGetBarcodeOrders(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/orders`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch barcode orders (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 19. GET /api/v1/barcode/orders/{order_id}/skus
+ * SKU + style options to populate the history filter dropdowns for an order.
+ * @returns {Array<{ sku_id, sku_code, colour, size, style_id, style_name }>}
+ */
+export async function apiGetOrderBarcodeSkus(token, orderId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/orders/${encodeURIComponent(orderId)}/skus`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch order SKU options (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 20. GET /api/v1/barcode/orders/{order_id}/analytics
+ * Per-order barcode analytics: planned vs generated vs balance, plus a
+ * per-style breakdown, a duplicates=0 integrity proof and a half_minted flag.
+ * @returns {{ order_id, order_total: object, by_style: Array<object> }}
+ */
+export async function apiGetOrderBarcodeAnalytics(token, orderId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/orders/${encodeURIComponent(orderId)}/analytics`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch order barcode analytics (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 21. GET /api/v1/barcode/orders/{order_id}/barcodes
+ * The filterable, paginated history: order → style → piece, with generated
+ * date/time, sku, style, colour, size, seq, current stage, and status.
+ * @param {{ skuId, styleId, size, status, dateFrom, dateTo, page, pageSize }} filters
+ * @returns {{ order_id, page, page_size, total, pages, items: Array<object> }}
+ */
+export async function apiGetOrderBarcodes(token, orderId, filters = {}) {
+  const { skuId, styleId, size, status, dateFrom, dateTo, page, pageSize } = filters;
+  const params = new URLSearchParams();
+  if (skuId) params.set('sku_id', skuId);
+  if (styleId) params.set('style_id', styleId);
+  if (size) params.set('size', size);
+  if (status) params.set('status', status);
+  if (dateFrom) params.set('date_from', dateFrom);
+  if (dateTo) params.set('date_to', dateTo);
+  if (page) params.set('page', page);
+  if (pageSize) params.set('page_size', pageSize);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/orders/${encodeURIComponent(orderId)}/barcodes${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch order barcode history (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 22. GET /api/v1/drawers
+ * The drawer label sheet: every drawer plus its scannable DRAWER-type code.
+ * A row with `barcode: null` has no registry code and cannot be printed —
+ * the caller must show it, not silently drop it.
+ * @param {{ state, seq_from, seq_to, limit, offset }} params
+ * @returns {{ total, count, items: Array<{ drawer_id, seq, code, state, barcode_id, barcode, caption, barcode_status }> }}
  */
 export async function apiListDrawers(token, params = {}) {
   const query = new URLSearchParams();
-  if (params.state && params.state !== 'ALL') query.append('state', params.state);
-  if (params.seq_from !== undefined && params.seq_from !== null && params.seq_from !== '') query.append('seq_from', params.seq_from);
-  if (params.seq_to !== undefined && params.seq_to !== null && params.seq_to !== '') query.append('seq_to', params.seq_to);
-  if (params.limit !== undefined && params.limit !== null) query.append('limit', params.limit);
-  if (params.offset !== undefined && params.offset !== null) query.append('offset', params.offset);
-
-  const qs = query.toString() ? `?${query.toString()}` : '';
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers${qs}`, {
+  if (params.state && params.state !== 'ALL') query.set('state', params.state);
+  if (params.seq_from) query.set('seq_from', params.seq_from);
+  if (params.seq_to) query.set('seq_to', params.seq_to);
+  if (params.limit != null) query.set('limit', params.limit);
+  if (params.offset != null) query.set('offset', params.offset);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers${qs ? `?${qs}` : ''}`, {
     method: 'GET',
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) {
-    // Fallback attempt to /api/drawers if not prefixed with /api/v1
-    const fallbackRes = await fetch(`${API_BASE_URL}/api/drawers${qs}`, {
-      method: 'GET',
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    }).catch(() => null);
-    if (fallbackRes && fallbackRes.ok) {
-      return fallbackRes.json();
-    }
-    const errText = await res.text().catch(() => 'Failed to list drawers');
-    throw new Error(errText || `Failed to list drawers (${res.status})`);
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to list drawers (${res.status})`);
   }
   return res.json();
 }
