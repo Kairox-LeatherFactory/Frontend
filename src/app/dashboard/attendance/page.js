@@ -587,25 +587,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
 
       const direction = !isAlreadyIn ? 'in' : 'out';
 
-      if (isSecurity) {
-        // MOCK FLOW FOR SECURITY
-        await new Promise(r => setTimeout(r, 600)); // Simulate API delay
-        playBeep(1046, 'sine');
-
-        const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-
-        if (direction === 'in') {
-          setCheckedInIds(prev => new Set([...prev, targetId]));
-          showAlert('success', `🟢 AUTOMATIC CHECK-IN CONFIRMED: ${targetName} (${targetCode}) at ${timeStr}`);
-        } else {
-          setCheckedOutIds(prev => new Set([...prev, targetId]));
-          showAlert('success', `🔴 AUTOMATIC CHECK-OUT CONFIRMED: ${targetName} (${targetCode}) at ${timeStr} (Shift Complete)`);
-        }
-        setScanInput('');
-        return;
-      }
-
       let coords = null;
       let reason = undefined;
       try {
@@ -658,7 +639,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
 
   useEffect(() => {
     async function initStatus() {
-      if (isSecurity) return; // Mock: don't fetch real data if Security Workspace
       try {
         const rosterData = await apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token);
         if (rosterData && Array.isArray(rosterData)) {
@@ -759,23 +739,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
     setActionLoading(true);
     try {
       const requestedIds = [...selected];
-
-      if (isSecurity) {
-        // MOCK BATCH ACTION FOR SECURITY
-        await new Promise(r => setTimeout(r, 600)); // simulate delay
-        const normalizedRequested = requestedIds.map((id) => String(id));
-        const succeeded = normalizedRequested;
-        const failed = [];
-
-        if (type === 'check-in') {
-          setCheckedInIds(prev => new Set([...prev, ...succeeded]));
-        } else {
-          setCheckedOutIds(prev => new Set([...prev, ...succeeded]));
-        }
-        setSelected(new Set());
-        setTimeout(() => setDiffModal({ type, succeeded, failed }), 0);
-        return;
-      }
 
       const coords = await gps.getPosition();
       const endpoint = type === 'check-in' ? `${API}/proxy/check-in` : `${API}/proxy/check-out`;

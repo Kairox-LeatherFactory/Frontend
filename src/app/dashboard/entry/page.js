@@ -1,5 +1,5 @@
 'use client';
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
@@ -16,9 +16,9 @@ import {
   apiProductionLogTwoDoor,
   apiStoreDrawerScan,
   apiTransitionDrawer,
-
+  apiListDrawers,
 } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Store, Layers, PackageCheck, ChevronRight, Camera, Send } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Store, Layers, PackageCheck, ChevronRight, Camera, Send, RefreshCw } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import Link from 'next/link';
 import JsBarcode from 'jsbarcode';
@@ -334,6 +334,7 @@ export default function ProductionLogEntry() {
   const [isSavingCutting, setIsSavingCutting] = useState(false);
   const [submittedStageMap, setSubmittedStageMap] = useState({});
   const [mintedCountMap, setMintedCountMap] = useState({});
+  const [storeSendedSkus, setStoreSendedSkus] = useState([]);
 
   // Check-in Warning Modal
   const [showCheckInWarning, setShowCheckInWarning] = useState(false);
@@ -349,17 +350,43 @@ export default function ProductionLogEntry() {
   const [activeDoor, setActiveDoor] = useState('manual');
 
   // Store Manager Hub States
-  const [storeDrawers, setStoreDrawers] = useState([
-    { id: 'DRW-001', type: 'Leather', status: 'In Use', client: 'AURA', style: 'AURA-JKT', pieces: 45 },
-    { id: 'DRW-002', type: 'Lining', status: 'In Use', client: 'NEXUS', style: 'NEX-PANT', pieces: 120 },
-    { id: 'DRW-003', type: 'Both', status: 'In Use', client: 'AURA', style: 'AURA-COAT', pieces: 80 },
-    { id: 'DRW-004', type: 'Empty', status: 'Free', client: '-', style: '-', pieces: 0 },
-    { id: 'DRW-005', type: 'Empty', status: 'Free', client: '-', style: '-', pieces: 0 },
-  ]);
+  const [storeDrawers, setStoreDrawers] = useState([]);
   const [storeFilterClient, setStoreFilterClient] = useState('All');
   const [storeFilterStyle, setStoreFilterStyle] = useState('All');
   const [storeFilterType, setStoreFilterType] = useState('All');
   const [expandedDrawer, setExpandedDrawer] = useState(null);
+  const [storeLoading, setStoreLoading] = useState(false);
+
+  const fetchLiveDrawers = useCallback(async () => {
+    if (!token) return;
+    setStoreLoading(true);
+    try {
+      const res = await apiListDrawers(token);
+      console.log('[Store Hub] GET /api/v1/drawers response:', res);
+      const drawerItems = res?.items || (Array.isArray(res) ? res : []);
+      if (Array.isArray(drawerItems)) {
+        const mapped = drawerItems.map(d => ({
+          id: d.code || d.barcode || `DRW-${String(d.seq).padStart(4, '0')}`,
+          type: d.state?.includes('both') ? 'Both' : (d.state?.includes('leather') ? 'Leather' : (d.state?.includes('lining') ? 'Lining' : 'Empty')),
+          status: d.state || 'Free',
+          client: d.caption || 'Store Rack',
+          style: d.code || '-',
+          pieces: d.seq || 0
+        }));
+        setStoreDrawers(mapped);
+      }
+    } catch (err) {
+      console.warn('[Store Hub] GET /api/v1/drawers live API pending backend deploy:', err);
+    } finally {
+      setStoreLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (activeDoor === 'store') {
+      fetchLiveDrawers();
+    }
+  }, [activeDoor, fetchLiveDrawers]);
   // Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
@@ -371,7 +398,7 @@ export default function ProductionLogEntry() {
     try {
       const payload = {
         drawer_barcode: storeDrawerInput.trim().toUpperCase(),
-        piece_barcode: storePieceInput.trim().toUpperCase(),
+        piece_barcode: storePieceInput.trim(),
         part: 'LEATHER'
       };
       const res = await apiStoreDrawerScan(token, payload);
@@ -400,13 +427,16 @@ export default function ProductionLogEntry() {
       setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
 
       if (transition === 'SENDED') {
+        if (skuCode) {
+          setStoreSendedSkus(prev => Array.from(new Set([...prev, skuCode])));
+        }
+        setStoreReceiveStatus('sended');
         setTimeout(() => {
           setStoreDrawerInput('');
           setStorePieceInput('');
           setStoreVerifyResult(null);
           setHoldCuttingOk(false);
           setHoldLiningOk(false);
-          setStoreReceiveStatus('pending');
         }, 1500);
       }
     } catch (err) {
@@ -1079,7 +1109,8 @@ export default function ProductionLogEntry() {
 
       // Store Gate Check: Line Stitching / Shell Stitching REQUIRES Store Hub SENDED status!
       if (searchOp.includes('line') || searchOp.includes('shell') || searchOp.includes('stitch')) {
-        if (storeReceiveStatus !== 'sended' && (!data || !data.store_sended)) {
+        const isSended = storeReceiveStatus === 'sended' || storeSendedSkus.includes(skuCode) || (data && data.store_sended);
+        if (!isSended) {
           piecesArr = piecesArr.filter(p => p.store_sended || p.current_stage_label === 'SENDED');
         }
       }
@@ -2602,7 +2633,8 @@ export default function ProductionLogEntry() {
                       }
 
                       if (activeNorm === 'linestitch' || activeNorm === 'shellstitch') {
-                        return isPastingDone && !isThisStageDone;
+                        const isSended = storeReceiveStatus === 'sended' || storeSendedSkus.includes(skuCode) || p.store_sended;
+                        return isSended && !isThisStageDone;
                       }
 
                       return !isThisStageDone;
@@ -3083,7 +3115,7 @@ export default function ProductionLogEntry() {
                         className="flex-1 w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
                       >
                         <Send className="w-4 h-4" />
-                        Send to Shell Stitch
+                        Send to Line Stitching
                       </button>
                     </div>
                   </div>
@@ -3135,6 +3167,16 @@ export default function ProductionLogEntry() {
                   <option value="Both">Both ({storeBoth})</option>
                   <option value="Free">Empty Drawers ({storeFree})</option>
                 </select>
+                <button
+                  type="button"
+                  onClick={fetchLiveDrawers}
+                  disabled={storeLoading}
+                  className="px-3 py-1.5 bg-[#c8834a] hover:bg-[#b07038] text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                  title="Reload Live Drawers"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${storeLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
               </div>
             </div>
             <div className="divide-y divide-slate-100">

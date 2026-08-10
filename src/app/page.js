@@ -214,19 +214,10 @@ export default function Home() {
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
 
-    // MOCK LOGIN FOR SECURITY WORKSPACE
-    if (activePanel && activePanel.role === 'security_workspace') {
-      setLoginError('');
-      setIsSubmitting(true);
-      setTimeout(() => {
-        setIsSuccess(true);
-        login('security', 'mock-security-token-12345');
-        router.push('/dashboard');
-      }, 500); // Small delay to simulate API call
+    if (!username || !password) {
+      setLoginError('Please enter username and password');
       return;
     }
-
-    if (!username || !password) return;
 
     setLoginError('');
     setIsSubmitting(true);

@@ -1246,15 +1246,8 @@ export async function apiGetOrderBarcodes(token, orderId, filters = {}) {
  * @param {{ state, seq_from, seq_to, limit, offset }} params
  * @returns {{ total, count, items: Array<{ drawer_id, seq, code, state, barcode_id, barcode, caption, barcode_status }> }}
  */
-export async function apiListDrawers(token, params = {}) {
-  const query = new URLSearchParams();
-  if (params.state && params.state !== 'ALL') query.set('state', params.state);
-  if (params.seq_from) query.set('seq_from', params.seq_from);
-  if (params.seq_to) query.set('seq_to', params.seq_to);
-  if (params.limit != null) query.set('limit', params.limit);
-  if (params.offset != null) query.set('offset', params.offset);
-  const qs = query.toString();
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers${qs ? `?${qs}` : ''}`, {
+export async function apiListDrawers(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
   });
