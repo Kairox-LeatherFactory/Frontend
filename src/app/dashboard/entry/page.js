@@ -354,6 +354,7 @@ export default function ProductionLogEntry() {
   const [storeFilterClient, setStoreFilterClient] = useState('All');
   const [storeFilterStyle, setStoreFilterStyle] = useState('All');
   const [storeFilterType, setStoreFilterType] = useState('All');
+  const [storeDrawerSearch, setStoreDrawerSearch] = useState('');
   const [expandedDrawer, setExpandedDrawer] = useState(null);
   const [storeLoading, setStoreLoading] = useState(false);
 
@@ -437,6 +438,7 @@ export default function ProductionLogEntry() {
           setStoreVerifyResult(null);
           setHoldCuttingOk(false);
           setHoldLiningOk(false);
+          setStoreDrawerSearch(''); // Clear list filter after reset
         }, 1500);
       }
     } catch (err) {
@@ -2979,15 +2981,7 @@ export default function ProductionLogEntry() {
 
           {/* Barcode Scanner & Filters */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-            <div className="flex flex-col md:flex-row gap-4 items-end">
-
-              {/* --- Backend-Driven Store Verification Gateway --- */}
-              {storeTotal >= 200 && (
-                <div className="mb-4 p-3 bg-red-100 border-l-4 border-red-500 text-red-800 text-xs font-bold rounded shadow-sm">
-                  ⚠️ ALERT: Drawer Capacity Full (200/200). Cannot assign more pieces!
-                </div>
-              )}
-              <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+            <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Store Verification Gateway</h3>
                 </div>
@@ -3004,10 +2998,12 @@ export default function ProductionLogEntry() {
                         onChange={(e) => setStoreCurrentScan(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
-                            const val = storeCurrentScan.trim().toUpperCase();
+                            const val = storeCurrentScan.trim();
                             if (!val) return;
-                            if (val.startsWith('DRW-')) {
-                              setStoreDrawerInput(val);
+                            if (val.toUpperCase().startsWith('DRW-') || val.toUpperCase().startsWith('DRAWER')) {
+                              const drawerCode = val.toUpperCase();
+                              setStoreDrawerInput(drawerCode);
+                              setStoreDrawerSearch(drawerCode); // Auto-filter list below
                             } else {
                               setStorePieceInput(val);
                             }
@@ -3041,7 +3037,7 @@ export default function ProductionLogEntry() {
                   <button
                     type="button"
                     onClick={handleStoreVerify}
-                    disabled={storeApiLoading || storeTotal >= 200}
+                    disabled={storeApiLoading}
                     className="w-full h-14 mt-5 rounded-xl font-black text-sm text-white shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     style={{ background: '#c8834a' }}
                   >
@@ -3120,9 +3116,6 @@ export default function ProductionLogEntry() {
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div className="bg-slate-50 border-b border-slate-200 px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <h3 className="font-black text-slate-800 flex items-center gap-2">
@@ -3131,29 +3124,25 @@ export default function ProductionLogEntry() {
               </h3>
 
               <div className="flex flex-wrap items-center gap-3">
-                {/* Client Filter */}
-                <select
-                  value={storeFilterClient}
-                  onChange={(e) => setStoreFilterClient(e.target.value)}
-                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a]"
-                >
-                  <option value="All">All Clients</option>
-                  <option value="Armani">Armani</option>
-                  <option value="Hugo Boss">Hugo Boss</option>
-                  <option value="Zara">Zara</option>
-                </select>
-
-                {/* Style Filter */}
-                <select
-                  value={storeFilterStyle}
-                  onChange={(e) => setStoreFilterStyle(e.target.value)}
-                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a]"
-                >
-                  <option value="All">All Styles</option>
-                  <option value="Jkt-Biker">Jkt-Biker</option>
-                  <option value="Jkt-Slim">Jkt-Slim</option>
-                  <option value="Jkt-Bomber">Jkt-Bomber</option>
-                </select>
+                {/* Search Drawer Input */}
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={storeDrawerSearch}
+                    onChange={(e) => setStoreDrawerSearch(e.target.value)}
+                    placeholder="Search Drawer (e.g. DRW-0001)..."
+                    className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a] shadow-sm"
+                  />
+                  {storeDrawerSearch && (
+                    <button
+                      onClick={() => setStoreDrawerSearch('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
                 {/* Type/Status Filter */}
                 <select
@@ -3181,17 +3170,28 @@ export default function ProductionLogEntry() {
             </div>
             <div className="divide-y divide-slate-100">
               {storeDrawers
-                .filter(d => storeFilterClient === 'All' || d.client === storeFilterClient)
-                .filter(d => storeFilterStyle === 'All' || d.style === storeFilterStyle)
+                .filter(d => {
+                  if (!storeDrawerSearch.trim()) return true;
+                  const q = storeDrawerSearch.trim().toLowerCase();
+                  return (
+                    (d.id && d.id.toLowerCase().includes(q)) ||
+                    (d.code && d.code.toLowerCase().includes(q)) ||
+                    (d.client && d.client.toLowerCase().includes(q)) ||
+                    (d.style && d.style.toLowerCase().includes(q))
+                  );
+                })
                 .filter(d => {
                   if (storeFilterType === 'All') return true;
                   if (storeFilterType === 'Free') return d.status === 'Free';
                   return d.type === storeFilterType;
                 })
-                .map(drawer => (
-                  <div key={drawer.id} className="transition-colors hover:bg-slate-50">
+                .map(drawer => {
+                  const isScannedDrawer = storeDrawerInput.trim().toUpperCase() === drawer.id.toUpperCase();
+                  const isExpanded = expandedDrawer === drawer.id || isScannedDrawer;
+                  return (
+                  <div key={drawer.id} className={`transition-colors hover:bg-slate-50 ${isScannedDrawer ? 'ring-2 ring-[#c8834a] ring-inset bg-amber-50/30' : ''}`}>
                     <div
-                      onClick={() => setExpandedDrawer(expandedDrawer === drawer.id ? null : drawer.id)}
+                      onClick={() => setExpandedDrawer(isExpanded && expandedDrawer === drawer.id ? null : drawer.id)}
                       className="px-5 py-4 flex items-center justify-between cursor-pointer"
                     >
                       <div className="flex items-center gap-4">
@@ -3211,12 +3211,15 @@ export default function ProductionLogEntry() {
                             {drawer.pieces} Pieces
                           </span>
                         )}
-                        {expandedDrawer === drawer.id ? <ChevronDown className="w-5 h-5 text-slate-400" /> : <ChevronRight className="w-5 h-5 text-slate-400" />}
+                        {isExpanded ? <ChevronDown className="w-5 h-5 text-slate-400" /> : <ChevronRight className="w-5 h-5 text-slate-400" />}
+                        {isScannedDrawer && (
+                          <span className="bg-[#c8834a] text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Scanned</span>
+                        )}
                       </div>
                     </div>
 
                     {/* Expanded Details */}
-                    {expandedDrawer === drawer.id && (
+                    {isExpanded && (
                       <div className="px-5 pb-5 pt-2 bg-slate-50/50 border-t border-slate-100">
                         <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
                           <div className="flex items-center justify-between mb-4">
@@ -3253,11 +3256,71 @@ export default function ProductionLogEntry() {
                                   </div>
                                 )}
                               </div>
-                              <div className="flex justify-end pt-2 border-t border-slate-100">
-                                <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-black text-sm shadow-md transition-all flex items-center gap-2">
-                                  <PackageCheck className="w-4 h-4" />
-                                  Send
-                                </button>
+                              {/* Action Buttons for this Drawer */}
+                              <div className="pt-3 border-t border-slate-100 space-y-2">
+                                <div className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-2">Actions</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {/* Hold Cutting */}
+                                  <button
+                                    onClick={() => {
+                                      setStoreDrawerInput(drawer.id);
+                                      handleStoreTransition('HOLDING_CUTTING');
+                                    }}
+                                    disabled={storeApiLoading}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-800 border border-orange-200 text-xs font-black rounded-lg transition-all disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                    Hold Cutting
+                                  </button>
+                                  {/* Hold Lining */}
+                                  <button
+                                    onClick={() => {
+                                      setStoreDrawerInput(drawer.id);
+                                      handleStoreTransition('HOLDING_LINING');
+                                    }}
+                                    disabled={storeApiLoading}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-violet-100 hover:bg-violet-200 text-violet-800 border border-violet-200 text-xs font-black rounded-lg transition-all disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                    Hold Lining
+                                  </button>
+                                  {/* Hold Both */}
+                                  <button
+                                    onClick={() => {
+                                      setStoreDrawerInput(drawer.id);
+                                      handleStoreTransition('HOLDING_BOTH');
+                                    }}
+                                    disabled={storeApiLoading}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 border border-red-200 text-xs font-black rounded-lg transition-all disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5" />
+                                    Hold Both
+                                  </button>
+                                  {/* Receive */}
+                                  <button
+                                    onClick={() => {
+                                      setStoreDrawerInput(drawer.id);
+                                      handleStoreTransition('RECEIVED');
+                                    }}
+                                    disabled={storeApiLoading}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-200 text-xs font-black rounded-lg transition-all disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <PackageCheck className="w-3.5 h-3.5" />
+                                    Receive
+                                  </button>
+                                  {/* Send to Shell Stitch */}
+                                  <button
+                                    onClick={() => {
+                                      setStoreDrawerInput(drawer.id);
+                                      handleStoreTransition('SENDED');
+                                    }}
+                                    disabled={storeApiLoading}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                                  >
+                                    <PackageCheck className="w-3.5 h-3.5" />
+                                    {storeApiLoading && storeDrawerInput === drawer.id ? 'Processing...' : 'Send to Shell Stitch'}
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           ) : (
@@ -3269,7 +3332,10 @@ export default function ProductionLogEntry() {
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
+            </div>
+          </div>
             </div>
           </div>
         </div>
