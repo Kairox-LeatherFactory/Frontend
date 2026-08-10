@@ -1210,3 +1210,33 @@ export async function apiGetOrderBarcodes(token, orderId, filters = {}) {
   if (!res.ok) throw new Error(`Failed to fetch order barcode history (${res.status})`);
   return res.json();
 }
+
+/**
+ * 22. GET /api/v1/drawers
+ * The drawer label sheet: every drawer plus its scannable DRAWER-type code.
+ * A row with `barcode: null` has no registry code and cannot be printed —
+ * the caller must show it, not silently drop it.
+ * @param {{ state, seq_from, seq_to, limit, offset }} params
+ * @returns {{ total, count, items: Array<{ drawer_id, seq, code, state, barcode_id, barcode, caption, barcode_status }> }}
+ */
+export async function apiListDrawers(token, params = {}) {
+  const query = new URLSearchParams();
+  if (params.state && params.state !== 'ALL') query.set('state', params.state);
+  if (params.seq_from) query.set('seq_from', params.seq_from);
+  if (params.seq_to) query.set('seq_to', params.seq_to);
+  if (params.limit != null) query.set('limit', params.limit);
+  if (params.offset != null) query.set('offset', params.offset);
+  const qs = query.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to list drawers (${res.status})`);
+  }
+  return res.json();
+}
+

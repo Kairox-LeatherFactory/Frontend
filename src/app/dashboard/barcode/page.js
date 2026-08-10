@@ -15,6 +15,7 @@ import { useAuth } from '@/context/AuthContext';
 import {
   apiGetEmployees, apiResolveBarcode, apiGetBarcodeDetail, apiPrintBarcodes,
   apiGetBarcodeOrders, apiGetOrderBarcodeSkus, apiGetOrderBarcodeAnalytics, apiGetOrderBarcodes,
+  apiListDrawers,
 } from '@/lib/api';
 import { staggerContainer, fadeUpItem, tabFade } from '@/lib/motionVariants';
 
@@ -305,6 +306,27 @@ function EmployeeTicketCard({ barcode, cardRef, width }) {
   );
 }
 
+// ─── BUCKET / DRAWER LABEL — 100mm × 70mm, barcode and nothing else ──────────
+// This one gets pasted on the bucket itself, so it carries no logo, no field
+// grid and no ticket header — just the symbol and the code printed under it.
+// The size is fixed in mm (see .bucket-label in the print CSS) rather than in
+// px, so the sheet comes off the printer at the bucket-face size regardless of
+// screen DPI. It only renders at label size when the print dialog is at 100%
+// scale — "fit to page" will shrink it like any other physical-size print.
+const BUCKET_LABEL = { widthMm: 100, heightMm: 70 };
+// 2 across × 4 down on A4 at a 5mm page margin.
+const BUCKET_LABELS_PER_PAGE = 8;
+
+function DrawerBarcodeLabel({ barcode, cardRef }) {
+  return (
+    <div ref={cardRef} className="bucket-label">
+      {/* Tall bars + wide modules: the label has 100mm to spend, and a wider
+          module is what a handheld scanner reads from a distance. */}
+      <BarcodeCanvas code={barcode.pieceCode} height={160} moduleWidth={3} />
+    </div>
+  );
+}
+
 const BRAND = {
   darkGrad: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)',
   accent: '#c8834a',
@@ -329,7 +351,9 @@ const CATEGORIES = [
 const CATEGORY_SUBTITLES = {
   style: 'Generate, print, and audit piece-level Code128 barcodes across production orders.',
   employee: 'Generate, print, and audit employee ID badge barcodes across departments.',
-  bucket: 'Generate, print, and audit production bucket/lot barcodes across manufacturing stages.',
+  // The bucket a piece travels in *is* a drawer server-side, so this category is
+  // the live drawer pool off GET /api/v1/drawers — not a locally invented range.
+  bucket: 'Print the live drawer/bucket label sheet straight off GET /api/v1/drawers — the whole 200-drawer pool in one pass.',
 };
 
 const CATEGORY_LABELS = {
@@ -344,9 +368,9 @@ const CATEGORY_LABELS = {
     subGroupNounPlural: 'Employees',
   },
   bucket: {
-    orderIdLabel: 'Batch Group', clientLabel: 'Category', styleLabel: 'Bucket Range', colorLabel: 'Notes', sizeLabel: 'Bucket No.',
-    groupHint: 'Grouped by Batch — click a card to view generated ranges',
-    subGroupNounPlural: 'Ranges',
+    orderIdLabel: 'Drawer State', clientLabel: 'Drawer Code', styleLabel: 'Drawer / Code', colorLabel: 'State', sizeLabel: 'Drawer ID / UUID',
+    groupHint: 'Grouped by Drawer State — click a card to view drawer barcodes',
+    subGroupNounPlural: 'Drawers',
   },
 };
 
@@ -1276,64 +1300,275 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
   );
 }
 
-// ─── BUCKET: BATCH GENERATION TAB ──────────────────────────────────────────────
-function BucketGenerationTab({ bucketGenerated, onGenerateRange, onSendToPrintCenter, onOpenDetail, onPrintSingle }) {
-  const [startNo, setStartNo] = useState(1);
-  const [endNo, setEndNo] = useState(10);
+// ─── DRAWER: BATCH GENERATION TAB (Live GET /api/v1/drawers) ─────────────────
+function DrawerGenerationTab({
+  drawers,
+  drawersLoading,
+  drawersError,
+  onRetryDrawers,
+  drawerGenerated,
+  onGenerateSelected,
+  onGenerateAllRemaining,
+  onPrintAll,
+  onSendToPrintCenter,
+  onOpenDetail,
+  onPrintSingle,
+  stateFilter,
+  setStateFilter,
+  seqFrom,
+  setSeqFrom,
+  seqTo,
+  setSeqTo,
+  drawerTotal,
+}) {
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [search, setSearch] = useState('');
 
-  const filteredBuckets = useMemo(() => {
-    let list = bucketGenerated;
-    const q = search.trim().toLowerCase();
-    if (q) list = list.filter((b) => b.pieceCode.toLowerCase().includes(q));
-    return list;
-  }, [bucketGenerated, search]);
+  const generatedCodes = useMemo(() => new Set(drawerGenerated.map((r) => r.pieceCode)), [drawerGenerated]);
+  const generatedDrawerIds = useMemo(() => new Set(drawerGenerated.map((r) => r.size)), [drawerGenerated]);
 
-  const rangeCount = Math.max(0, endNo - startNo + 1);
+  const filteredDrawers = useMemo(() => {
+    let list = drawers || [];
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((d) =>
+        (d.code && d.code.toLowerCase().includes(q)) ||
+        (d.drawer_id && d.drawer_id.toLowerCase().includes(q)) ||
+        (d.barcode && d.barcode.toLowerCase().includes(q)) ||
+        String(d.seq).includes(q)
+      );
+    }
+    return list;
+  }, [drawers, search]);
+
+  const toggleSelect = (drawerId) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(drawerId) ? next.delete(drawerId) : next.add(drawerId);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      filteredDrawers.forEach((d) => {
+        if (!d.barcode) return; // nothing to encode — never select it
+        next.add(d.drawer_id || d.code || String(d.seq));
+      });
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // A drawer with barcode: null has no registry code, so it can be listed but
+  // never encoded — these two counts make that visible instead of letting the
+  // operator believe a blank label is a label.
+  const printableCount = useMemo(() => (drawers || []).filter((d) => d.barcode).length, [drawers]);
+  const missingCount = (drawers ? drawers.length : 0) - printableCount;
+
+  // The state vocabulary is the backend's DrawerState enum, and only `waiting`
+  // is documented — so the dropdown is built from the states the API actually
+  // returned rather than a hard-coded guess that would 422 on filter.
+  const stateOptions = useMemo(() => {
+    const seen = new Set((drawers || []).map((d) => d.state).filter(Boolean));
+    if (stateFilter !== 'ALL') seen.add(stateFilter);
+    return Array.from(seen).sort();
+  }, [drawers, stateFilter]);
+
+  const handleGenerateClick = () => {
+    const chosen = (drawers || []).filter((d) => selectedIds.has(d.drawer_id || d.code || String(d.seq)));
+    onGenerateSelected(chosen);
+    setSelectedIds(new Set());
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="rounded-2xl p-6 shadow-sm" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
-        <div className="grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+      {/* Overview Stat Cards */}
+      <div className="rounded-2xl p-6 shadow-sm flex items-center gap-6 flex-wrap" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Total in Database</p><p className="font-bold" style={{ color: BRAND.text }}>{drawerTotal || (drawers ? drawers.length : 0)}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Loaded in View</p><p className="font-bold" style={{ color: BRAND.text }}>{drawers ? drawers.length : 0}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Printable Labels</p><p className="font-bold" style={{ color: BRAND.text }}>{printableCount}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Missing Barcode</p><p className="font-bold" style={{ color: missingCount > 0 ? '#b91c1c' : BRAND.text }}>{missingCount}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Queued / Generated</p><p className="font-bold" style={{ color: BRAND.text }}>{drawerGenerated.length}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Remaining</p><p className="font-bold" style={{ color: '#d97706' }}>{Math.max(0, printableCount - drawerGenerated.length)}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Selected</p><p className="font-bold" style={{ color: BRAND.accent }}>{selectedIds.size}</p></div>
+      </div>
+
+      {/* Backend Controls & Filter Box */}
+      <div className="rounded-2xl p-6 shadow-sm space-y-4" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>1. Start Bucket No.</label>
-            <input type="number" min="1" value={startNo} onChange={(e) => setStartNo(Math.max(1, parseInt(e.target.value, 10) || 1))} className={inputCls} style={fieldStyle} />
+            <h3 className="text-lg font-black" style={{ color: BRAND.text }}>Live Drawers &amp; Barcode Labels</h3>
+            <p className="text-xs" style={{ color: BRAND.textMuted }}>
+              The label sheet straight off <code className="font-mono font-bold text-xs bg-amber-50 px-1 py-0.5 rounded text-[#a86530]">GET /api/v1/drawers</code>, ordered by drawer seq. Print the whole pool in one pass, or filter by state / seq range first.
+            </p>
+            <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>
+              Labels print bare — barcode only — at <span className="font-bold">{BUCKET_LABEL.widthMm} × {BUCKET_LABEL.heightMm}mm</span> to paste on the bucket, {BUCKET_LABELS_PER_PAGE} per A4 sheet.
+              Set the print dialog to <span className="font-bold">100% scale</span> (not &quot;fit to page&quot;) or they come out undersized.
+            </p>
           </div>
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>2. End Bucket No.</label>
-            <input type="number" min={startNo} value={endNo} onChange={(e) => setEndNo(Math.max(startNo, parseInt(e.target.value, 10) || startNo))} className={inputCls} style={fieldStyle} />
-          </div>
-          <div className="rounded-lg flex items-center gap-6 px-5 flex-wrap" style={{ background: BRAND.bg, border: '1px solid rgba(200,131,74,0.2)' }}>
-            <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Total Generated</p><p className="font-bold" style={{ color: BRAND.text }}>{bucketGenerated.length}</p></div>
-            <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Range Selected</p><p className="font-bold" style={{ color: BRAND.accent }}>{rangeCount} buckets</p></div>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={onPrintAll} disabled={printableCount === 0} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs disabled:opacity-50 disabled:cursor-default">
+              <Printer className="w-4 h-4" /> Print All {printableCount} Labels
+            </button>
+            <button onClick={handleGenerateClick} disabled={selectedIds.size === 0} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs disabled:opacity-50 disabled:cursor-default">
+              <Zap className="w-4 h-4" /> Generate Selected ({selectedIds.size})
+            </button>
+            <button onClick={onGenerateAllRemaining} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">Generate All Remaining</button>
+            <button onClick={onSendToPrintCenter} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs"><Send className="w-4 h-4" /> Send All to Print Center</button>
+            <button onClick={onRetryDrawers} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs"><RotateCcw className="w-4 h-4" /> Refresh</button>
           </div>
         </div>
-        <div className="flex gap-2 mt-5">
-          <button onClick={() => onGenerateRange(startNo, endNo)} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs"><Zap className="w-4 h-4" /> Generate Bucket Barcodes</button>
-          <button onClick={onSendToPrintCenter} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs"><Send className="w-4 h-4" /> Send All to Print Center</button>
+
+        {/* State & Range Filters */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>1. Drawer State Filter</label>
+            <select
+              value={stateFilter}
+              onChange={(e) => setStateFilter(e.target.value)}
+              className={selectCls}
+              style={fieldStyle}
+            >
+              <option value="ALL">All States (All Drawers)</option>
+              {stateOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>2. Seq From (Optional)</label>
+            <input
+              type="number"
+              placeholder="e.g. 1"
+              value={seqFrom}
+              onChange={(e) => setSeqFrom(e.target.value)}
+              className={inputCls}
+              style={fieldStyle}
+              min="1"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>3. Seq To (Optional)</label>
+            <input
+              type="number"
+              placeholder="e.g. 50"
+              value={seqTo}
+              onChange={(e) => setSeqTo(e.target.value)}
+              className={inputCls}
+              style={fieldStyle}
+              min="1"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          <p className="text-xs" style={{ color: BRAND.textMuted }}>{filteredDrawers.length} drawer{filteredDrawers.length === 1 ? '' : 's'} loaded for current filter</p>
+          <div className="flex gap-2">
+            <button onClick={selectAllVisible} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Select All Visible</button>
+            <button onClick={clearSelection} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Clear</button>
+          </div>
+        </div>
+
+        {/* Drawer Roster Table / List */}
+        <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
+          {drawersLoading ? (
+            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>Loading drawers from server…</div>
+          ) : drawersError ? (
+            <div className="text-center py-8 text-sm space-y-2" style={{ color: BRAND.textMuted }}>
+              <p style={{ color: '#b91c1c' }}>{drawersError}</p>
+              <button onClick={onRetryDrawers} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Retry</button>
+            </div>
+          ) : filteredDrawers.length === 0 ? (
+            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>
+              {drawers && drawers.length === 0 ? 'No drawers found matching the filter.' : 'No drawers match your search.'}
+            </div>
+          ) : (
+            <div className="divide-y divide-[rgba(200,131,74,0.15)] max-h-96 overflow-y-auto">
+              {filteredDrawers.map((drw) => {
+                const uniqueKey = drw.drawer_id || drw.code || String(drw.seq);
+                // Only the registry's own code is printable. Deriving one from
+                // `seq` would produce a label no scanner can resolve, so a row
+                // without `barcode` stays visible but unselectable.
+                const unprintable = !drw.barcode;
+                const isGenerated = !unprintable && (generatedCodes.has(drw.barcode) || generatedDrawerIds.has(drw.drawer_id));
+                const isChecked = selectedIds.has(uniqueKey);
+
+                return (
+                  <label
+                    key={uniqueKey}
+                    className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-[#fdfaf5] transition-colors"
+                    style={{ background: isChecked ? '#faf3ea' : '#fff' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        disabled={isGenerated || unprintable}
+                        checked={isChecked}
+                        onChange={() => toggleSelect(uniqueKey)}
+                        className="w-4 h-4 accent-[#c8834a] cursor-pointer disabled:cursor-default"
+                      />
+                      <div>
+                        <div className="font-bold text-sm flex items-center gap-2" style={{ color: '#5a3518' }}>
+                          <span>{drw.code || `Drawer #${drw.seq}`}</span>
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 font-semibold">
+                            Seq #{drw.seq}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                            drw.state === 'ready' ? 'bg-emerald-100 text-emerald-800' :
+                            drw.state === 'waiting' ? 'bg-amber-100 text-amber-800' :
+                            drw.state === 'released' ? 'bg-purple-100 text-purple-800' :
+                            'bg-blue-100 text-blue-800'
+                          }`}>
+                            {drw.state || 'active'}
+                          </span>
+                        </div>
+                        <div className="text-xs font-mono mt-0.5" style={{ color: BRAND.textMuted }}>
+                          ID: <span className="font-semibold">{drw.drawer_id}</span>
+                          {drw.barcode ? (
+                            <span className="ml-2">· Barcode: <span className="text-[#a86530] font-bold">{drw.barcode}</span></span>
+                          ) : (
+                            <span className="ml-2 font-sans font-semibold" style={{ color: '#b91c1c' }}>· no registry barcode — cannot be printed</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={unprintable ? 'badge badge-danger' : statusBadgeClass(isGenerated ? 'PRINTED' : 'PENDING')}>
+                        {unprintable ? 'No Barcode' : isGenerated ? 'Queued / Ready' : (drw.barcode_status || 'Unqueued')}
+                      </span>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
+      {/* Generated Drawer Barcodes Grid */}
       <div>
         <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
           <div>
-            <h3 className="text-base font-black" style={{ color: BRAND.text }}>Generated Bucket Barcodes</h3>
-            <p className="text-xs" style={{ color: BRAND.textMuted }}>Showing {filteredBuckets.length} buckets</p>
+            <h3 className="text-base font-black" style={{ color: BRAND.text }}>Generated Drawer Barcodes &amp; Labels</h3>
+            <p className="text-xs" style={{ color: BRAND.textMuted }}>Showing {drawerGenerated.length} barcodes</p>
           </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter bucket code..." className={`${inputCls} !pl-8 !w-52 !py-2`} style={fieldStyle} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter code/ID..." className={`${inputCls} !pl-8 !w-52 !py-2`} style={fieldStyle} />
           </div>
         </div>
 
-        {filteredBuckets.length === 0 ? (
+        {drawerGenerated.length === 0 ? (
           <div className="text-center py-12 rounded-xl" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)' }}>
-            <p className="font-bold" style={{ color: BRAND.textMuted }}>No bucket barcodes generated yet.</p>
-            <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Type a bucket number range above and click &quot;Generate Bucket Barcodes&quot;.</p>
+            <p className="font-bold" style={{ color: BRAND.textMuted }}>No drawer barcodes generated yet.</p>
+            <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Select drawers above and click &quot;Generate Selected&quot;.</p>
           </div>
         ) : (
           <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }} variants={staggerContainer} initial="hidden" animate="show">
-            {filteredBuckets.map((b) => (
+            {drawerGenerated.map((b) => (
               <motion.div
                 key={b.pieceCode}
                 variants={fadeUpItem}
@@ -1349,8 +1584,12 @@ function BucketGenerationTab({ bucketGenerated, onGenerateRange, onSendToPrintCe
                 <div className="text-center w-full">
                   <div className="font-mono font-bold text-xs break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
                   <div className="flex items-center justify-center gap-1.5 mt-1.5 flex-wrap">
-                    <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>{b.size}</span>
+                    <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>{b.style}</span>
+                    <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold uppercase" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>{b.color}</span>
                     <span className={statusBadgeClass(b.printStatus)}>{b.printStatus}</span>
+                  </div>
+                  <div className="font-mono text-[9px] text-slate-400 mt-1 truncate max-w-full" title={b.size}>
+                    UUID: {b.size}
                   </div>
                 </div>
                 <div className="flex gap-2 w-full" onClick={(e) => e.stopPropagation()}>
@@ -1365,6 +1604,7 @@ function BucketGenerationTab({ bucketGenerated, onGenerateRange, onSendToPrintCe
     </div>
   );
 }
+
 
 // ─── PRINT CENTER TAB (generic across categories) ──────────────────────────────
 function PrintTab({
@@ -1680,6 +1920,7 @@ function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style
   const cardRef = useRef(null);
   const [exporting, setExporting] = useState(null); // 'png' | 'pdf' | null
   const isEmployee = category === 'employee';
+  const isDrawer = category === 'bucket';
 
   const handleDownload = async (format) => {
     if (!cardRef.current || exporting) return;
@@ -1709,6 +1950,8 @@ function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style
           </div>
           {isEmployee
             ? <div className="p-6 flex justify-center"><EmployeeTicketCard barcode={barcode} cardRef={cardRef} /></div>
+            : isDrawer
+            ? <div className="p-6 flex justify-center"><DrawerBarcodeLabel barcode={barcode} cardRef={cardRef} /></div>
             : <IdCard barcode={barcode} labels={labels} cardRef={cardRef} />}
           <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
             <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
@@ -1777,8 +2020,19 @@ export default function BarcodeManagementPage() {
   const [employeesReloadKey, setEmployeesReloadKey] = useState(0);
   const reloadEmployees = useCallback(() => setEmployeesReloadKey((k) => k + 1), []);
 
-  // Bucket category data — fully separate store
+  // Bucket / Drawer category data — fully separate store
   const [bucketStore, setBucketStore] = useState(() => ({ generated: [], history: [] }));
+
+  // Live Drawer roster from GET /api/v1/drawers
+  const [drawerDirectory, setDrawerDirectory] = useState([]);
+  const [drawerTotal, setDrawerTotal] = useState(0);
+  const [drawerLoading, setDrawerLoading] = useState(false);
+  const [drawerError, setDrawerError] = useState(null);
+  const [drawerReloadKey, setDrawerReloadKey] = useState(0);
+  const [drawerStateFilter, setDrawerStateFilter] = useState('ALL');
+  const [drawerSeqFrom, setDrawerSeqFrom] = useState('');
+  const [drawerSeqTo, setDrawerSeqTo] = useState('');
+  const reloadDrawers = useCallback(() => setDrawerReloadKey((k) => k + 1), []);
 
   // Per-category UI state (selection/expansion/filters never bleed across categories)
   const [printSelections, setPrintSelections] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set() }));
@@ -1822,6 +2076,45 @@ export default function BarcodeManagementPage() {
     setCategory(cat);
     setActiveTab('generation');
   }, []);
+
+  // ─── Live Drawer roster fetch: GET /api/v1/drawers ───
+  // limit 500 on purpose: the endpoint's own default is 500 and a 200-drawer
+  // pool has to come back in ONE page for "print all" to mean all of them.
+  useEffect(() => {
+    if (category !== 'bucket' || !token) return;
+    let cancelled = false;
+    const loadDrawers = async () => {
+      setDrawerLoading(true);
+      setDrawerError(null);
+      try {
+        const params = { limit: 500 };
+        if (drawerStateFilter !== 'ALL') params.state = drawerStateFilter;
+        if (drawerSeqFrom) params.seq_from = parseInt(drawerSeqFrom, 10);
+        if (drawerSeqTo) params.seq_to = parseInt(drawerSeqTo, 10);
+
+        const res = await apiListDrawers(token, params);
+        if (cancelled) return;
+        if (res && Array.isArray(res.items)) {
+          setDrawerDirectory(res.items);
+          setDrawerTotal(res.total ?? res.items.length);
+        } else if (Array.isArray(res)) {
+          setDrawerDirectory(res);
+          setDrawerTotal(res.length);
+        } else {
+          setDrawerDirectory([]);
+          setDrawerTotal(0);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setDrawerDirectory([]);
+        setDrawerError(err?.message || 'Failed to load drawers from server.');
+      } finally {
+        if (!cancelled) setDrawerLoading(false);
+      }
+    };
+    loadDrawers();
+    return () => { cancelled = true; };
+  }, [category, token, drawerReloadKey, drawerStateFilter, drawerSeqFrom, drawerSeqTo]);
 
   // ─── Employee roster fetch: GET /api/v1/employees (active roster only) ───
   useEffect(() => {
@@ -1913,34 +2206,72 @@ export default function BarcodeManagementPage() {
     setActiveTab('print');
   }, [employeeStore, showToast]);
 
-  // ─── BUCKET generation handlers ───
-  const generateBucketRange = useCallback((startNo, endNo) => {
-    if (endNo < startNo) { showToast('End bucket number must be greater than or equal to the start!', 'error'); return; }
-    const count = endNo - startNo + 1;
-    const startStr = String(startNo).padStart(3, '0');
-    const endStr = String(endNo).padStart(3, '0');
-    const batchId = `BKT-BATCH-${Date.now().toString().slice(-6)}`;
-    const rangeLabel = count === 1 ? `Bucket ${startStr}` : `Buckets ${startStr}–${endStr}`;
-    const newRecords = [];
-    for (let n = startNo; n <= endNo; n++) {
-      const serialStr = String(n).padStart(3, '0');
-      newRecords.push({
-        pieceCode: `BKT-${serialStr}`,
-        orderId: 'BUCKETS', client: 'Production Bucket Pool', style: rangeLabel, color: '', size: `Bucket #${serialStr}`,
-        serial: n, serialStr, batchNo: batchId,
-        createdDate: new Date().toLocaleString(), generatedBy: operatorLabel, printStatus: 'PENDING', printCount: 0,
-      });
-    }
-    const historyEntry = { batchNo: batchId, orderId: 'BUCKETS', client: 'Production Bucket Pool', style: rangeLabel, color: '', size: `${count} buckets`, qty: count, generatedBy: operatorLabel, createdDate: new Date().toLocaleString(), printStatus: 'PENDING' };
-    setBucketStore((prev) => ({ generated: [...prev.generated, ...newRecords], history: [historyEntry, ...prev.history] }));
-    showToast(`Generated ${count} bucket barcodes (${rangeLabel})!`, 'success');
-  }, [showToast, operatorLabel]);
+  // ─── BUCKET / DRAWER generation handlers (live GET /api/v1/drawers) ───
+  // Nothing is minted client-side here: `barcode` is the code the registry
+  // already owns, and it is the only thing safe to encode. A drawer row with
+  // barcode: null has no registry code — the roster still shows it, but it is
+  // counted out of every print path instead of putting a blank label on paper.
+  const buildDrawerRecords = useCallback((rows, batchId) => rows.map((drw) => {
+    const seq = drw.seq ?? 0;
+    const label = drw.code || `Drawer #${seq}`;
+    return {
+      pieceCode: drw.barcode,
+      orderId: drw.state || 'unknown',
+      client: label,
+      style: label,
+      color: drw.state || '',
+      size: drw.drawer_id || '',
+      serial: seq,
+      serialStr: String(seq).padStart(4, '0'),
+      batchNo: batchId,
+      createdDate: new Date().toLocaleString(),
+      generatedBy: operatorLabel,
+      printStatus: 'PENDING',
+      printCount: 0,
+    };
+  }), [operatorLabel]);
 
-  const sendBucketsToPrintCenter = useCallback(() => {
+  const drawerBatchHistoryEntry = useCallback((batchId, records) => ({
+    batchNo: batchId, orderId: 'DRAWERS', client: 'Drawer / Bucket Pool',
+    style: records.length === 1 ? records[0].style : `${records.length} Drawers`,
+    color: records.length === 1 ? records[0].color : '',
+    size: records.length === 1 ? records[0].size : `${records.length} labels`,
+    qty: records.length, generatedBy: operatorLabel,
+    createdDate: new Date().toLocaleString(), printStatus: 'PENDING',
+  }), [operatorLabel]);
+
+  const generateDrawerLabels = useCallback((rows) => {
+    if (!rows || rows.length === 0) { showToast('Check at least one drawer to generate!', 'error'); return; }
+    const printable = rows.filter((d) => d.barcode);
+    const skipped = rows.length - printable.length;
+    const already = new Set(bucketStore.generated.map((r) => r.pieceCode));
+    const pending = printable.filter((d) => !already.has(d.barcode));
+    if (pending.length === 0) {
+      showToast(printable.length === 0
+        ? `${skipped} drawer${skipped === 1 ? ' has' : 's have'} no registry barcode — re-run gen_drawer_barcodes on the backend.`
+        : 'Those drawers already have generated labels!', printable.length === 0 ? 'error' : 'info');
+      return;
+    }
+    const batchId = `DRW-BATCH-${Date.now().toString().slice(-6)}`;
+    const newRecords = buildDrawerRecords(pending, batchId);
+    setBucketStore((prev) => ({
+      generated: [...prev.generated, ...newRecords],
+      history: [drawerBatchHistoryEntry(batchId, newRecords), ...prev.history],
+    }));
+    showToast(`Generated ${newRecords.length} drawer barcode label${newRecords.length === 1 ? '' : 's'}!`, 'success');
+    if (skipped > 0) showToast(`${skipped} drawer${skipped === 1 ? '' : 's'} skipped — no registry barcode to encode.`, 'info');
+  }, [bucketStore, buildDrawerRecords, drawerBatchHistoryEntry, showToast]);
+
+  const generateAllRemainingDrawers = useCallback(() => {
+    if (drawerDirectory.length === 0) { showToast('No drawers loaded from the server to generate labels for!', 'error'); return; }
+    generateDrawerLabels(drawerDirectory);
+  }, [drawerDirectory, generateDrawerLabels, showToast]);
+
+  const sendDrawersToPrintCenter = useCallback(() => {
     const codes = bucketStore.generated;
-    if (codes.length === 0) { showToast('No bucket barcodes available to send to Print Center!', 'error'); return; }
+    if (codes.length === 0) { showToast('Generate drawer labels first — nothing to send to Print Center!', 'error'); return; }
     setPrintSelections((prev) => { const next = new Set(prev.bucket); codes.forEach((b) => next.add(b.pieceCode)); return { ...prev, bucket: next }; });
-    showToast(`Queued ${codes.length} bucket barcodes to Print Center!`, 'success');
+    showToast(`Queued ${codes.length} drawer barcodes to Print Center!`, 'success');
     setActiveTab('print');
   }, [bucketStore, showToast]);
 
@@ -1966,6 +2297,39 @@ export default function BarcodeManagementPage() {
   const handlePrintSingle = useCallback((pieceCode) => {
     executeThermalPrint([pieceCode]);
   }, [executeThermalPrint]);
+
+  // ─── "Print every drawer label" — the whole 200-drawer sheet in one click ───
+  // Deliberately does NOT route through executeThermalPrint: that one reads the
+  // store, and drawers the operator has not generated yet are not in it. This
+  // mints whatever is missing and prints the full roster in the same pass, so
+  // the paper always matches what /api/v1/drawers just returned.
+  const printAllDrawerLabels = useCallback(() => {
+    const printable = (drawerDirectory || []).filter((d) => d.barcode);
+    const skipped = (drawerDirectory || []).length - printable.length;
+    if (printable.length === 0) {
+      showToast(skipped > 0
+        ? `None of the ${skipped} loaded drawers has a registry barcode yet — nothing can be printed.`
+        : 'No drawers loaded from the server to print!', 'error');
+      return;
+    }
+    const batchId = `DRW-BATCH-${Date.now().toString().slice(-6)}`;
+    const existingByCode = new Map(bucketStore.generated.map((r) => [r.pieceCode, r]));
+    const fresh = buildDrawerRecords(printable.filter((d) => !existingByCode.has(d.barcode)), batchId);
+    const freshByCode = new Map(fresh.map((r) => [r.pieceCode, r]));
+    const items = printable
+      .map((d) => existingByCode.get(d.barcode) || freshByCode.get(d.barcode))
+      .filter(Boolean);
+    const printedCodes = new Set(items.map((r) => r.pieceCode));
+
+    setBucketStore((prev) => ({
+      generated: [...prev.generated, ...fresh].map((r) => printedCodes.has(r.pieceCode)
+        ? { ...r, printStatus: 'PRINTED', printCount: r.printCount + 1 } : r),
+      history: fresh.length > 0 ? [drawerBatchHistoryEntry(batchId, fresh), ...prev.history] : prev.history,
+    }));
+    setPrintSheetItems(items);
+    showToast(`Printing all ${items.length} drawer labels (4 per page)...`, 'success');
+    if (skipped > 0) showToast(`${skipped} drawer${skipped === 1 ? '' : 's'} skipped — no registry barcode to encode.`, 'info');
+  }, [drawerDirectory, bucketStore, buildDrawerRecords, drawerBatchHistoryEntry, showToast]);
 
   // ─── Bulk PNG/PDF export ───
   const handleDownloadAll = useCallback(async (format) => {
@@ -2075,6 +2439,10 @@ export default function BarcodeManagementPage() {
 
   const detailBarcode = detailCode ? activeGenerated.find((b) => b.pieceCode === detailCode) : null;
 
+  // The bucket category prints bare 100×70mm labels, not ID cards — that
+  // switches the printed page layout, the export page width and the modal card.
+  const isBucketSheet = category === 'bucket';
+
   return (
     <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="show">
       <style jsx global>{`
@@ -2093,16 +2461,40 @@ export default function BarcodeManagementPage() {
           cursor: pointer; min-height: 48px; transition: all 0.2s ease;
         }
         .btn-warm-secondary:hover { background: #fdf6ee; border-color: #c8834a; }
+        /* Bucket label, 100×70mm. Sizes are written out rather than
+           interpolated from BUCKET_LABEL so this whole block stays a static
+           styled-jsx style; keep the two in step if the label size changes.
+           Here in px (96dpi ≈ 378×265) for the PNG/PDF export and the modal —
+           @media print below re-states the same label in mm for paper. */
+        .bucket-label {
+          width: 378px; height: 265px;
+          box-sizing: border-box; background: #fff; border: 1px dashed #999;
+          display: flex; align-items: center; justify-content: center; overflow: hidden;
+        }
+        .bucket-label svg { width: 92%; height: auto; }
         @media print {
-          @page { size: A4; margin: 10mm; }
+          /* 5mm so two 100mm labels fit across A4's 210mm. The other sheets
+             size their page box off this, so it is shared deliberately. */
+          @page { size: A4; margin: 5mm; }
           body * { visibility: hidden; }
           #thermalPrintSheet, #thermalPrintSheet * { visibility: visible; }
           #thermalPrintSheet { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: #fff !important; }
           .print-page {
             display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
-            gap: 8mm; width: 100%; height: 277mm; page-break-after: always; box-sizing: border-box;
+            gap: 8mm; width: 100%; height: 287mm; page-break-after: always; box-sizing: border-box;
           }
           .print-page:last-child { page-break-after: auto; }
+          /* Bucket labels: 2 across × 4 down = 8 exact 100×70mm labels per A4.
+             No gap — the dashed border doubles as the cut line. */
+          .print-label-page {
+            display: grid; grid-template-columns: 100mm 100mm; grid-auto-rows: 70mm;
+            width: 200mm; page-break-after: always;
+          }
+          .print-label-page:last-child { page-break-after: auto; }
+          .print-label-page .bucket-label {
+            width: 100mm; height: 70mm; border: 1px dashed #bbb; break-inside: avoid;
+          }
+          .print-label-page .bucket-label svg { width: 92mm; height: auto; }
           .print-card {
             border: 1px dashed #999; border-radius: 6px; padding: 4mm; box-sizing: border-box;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -2210,12 +2602,25 @@ export default function BarcodeManagementPage() {
             )}
 
             {activeTab === 'generation' && category === 'bucket' && (
-              <BucketGenerationTab
-                bucketGenerated={bucketStore.generated}
-                onGenerateRange={generateBucketRange}
-                onSendToPrintCenter={sendBucketsToPrintCenter}
+              <DrawerGenerationTab
+                drawers={drawerDirectory}
+                drawersLoading={drawerLoading}
+                drawersError={token ? drawerError : 'Sign in to load the drawer pool.'}
+                onRetryDrawers={reloadDrawers}
+                drawerTotal={drawerTotal}
+                drawerGenerated={bucketStore.generated}
+                onGenerateSelected={generateDrawerLabels}
+                onGenerateAllRemaining={generateAllRemainingDrawers}
+                onPrintAll={printAllDrawerLabels}
+                onSendToPrintCenter={sendDrawersToPrintCenter}
                 onOpenDetail={setDetailCode}
                 onPrintSingle={handlePrintSingle}
+                stateFilter={drawerStateFilter}
+                setStateFilter={setDrawerStateFilter}
+                seqFrom={drawerSeqFrom}
+                setSeqFrom={setDrawerSeqFrom}
+                seqTo={drawerSeqTo}
+                setSeqTo={setDrawerSeqTo}
               />
             )}
 
@@ -2268,32 +2673,38 @@ export default function BarcodeManagementPage() {
         onConfirm={() => executeThermalPrint(Array.from(activeSelectedPrint))}
       />
 
-      {/* Print sheet — 4 ID cards per printed page */}
+      {/* Print sheet — 4 ID cards per page, or 8 bucket labels at 100×70mm */}
       <div id="thermalPrintSheet" ref={printSheetRef} style={{ display: 'none' }}>
-        {chunkArray(printSheetItems, 4).map((group, pageIdx) => (
-          <div className="print-page" key={pageIdx}>
-            {group.map((b) => (
-              category === 'employee' ? (
-                <div className="print-ticket-cell" key={b.pieceCode}>
-                  <EmployeeTicketCard barcode={b} />
-                </div>
-              ) : (
-                <div className="print-card" key={b.pieceCode}>
-                  <BarcodeCanvas code={b.pieceCode} displayWidth={200} showText={false} />
-                  <div className="card-code">{b.pieceCode}</div>
-                  <div className="card-fields">
-                    {buildCardFields(b, activeLabels).map(([label, value]) => (
-                      <div key={label}>
-                        <div className="f-label">{label}</div>
-                        <div className="f-value">{value || '—'}</div>
-                      </div>
-                    ))}
+        {isBucketSheet
+          ? chunkArray(printSheetItems, BUCKET_LABELS_PER_PAGE).map((group, pageIdx) => (
+            <div className="print-label-page" key={pageIdx}>
+              {group.map((b) => <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />)}
+            </div>
+          ))
+          : chunkArray(printSheetItems, 4).map((group, pageIdx) => (
+            <div className="print-page" key={pageIdx}>
+              {group.map((b) => (
+                category === 'employee' ? (
+                  <div className="print-ticket-cell" key={b.pieceCode}>
+                    <EmployeeTicketCard barcode={b} />
                   </div>
-                </div>
-              )
-            ))}
-          </div>
-        ))}
+                ) : (
+                  <div className="print-card" key={b.pieceCode}>
+                    <BarcodeCanvas code={b.pieceCode} displayWidth={200} showText={false} />
+                    <div className="card-code">{b.pieceCode}</div>
+                    <div className="card-fields">
+                      {buildCardFields(b, activeLabels).map(([label, value]) => (
+                        <div key={label}>
+                          <div className="f-label">{label}</div>
+                          <div className="f-value">{value || '—'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              ))}
+            </div>
+          ))}
       </div>
 
       {/* Off-screen renderer used only to capture the bulk PNG/PDF export */}
@@ -2304,11 +2715,15 @@ export default function BarcodeManagementPage() {
               <div
                 key={pageIdx}
                 className="export-page"
-                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, width: 800, padding: 24, background: '#fff' }}
+                // Bucket labels are a fixed physical size, so the export page
+                // widens to fit two of them rather than scaling them down.
+                style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, width: isBucketSheet ? 828 : 800, padding: 24, background: '#fff' }}
               >
                 {group.map((b) => (
                   category === 'employee'
                     ? <EmployeeTicketCard key={b.pieceCode} barcode={b} width={340} />
+                    : isBucketSheet
+                    ? <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />
                     : <IdCard key={b.pieceCode} barcode={b} labels={activeLabels} width={340} />
                 ))}
               </div>

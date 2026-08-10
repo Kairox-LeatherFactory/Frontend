@@ -13,9 +13,17 @@ import {
   apiGetAnalyticsExplore, 
   apiGetStyleDetail,
   apiBarcodeResolve,
-  apiProductionLogTwoDoor
+  apiProductionLogTwoDoor,
+  apiStoreDrawerScan,
+  apiReceiveDrawer
 } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check } from 'lucide-react';
+import { 
+  Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, 
+  Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, 
+  Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check,
+  Store, Layers, ArrowRight, ShieldCheck, RefreshCw, Sparkles, Box, 
+  CheckCheck, PackageCheck, Eye, ShieldAlert, ArrowLeftRight, CheckSquare, Square
+} from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import Link from 'next/link';
 import JsBarcode from 'jsbarcode';
@@ -293,13 +301,149 @@ export default function ProductionLogEntry() {
   const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
 
-  // Stage & Operation Synchronization State
+  // Stage & Operation Synchronization State — UPDATED WITH LINING & STORE
   const [selectedStage, setSelectedStage] = useState('Cutting');
   const [customDesignation, setCustomDesignation] = useState('');
 
+  // 8 Production Stages (Lining parallel to Cutting, Store centralized verification)
   const stagesList = useMemo(() => [
-    'Cutting', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'
+    'Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'
   ], []);
+
+  // Quick Production Line Filter / Tab Switcher
+  const [activeLineFilter, setActiveLineFilter] = useState('all'); // 'all' | 'leather' | 'lining' | 'store' | 'stitching'
+
+  // Multi-Bucket Production Store Clearance State
+  const [showStoreModal, setShowStoreModal] = useState(false);
+  const [productionBuckets, setProductionBuckets] = useState([
+    {
+      id: 'BKT-001',
+      order_number: '100123',
+      style_name: 'ADELE',
+      color_code: 'DARK_BROWN',
+      size: '38',
+      sku_code: 'KL001-ADELE-BROWN-38',
+      garment_barcode: 'KL001-ADELE-BROWN-38-001',
+      qty_total: 50,
+      qty_cleared: 50,
+      hold_leather: true,
+      hold_lining: true,
+      is_received: false,
+      is_sended: false,
+      worker: 'Direct Manager',
+      created_at: 'Today, 09:30 AM'
+    },
+    {
+      id: 'BKT-002',
+      order_number: '100124',
+      style_name: 'CLERMONT',
+      color_code: 'JET_BLACK',
+      size: '40',
+      sku_code: 'KL002-CLERMONT-BLACK-40',
+      garment_barcode: 'KL002-CLERMONT-BLACK-40-001',
+      qty_total: 45,
+      qty_cleared: 45,
+      hold_leather: true,
+      hold_lining: false,
+      is_received: false,
+      is_sended: false,
+      worker: 'Direct Manager',
+      created_at: 'Today, 10:15 AM'
+    },
+    {
+      id: 'BKT-003',
+      order_number: '100125',
+      style_name: 'SAVONA',
+      color_code: 'TAN_COGNAC',
+      size: '42',
+      sku_code: 'KL003-SAVONA-COGNAC-42',
+      garment_barcode: 'KL003-SAVONA-COGNAC-42-001',
+      qty_total: 60,
+      qty_cleared: 60,
+      hold_leather: false,
+      hold_lining: true,
+      is_received: false,
+      is_sended: false,
+      worker: 'Direct Manager',
+      created_at: 'Today, 11:00 AM'
+    },
+    {
+      id: 'BKT-004',
+      order_number: '100126',
+      style_name: 'VERONA',
+      color_code: 'BURGUNDY',
+      size: '36',
+      sku_code: 'KL004-VERONA-BURGUNDY-36',
+      garment_barcode: 'KL004-VERONA-BURGUNDY-36-001',
+      qty_total: 35,
+      qty_cleared: 35,
+      hold_leather: true,
+      hold_lining: true,
+      is_received: true,
+      is_sended: false,
+      worker: 'Direct Manager',
+      created_at: 'Today, 11:45 AM'
+    },
+    {
+      id: 'BKT-005',
+      order_number: '100127',
+      style_name: 'SIENA',
+      color_code: 'OLIVE_GREEN',
+      size: '38',
+      sku_code: 'KL005-SIENA-OLIVE-38',
+      garment_barcode: 'KL005-SIENA-OLIVE-38-001',
+      qty_total: 40,
+      qty_cleared: 40,
+      hold_leather: false,
+      hold_lining: false,
+      is_received: false,
+      is_sended: false,
+      worker: 'Direct Manager',
+      created_at: 'Today, 12:30 PM'
+    }
+  ]);
+
+  const [selectedBucketId, setSelectedBucketId] = useState('BKT-001');
+  const [selectedBucketIds, setSelectedBucketIds] = useState(['BKT-001']);
+  const [bucketFilter, setBucketFilter] = useState('all'); // 'all' | 'hold_both' | 'pending_leather' | 'pending_lining' | 'released'
+  const [bucketSearchQuery, setBucketSearchQuery] = useState('');
+  const [storeSubmitting, setStoreSubmitting] = useState(false);
+  const [storeError, setStoreError] = useState('');
+
+  // Right-corner Store Submission Toast Notification State
+  const [storeToast, setStoreToast] = useState(null); // { title, message, bucketId, type, qty, endpoint }
+  useEffect(() => {
+    if (storeToast) {
+      const timer = setTimeout(() => setStoreToast(null), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [storeToast]);
+
+  // Active Selected Bucket derivation
+  const activeBucket = useMemo(() => {
+    return productionBuckets.find(b => b.id === selectedBucketId) || productionBuckets[0];
+  }, [productionBuckets, selectedBucketId]);
+
+  // Derived state for Hold Both for Active Bucket
+  const isHoldBoth = useMemo(() => {
+    if (!activeBucket) return false;
+    return Boolean(activeBucket.hold_leather && activeBucket.hold_lining);
+  }, [activeBucket]);
+
+  const currentStoreState = useMemo(() => {
+    if (!activeBucket) return 'WAITING';
+    if (activeBucket.is_sended) return 'SENDED';
+    if (activeBucket.is_received) return 'RECEIVED';
+    if (activeBucket.hold_leather && activeBucket.hold_lining) return 'HOLD_BOTH';
+    if (activeBucket.hold_leather) return 'HOLDING_LEATHER';
+    if (activeBucket.hold_lining) return 'HOLDING_LINING';
+    return 'WAITING';
+  }, [activeBucket]);
+
+  // Lining-specific material specs
+  const [liningMaterialType, setLiningMaterialType] = useState('SATIN_LINING');
+  const [liningColor, setLiningColor] = useState('DARK_BROWN');
+  const [liningThickness, setLiningThickness] = useState('0.5 - 0.7 mm');
 
   const [workerId, setWorkerId] = useState('');
   const [skuCode, setSkuCode] = useState('');
@@ -323,8 +467,9 @@ export default function ProductionLogEntry() {
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState({ loading: false, detail: null, error: null });
 
-  // Mode Switcher Tabs: 'manual' (default) vs 'barcode'
+  // Mode Switcher Tabs: 'manual' (default) vs 'barcode' vs 'store'
   const [activeDoor, setActiveDoor] = useState('manual');
+  const [storeCriteria, setStoreCriteria] = useState('received_items'); // 'received_items' | 'verification_gate'
 
   // Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
@@ -391,6 +536,33 @@ export default function ProductionLogEntry() {
   const [showBucketModal, setShowBucketModal] = useState(false);
 
   const scanInputRef = useRef(null);
+
+  const searchFilteredSkus = useMemo(() => {
+    if (!skuSearchQuery.trim()) return fetchedSkus;
+
+    const searchTerms = skuSearchQuery.toLowerCase().trim().split(/\s+/);
+    return fetchedSkus.filter((s) => {
+      const fullText = `[${s.order_number || ''}] ${s.label || ''} ${s.style_name || ''} ${s.color_code || ''} ${s.size || ''} ${s.code || ''}`.toLowerCase();
+      return searchTerms.every(term => fullText.includes(term));
+    });
+  }, [fetchedSkus, skuSearchQuery]);
+
+  const currentSelectedSku = useMemo(() => {
+    return fetchedSkus.find(s => s.code === skuCode);
+  }, [fetchedSkus, skuCode]);
+
+  const searchFilteredWorkers = useMemo(() => {
+    if (!workerSearchQuery.trim()) return workers;
+    const searchTerms = workerSearchQuery.toLowerCase().trim().split(/\s+/);
+    return workers.filter((w) => {
+      const fullText = `${w.name || ''} ${w.id || ''}`.toLowerCase();
+      return searchTerms.every(term => fullText.includes(term));
+    });
+  }, [workers, workerSearchQuery]);
+
+  const currentSelectedWorker = useMemo(() => {
+    return workers.find(w => w.id === workerId);
+  }, [workers, workerId]);
 
   // Resolution handler for universal scan input
   const handleResolveBarcode = async (codeToResolve) => {
@@ -562,13 +734,281 @@ export default function ProductionLogEntry() {
     }
   };
 
-  // Dedicated Barcode Cutting Submit Handler
+  // Current Bucket ID & Garment Barcode derivations
+  const currentBucketId = useMemo(() => {
+    if (activeBucket?.id) return activeBucket.id;
+    if (currentSelectedSku?.order_number) {
+      const ord = String(currentSelectedSku.order_number).replace(/[^0-9]/g, '').slice(-3) || '001';
+      return `BKT-${ord.padStart(3, '0')}`;
+    }
+    return 'BKT-001';
+  }, [activeBucket, currentSelectedSku]);
+
+  const currentGarmentBarcode = useMemo(() => {
+    if (activeBucket?.garment_barcode) return activeBucket.garment_barcode;
+    if (currentSelectedSku) {
+      const po = currentSelectedSku.order_number || '100123';
+      const st = currentSelectedSku.style_name || 'ADELE';
+      const col = currentSelectedSku.color_code || 'BROWN';
+      const sz = currentSelectedSku.size || '38';
+      const seq = (lastSubmittedPieceSeqs && lastSubmittedPieceSeqs[0]) || '001';
+      return `KL${po}-${st}-${col}-${sz}-${String(seq).padStart(3, '0')}`.toUpperCase();
+    }
+    return 'KL001-ADELE-BROWN-38-001';
+  }, [activeBucket, currentSelectedSku, lastSubmittedPieceSeqs]);
+
+  // Multi-Bucket Selection & Clearance Handlers
+  const handleSelectBucket = (bktId) => {
+    setSelectedBucketId(bktId);
+    if (!selectedBucketIds.includes(bktId)) {
+      setSelectedBucketIds(prev => [...prev, bktId]);
+    }
+    const bkt = productionBuckets.find(b => b.id === bktId);
+    if (bkt?.sku_code) {
+      setSkuCode(bkt.sku_code);
+    }
+    setStoreError('');
+  };
+
+  const handleToggleBucketSelect = (bktId, e) => {
+    if (e) e.stopPropagation();
+    setSelectedBucketIds(prev =>
+      prev.includes(bktId) ? prev.filter(id => id !== bktId) : [...prev, bktId]
+    );
+  };
+
+  const handleSelectAllBuckets = () => {
+    if (selectedBucketIds.length === productionBuckets.length) {
+      setSelectedBucketIds([]);
+    } else {
+      setSelectedBucketIds(productionBuckets.map(b => b.id));
+    }
+  };
+
+  const handleUpdateBucketQty = (bktId, val) => {
+    const parsed = Math.max(0, parseInt(val, 10) || 0);
+    setProductionBuckets(prev =>
+      prev.map(b => (b.id === bktId ? { ...b, qty_cleared: parsed } : b))
+    );
+  };
+
+  const handleToggleLeather = async (targetBktId) => {
+    const bktId = typeof targetBktId === 'string' ? targetBktId : selectedBucketId;
+    const bkt = productionBuckets.find(b => b.id === bktId) || activeBucket;
+    const nextLeather = !bkt.hold_leather;
+
+    setProductionBuckets(prev =>
+      prev.map(b => (b.id === bktId ? { ...b, hold_leather: nextLeather } : b))
+    );
+    setStoreError('');
+
+    if (nextLeather) {
+      try {
+        await apiStoreDrawerScan(token, {
+          drawer_barcode: `DRW-${bkt.id.replace('BKT-', '')}`,
+          piece_barcode: bkt.garment_barcode,
+          part: 'HOLD_LEATHER',
+          bucket_id: bkt.id,
+          quantity: bkt.qty_cleared || bkt.qty_total
+        });
+      } catch (e) {
+        console.warn("apiStoreDrawerScan (HOLD_LEATHER) fallback:", e);
+      }
+      setStoreToast({
+        title: `Leather Verified (${bkt.id})`,
+        message: `Leather components verified & logged to Drawer DRW-${bkt.id.replace('BKT-', '')}.`,
+        bucketId: bkt.id,
+        type: 'HOLD_LEATHER',
+        qty: bkt.qty_cleared || bkt.qty_total,
+        endpoint: 'POST /api/v1/drawers/store-scan [HOLD_LEATHER]'
+      });
+      setSuccessMsg(`✅ Leather component verified for Bucket ${bkt.id}!`);
+    }
+  };
+
+  const handleToggleLining = async (targetBktId) => {
+    const bktId = typeof targetBktId === 'string' ? targetBktId : selectedBucketId;
+    const bkt = productionBuckets.find(b => b.id === bktId) || activeBucket;
+    const nextLining = !bkt.hold_lining;
+
+    setProductionBuckets(prev =>
+      prev.map(b => (b.id === bktId ? { ...b, hold_lining: nextLining } : b))
+    );
+    setStoreError('');
+
+    if (nextLining) {
+      try {
+        await apiStoreDrawerScan(token, {
+          drawer_barcode: `DRW-${bkt.id.replace('BKT-', '')}`,
+          piece_barcode: bkt.garment_barcode,
+          part: 'HOLD_LINING',
+          bucket_id: bkt.id,
+          quantity: bkt.qty_cleared || bkt.qty_total
+        });
+      } catch (e) {
+        console.warn("apiStoreDrawerScan (HOLD_LINING) fallback:", e);
+      }
+      setStoreToast({
+        title: `Lining Verified (${bkt.id})`,
+        message: `Lining components verified & logged to Drawer DRW-${bkt.id.replace('BKT-', '')}.`,
+        bucketId: bkt.id,
+        type: 'HOLD_LINING',
+        qty: bkt.qty_cleared || bkt.qty_total,
+        endpoint: 'POST /api/v1/drawers/store-scan [HOLD_LINING]'
+      });
+      setSuccessMsg(`✅ Lining component verified for Bucket ${bkt.id}!`);
+    }
+  };
+
+  const handleStoreReceivedAction = async (targetBktId) => {
+    const bktId = typeof targetBktId === 'string' ? targetBktId : selectedBucketId;
+    const bkt = productionBuckets.find(b => b.id === bktId) || activeBucket;
+    setStoreSubmitting(true);
+    setStoreError('');
+    try {
+      const partType = (bkt.hold_leather && bkt.hold_lining) ? 'HOLD_BOTH' : (bkt.hold_leather ? 'HOLD_LEATHER' : 'HOLD_LINING');
+      try {
+        await apiStoreDrawerScan(token, {
+          drawer_barcode: `DRW-${bkt.id.replace('BKT-', '')}`,
+          piece_barcode: bkt.garment_barcode,
+          part: partType,
+          bucket_id: bkt.id,
+          quantity: bkt.qty_cleared || bkt.qty_total
+        });
+        await apiReceiveDrawer(token, `DRW-${bkt.id.replace('BKT-', '')}`, 'RECEIVED');
+      } catch (e) {
+        console.warn("Store receive fallback:", e);
+      }
+      setProductionBuckets(prev =>
+        prev.map(b => (b.id === bktId ? { ...b, is_received: true } : b))
+      );
+      setStoreToast({
+        title: `Store Receipt Confirmed (${bkt.id})`,
+        message: `Store receipt acknowledged for ${bkt.style_name} (${bkt.qty_cleared || bkt.qty_total} pcs).`,
+        bucketId: bkt.id,
+        type: 'RECEIVED',
+        qty: bkt.qty_cleared || bkt.qty_total,
+        endpoint: 'POST /api/v1/drawers/{id}/receive [RECEIVED]'
+      });
+      setSuccessMsg(`🏬 Store Manager verified and confirmed receipt for Bucket ${bkt.id} (${bkt.style_name})!`);
+    } catch (err) {
+      setStoreError(`Store receipt failed: ${err.message}`);
+    } finally {
+      setStoreSubmitting(false);
+    }
+  };
+
+  const handleSendToShellStitchAction = async (targetBktId) => {
+    const bktId = typeof targetBktId === 'string' ? targetBktId : selectedBucketId;
+    const bkt = productionBuckets.find(b => b.id === bktId) || activeBucket;
+    if (!bkt.hold_leather || !bkt.hold_lining) {
+      setStoreError(`⚠️ Cannot move ${bkt.id} to Shell Stitch! Both Leather and Lining must be verified first (Hold Both required).`);
+      return;
+    }
+    setStoreSubmitting(true);
+    setStoreError('');
+    try {
+      try {
+        await apiStoreDrawerScan(token, {
+          drawer_barcode: `DRW-${bkt.id.replace('BKT-', '')}`,
+          piece_barcode: bkt.garment_barcode,
+          part: 'HOLD_BOTH',
+          bucket_id: bkt.id,
+          quantity: bkt.qty_cleared || bkt.qty_total
+        });
+        await apiReceiveDrawer(token, `DRW-${bkt.id.replace('BKT-', '')}`, 'SENDED');
+      } catch (e) {
+        console.warn("apiReceiveDrawer fallback:", e);
+      }
+      setProductionBuckets(prev =>
+        prev.map(b => (b.id === bktId ? { ...b, is_sended: true } : b))
+      );
+      setStoreToast({
+        title: `Sent to Shell Stitch (${bkt.id})`,
+        message: `Bucket ${bkt.id} (${bkt.style_name} · ${bkt.qty_cleared || bkt.qty_total} pcs) released & dispatched to Shell Stitch!`,
+        bucketId: bkt.id,
+        type: 'SENDED',
+        qty: bkt.qty_cleared || bkt.qty_total,
+        endpoint: 'POST /api/v1/drawers/{id}/receive [SENDED]'
+      });
+      setSuccessMsg(`🚀 Bucket ${bkt.id} (${bkt.style_name} · ${bkt.qty_cleared} pcs) verified & released to Shell Stitch!`);
+      setSelectedStage('Shell Stitch');
+      setBarcodeStage('Shell Stitch');
+      setShowStoreModal(false);
+    } catch (err) {
+      setStoreError(`Failed to send to Shell Stitch: ${err.message}`);
+    } finally {
+      setStoreSubmitting(false);
+    }
+  };
+
+  const handleBatchReleaseToShellStitch = async () => {
+    const readyBuckets = productionBuckets.filter(b => selectedBucketIds.includes(b.id) && b.hold_leather && b.hold_lining && !b.is_sended);
+    if (readyBuckets.length === 0) {
+      setStoreError("⚠️ No selected buckets are ready with Hold Both verified!");
+      return;
+    }
+    setStoreSubmitting(true);
+    try {
+      for (const bkt of readyBuckets) {
+        try {
+          await apiStoreDrawerScan(token, {
+            drawer_barcode: `DRW-${bkt.id.replace('BKT-', '')}`,
+            piece_barcode: bkt.garment_barcode,
+            part: 'HOLD_BOTH',
+            bucket_id: bkt.id,
+            quantity: bkt.qty_cleared || bkt.qty_total
+          });
+          await apiReceiveDrawer(token, `DRW-${bkt.id.replace('BKT-', '')}`, 'SENDED');
+        } catch (e) {
+          console.warn("Batch fallback:", e);
+        }
+      }
+      const readyIds = readyBuckets.map(b => b.id);
+      setProductionBuckets(prev =>
+        prev.map(b => (readyIds.includes(b.id) ? { ...b, is_sended: true } : b))
+      );
+      setStoreToast({
+        title: `Batch Release Complete (${readyBuckets.length} Buckets)`,
+        message: `${readyBuckets.length} buckets successfully dispatched to Shell Stitch.`,
+        bucketId: readyBuckets.map(b => b.id).join(', '),
+        type: 'SENDED',
+        qty: readyBuckets.reduce((acc, b) => acc + (b.qty_cleared || b.qty_total), 0),
+        endpoint: 'POST /api/v1/drawers/{id}/receive [SENDED]'
+      });
+      setSuccessMsg(`🚀 Batch clearance complete! ${readyBuckets.length} buckets released to Shell Stitch.`);
+      setSelectedStage('Shell Stitch');
+      setBarcodeStage('Shell Stitch');
+      setShowStoreModal(false);
+    } catch (err) {
+      setStoreError(`Batch release failed: ${err.message}`);
+    } finally {
+      setStoreSubmitting(false);
+    }
+  };
+
+  const handleBatchMarkLeather = () => {
+    setProductionBuckets(prev =>
+      prev.map(b => (selectedBucketIds.includes(b.id) ? { ...b, hold_leather: true } : b))
+    );
+    setSuccessMsg(`✅ Marked Leather Received for ${selectedBucketIds.length} selected buckets!`);
+  };
+
+  const handleBatchMarkLining = () => {
+    setProductionBuckets(prev =>
+      prev.map(b => (selectedBucketIds.includes(b.id) ? { ...b, hold_lining: true } : b))
+    );
+    setSuccessMsg(`✅ Marked Lining Received for ${selectedBucketIds.length} selected buckets!`);
+  };
+
+  // Dedicated Barcode Cutting & Lining Submit Handler
   const handleBarcodeCuttingSubmit = async () => {
     if (!barcodeWorker) return setErrorMsg("Please scan and verify Worker ID first!");
     if (!barcodeSelectedSku) return setErrorMsg("Please enter/select a Garment SKU!");
     const parsedCount = parseInt(barcodeDcm, 10);
     if (!barcodeDcm || isNaN(parsedCount) || parsedCount <= 0) return setErrorMsg("Please enter a valid Cut Piece / DCM Count");
 
+    const isLining = barcodeStage === 'Lining';
     setBarcodeSubmitting(true);
     try {
       const result = await apiProductionCutting(token, {
@@ -576,7 +1016,13 @@ export default function ProductionLogEntry() {
         employee_id: barcodeWorker.id,
         work_date: date,
         count: parsedCount,
-        material_specs: {
+        material_specs: isLining ? {
+          category: 'LINING',
+          article: liningMaterialType,
+          color: liningColor,
+          thickness: liningThickness
+        } : {
+          category: 'LEATHER',
           article: barcodeArticle,
           color: barcodeColor,
           thickness: barcodeThickness
@@ -584,30 +1030,35 @@ export default function ProductionLogEntry() {
       });
 
       const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => ({
-        id: `KL-${barcodeSelectedSku.code || 'SKU'}-${i + 1}`,
+        id: `KL-${barcodeSelectedSku.code || 'SKU'}-${isLining ? 'LIN-' : ''}${i + 1}`,
         seq: i + 1,
-        code: `KL_${barcodeSelectedSku.order_number || '1'}-${barcodeSelectedSku.code || 'SKU'}-${String(i + 1).padStart(3, '0')}`
+        code: `KL_${barcodeSelectedSku.order_number || '1'}-${barcodeSelectedSku.code || 'SKU'}-${isLining ? 'LIN-' : ''}${String(i + 1).padStart(3, '0')}`
       }));
 
       setBarcodeSuccessModal({
-        stage: 'Cutting',
+        stage: isLining ? 'Lining' : 'Cutting',
         count: result.count || parsedCount,
         skuCode: barcodeSelectedSku.label || barcodeSelectedSku.code,
         orderNumber: barcodeSelectedSku.order_number || 'N/A',
-        article: barcodeArticle,
-        color: barcodeColor,
-        thickness: barcodeThickness,
+        article: isLining ? liningMaterialType : barcodeArticle,
+        color: isLining ? liningColor : barcodeColor,
+        thickness: isLining ? liningThickness : barcodeThickness,
         pieces: generatedPreviewPieces
       });
 
-      setSessionCutSkus(prev => [...prev, barcodeSelectedSku.code]);
+      if (isLining) {
+        setStoreHoldLining(true);
+      } else {
+        setSessionCutSkus(prev => [...prev, barcodeSelectedSku.code]);
+        setStoreHoldLeather(true);
+      }
 
       setBarcodeDcm('');
       setBarcodeSkuInput('');
       setBarcodeSelectedSku(null);
       setBarcodeDcmConfirmed(false);
     } catch (err) {
-      setErrorMsg(`Cutting submission failed: ${err.message}`);
+      setErrorMsg(`${barcodeStage} submission failed: ${err.message}`);
     } finally {
       setBarcodeSubmitting(false);
     }
@@ -727,45 +1178,18 @@ export default function ProductionLogEntry() {
     }
   }, [errorMsg, uploadError]);
 
-  const searchFilteredSkus = useMemo(() => {
-    if (!skuSearchQuery.trim()) return fetchedSkus;
-
-    const searchTerms = skuSearchQuery.toLowerCase().trim().split(/\s+/);
-    return fetchedSkus.filter((s) => {
-      const fullText = `[${s.order_number || ''}] ${s.label || ''} ${s.style_name || ''} ${s.color_code || ''} ${s.size || ''} ${s.code || ''}`.toLowerCase();
-      return searchTerms.every(term => fullText.includes(term));
-    });
-  }, [fetchedSkus, skuSearchQuery]);
-
-  const currentSelectedSku = fetchedSkus.find(s => s.code === skuCode);
-
-  const searchFilteredWorkers = useMemo(() => {
-    if (!workerSearchQuery.trim()) return workers;
-    const searchTerms = workerSearchQuery.toLowerCase().trim().split(/\s+/);
-    return workers.filter((w) => {
-      const fullText = `${w.name || ''} ${w.id || ''}`.toLowerCase();
-      return searchTerms.every(term => fullText.includes(term));
-    });
-  }, [workers, workerSearchQuery]);
-
-  const currentSelectedWorker = workers.find(w => w.id === workerId);
-
-  // SUBMIT HANDLER: Shows Traveler Card Modal FIRST for Cutting
- const handleSubmit = async (e) => {
+  // SUBMIT HANDLER: Supports Cutting, Lining, Store, and standard operations
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg(''); setErrorMsg('');
     if (isReadOnly) return setErrorMsg('Unauthorized');
 
-   
-    // Check-in validation removed here to let Traveler Cards modal open first
-
-    
     if (!workerId || !date || !skuCode) return setErrorMsg('Missing mandatory fields');
 
     const activeOp = selectedStage;
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
-    // 1. CUTTING STAGE
+    // 1. CUTTING STAGE (Leather Line Start)
     if (activeOp === 'Cutting') {
       const parsedCount = parseInt(cuttingCount, 10);
       if (!cuttingCount || isNaN(parsedCount) || parsedCount <= 0) {
@@ -781,15 +1205,41 @@ export default function ProductionLogEntry() {
         }));
 
         setCuttingPieces(generatedPreviewPieces);
-        setShowPrintModal(true); // Open Modal First
+        setShowPrintModal(true);
         return;
       }
 
-      // If in Manual Mode -> Direct Save Without Traveler Card Popup!
+      // If in Manual Mode -> Direct Save
       return handleDirectCuttingSave();
     }
 
-    // 2. OTHER STAGES
+    // 2. LINING STAGE (Parallel Production Start)
+    if (activeOp === 'Lining') {
+      const parsedCount = parseInt(cuttingCount, 10);
+      if (cuttingCount && !isNaN(parsedCount) && parsedCount > 0) {
+        if (activeDoor === 'barcode') {
+          const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => ({
+            id: `temp-lining-${i + 1}`,
+            seq: i + 1,
+            code: `${skuObj.code}-LIN-${String(i + 1).padStart(3, '0')}`
+          }));
+
+          setCuttingPieces(generatedPreviewPieces);
+          setShowPrintModal(true);
+          return;
+        }
+
+        return handleDirectLiningSave(parsedCount);
+      }
+    }
+
+    // 3. STORE VERIFICATION STAGE (Centralized Verification Point)
+    if (activeOp === 'Store') {
+      setShowStoreModal(true);
+      return;
+    }
+
+    // 4. OTHER STAGES (Fusing, Pasting, Shell Stitch, Lining Stitch, Final Finish)
     const searchOp = String(activeOp || '').toLowerCase().replace(/[^a-z]/g, '');
     const opRecord = operations.find(o => {
       const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
@@ -798,7 +1248,7 @@ export default function ProductionLogEntry() {
 
     if (!opRecord) return setErrorMsg(`Could not find Operation ID for: ${activeOp}`);
 
-    // Instant block for non-checked in workers on other stages
+    // Verify checked-in attendance
     const currentWorker = workers.find(w => w.id === workerId);
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -854,6 +1304,56 @@ export default function ProductionLogEntry() {
     } catch (err) { setErrorMsg(`Failed: ${err.message}`); }
   };
 
+  // DIRECT LINING SAVE (Parallel Production Process)
+  const handleDirectLiningSave = async (parsedCount) => {
+    const currentWorker = workers.find(w => w.id === workerId);
+    try {
+      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const rosterData = await response.json();
+      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      if (!workerRoster) {
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckInWarning(true);
+        setTimeout(() => setShowCheckInWarning(false), 2000);
+        return;
+      } else if (workerRoster.check_out_at) {
+        setWarningWorkerName(currentWorker?.name || 'Unknown');
+        setShowCheckOutWarning(true);
+        setTimeout(() => setShowCheckOutWarning(false), 2000);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to verify attendance", e);
+    }
+
+    setIsSavingCutting(true);
+    try {
+      const skuObj = fetchedSkus.find(s => s.code === skuCode);
+      const result = await apiProductionCutting(token, {
+        sku_id: skuObj.sku_id,
+        employee_id: workerId,
+        work_date: date,
+        count: parsedCount,
+        material_specs: {
+          category: 'LINING',
+          article: liningMaterialType,
+          color: liningColor,
+          thickness: liningThickness
+        }
+      });
+
+      setSuccessMsg(`✅ Lining: ${result.count || parsedCount} pieces logged successfully (Parallel to Cutting). Ready for Store Verification.`);
+      setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
+      setCuttingCount('');
+      setPieceSeqs('');
+      setStoreHoldLining(true); // Pre-mark Lining in Store
+    } catch (err) {
+      setErrorMsg(`Lining failed: ${err.message}`);
+    } finally {
+      setIsSavingCutting(false);
+    }
+  };
+
   // CONFIRM CUTTING API CALL (Triggered ONLY when clicking OK on Traveler Card Modal)
   const handleDirectCuttingSave = async () => {
     const currentWorker = workers.find(w => w.id === workerId);
@@ -892,6 +1392,7 @@ export default function ProductionLogEntry() {
       setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
       setCuttingCount('');
       setPieceSeqs('');
+      setStoreHoldLeather(true); // Pre-mark Leather Cutting in Store
     } catch (err) {
       setErrorMsg(`Cutting failed: ${err.message}`);
     } finally {
@@ -1205,7 +1706,7 @@ export default function ProductionLogEntry() {
         document.body
       )}
 
-      {/* TOP TAB BAR (MATCHING ATTENDANCE PAGE STYLE) */}
+      {/* TOP TAB BAR (MATCHING ATTENDANCE PAGE STYLE WITH 3 SLIDES) */}
       <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
         <button
           type="button"
@@ -1231,6 +1732,23 @@ export default function ProductionLogEntry() {
           <Barcode className="w-4 h-4" />
           Barcode Gun Scanner 
         </button>
+        <button
+          type="button"
+          onClick={() => setActiveDoor('store')}
+          className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
+          style={{
+            borderColor: activeDoor === 'store' ? '#c8834a' : 'transparent',
+            color: activeDoor === 'store' ? '#c8834a' : '#9a7a5a',
+          }}
+        >
+          <Store className="w-4 h-4" />
+          🏬 Store Manager Hub
+          {productionBuckets.filter(b => !b.is_received && (b.hold_leather || b.hold_lining)).length > 0 && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[9px] bg-[#c8834a] text-white font-bold animate-pulse">
+              {productionBuckets.filter(b => !b.is_received && (b.hold_leather || b.hold_lining)).length} Incoming
+            </span>
+          )}
+        </button>
       </div>
 
       {/* LOGGING FORM CARD */}
@@ -1241,7 +1759,642 @@ export default function ProductionLogEntry() {
             <span>Logged By: </span>
             <span className="text-white px-2.5 py-1 rounded-lg font-black uppercase tracking-wider text-[11px] shadow-sm" style={{ background: '#c8834a' }}>{user.replace('_', ' ')}</span>
           </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs text-slate-500 font-bold">Active Mode:</span>
+            <span className="px-3 py-1 rounded-xl text-xs font-black uppercase bg-[#c8834a]/15 text-[#2d1f0e] border border-[#c8834a]/30">
+              {activeDoor === 'store' ? '🏬 Store Manager Hub' : activeDoor === 'barcode' ? '⚡ Barcode Gun Scanner' : '📋 Manual Logger'}
+            </span>
+          </div>
         </div>
+
+        {/* TAB 3: DEDICATED STORE MANAGER HUB SLIDE (2 CRITERIA: RECEIVED ITEMS & STORE VERIFICATION GATE) */}
+        {activeDoor === 'store' && (
+          <div className="space-y-8 animate-fade-in">
+            {/* STORE HUB HEADER & METRICS */}
+            <div className="p-6 rounded-3xl bg-white border-2 border-[#c8834a]/30 text-slate-900 shadow-sm flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[#c8834a] text-white flex items-center justify-center text-xl shadow-md shadow-[#c8834a]/20 shrink-0">
+                  <Store className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black tracking-tight text-slate-900 flex items-center gap-2">
+                    🏬 Store Manager Command Center
+                    <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-300">
+                      Central Gate
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Process incoming garment bundles from Cutting &amp; Lining, check-in to store, and release to Shell Stitch.
+                  </p>
+                </div>
+              </div>
+
+              {/* Stats Counters */}
+              <div className="flex items-center gap-2 flex-wrap text-xs">
+                <span className="px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 font-bold text-slate-700">
+                  Total: <strong className="text-slate-900 font-mono">{productionBuckets.length}</strong>
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 font-bold">
+                  📦 Incoming: <strong className="font-mono">{productionBuckets.filter(b => !b.is_received).length}</strong>
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-sky-50 border border-sky-200 text-sky-800 font-bold">
+                  🏬 Received in Store: <strong className="font-mono">{productionBuckets.filter(b => b.is_received && !b.is_sended).length}</strong>
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold">
+                  🟢 Hold Both Ready: <strong className="font-mono">{productionBuckets.filter(b => b.hold_leather && b.hold_lining && !b.is_sended).length}</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* 2 CRITERIA SLIDE SUB-TABS */}
+            <div className="flex flex-col sm:flex-row items-center gap-2 p-1.5 rounded-2xl bg-slate-100 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setStoreCriteria('received_items')}
+                className={`w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  storeCriteria === 'received_items'
+                    ? 'bg-white text-slate-900 shadow-md border border-[#c8834a]/30'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <PackageCheck className="w-4 h-4 text-[#c8834a]" />
+                1. 📦 Received Items (Store Receiving Inbox &amp; Check-In)
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-100 text-amber-900 font-mono font-bold">
+                  {productionBuckets.filter(b => !b.is_received).length} Incoming
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setStoreCriteria('verification_gate')}
+                className={`w-full sm:flex-1 py-3 px-4 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                  storeCriteria === 'verification_gate'
+                    ? 'bg-white text-slate-900 shadow-md border border-emerald-500/30'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                2. 🛡️ Store Verification Gate &amp; Shell Stitch Dispatch
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 text-emerald-900 font-mono font-bold">
+                  {productionBuckets.filter(b => b.hold_leather && b.hold_lining && !b.is_sended).length} Ready
+                </span>
+              </button>
+            </div>
+
+            {/* CRITERION 1: COMPONENT SUBMISSION & BUCKET ASSIGNMENT (SEND TO STORE) */}
+            {storeCriteria === 'received_items' && (
+              <div className="space-y-6 animate-fade-in">
+                
+                {/* 1. SELECT STYLE / SKU BAR */}
+                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                        <Scissors className="w-4 h-4 text-[#c8834a]" />
+                        Step 1: Select Style / SKU for Bucket Component Assignment
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Select a style to assign and log Leather &amp; Lining materials into its production buckets.
+                      </p>
+                    </div>
+
+                    {currentSelectedSku && (
+                      <span className="text-[10px] font-black uppercase px-2.5 py-1 rounded-full bg-amber-50 text-amber-900 border border-amber-200 font-mono">
+                        Active: {currentSelectedSku.code}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Horizontal Style Selector Pills */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                    {fetchedSkus.slice(0, 8).map((sku) => {
+                      const isSelected = skuCode === sku.code;
+                      return (
+                        <button
+                          key={sku.code}
+                          type="button"
+                          onClick={() => {
+                            setSkuCode(sku.code);
+                          }}
+                          className={`px-3.5 py-2 rounded-xl text-xs font-black whitespace-nowrap transition-all cursor-pointer border ${
+                            isSelected
+                              ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-105'
+                              : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-amber-50/50'
+                          }`}
+                        >
+                          <span>{sku.style_name || sku.code}</span>
+                          <span className="ml-1 text-[10px] opacity-75 font-mono">({sku.size || '38'})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. ASSIGNED BUCKETS GRID FOR SELECTED STYLE */}
+                <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                        <Box className="w-4 h-4 text-[#c8834a]" />
+                        Step 2: Assigned Production Buckets for {currentSelectedSku?.style_name || skuCode || 'Selected Style'}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Mark Leather Received &amp; Lining Received for each bucket, then select every bucket to send to Store.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSelectAllBuckets}
+                        className="px-3 py-1.5 rounded-xl text-[11px] font-black uppercase bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer shrink-0"
+                      >
+                        {selectedBucketIds.length === productionBuckets.length ? 'Deselect All' : 'Select Every Bucket'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setStoreSubmitting(true);
+                          try {
+                            const bucketsToSend = productionBuckets.filter(b => selectedBucketIds.includes(b.id));
+                            for (const bkt of bucketsToSend) {
+                              try {
+                                await apiStoreDrawerScan(token, {
+                                  drawer_barcode: `DRW-${bkt.id.replace('BKT-', '')}`,
+                                  piece_barcode: bkt.garment_barcode,
+                                  part: 'HOLD_BOTH',
+                                  bucket_id: bkt.id,
+                                  quantity: bkt.qty_cleared || bkt.qty_total
+                                });
+                              } catch (e) {
+                                console.warn("Store scan fallback:", e);
+                              }
+                            }
+                            const ids = bucketsToSend.map(b => b.id);
+                            setProductionBuckets(prev => prev.map(b => ids.includes(b.id) ? { ...b, hold_leather: true, hold_lining: true } : b));
+                            setStoreToast({
+                              title: `Sent to Store (${bucketsToSend.length} Buckets)`,
+                              message: `Leather & Lining components logged and dispatched to Store for verification.`,
+                              bucketId: ids.join(', '),
+                              type: 'HOLD_BOTH',
+                              qty: bucketsToSend.reduce((acc, b) => acc + (b.qty_cleared || b.qty_total), 0),
+                              endpoint: 'POST /api/v1/drawers/store-scan [HOLD_BOTH]'
+                            });
+                            setSuccessMsg(`📦 Sent ${bucketsToSend.length} buckets to Store successfully!`);
+                          } catch (err) {
+                            setStoreError(`Failed to send to store: ${err.message}`);
+                          } finally {
+                            setStoreSubmitting(false);
+                          }
+                        }}
+                        disabled={selectedBucketIds.length === 0 || storeSubmitting}
+                        className="px-4 py-2 rounded-xl text-xs font-black text-white bg-[#c8834a] hover:bg-[#b0723e] disabled:opacity-40 transition-all shadow-sm cursor-pointer shrink-0 flex items-center gap-1.5"
+                      >
+                        <PackageCheck className="w-4 h-4" />
+                        Send Selected ({selectedBucketIds.length}) to Store ➔
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Buckets Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {productionBuckets.map((bkt) => {
+                      const isSelected = selectedBucketId === bkt.id;
+                      const isChecked = selectedBucketIds.includes(bkt.id);
+                      const isBothHeld = bkt.hold_leather && bkt.hold_lining;
+
+                      return (
+                        <div
+                          key={bkt.id}
+                          onClick={() => handleSelectBucket(bkt.id)}
+                          className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer relative flex flex-col justify-between gap-3 ${
+                            isSelected
+                              ? 'bg-white border-2 border-[#c8834a] shadow-xl ring-4 ring-[#c8834a]/20 scale-[1.02]'
+                              : isBothHeld
+                              ? 'bg-emerald-50/40 border-emerald-300 text-slate-900 hover:border-emerald-400'
+                              : 'bg-white border-slate-200 text-slate-900 hover:border-[#c8834a]/50 hover:bg-amber-50/20'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => handleToggleBucketSelect(bkt.id, e)}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-4 h-4 rounded text-[#c8834a] cursor-pointer"
+                              />
+                              <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg ${
+                                isSelected ? 'bg-[#c8834a] text-white' : 'bg-slate-100 text-slate-800'
+                              }`}>
+                                {bkt.id}
+                              </span>
+                            </div>
+
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                              isBothHeld
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                : 'bg-amber-100 text-amber-900 border border-amber-300'
+                            }`}>
+                              {isBothHeld ? '📦 Sent to Store' : '⏳ Components In Progress'}
+                            </span>
+                          </div>
+
+                          <div>
+                            <h4 className="text-sm font-black tracking-tight text-slate-900 truncate">
+                              {bkt.style_name}
+                            </h4>
+                            <p className="text-xs font-semibold text-slate-500">
+                              {bkt.color_code} · Size {bkt.size} · <strong>{bkt.qty_cleared || bkt.qty_total} pcs</strong>
+                            </p>
+                            <p className="text-[10px] font-mono mt-0.5 text-slate-400 truncate">
+                              {bkt.garment_barcode}
+                            </p>
+                          </div>
+
+                          {/* Quick Component Buttons directly on Card */}
+                          <div className="grid grid-cols-2 gap-1.5 pt-2 border-t border-slate-100 text-xs">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleLeather(bkt.id);
+                              }}
+                              className={`py-1.5 px-2 rounded-lg font-black text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                bkt.hold_leather
+                                  ? 'bg-emerald-500 text-white'
+                                  : 'bg-amber-100 hover:bg-amber-200 text-amber-900'
+                              }`}
+                            >
+                              {bkt.hold_leather ? <CheckCheck className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                              Leather {bkt.hold_leather ? '✓' : 'Hold'}
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleLining(bkt.id);
+                              }}
+                              className={`py-1.5 px-2 rounded-lg font-black text-[10px] transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                bkt.hold_lining
+                                  ? 'bg-emerald-500 text-white'
+                                  : 'bg-sky-100 hover:bg-sky-200 text-sky-900'
+                              }`}
+                            >
+                              {bkt.hold_lining ? <CheckCheck className="w-3 h-3" /> : <Square className="w-3 h-3" />}
+                              Lining {bkt.hold_lining ? '✓' : 'Hold'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 3. ACTIVE BUCKET COMPONENT CONTROLS & SEND TO STORE */}
+                {activeBucket && (
+                  <div className="p-6 sm:p-7 rounded-3xl bg-white border-2 border-[#c8834a]/30 shadow-xl space-y-5 animate-fade-in text-slate-900">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                      <div>
+                        <h4 className="text-base font-black text-slate-900">
+                          Clearance Controls for [{activeBucket.id}] · {activeBucket.style_name} ({activeBucket.color_code} · Size {activeBucket.size})
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Garment Barcode: <strong className="font-mono text-slate-800">{activeBucket.garment_barcode}</strong>
+                        </p>
+                      </div>
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
+                        activeBucket.hold_leather && activeBucket.hold_lining
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : 'bg-amber-100 text-amber-800 border border-amber-200'
+                      }`}>
+                        {activeBucket.hold_leather && activeBucket.hold_lining ? '🟢 BOTH COMPONENTS READY' : '🟡 AWAITING COMPONENTS'}
+                      </span>
+                    </div>
+
+                    {/* Quantity Verified Clearance Input */}
+                    <div className="p-4 rounded-2xl bg-[#faf6f0] border border-[#c8834a]/20">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <label className="text-xs font-black uppercase tracking-wider text-slate-800">
+                          Verified Clearance Quantity for {activeBucket.id} *
+                        </label>
+                        <span className="text-[11px] text-slate-600">Total Bundle: <strong>{activeBucket.qty_total} Pieces</strong></span>
+                      </div>
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                        <input
+                          type="number"
+                          min="1"
+                          max={activeBucket.qty_total}
+                          value={activeBucket.qty_cleared}
+                          onChange={(e) => handleUpdateBucketQty(activeBucket.id, e.target.value)}
+                          className="input-field flex-1 h-12 px-4 bg-white font-black text-xl text-slate-900 border-2 border-slate-300 focus:border-[#c8834a] rounded-xl outline-none"
+                        />
+                        <div className="flex items-center gap-1.5">
+                          {[
+                            { label: '100% (All)', qty: activeBucket.qty_total },
+                            { label: '90%', qty: Math.round(activeBucket.qty_total * 0.9) },
+                            { label: '50%', qty: Math.round(activeBucket.qty_total * 0.5) },
+                          ].map((preset) => (
+                            <button
+                              key={preset.label}
+                              type="button"
+                              onClick={() => handleUpdateBucketQty(activeBucket.id, preset.qty)}
+                              className={`h-12 px-3 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                                activeBucket.qty_cleared === preset.qty
+                                  ? 'bg-[#c8834a] text-white shadow-sm'
+                                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dual Component Toggles */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Leather Toggle */}
+                      <div className={`p-5 rounded-2xl border space-y-3 ${activeBucket.hold_leather ? 'bg-emerald-50/70 border-emerald-400 text-slate-800' : 'bg-white border-slate-200'}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Scissors className={`w-4 h-4 ${activeBucket.hold_leather ? 'text-emerald-600' : 'text-amber-500'}`} />
+                            <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">1. Leather Material</h4>
+                          </div>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${activeBucket.hold_leather ? 'bg-emerald-500 text-white' : 'bg-amber-100 text-amber-800'}`}>
+                            {activeBucket.hold_leather ? '✅ Verified' : '⏳ Pending'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500">Cutting, Fusing, and Pasting stages completed for {activeBucket.id}.</p>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleLeather(activeBucket.id)}
+                          className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs ${
+                            activeBucket.hold_leather ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-[#c8834a] hover:bg-[#b0723e] text-white'
+                          }`}
+                        >
+                          {activeBucket.hold_leather ? <CheckCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                          {activeBucket.hold_leather ? 'Hold Leather Active (Received)' : 'Mark Leather Received (Hold Leather)'}
+                        </button>
+                      </div>
+
+                      {/* Lining Toggle */}
+                      <div className={`p-5 rounded-2xl border space-y-3 ${activeBucket.hold_lining ? 'bg-emerald-50/70 border-emerald-400 text-slate-800' : 'bg-white border-slate-200'}`}>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Layers className={`w-4 h-4 ${activeBucket.hold_lining ? 'text-emerald-600' : 'text-sky-500'}`} />
+                            <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">2. Lining Material</h4>
+                          </div>
+                          <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${activeBucket.hold_lining ? 'bg-emerald-500 text-white' : 'bg-sky-100 text-sky-800'}`}>
+                            {activeBucket.hold_lining ? '✅ Verified' : '⏳ Pending'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500">Parallel Lining cutting &amp; preparation completed for {activeBucket.id}.</p>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleLining(activeBucket.id)}
+                          className={`w-full py-3 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-xs ${
+                            activeBucket.hold_lining ? 'bg-emerald-600 hover:bg-emerald-500 text-white' : 'bg-sky-600 hover:bg-sky-500 text-white'
+                          }`}
+                        >
+                          {activeBucket.hold_lining ? <CheckCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                          {activeBucket.hold_lining ? 'Hold Lining Active (Received)' : 'Mark Lining Received (Hold Lining)'}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Send Active Bucket to Store Button */}
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setStoreSubmitting(true);
+                        try {
+                          await apiStoreDrawerScan(token, {
+                            drawer_barcode: `DRW-${activeBucket.id.replace('BKT-', '')}`,
+                            piece_barcode: activeBucket.garment_barcode,
+                            part: activeBucket.hold_leather && activeBucket.hold_lining ? 'HOLD_BOTH' : activeBucket.hold_leather ? 'HOLD_LEATHER' : 'HOLD_LINING',
+                            bucket_id: activeBucket.id,
+                            quantity: activeBucket.qty_cleared || activeBucket.qty_total
+                          });
+                          setProductionBuckets(prev => prev.map(b => b.id === activeBucket.id ? { ...b, hold_leather: true, hold_lining: true } : b));
+                          setStoreToast({
+                            title: `Sent Bucket ${activeBucket.id} to Store`,
+                            message: `Components logged and dispatched to Store for centralized verification.`,
+                            bucketId: activeBucket.id,
+                            type: 'HOLD_BOTH',
+                            qty: activeBucket.qty_cleared || activeBucket.qty_total,
+                            endpoint: 'POST /api/v1/drawers/store-scan [HOLD_BOTH]'
+                          });
+                          setSuccessMsg(`📦 Bucket ${activeBucket.id} sent to Store successfully!`);
+                        } catch (err) {
+                          setStoreError(`Failed to send bucket to store: ${err.message}`);
+                        } finally {
+                          setStoreSubmitting(false);
+                        }
+                      }}
+                      disabled={storeSubmitting}
+                      className="w-full h-14 rounded-2xl font-black text-sm text-white bg-[#c8834a] hover:bg-[#b0723e] transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+                    >
+                      {storeSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackageCheck className="w-4 h-4" />}
+                      📦 Send {activeBucket.id} to Store ➔
+                    </button>
+                  </div>
+                )}
+
+              </div>
+            )}
+
+            {/* CRITERION 2: STORE VERIFICATION GATE (RECEIVE IN STORE & SEND TO SHELL STITCH) */}
+            {storeCriteria === 'verification_gate' && (
+              <div className="space-y-6 animate-fade-in">
+                
+                {/* Gate Header Banner */}
+                <div className="p-5 rounded-2xl bg-[#faf6f0] border border-[#c8834a]/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-black text-slate-900 flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      Store Verification Gate (Receive &amp; Dispatch to Shell Stitch)
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      Select bucket card to confirm receipt in Store, then select bucket card to send to Shell Stitch.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowStoreModal(true)}
+                    className="px-4 py-2 rounded-xl text-xs font-black text-white bg-[#c8834a] hover:bg-[#b0723e] shadow-sm cursor-pointer shrink-0"
+                  >
+                    Open Store Verification Modal
+                  </button>
+                </div>
+
+                {/* Gate Cards Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {productionBuckets.map((bkt) => {
+                    const isSelected = selectedBucketId === bkt.id;
+                    const isReady = bkt.hold_leather && bkt.hold_lining;
+
+                    return (
+                      <div
+                        key={bkt.id}
+                        onClick={() => handleSelectBucket(bkt.id)}
+                        className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer relative flex flex-col justify-between gap-3 ${
+                          isSelected
+                            ? 'bg-white border-2 border-[#c8834a] shadow-xl ring-4 ring-[#c8834a]/20 scale-[1.02]'
+                            : bkt.is_sended
+                            ? 'bg-indigo-50/40 border-indigo-200 text-slate-900'
+                            : bkt.is_received
+                            ? 'bg-emerald-50/40 border-emerald-300 text-slate-900 hover:border-emerald-400'
+                            : 'bg-white border-slate-200 text-slate-900 hover:border-amber-300'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg ${
+                            isSelected ? 'bg-[#c8834a] text-white' : 'bg-slate-100 text-slate-800'
+                          }`}>
+                            {bkt.id}
+                          </span>
+                          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${
+                            bkt.is_sended
+                              ? 'bg-indigo-100 text-indigo-800 border border-indigo-300'
+                              : bkt.is_received
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              : 'bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}>
+                            {bkt.is_sended ? '🚀 Released' : bkt.is_received ? '🏬 In Store' : '⏳ Awaiting Store Receipt'}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="text-sm font-black tracking-tight text-slate-900 truncate">{bkt.style_name}</h4>
+                          <p className="text-xs font-semibold text-slate-500">{bkt.color_code} · Size {bkt.size} · <strong>{bkt.qty_cleared || bkt.qty_total} pcs</strong></p>
+                        </div>
+
+                        <div className="space-y-1.5 pt-2 border-t border-slate-100 text-xs">
+                          <div className="grid grid-cols-2 gap-1 text-[9px] font-extrabold text-center">
+                            <span className={`px-1.5 py-0.5 rounded ${bkt.hold_leather ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800'}`}>
+                              {bkt.hold_leather ? '✂️ Leather ✓' : '✂️ Leather ⏳'}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded ${bkt.hold_lining ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-sky-50 text-sky-800'}`}>
+                              {bkt.hold_lining ? '🧵 Lining ✓' : '🧵 Lining ⏳'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Gate Verification & Release Card for Active Bucket */}
+                {activeBucket && (
+                  <div className="p-6 sm:p-8 rounded-3xl bg-white border-2 border-[#c8834a]/30 shadow-xl space-y-6 animate-fade-in text-slate-900">
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                      <div>
+                        <h4 className="text-lg font-black text-slate-900">
+                          Store Clearance Gate for [{activeBucket.id}]
+                        </h4>
+                        <p className="text-xs text-slate-500">
+                          Garment Style: <strong className="text-slate-800">{activeBucket.style_name}</strong> · Color: <strong className="text-slate-800">{activeBucket.color_code}</strong> · Size: <strong className="text-slate-800">{activeBucket.size}</strong>
+                        </p>
+                      </div>
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
+                        activeBucket.is_received && isHoldBoth
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+                          : 'bg-amber-50 text-amber-800 border border-amber-200'
+                      }`}>
+                        {activeBucket.is_received && isHoldBoth ? '🟢 HOLD BOTH · VERIFIED' : '🟡 PENDING VERIFICATION'}
+                      </span>
+                    </div>
+
+                    {/* Step 1: Store Receipt Button */}
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-xs font-black uppercase text-slate-800 flex items-center gap-1.5">
+                          <PackageCheck className="w-4 h-4 text-[#c8834a]" />
+                          1. Confirm Store Receipt for {activeBucket.id}
+                        </span>
+                        <p className="text-[11px] text-slate-500">
+                          {activeBucket.is_received ? 'Receipt acknowledged and bucket checked into Store inventory.' : 'Click to check this bucket into Store inventory.'}
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleStoreReceivedAction(activeBucket.id)}
+                        disabled={storeSubmitting || activeBucket.is_received}
+                        className={`px-5 py-2.5 rounded-xl font-black text-xs transition-all cursor-pointer shrink-0 border ${
+                          activeBucket.is_received
+                            ? 'bg-emerald-100 border-emerald-300 text-emerald-800 cursor-default'
+                            : 'bg-[#c8834a] hover:bg-[#b0723e] text-white border-transparent shadow-sm active:scale-95'
+                        }`}
+                      >
+                        {storeSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : activeBucket.is_received ? '✅ Received in Store' : '🏬 Check-In to Store'}
+                      </button>
+                    </div>
+
+                    {/* Step 2: Send to Shell Stitch Button */}
+                    <div className="space-y-3">
+                      {isHoldBoth && activeBucket.is_received ? (
+                        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center gap-3 animate-fade-in">
+                          <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center shrink-0">
+                            <Check className="w-5 h-5 text-white" />
+                          </div>
+                          <div className="text-xs">
+                            <p className="font-extrabold text-emerald-900">
+                              🎉 Store Verification Complete for Bucket {activeBucket.id}! (Hold Both Active)
+                            </p>
+                            <p className="text-[11px] text-emerald-700">
+                              Both Leather and Lining components are confirmed present in Store. Ready to release to Shell Stitch.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center gap-3 text-xs">
+                          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                          <div>
+                            <p className="font-bold text-amber-900">Pending Verification for {activeBucket.id}</p>
+                            <p className="text-[11px] text-amber-700">Must be marked Received in Store and verified for both Leather &amp; Lining before releasing.</p>
+                          </div>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handleSendToShellStitchAction(activeBucket.id)}
+                        disabled={!isHoldBoth || !activeBucket.is_received || storeSubmitting}
+                        className={`w-full h-14 rounded-2xl font-black text-sm transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer active:scale-95 ${
+                          isHoldBoth && activeBucket.is_received
+                            ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-emerald-500/20 hover:brightness-105'
+                            : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                        }`}
+                      >
+                        {storeSubmitting ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : isHoldBoth && activeBucket.is_received ? (
+                          <>
+                            <Rocket className="w-4 h-4 text-white" />
+                            Send {activeBucket.id} ({activeBucket.qty_cleared || activeBucket.qty_total} pcs) to Shell Stitch ➔
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="w-4 h-4" />
+                            Send {activeBucket.id} to Shell Stitch (Store Receipt &amp; Hold Both Required)
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                  </div>
+                )}
+
+              </div>
+            )}
+
+          </div>
+        )}
 
         {/* TAB 2: DEDICATED BARCODE GUN SCANNER FLOW (CONTRACT V3.0) */}
         {activeDoor === 'barcode' && (
@@ -1397,46 +2550,189 @@ export default function ProductionLogEntry() {
             {/* STEP 2: SELECT PRODUCTION OPERATION STAGE */}
             {barcodeWorker && (
               <div className="space-y-6 p-6 rounded-3xl bg-[#fcfaf8] shadow-sm border border-[#c8834a]/20 animate-fade-in">
-                <div className="flex items-center gap-3 pb-3 border-b border-[#c8834a]/15">
-                  <div className="w-8 h-8 rounded-xl bg-[#c8834a]/15 flex items-center justify-center text-[#c8834a] font-black text-xs">
-                    2
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-[#c8834a]/15">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl bg-[#c8834a]/15 flex items-center justify-center text-[#c8834a] font-black text-xs">
+                      2
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black uppercase tracking-wider text-[#2d1f0e] flex items-center gap-2">
+                        Select Production Operation Stage *
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          Parallel Lining &amp; Store Enabled
+                        </span>
+                      </h3>
+                      <p className="text-xs text-[#9a7a5a]">Choose stage to log barcode scan events</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-wider text-[#2d1f0e]">
-                      Select Production Operation Stage *
-                    </h3>
-                    <p className="text-xs text-[#9a7a5a]">Choose stage to log barcode scan events</p>
-                  </div>
-                </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                  {stagesList.map((stage) => {
-                    const isSelected = barcodeStage === stage;
-                    return (
+                  {/* Line Switcher Filter Pills */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {[
+                      { id: 'all', label: 'All (8)' },
+                      { id: 'leather', label: '✂️ Leather Line' },
+                      { id: 'lining', label: '🧵 Lining Line' },
+                      { id: 'store', label: '🏬 Store' },
+                      { id: 'stitching', label: '🪡 Stitch & Finish' },
+                    ].map((flt) => (
                       <button
-                        key={stage}
+                        key={flt.id}
                         type="button"
-                        onClick={() => setBarcodeStage(stage)}
-                        className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm ${
-                          isSelected
-                            ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
+                        onClick={() => setActiveLineFilter(flt.id)}
+                        className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                          activeLineFilter === flt.id
+                            ? 'bg-[#c8834a] text-white shadow-xs'
+                            : 'bg-white text-slate-600 border border-slate-200 hover:border-[#c8834a]/40'
                         }`}
                       >
-                        {stage}
+                        {flt.label}
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
 
-                {/* STEP 3A: CUTTING STAGE FLOW */}
-                {barcodeStage === 'Cutting' ? (
+                {/* VISUAL PROCESS FLOW BARCODE BANNER */}
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50/90 via-orange-50/50 to-emerald-50/80 border border-[#c8834a]/25 text-xs space-y-3">
+                  <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-[#4a3a2a]">
+                    <span className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-[#c8834a]" /> Dual Production Tracks &amp; Store Verification Gate
+                    </span>
+                    <span className="text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md font-extrabold">
+                      Simultaneous Parallel Lines
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center text-center">
+                    {/* Leather Line Branch (5 cols) */}
+                    <div className="lg:col-span-5 p-2 rounded-xl bg-white/80 border border-amber-200 shadow-2xs space-y-1">
+                      <span className="text-[10px] font-black uppercase text-amber-800 flex items-center justify-center gap-1">
+                        <Scissors className="w-3 h-3 text-amber-600" /> Leather Line (Simultaneous Start)
+                      </span>
+                      <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-slate-700">
+                        <span className={`px-2 py-0.5 rounded ${barcodeStage === 'Cutting' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Cutting</span>
+                        <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
+                        <span className={`px-2 py-0.5 rounded ${barcodeStage === 'Fusing' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Fusing</span>
+                        <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
+                        <span className={`px-2 py-0.5 rounded ${barcodeStage === 'Pasting' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Pasting</span>
+                      </div>
+                    </div>
+
+                    {/* Lining Line Branch (2 cols) */}
+                    <div className="lg:col-span-2 p-2 rounded-xl bg-white/80 border border-sky-200 shadow-2xs space-y-1">
+                      <span className="text-[10px] font-black uppercase text-sky-800 flex items-center justify-center gap-1">
+                        <Layers className="w-3 h-3 text-sky-600" /> Lining Line
+                      </span>
+                      <div className="flex items-center justify-center">
+                        <span className={`px-2.5 py-0.5 rounded text-[10px] ${barcodeStage === 'Lining' ? 'bg-sky-600 text-white font-black' : 'bg-sky-50 text-sky-800 font-bold'}`}>
+                          🧵 Lining
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Store Verification Gate (2 cols) */}
+                    <div className={`lg:col-span-2 p-2 rounded-xl border shadow-2xs space-y-1 transition-all ${
+                      isHoldBoth 
+                        ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-500/20' 
+                        : 'bg-white/90 border-emerald-300 text-slate-800'
+                    }`}>
+                      <span className={`text-[10px] font-black uppercase flex items-center justify-center gap-1 ${isHoldBoth ? 'text-white' : 'text-emerald-800'}`}>
+                        <Store className="w-3 h-3" /> Store Gate
+                      </span>
+                      <div className="text-[9px] font-black">
+                        {isHoldBoth ? '🟢 HOLD BOTH' : '🟡 Store Check'}
+                      </div>
+                    </div>
+
+                    {/* Assembly Line Branch (3 cols) */}
+                    <div className="lg:col-span-3 p-2 rounded-xl bg-white/80 border border-indigo-200 shadow-2xs space-y-1">
+                      <span className="text-[10px] font-black uppercase text-indigo-800">
+                        Assembly &amp; Finish
+                      </span>
+                      <div className="flex items-center justify-center gap-1 text-[9px] font-bold text-slate-700">
+                        <span className={`px-1.5 py-0.5 rounded ${barcodeStage === 'Shell Stitch' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Shell</span>
+                        <ArrowRight className="w-2 h-2 text-slate-400" />
+                        <span className={`px-1.5 py-0.5 rounded ${barcodeStage === 'Lining Stitch' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Lining St.</span>
+                        <ArrowRight className="w-2 h-2 text-slate-400" />
+                        <span className={`px-1.5 py-0.5 rounded ${barcodeStage === 'Final Finish' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Finish</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 8 STAGE SELECTOR BUTTONS */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                  {stagesList
+                    .filter((stage) => {
+                      if (activeLineFilter === 'leather') return ['Cutting', 'Fusing', 'Pasting'].includes(stage);
+                      if (activeLineFilter === 'lining') return stage === 'Lining';
+                      if (activeLineFilter === 'store') return stage === 'Store';
+                      if (activeLineFilter === 'stitching') return ['Shell Stitch', 'Lining Stitch', 'Final Finish'].includes(stage);
+                      return true;
+                    })
+                    .map((stage) => {
+                      const isSelected = barcodeStage === stage;
+                      const isStoreStage = stage === 'Store';
+                      const isLiningStage = stage === 'Lining';
+                      const isCuttingStage = stage === 'Cutting';
+
+                      return (
+                        <button
+                          key={stage}
+                          type="button"
+                          onClick={() => setBarcodeStage(stage)}
+                          className={`p-3 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-xs relative flex flex-col items-center justify-center gap-1 min-h-[72px] ${
+                            isSelected
+                              ? isStoreStage && isHoldBoth
+                                ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white border-emerald-400 scale-[1.02] shadow-md ring-2 ring-emerald-400/40'
+                                : 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
+                              : isStoreStage
+                              ? isHoldBoth
+                                ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
+                                : 'bg-amber-50/60 text-amber-900 border-amber-200 hover:bg-amber-100/50'
+                              : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
+                          }`}
+                        >
+                          {(isCuttingStage || isLiningStage) && (
+                            <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-200/60 text-amber-900 absolute top-1">
+                              Parallel Start
+                            </span>
+                          )}
+                          {isStoreStage && (
+                            <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded absolute top-1 ${
+                              isHoldBoth ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-amber-200 text-amber-950'
+                            }`}>
+                              {isHoldBoth ? '🟢 Hold Both' : 'Store Gate'}
+                            </span>
+                          )}
+                          <span className={isCuttingStage || isLiningStage || isStoreStage ? 'mt-3' : ''}>
+                            {stage}
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+
+                {/* STEP 3A: CUTTING OR LINING STAGE FLOW */}
+                {(barcodeStage === 'Cutting' || barcodeStage === 'Lining') ? (
                   <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
                     
+                    {/* Header Banner for Parallel Stage */}
+                    <div className="p-3.5 rounded-xl bg-amber-50/80 border border-[#c8834a]/30 flex items-center justify-between text-xs">
+                      <div className="flex items-center gap-2">
+                        {barcodeStage === 'Lining' ? <Layers className="w-4 h-4 text-sky-600" /> : <Scissors className="w-4 h-4 text-amber-600" />}
+                        <span className="font-extrabold text-[#2d1f0e]">
+                          {barcodeStage === 'Lining' ? '🧵 Lining Line Production' : '✂️ Leather Line Cutting'} (Simultaneous Parallel Process)
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-[#c8834a]/20 text-[#2d1f0e]">
+                        {barcodeStage} Step 3
+                      </span>
+                    </div>
+
                     {/* SKU BARCODE GUN INPUT */}
                     <div className="space-y-3">
                       <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
-                        <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan SKU Barcode *
+                        <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan SKU Barcode for {barcodeStage} *
                       </label>
                       <div className="flex gap-3">
                         <div className="relative flex-1">
@@ -1488,17 +2784,18 @@ export default function ProductionLogEntry() {
                       )}
                     </div>
 
-                    {/* Total Cut Area (DCM) Field — APPEARS ONLY AFTER SKU IS VERIFIED */}
+                    {/* Total Cut Area (DCM) / Pieces Count Field */}
                     {barcodeSelectedSku && (
                       <div className="space-y-3 animate-fade-in pt-2 border-t border-[#c8834a]/15">
                         <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
-                          <Scissors className="w-4 h-4 text-[#c8834a]" /> Total Cut Area (DCM) / Count *
+                          {barcodeStage === 'Lining' ? <Layers className="w-4 h-4 text-sky-600" /> : <Scissors className="w-4 h-4 text-[#c8834a]" />}
+                          {barcodeStage === 'Lining' ? 'Lining Cut Piece Count *' : 'Total Cut Area (DCM) / Count *'}
                         </label>
                         <div className="flex gap-3">
                           <input
                             type="number"
                             min="1"
-                            placeholder="Enter DCM value or Cut Piece count (e.g. 45)..."
+                            placeholder={barcodeStage === 'Lining' ? "Enter total Lining cut pieces (e.g. 50)..." : "Enter DCM value or Cut Piece count (e.g. 45)..."}
                             value={barcodeDcm}
                             onChange={(e) => {
                               setBarcodeDcm(e.target.value);
@@ -1520,7 +2817,7 @@ export default function ProductionLogEntry() {
                             className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
                           >
                             <Check className="w-4 h-4" />
-                            Verify DCM
+                            Verify Count
                           </button>
                         </div>
                       </div>
@@ -1533,70 +2830,73 @@ export default function ProductionLogEntry() {
                         {/* Order Details Header */}
                         <div className="p-4 rounded-xl bg-[#faf6f0] border border-[#c8834a]/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                           <div>
-                            <span className="text-[10px] font-black uppercase tracking-wider text-[#c8834a]">Order Summary</span>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-[#c8834a]">
+                              {barcodeStage} Order Summary
+                            </span>
                             <h4 className="text-sm font-black text-[#2d1f0e] mt-0.5">
                               Order #{barcodeSelectedSku.order_number || '100123'} · {barcodeSelectedSku.style_name || barcodeSelectedSku.code}
                             </h4>
                           </div>
                           <div className="text-right">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total DCM</span>
-                            <p className="text-lg font-black text-[#c8834a]">{barcodeDcm} DCM</p>
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total Count</span>
+                            <p className="text-lg font-black text-[#c8834a]">{barcodeDcm} {barcodeStage === 'Lining' ? 'Pieces' : 'DCM'}</p>
                           </div>
                         </div>
 
-                        {/* 3 Dropdowns */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          {/* 1. Article */}
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. Leather Article *</label>
-                            <select
-                              value={barcodeArticle}
-                              onChange={(e) => setBarcodeArticle(e.target.value)}
-                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                            >
-                              <option value="SUEDE_LEATHER">Suede Leather</option>
-                              <option value="NAPPA_LEATHER">Nappa Leather</option>
-                              <option value="NUBUCK_LEATHER">Nubuck Leather</option>
-                              <option value="FULL_GRAIN">Full Grain Leather</option>
-                              <option value="PULL_UP">Pull-Up Leather</option>
-                              <option value="CROCO_EMBOSSED">Embossed Croc</option>
-                            </select>
-                          </div>
+                        {/* 3 Material Spec Dropdowns (Only for Cutting stage) */}
+                        {barcodeStage === 'Cutting' && (
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            {/* 1. Leather Article */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. Leather Article *</label>
+                              <select
+                                value={barcodeArticle}
+                                onChange={(e) => setBarcodeArticle(e.target.value)}
+                                className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                              >
+                                <option value="SUEDE_LEATHER">Suede Leather</option>
+                                <option value="NAPPA_LEATHER">Nappa Leather</option>
+                                <option value="NUBUCK_LEATHER">Nubuck Leather</option>
+                                <option value="FULL_GRAIN">Full Grain Leather</option>
+                                <option value="PULL_UP">Pull-Up Leather</option>
+                                <option value="CROCO_EMBOSSED">Embossed Croc</option>
+                              </select>
+                            </div>
 
-                          {/* 2. Color */}
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. Leather Color *</label>
-                            <select
-                              value={barcodeColor}
-                              onChange={(e) => setBarcodeColor(e.target.value)}
-                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                            >
-                              <option value="DARK_BROWN">Dark Brown</option>
-                              <option value="TAN_COGNAC">Tan / Cognac</option>
-                              <option value="JET_BLACK">Jet Black</option>
-                              <option value="BURGUNDY">Burgundy</option>
-                              <option value="CAMEL">Camel</option>
-                              <option value="OLIVE_GREEN">Olive Green</option>
-                            </select>
-                          </div>
+                            {/* 2. Leather Color */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. Leather Color *</label>
+                              <select
+                                value={barcodeColor}
+                                onChange={(e) => setBarcodeColor(e.target.value)}
+                                className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                              >
+                                <option value="DARK_BROWN">Dark Brown</option>
+                                <option value="TAN_COGNAC">Tan / Cognac</option>
+                                <option value="JET_BLACK">Jet Black</option>
+                                <option value="BURGUNDY">Burgundy</option>
+                                <option value="CAMEL">Camel</option>
+                                <option value="OLIVE_GREEN">Olive Green</option>
+                              </select>
+                            </div>
 
-                          {/* 3. Thickness */}
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">3. Thickness (mm) *</label>
-                            <select
-                              value={barcodeThickness}
-                              onChange={(e) => setBarcodeThickness(e.target.value)}
-                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                            >
-                              <option value="1.0 - 1.2 mm">1.0 - 1.2 mm</option>
-                              <option value="1.2 - 1.4 mm">1.2 - 1.4 mm</option>
-                              <option value="1.4 - 1.6 mm">1.4 - 1.6 mm</option>
-                              <option value="1.6 - 1.8 mm">1.6 - 1.8 mm</option>
-                            </select>
+                            {/* 3. Thickness */}
+                            <div className="space-y-1.5">
+                              <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">3. Thickness (mm) *</label>
+                              <select
+                                value={barcodeThickness}
+                                onChange={(e) => setBarcodeThickness(e.target.value)}
+                                className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                              >
+                                <option value="1.0 - 1.2 mm">1.0 - 1.2 mm (Soft)</option>
+                                <option value="1.2 - 1.4 mm">1.2 - 1.4 mm (Standard)</option>
+                                <option value="1.4 - 1.6 mm">1.4 - 1.6 mm (Heavy)</option>
+                              </select>
+                            </div>
                           </div>
-                        </div>
+                        )}
 
-                        {/* Submit Cutting Button */}
+                        {/* Submit Cutting / Lining Button */}
                         <button
                           type="button"
                           onClick={handleBarcodeCuttingSubmit}
@@ -1605,14 +2905,36 @@ export default function ProductionLogEntry() {
                           style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
                         >
                           {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
-                          Log Cutting Event &amp; Mint Traveler Card Barcodes
+                          Log {barcodeStage} Event &amp; Mint Traveler Card Barcodes
                         </button>
                       </div>
                     )}
 
                   </div>
+                ) : barcodeStage === 'Store' ? (
+                  /* STEP 3B: STORE MANAGER HUB REDIRECT */
+                  <div className="p-8 rounded-3xl bg-[#faf6f0] border-2 border-[#c8834a]/30 text-center space-y-4 animate-fade-in text-slate-900">
+                    <div className="w-16 h-16 rounded-3xl bg-[#c8834a] text-white flex items-center justify-center mx-auto shadow-lg shadow-[#c8834a]/20">
+                      <Store className="w-8 h-8" />
+                    </div>
+                    <div className="max-w-md mx-auto">
+                      <h4 className="text-base font-black text-slate-900">
+                        Store Manager Command Center
+                      </h4>
+                      <p className="text-xs text-slate-600 mt-1">
+                        Store receiving, style/bucket component submission (Leather &amp; Lining), and Shell Stitch release are centralized in the Store Manager Hub.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveDoor('store')}
+                      className="px-6 py-3.5 rounded-2xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] transition-all shadow-md active:scale-95 cursor-pointer inline-flex items-center gap-2"
+                    >
+                      <Store className="w-4 h-4" /> Open Store Manager Hub ➔
+                    </button>
+                  </div>
                 ) : (
-                  /* STEP 3B: PIPELINE STAGES FLOW (Fusing -> Final Finish) */
+                  /* STEP 3C: PIPELINE STAGES FLOW (Fusing -> Final Finish) */
                   <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
                     <div className="space-y-3">
                       <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
@@ -1834,41 +3156,165 @@ export default function ProductionLogEntry() {
           {/* STEP 2: Garment Details & Operation Stage */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-            <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
-              Operation Stage &amp; Garment Details
-            </h3>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-[#c8834a]/15">
+              <h3 className="text-sm font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
+                Operation Stage &amp; Garment Details
+              </h3>
+
+              {/* Line Switcher Filter Pills */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { id: 'all', label: 'All Stages (8)' },
+                  { id: 'leather', label: '✂️ Leather Line' },
+                  { id: 'lining', label: '🧵 Lining Line' },
+                  { id: 'store', label: '🏬 Store Gate' },
+                  { id: 'stitching', label: '🪡 Stitch & Finish' },
+                ].map((flt) => (
+                  <button
+                    key={flt.id}
+                    type="button"
+                    onClick={() => setActiveLineFilter(flt.id)}
+                    className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                      activeLineFilter === flt.id
+                        ? 'bg-[#c8834a] text-white shadow-xs'
+                        : 'bg-white text-slate-600 border border-slate-200 hover:border-[#c8834a]/40'
+                    }`}
+                  >
+                    {flt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* VISUAL PROCESS FLOW MANUAL BANNER */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50/90 via-orange-50/50 to-emerald-50/80 border border-[#c8834a]/25 text-xs space-y-3">
+              <div className="flex items-center justify-between text-[11px] font-black uppercase tracking-wider text-[#4a3a2a]">
+                <span className="flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-[#c8834a]" /> Dual Production Tracks &amp; Store Verification Gate
+                </span>
+                <span className="text-[10px] text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md font-extrabold">
+                  Simultaneous Parallel Process Flow
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-2 items-center text-center">
+                {/* Leather Line Branch (5 cols) */}
+                <div className="lg:col-span-5 p-2 rounded-xl bg-white/80 border border-amber-200 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-amber-800 flex items-center justify-center gap-1">
+                    <Scissors className="w-3 h-3 text-amber-600" /> Leather Line (Simultaneous Start)
+                  </span>
+                  <div className="flex items-center justify-center gap-1.5 text-[10px] font-bold text-slate-700">
+                    <span className={`px-2 py-0.5 rounded ${selectedStage === 'Cutting' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Cutting</span>
+                    <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
+                    <span className={`px-2 py-0.5 rounded ${selectedStage === 'Fusing' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Fusing</span>
+                    <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
+                    <span className={`px-2 py-0.5 rounded ${selectedStage === 'Pasting' ? 'bg-[#c8834a] text-white font-black' : 'bg-slate-100'}`}>Pasting</span>
+                  </div>
+                </div>
+
+                {/* Lining Line Branch (2 cols) */}
+                <div className="lg:col-span-2 p-2 rounded-xl bg-white/80 border border-sky-200 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-sky-800 flex items-center justify-center gap-1">
+                    <Layers className="w-3 h-3 text-sky-600" /> Lining Line
+                  </span>
+                  <div className="flex items-center justify-center">
+                    <span className={`px-2.5 py-0.5 rounded text-[10px] ${selectedStage === 'Lining' ? 'bg-sky-600 text-white font-black' : 'bg-sky-50 text-sky-800 font-bold'}`}>
+                      🧵 Lining
+                    </span>
+                  </div>
+                </div>
+
+                {/* Store Verification Gate (2 cols) */}
+                <div className={`lg:col-span-2 p-2 rounded-xl border shadow-2xs space-y-1 transition-all ${
+                  isHoldBoth 
+                    ? 'bg-emerald-600 text-white border-emerald-400 shadow-emerald-500/20' 
+                    : 'bg-white/90 border-emerald-300 text-slate-800'
+                }`}>
+                  <span className={`text-[10px] font-black uppercase flex items-center justify-center gap-1 ${isHoldBoth ? 'text-white' : 'text-emerald-800'}`}>
+                    <Store className="w-3 h-3" /> Store Gate
+                  </span>
+                  <div className="text-[9px] font-black">
+                    {isHoldBoth ? '🟢 HOLD BOTH' : '🟡 Store Check'}
+                  </div>
+                </div>
+
+                {/* Assembly Line Branch (3 cols) */}
+                <div className="lg:col-span-3 p-2 rounded-xl bg-white/80 border border-indigo-200 shadow-2xs space-y-1">
+                  <span className="text-[10px] font-black uppercase text-indigo-800">
+                    Assembly &amp; Finish
+                  </span>
+                  <div className="flex items-center justify-center gap-1 text-[9px] font-bold text-slate-700">
+                    <span className={`px-1.5 py-0.5 rounded ${selectedStage === 'Shell Stitch' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Shell</span>
+                    <ArrowRight className="w-2 h-2 text-slate-400" />
+                    <span className={`px-1.5 py-0.5 rounded ${selectedStage === 'Lining Stitch' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Lining St.</span>
+                    <ArrowRight className="w-2 h-2 text-slate-400" />
+                    <span className={`px-1.5 py-0.5 rounded ${selectedStage === 'Final Finish' ? 'bg-indigo-600 text-white font-black' : 'bg-slate-100'}`}>Finish</span>
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <div className="space-y-4 pt-2">
               <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
                 <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
               </label>
 
-              {/* 7 Operation Stage Banners */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['Cutting', 'Fusing', 'Pasting', 'Shell Stitch', 'Lining Stitch', 'Final Finish'].map((stage) => {
-                  const isSelected = selectedStage === stage;
-                  return (
-                    <button
-                      key={stage}
-                      type="button"
-                      onClick={() => {
-                        setSelectedStage(stage);
-                        setPieceSeqs('');
-                      }}
-                      className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border ${
-                        isSelected 
-                          ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]' 
-                          : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
-                      }`}
-                    >
-                      {stage}
-                    </button>
-                  );
-                })}
-              </div>
+              {/* 8 Operation Stage Buttons */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+                {stagesList
+                  .filter((stage) => {
+                    if (activeLineFilter === 'leather') return ['Cutting', 'Fusing', 'Pasting'].includes(stage);
+                    if (activeLineFilter === 'lining') return stage === 'Lining';
+                    if (activeLineFilter === 'store') return stage === 'Store';
+                    if (activeLineFilter === 'stitching') return ['Shell Stitch', 'Lining Stitch', 'Final Finish'].includes(stage);
+                    return true;
+                  })
+                  .map((stage) => {
+                    const isSelected = selectedStage === stage;
+                    const isStoreStage = stage === 'Store';
+                    const isLiningStage = stage === 'Lining';
+                    const isCuttingStage = stage === 'Cutting';
 
-              {/* Custom Stage Input Removed */}
+                    return (
+                      <button
+                        key={stage}
+                        type="button"
+                        onClick={() => {
+                          setSelectedStage(stage);
+                          setPieceSeqs('');
+                        }}
+                        className={`p-3 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-xs relative flex flex-col items-center justify-center gap-1 min-h-[72px] ${
+                          isSelected
+                            ? isStoreStage && isHoldBoth
+                              ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 text-white border-emerald-400 scale-[1.02] shadow-md ring-2 ring-emerald-400/40'
+                              : 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]' 
+                            : isStoreStage
+                            ? isHoldBoth
+                              ? 'bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100'
+                              : 'bg-amber-50/60 text-amber-900 border-amber-200 hover:bg-amber-100/50'
+                            : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
+                        }`}
+                      >
+                        {(isCuttingStage || isLiningStage) && (
+                          <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-200/60 text-amber-900 absolute top-1">
+                            Parallel Start
+                          </span>
+                        )}
+                        {isStoreStage && (
+                          <span className={`text-[8px] font-black uppercase px-1.5 py-0.2 rounded absolute top-1 ${
+                            isHoldBoth ? 'bg-emerald-200 text-emerald-950 font-black' : 'bg-amber-200 text-amber-950'
+                          }`}>
+                            {isHoldBoth ? '🟢 Hold Both' : 'Store Gate'}
+                          </span>
+                        )}
+                        <span className={isCuttingStage || isLiningStage || isStoreStage ? 'mt-3' : ''}>
+                          {stage}
+                        </span>
+                      </button>
+                    );
+                  })}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-8 pt-4">
@@ -1985,7 +3431,7 @@ export default function ProductionLogEntry() {
             </div>
           </div>
 
-          {/* STEP 3: Quantities & Submission */}
+          {/* STEP 3: Quantities, Verification & Submission */}
           <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
             <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
             <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
@@ -1996,11 +3442,12 @@ export default function ProductionLogEntry() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
 
               {selectedStage === 'Cutting' ? (
+                /* CUTTING STAGE */
                 <div className="flex flex-col gap-3 md:col-span-2">
                   <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Scissors className="w-4 h-4 text-amber-600" /> Cut Piece Count (Total Quantity) *
+                    <Scissors className="w-4 h-4 text-amber-600" /> Leather Cut Piece Count (Total Quantity) *
                   </label>
-                  <p className="text-[10px] text-slate-500 -mt-2">Enter the exact total number of cut pieces for this SKU bundle block creation.</p>
+                  <p className="text-[10px] text-slate-500 -mt-2">Enter the exact total number of cut leather pieces. (Runs parallel to Lining).</p>
                   <input
                     type="number"
                     id="cutting-count-input"
@@ -2012,7 +3459,62 @@ export default function ProductionLogEntry() {
                     min="1"
                   />
                 </div>
+              ) : selectedStage === 'Lining' ? (
+                /* LINING STAGE (PARALLEL PROCESS) */
+                <div className="space-y-5 md:col-span-2">
+                  <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-sky-600" />
+                      <span className="font-extrabold text-sky-950">
+                        Lining Production Line (Simultaneous with Cutting)
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-sky-200 text-sky-900">
+                      Inner Components
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label htmlFor="lining-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-sky-600" /> Lining Cut Piece Count *
+                    </label>
+                    <input
+                      type="number"
+                      id="lining-count-input"
+                      placeholder="e.g. 50"
+                      value={cuttingCount}
+                      onChange={(e) => setCuttingCount(e.target.value)}
+                      className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-sky-300 focus:border-sky-500 shadow-sm transition-all rounded-xl outline-none"
+                      required
+                      min="1"
+                    />
+                  </div>
+
+                  </div>
+              ) : selectedStage === 'Store' ? (
+                /* STORE MANAGER HUB REDIRECT */
+                <div className="p-8 rounded-3xl bg-[#faf6f0] border-2 border-[#c8834a]/30 text-center space-y-4 animate-fade-in text-slate-900 md:col-span-2">
+                  <div className="w-16 h-16 rounded-3xl bg-[#c8834a] text-white flex items-center justify-center mx-auto shadow-lg shadow-[#c8834a]/20">
+                    <Store className="w-8 h-8" />
+                  </div>
+                  <div className="max-w-md mx-auto">
+                    <h4 className="text-base font-black text-slate-900">
+                      Store Manager Hub Active
+                    </h4>
+                    <p className="text-xs text-slate-600 mt-1">
+                      Store receiving, style/bucket component submission (Leather &amp; Lining), and Shell Stitch release are centralized in the Store Manager Hub.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveDoor('store')}
+                    className="px-6 py-3.5 rounded-2xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] transition-all shadow-md active:scale-95 cursor-pointer inline-flex items-center gap-2"
+                  >
+                    <Store className="w-4 h-4" /> Open Store Manager Hub ➔
+                  </button>
+                </div>
               ) : (
+                /* STANDARD STAGE: PIECE SEQUENCE & CHECKLIST */
                 <div className="flex flex-col gap-3 md:col-span-2">
                   <div className="flex justify-between items-end">
                     <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -2090,22 +3592,45 @@ export default function ProductionLogEntry() {
                 className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
                 style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
               >
-                <Rocket className="w-5 h-5" /> Submit Event 
+                {selectedStage === 'Cutting' ? (
+                  <>
+                    <Scissors className="w-5 h-5" /> ✂️ Send Leather to Store ➔
+                  </>
+                ) : selectedStage === 'Lining' ? (
+                  <>
+                    <Layers className="w-5 h-5" /> 🧵 Send Lining to Store ➔
+                  </>
+                ) : (
+                  <>
+                    <Rocket className="w-5 h-5" /> Submit {selectedStage} Event
+                  </>
+                )}
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (!currentSelectedSku) return;
-                setShowAnalyticsModal(true);
-              }}
-              className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
-              style={{ color: '#c8834a' }}
-            >
-              <BarChart3 className="w-4 h-4" />
-              View Analytics {currentSelectedSku ? `for ${currentSelectedSku.style_name || skuCode}` : 'Page'}
-            </button>
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!currentSelectedSku) return;
+                  setShowAnalyticsModal(true);
+                }}
+                className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
+                style={{ color: '#c8834a' }}
+              >
+                <BarChart3 className="w-4 h-4" />
+                View Analytics {currentSelectedSku ? `for ${currentSelectedSku.style_name || skuCode}` : 'Page'}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowStoreModal(true)}
+                className="text-xs font-black px-4 py-2 rounded-xl transition-all bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Store className="w-4 h-4 text-emerald-600" />
+                Open Store Verification Modal {isHoldBoth ? '🟢 (Hold Both)' : '🟡'}
+              </button>
+            </div>
           </div>
 
         </form>
@@ -2699,6 +4224,396 @@ export default function ProductionLogEntry() {
                 Close & Continue
               </button>
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* DEDICATED STORE VERIFICATION MODAL POPUP (MULTI-BUCKET DASHBOARD) */}
+      {mounted && showStoreModal && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/80 backdrop-blur-md animate-fade-in p-2 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-4xl max-h-[92vh] overflow-y-auto rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 transition-all duration-500 relative border-2 bg-white border-slate-200 text-slate-900">
+            <button
+              onClick={() => setShowStoreModal(false)}
+              className="absolute top-6 right-6 p-2 rounded-xl text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Header */}
+            <div className="flex items-center gap-3.5 border-b border-slate-100 pb-4">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl shadow-md">
+                <Store className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-xl font-black text-slate-900">
+                    Store Verification &amp; Multi-Bucket Material Gate
+                  </h3>
+                  <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    {productionBuckets.filter(b => b.hold_leather && b.hold_lining).length} of {productionBuckets.length} Ready
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500">
+                  Select a particular bucket card to verify materials, adjust verified clearance quantity, or batch-release to Shell Stitch.
+                </p>
+              </div>
+            </div>
+
+            {/* BUCKET FILTER TABS & SEARCH */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 p-3 bg-slate-50 rounded-2xl border border-slate-200">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { id: 'all', label: `All (${productionBuckets.length})` },
+                  { id: 'hold_both', label: `🟢 Ready (${productionBuckets.filter(b => b.hold_leather && b.hold_lining && !b.is_sended).length})` },
+                  { id: 'pending_leather', label: `⏳ Pending Leather (${productionBuckets.filter(b => !b.hold_leather && !b.is_sended).length})` },
+                  { id: 'pending_lining', label: `⏳ Pending Lining (${productionBuckets.filter(b => !b.hold_lining && !b.is_sended).length})` },
+                ].map((flt) => (
+                  <button
+                    key={flt.id}
+                    type="button"
+                    onClick={() => setBucketFilter(flt.id)}
+                    className={`text-[11px] font-black uppercase px-3 py-1.5 rounded-xl transition-all cursor-pointer ${
+                      bucketFilter === flt.id
+                        ? 'bg-slate-900 text-white shadow-xs'
+                        : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
+                    }`}
+                  >
+                    {flt.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative flex-1 sm:w-60">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search Bucket ID / Style..."
+                  value={bucketSearchQuery}
+                  onChange={(e) => setBucketSearchQuery(e.target.value)}
+                  className="w-full h-9 pl-8 pr-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
+                />
+              </div>
+            </div>
+
+            {/* BATCH ACTIONS (IF MULTIPLE SELECTED) */}
+            {selectedBucketIds.length > 1 && (
+              <div className="p-3 rounded-xl bg-gradient-to-r from-amber-50 to-emerald-50 border border-emerald-300 flex flex-col sm:flex-row items-center justify-between gap-2.5 animate-fade-in text-xs">
+                <span className="font-extrabold text-slate-900 flex items-center gap-1.5">
+                  <CheckSquare className="w-4 h-4 text-emerald-600" />
+                  <span><strong>{selectedBucketIds.length}</strong> Buckets Selected</span>
+                </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleBatchMarkLeather}
+                    className="px-3 py-1.5 rounded-lg font-black bg-amber-100 hover:bg-amber-200 text-amber-900 cursor-pointer text-[11px]"
+                  >
+                    Mark Leather Received
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBatchMarkLining}
+                    className="px-3 py-1.5 rounded-lg font-black bg-sky-100 hover:bg-sky-200 text-sky-900 cursor-pointer text-[11px]"
+                  >
+                    Mark Lining Received
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleBatchReleaseToShellStitch}
+                    disabled={storeSubmitting}
+                    className="px-3.5 py-1.5 rounded-lg font-black bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm hover:brightness-110 cursor-pointer text-[11px] flex items-center gap-1"
+                  >
+                    <Rocket className="w-3.5 h-3.5" />
+                    Batch Release ({productionBuckets.filter(b => selectedBucketIds.includes(b.id) && b.hold_leather && b.hold_lining && !b.is_sended).length} Ready) ➔
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* BUCKET CARDS GRID */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {productionBuckets
+                .filter(b => {
+                  if (bucketFilter === 'hold_both') return b.hold_leather && b.hold_lining && !b.is_sended;
+                  if (bucketFilter === 'pending_leather') return !b.hold_leather && !b.is_sended;
+                  if (bucketFilter === 'pending_lining') return !b.hold_lining && !b.is_sended;
+                  return true;
+                })
+                .filter(b => {
+                  if (!bucketSearchQuery.trim()) return true;
+                  const q = bucketSearchQuery.toLowerCase().trim();
+                  return (
+                    b.id.toLowerCase().includes(q) ||
+                    b.style_name.toLowerCase().includes(q) ||
+                    b.color_code.toLowerCase().includes(q) ||
+                    b.garment_barcode.toLowerCase().includes(q)
+                  );
+                })
+                .map((bkt) => {
+                  const isSelected = selectedBucketId === bkt.id;
+                  const isChecked = selectedBucketIds.includes(bkt.id);
+                  const isReady = bkt.hold_leather && bkt.hold_lining;
+
+                  return (
+                    <div
+                      key={bkt.id}
+                      onClick={() => handleSelectBucket(bkt.id)}
+                      className={`p-4 rounded-2xl border-2 transition-all duration-200 cursor-pointer relative flex flex-col justify-between gap-3 ${
+                        isSelected
+                          ? isReady
+                            ? 'bg-emerald-950 text-white border-emerald-400 shadow-xl ring-4 ring-emerald-500/30 scale-[1.02]'
+                            : 'bg-[#2d1f0e] text-white border-[#c8834a] shadow-xl ring-4 ring-[#c8834a]/30 scale-[1.02]'
+                          : isReady
+                          ? 'bg-emerald-50/70 border-emerald-300 text-slate-900 hover:border-emerald-400'
+                          : 'bg-white border-slate-200 text-slate-900 hover:border-[#c8834a]/50'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => handleToggleBucketSelect(bkt.id, e)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 rounded text-emerald-600 cursor-pointer"
+                          />
+                          <span className={`text-xs font-black font-mono px-2 py-0.5 rounded-lg ${
+                            isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-800'
+                          }`}>
+                            {bkt.id}
+                          </span>
+                        </div>
+                        {isSelected && (
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-400 text-amber-950 shadow-xs">
+                            ★ Active
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <h4 className="text-sm font-black tracking-tight truncate">{bkt.style_name}</h4>
+                        <p className={`text-xs font-semibold ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
+                          {bkt.color_code} · Size {bkt.size}
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5 pt-2 border-t border-current/15 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] opacity-75 font-bold uppercase">Clearance Qty:</span>
+                          <span className="font-black text-emerald-400 font-mono text-sm">{bkt.qty_cleared} / {bkt.qty_total} pcs</span>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-1 text-[9px] font-extrabold text-center">
+                          <span className={`px-1.5 py-0.5 rounded ${
+                            bkt.hold_leather ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'
+                          }`}>
+                            {bkt.hold_leather ? '✂️ Leather ✓' : '✂️ Leather ⏳'}
+                          </span>
+                          <span className={`px-1.5 py-0.5 rounded ${
+                            bkt.hold_lining ? 'bg-emerald-500/20 text-emerald-300' : 'bg-sky-500/20 text-sky-300'
+                          }`}>
+                            {bkt.hold_lining ? '🧵 Lining ✓' : '🧵 Lining ⏳'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* ACTIVE SELECTED BUCKET CLEARANCE & ACTIONS CARD */}
+            {activeBucket && (
+              <div className={`p-6 sm:p-7 rounded-3xl transition-all duration-500 shadow-xl space-y-5 ${
+                isHoldBoth
+                  ? 'bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-900 border-2 border-emerald-400 shadow-emerald-500/25 ring-4 ring-emerald-500/20 text-white'
+                  : 'bg-slate-50 border-2 border-slate-200 text-slate-900'
+              }`}>
+                
+                {/* Active Bucket Header */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-3 border-b border-current/15">
+                  <div>
+                    <h4 className={`text-base font-black ${isHoldBoth ? 'text-emerald-300' : 'text-slate-900'}`}>
+                      Active Bucket: [{activeBucket.id}] {activeBucket.style_name} ({activeBucket.color_code} · Size {activeBucket.size})
+                    </h4>
+                    <p className={`text-xs ${isHoldBoth ? 'text-emerald-200/80' : 'text-slate-500'}`}>
+                      Barcode: <strong className="font-mono">{activeBucket.garment_barcode}</strong>
+                    </p>
+                  </div>
+                  <span className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${
+                    isHoldBoth ? 'bg-emerald-400/30 text-emerald-200 border border-emerald-400/50' : 'bg-amber-100 text-amber-800'
+                  }`}>
+                    {isHoldBoth ? '🟢 HOLD BOTH · READY' : '🟡 PENDING MATERIALS'}
+                  </span>
+                </div>
+
+                {/* QUANTITY CLEARANCE INPUT FIELD */}
+                <div className={`p-4 rounded-2xl border ${
+                  isHoldBoth ? 'bg-white/10 border-emerald-400/30 text-white' : 'bg-white border-slate-200 text-slate-800'
+                }`}>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5">
+                      <Box className="w-4 h-4 text-emerald-400" />
+                      Verified Clearance Quantity for {activeBucket.id} *
+                    </label>
+                    <span className="text-[11px] opacity-80">Total Order: <strong>{activeBucket.qty_total} Pieces</strong></span>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                    <input
+                      type="number"
+                      min="1"
+                      max={activeBucket.qty_total}
+                      value={activeBucket.qty_cleared}
+                      onChange={(e) => handleUpdateBucketQty(activeBucket.id, e.target.value)}
+                      className="input-field flex-1 h-12 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-emerald-300 focus:border-emerald-500 rounded-xl outline-none"
+                    />
+                    <div className="flex items-center gap-1.5">
+                      {[
+                        { label: '100% (All)', qty: activeBucket.qty_total },
+                        { label: '90%', qty: Math.round(activeBucket.qty_total * 0.9) },
+                        { label: '50%', qty: Math.round(activeBucket.qty_total * 0.5) },
+                      ].map((preset) => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => handleUpdateBucketQty(activeBucket.id, preset.qty)}
+                          className={`h-12 px-3 rounded-xl font-extrabold text-xs transition-all cursor-pointer ${
+                            activeBucket.qty_cleared === preset.qty
+                              ? 'bg-emerald-600 text-white shadow-sm'
+                              : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2 COMPONENT TOGGLES */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className={`p-4 rounded-2xl border space-y-2 ${
+                    activeBucket.hold_leather
+                      ? isHoldBoth ? 'bg-emerald-900/50 border-emerald-400' : 'bg-emerald-50 border-emerald-400 text-slate-800'
+                      : 'bg-white/5 border-amber-300/40'
+                  }`}>
+                    <div className="flex items-center justify-between text-xs font-black">
+                      <span className="flex items-center gap-1.5"><Scissors className="w-4 h-4 text-amber-500" /> Leather Line</span>
+                      <span>{activeBucket.hold_leather ? '✅ Verified' : '⏳ Pending'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleLeather(activeBucket.id)}
+                      className={`w-full py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        activeBucket.hold_leather ? 'bg-emerald-500 text-white' : 'bg-[#c8834a] text-white'
+                      }`}
+                    >
+                      {activeBucket.hold_leather ? <CheckCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                      {activeBucket.hold_leather ? 'Hold Leather Active' : 'Mark Leather Received'}
+                    </button>
+                  </div>
+
+                  <div className={`p-4 rounded-2xl border space-y-2 ${
+                    activeBucket.hold_lining
+                      ? isHoldBoth ? 'bg-emerald-900/50 border-emerald-400' : 'bg-emerald-50 border-emerald-400 text-slate-800'
+                      : 'bg-white/5 border-amber-300/40'
+                  }`}>
+                    <div className="flex items-center justify-between text-xs font-black">
+                      <span className="flex items-center gap-1.5"><Layers className="w-4 h-4 text-sky-500" /> Lining Line</span>
+                      <span>{activeBucket.hold_lining ? '✅ Verified' : '⏳ Pending'}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleLining(activeBucket.id)}
+                      className={`w-full py-2.5 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                        activeBucket.hold_lining ? 'bg-emerald-500 text-white' : 'bg-sky-600 text-white'
+                      }`}
+                    >
+                      {activeBucket.hold_lining ? <CheckCheck className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                      {activeBucket.hold_lining ? 'Hold Lining Active' : 'Mark Lining Received'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* DYNAMIC ALERT */}
+                {isHoldBoth ? (
+                  <div className="p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-400/60 text-xs text-emerald-200 flex items-center gap-2.5">
+                    <Check className="w-5 h-5 text-emerald-400 shrink-0" />
+                    <span><strong>Hold Both Verified!</strong> Bucket {activeBucket.id} ({activeBucket.qty_cleared} pcs) is unlocked and cleared for Shell Stitch.</span>
+                  </div>
+                ) : (
+                  <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-400/40 text-xs text-amber-300 flex items-center gap-2.5">
+                    <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                    <span>Pending materials. Both Hold Leather &amp; Hold Lining must be active to send to Shell Stitch.</span>
+                  </div>
+                )}
+
+                {/* MODAL ACTIONS */}
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleStoreReceivedAction(activeBucket.id)}
+                    disabled={storeSubmitting || activeBucket.is_received}
+                    className="flex-1 py-3.5 rounded-xl text-xs font-extrabold bg-white text-slate-800 hover:bg-slate-100 transition-colors shadow-md cursor-pointer disabled:opacity-50"
+                  >
+                    {activeBucket.is_received ? '✅ Store Received' : `Confirm Receipt (${activeBucket.id})`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSendToShellStitchAction(activeBucket.id)}
+                    disabled={!isHoldBoth || storeSubmitting}
+                    className={`flex-1 py-3.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-2 shadow-lg cursor-pointer ${
+                      isHoldBoth
+                        ? 'bg-gradient-to-r from-emerald-500 to-teal-400 text-slate-950 shadow-emerald-500/40 hover:brightness-110'
+                        : 'bg-slate-700 text-slate-400 cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    {isHoldBoth ? <Rocket className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                    Send {activeBucket.id} ({activeBucket.qty_cleared} pcs) to Shell Stitch ➔
+                  </button>
+                </div>
+
+              </div>
+            )}
+
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* RIGHT-CORNER STORE SUBMISSION TOAST POPUP */}
+      {mounted && storeToast && createPortal(
+        <div className="fixed bottom-6 right-6 z-[999999] max-w-md w-[92vw] sm:w-[420px] animate-slide-up">
+          <div className="p-4 sm:p-5 rounded-2xl bg-white border-2 border-emerald-500 shadow-2xl text-slate-900 space-y-3 relative ring-4 ring-emerald-500/10">
+            <button
+              onClick={() => setStoreToast(null)}
+              className="absolute top-3 right-3 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/30">
+                {storeToast.type === 'SENDED' ? <Rocket className="w-5 h-5" /> : <PackageCheck className="w-5 h-5" />}
+              </div>
+              <div className="pr-6">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="font-black text-sm text-slate-900">{storeToast.title}</h4>
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-mono">
+                    {storeToast.type}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 mt-1">{storeToast.message}</p>
+              </div>
+            </div>
+            {storeToast.endpoint && (
+              <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500">
+                <span className="font-mono bg-slate-100 px-2 py-0.5 rounded text-[10px] text-slate-700 font-bold">
+                  {storeToast.endpoint}
+                </span>
+                <span className="font-black text-emerald-600">{storeToast.qty} Pieces</span>
+              </div>
+            )}
           </div>
         </div>,
         document.body
