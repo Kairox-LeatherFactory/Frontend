@@ -220,7 +220,7 @@ export async function apiProductionScan(token, payload) {
 export async function apiProductionCutting(token, payload) {
   console.warn('[apiProductionCutting] payload:', JSON.stringify(payload));
   const logPayload = {
-    screen_context: 'LEATHER_CUT',
+    screen_context: null,
     sku_id: payload.sku_id,
     employee_id: payload.employee_id,
     work_date: payload.work_date,
