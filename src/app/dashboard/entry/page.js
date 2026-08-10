@@ -22,7 +22,7 @@ import Link from 'next/link';
 import JsBarcode from 'jsbarcode';
 
 function TravelerPieceItem({ piece }) {
-  
+
   const svgRef = useRef(null);
   useEffect(() => {
     if (svgRef.current && piece?.code) {
@@ -40,7 +40,7 @@ function TravelerPieceItem({ piece }) {
     }
   }, [piece]);
 
-  
+
   // --- Store Dynamic Metrics ---
   const storeTotal = storeDrawers.length;
   const storeFree = storeDrawers.filter(d => d.status === 'Free').length;
@@ -302,7 +302,7 @@ export default function ProductionLogEntry() {
   const [storeDrawerInput, setStoreDrawerInput] = useState('');
   const [storePieceInput, setStorePieceInput] = useState('');
   const [storeCurrentScan, setStoreCurrentScan] = useState('');
-  const [storeVerifyResult, setStoreVerifyResult] = useState(null); 
+  const [storeVerifyResult, setStoreVerifyResult] = useState(null);
   const [holdCuttingOk, setHoldCuttingOk] = useState(false);
   const [holdLiningOk, setHoldLiningOk] = useState(false);
   const [storeReceiveStatus, setStoreReceiveStatus] = useState('pending'); // 'pending', 'received', 'sended'
@@ -343,7 +343,7 @@ export default function ProductionLogEntry() {
 
   // Mode Switcher Tabs: 'manual' (default) vs 'barcode' vs 'store'
   const [activeDoor, setActiveDoor] = useState('manual');
-  
+
   // Store Manager Hub States
   const [storeDrawers, setStoreDrawers] = useState([
     { id: 'DRW-001', type: 'Leather', status: 'In Use', client: 'AURA', style: 'AURA-JKT', pieces: 45 },
@@ -391,10 +391,10 @@ export default function ProductionLogEntry() {
     try {
       const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
       const res = await apiTransitionDrawer(token, drawerCode, transition);
-      
+
       setStoreReceiveStatus(transition.toLowerCase());
       setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
-      
+
       if (transition === 'SENDED') {
         setTimeout(() => {
           setStoreDrawerInput('');
@@ -1524,8 +1524,8 @@ export default function ProductionLogEntry() {
                         type="button"
                         onClick={() => setBarcodeStage(stage)}
                         className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm ${isSelected
-                            ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
+                          ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
                           }`}
                       >
                         {stage}
@@ -1962,8 +1962,8 @@ export default function ProductionLogEntry() {
                           setPieceSeqs('');
                         }}
                         className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border ${isSelected
-                            ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]'
-                            : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
+                          ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]'
+                          : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
                           }`}
                       >
                         {stage}
@@ -2050,8 +2050,8 @@ export default function ProductionLogEntry() {
                                     setIsSkuOpen(false);
                                   }}
                                   className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-1 cursor-pointer border ${isSelected
-                                      ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm'
-                                      : 'hover:bg-amber-50/60 text-slate-800 border-transparent'
+                                    ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm'
+                                    : 'hover:bg-amber-50/60 text-slate-800 border-transparent'
                                     }`}
                                 >
                                   <div className="pr-2 break-words whitespace-normal text-left flex flex-col gap-0.5">
@@ -2842,7 +2842,7 @@ export default function ProductionLogEntry() {
           {/* Barcode Scanner & Filters */}
           <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
             <div className="flex flex-col md:flex-row gap-4 items-end">
-              
+
               {/* --- Backend-Driven Store Verification Gateway --- */}
               {storeTotal >= 200 && (
                 <div className="mb-4 p-3 bg-red-100 border-l-4 border-red-500 text-red-800 text-xs font-bold rounded shadow-sm">
@@ -2853,7 +2853,7 @@ export default function ProductionLogEntry() {
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Store Verification Gateway</h3>
                 </div>
-                
+
                 <div className="flex flex-col gap-4 mt-2">
                   <div className="relative">
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block">Scanner Input</label>
@@ -2957,10 +2957,10 @@ export default function ProductionLogEntry() {
                         <div className="text-xs font-black mt-1">{holdCuttingOk && holdLiningOk ? '★ Ready Both' : 'Waiting...'}</div>
                       </div>
                     </div>
-                    
+
                     {/* Receive/Send Action Buttons */}
                     <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center gap-3">
-                      <button 
+                      <button
                         type="button"
                         onClick={() => handleStoreTransition('RECEIVED')}
                         disabled={!(holdCuttingOk && holdLiningOk) || storeReceiveStatus !== 'pending' || storeApiLoading}
@@ -2970,7 +2970,7 @@ export default function ProductionLogEntry() {
                         {storeReceiveStatus !== 'pending' ? 'Received' : 'Receive'}
                       </button>
 
-                      <button 
+                      <button
                         type="button"
                         onClick={() => handleStoreTransition('SENDED')}
                         disabled={storeReceiveStatus !== 'received' || storeApiLoading}
@@ -2991,7 +2991,7 @@ export default function ProductionLogEntry() {
                 <Layers className="w-5 h-5 text-[#c8834a]" />
                 Drawers
               </h3>
-              
+
               <div className="flex flex-wrap items-center gap-3">
                 {/* Client Filter */}
                 <select
@@ -3041,87 +3041,87 @@ export default function ProductionLogEntry() {
                   return d.type === storeFilterType;
                 })
                 .map(drawer => (
-                <div key={drawer.id} className="transition-colors hover:bg-slate-50">
-                  <div 
-                    onClick={() => setExpandedDrawer(expandedDrawer === drawer.id ? null : drawer.id)}
-                    className="px-5 py-4 flex items-center justify-between cursor-pointer"
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm ${drawer.status === 'Free' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
-                        {drawer.id.replace('DRW-', '')}
-                      </div>
-                      <div>
-                        <div className="font-black text-slate-800">{drawer.id} <span className="text-slate-400 font-medium text-xs ml-2">({drawer.type})</span></div>
-                        <div className="text-xs font-bold text-slate-500 mt-0.5">
-                          {drawer.client !== '-' ? `${drawer.client} / ${drawer.style}` : 'Empty Drawer'}
+                  <div key={drawer.id} className="transition-colors hover:bg-slate-50">
+                    <div
+                      onClick={() => setExpandedDrawer(expandedDrawer === drawer.id ? null : drawer.id)}
+                      className="px-5 py-4 flex items-center justify-between cursor-pointer"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm ${drawer.status === 'Free' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
+                          {drawer.id.replace('DRW-', '')}
+                        </div>
+                        <div>
+                          <div className="font-black text-slate-800">{drawer.id} <span className="text-slate-400 font-medium text-xs ml-2">({drawer.type})</span></div>
+                          <div className="text-xs font-bold text-slate-500 mt-0.5">
+                            {drawer.client !== '-' ? `${drawer.client} / ${drawer.style}` : 'Empty Drawer'}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      {drawer.pieces > 0 && (
-                        <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md text-[10px] font-black">
-                          {drawer.pieces} Pieces
-                        </span>
-                      )}
-                      {expandedDrawer === drawer.id ? <ChevronDown className="w-5 h-5 text-slate-400" /> : <ChevronRight className="w-5 h-5 text-slate-400" />}
-                    </div>
-                  </div>
-
-                  {/* Expanded Details */}
-                  {expandedDrawer === drawer.id && (
-                    <div className="px-5 pb-5 pt-2 bg-slate-50/50 border-t border-slate-100">
-                      <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="font-black text-sm text-slate-700">Drawer Contents</h4>
-                          <span className="text-xs font-bold text-slate-500">Status: <span className="text-emerald-600">{drawer.status}</span></span>
-                        </div>
-                        {drawer.pieces > 0 ? (
-                          <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                <div className="text-[10px] text-slate-500 font-bold uppercase">Client</div>
-                                <div className="text-sm font-black text-slate-800">{drawer.client}</div>
-                              </div>
-                              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                <div className="text-[10px] text-slate-500 font-bold uppercase">Style</div>
-                                <div className="text-sm font-black text-slate-800">{drawer.style}</div>
-                              </div>
-                              {drawer.cuttingDetail && (
-                                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                  <div className="text-[10px] text-slate-500 font-bold uppercase">Cutting Detail</div>
-                                  <div className="text-sm font-black text-slate-800">{drawer.cuttingDetail}</div>
-                                </div>
-                              )}
-                              {drawer.styleDetail && (
-                                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                  <div className="text-[10px] text-slate-500 font-bold uppercase">Style Detail</div>
-                                  <div className="text-sm font-black text-slate-800">{drawer.styleDetail}</div>
-                                </div>
-                              )}
-                              {drawer.currentProcess && (
-                                <div className="col-span-2 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100">
-                                  <div className="text-[10px] text-indigo-500 font-bold uppercase">Incoming Process</div>
-                                  <div className="text-sm font-black text-indigo-700">{drawer.currentProcess}</div>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex justify-end pt-2 border-t border-slate-100">
-                              <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-black text-sm shadow-md transition-all flex items-center gap-2">
-                                <PackageCheck className="w-4 h-4" />
-                                Send
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center py-6 text-slate-400 text-sm font-bold italic">
-                            This drawer is currently empty and available for use.
-                          </div>
+                      <div className="flex items-center gap-4">
+                        {drawer.pieces > 0 && (
+                          <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md text-[10px] font-black">
+                            {drawer.pieces} Pieces
+                          </span>
                         )}
+                        {expandedDrawer === drawer.id ? <ChevronDown className="w-5 h-5 text-slate-400" /> : <ChevronRight className="w-5 h-5 text-slate-400" />}
                       </div>
                     </div>
-                  )}
-                </div>
-              ))}
+
+                    {/* Expanded Details */}
+                    {expandedDrawer === drawer.id && (
+                      <div className="px-5 pb-5 pt-2 bg-slate-50/50 border-t border-slate-100">
+                        <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+                          <div className="flex items-center justify-between mb-4">
+                            <h4 className="font-black text-sm text-slate-700">Drawer Contents</h4>
+                            <span className="text-xs font-bold text-slate-500">Status: <span className="text-emerald-600">{drawer.status}</span></span>
+                          </div>
+                          {drawer.pieces > 0 ? (
+                            <div className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                  <div className="text-[10px] text-slate-500 font-bold uppercase">Client</div>
+                                  <div className="text-sm font-black text-slate-800">{drawer.client}</div>
+                                </div>
+                                <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                  <div className="text-[10px] text-slate-500 font-bold uppercase">Style</div>
+                                  <div className="text-sm font-black text-slate-800">{drawer.style}</div>
+                                </div>
+                                {drawer.cuttingDetail && (
+                                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                    <div className="text-[10px] text-slate-500 font-bold uppercase">Cutting Detail</div>
+                                    <div className="text-sm font-black text-slate-800">{drawer.cuttingDetail}</div>
+                                  </div>
+                                )}
+                                {drawer.styleDetail && (
+                                  <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                    <div className="text-[10px] text-slate-500 font-bold uppercase">Style Detail</div>
+                                    <div className="text-sm font-black text-slate-800">{drawer.styleDetail}</div>
+                                  </div>
+                                )}
+                                {drawer.currentProcess && (
+                                  <div className="col-span-2 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100">
+                                    <div className="text-[10px] text-indigo-500 font-bold uppercase">Incoming Process</div>
+                                    <div className="text-sm font-black text-indigo-700">{drawer.currentProcess}</div>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex justify-end pt-2 border-t border-slate-100">
+                                <button className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-black text-sm shadow-md transition-all flex items-center gap-2">
+                                  <PackageCheck className="w-4 h-4" />
+                                  Send
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="text-center py-6 text-slate-400 text-sm font-bold italic">
+                              This drawer is currently empty and available for use.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
             </div>
           </div>
         </div>

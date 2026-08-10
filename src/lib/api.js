@@ -35,14 +35,14 @@ export async function apiGetClients(token) {
  * Create a new client (mints first order in same call)
  * @returns {{ id, name, country, code, order_number, order_id }}
  */
-export async function apiCreateClient(token, name, country,order_number,code) {
+export async function apiCreateClient(token, name, country, order_number, code) {
   const res = await fetch(`${API_BASE_URL}/api/v1/clients`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ name, country ,order_number,code}),
+    body: JSON.stringify({ name, country, order_number, code }),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to create client');
@@ -219,13 +219,20 @@ export async function apiProductionScan(token, payload) {
  */
 export async function apiProductionCutting(token, payload) {
   console.warn('[apiProductionCutting] payload:', JSON.stringify(payload));
-  const res = await fetch(`${API_BASE_URL}/api/v1/production/cutting`, {
+  const logPayload = {
+    screen_context: 'LEATHER_CUT',
+    sku_id: payload.sku_id,
+    employee_id: payload.employee_id,
+    work_date: payload.work_date,
+    count: payload.count
+  };
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/log`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(logPayload),
   });
   if (!res.ok) {
     let errText;
@@ -304,7 +311,7 @@ export async function apiImportPreview(token, file, orderNumber) {
     try {
       const parsed = JSON.parse(errText);
       if (parsed.detail) errText = parsed.detail;
-    } catch (e) {}
+    } catch (e) { }
     console.error('[API] /imports/preview failed:', res.status, errText);
     const err = new Error(errText || `Failed to preview import (${res.status})`);
     err.status = res.status;
@@ -330,7 +337,7 @@ export async function apiImportCommit(token, file, orderNumber) {
     try {
       const parsed = JSON.parse(errText);
       if (parsed.detail) errText = parsed.detail;
-    } catch (e) {}
+    } catch (e) { }
     console.error('[API] /imports/commit failed:', res.status, errText);
     const err = new Error(errText || `Failed to commit import (${res.status})`);
     err.status = res.status;
@@ -697,7 +704,7 @@ export async function apiSendPO(token, poId) {
  * 1. GET /wages/styles - List of styles with pricing coverage
  */
 export async function apiGetWageStyles(token, queryParams = {}) {
-    console.log(token)
+  console.log(token)
   const params = new URLSearchParams(queryParams);
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/styles?${params.toString()}`, {
     method: 'GET',
@@ -714,7 +721,7 @@ export async function apiGetWageStyles(token, queryParams = {}) {
 export async function apiGetRateSheet(token, styleCode, onDate = null) {
   let url = `${API_BASE_URL}/api/v1/wages/rate-sheet?style_code=${encodeURIComponent(styleCode)}`;
   if (onDate) url += `&on=${onDate}`;
-  
+
   const res = await fetch(url, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
@@ -729,9 +736,9 @@ export async function apiGetRateSheet(token, styleCode, onDate = null) {
 export async function apiSetWageRatesBulk(token, payload) {
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/rates/bulk`, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}` 
+      Authorization: `Bearer ${token}`
     },
     body: JSON.stringify(payload),
   });
@@ -748,9 +755,9 @@ export async function apiSetWageRatesBulk(token, payload) {
 export async function apiSetWageRateSingle(token, payload) {
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/rates`, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}` 
+      Authorization: `Bearer ${token}`
     },
     body: JSON.stringify(payload),
   });
