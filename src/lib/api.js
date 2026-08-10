@@ -219,13 +219,20 @@ export async function apiProductionScan(token, payload) {
  */
 export async function apiProductionCutting(token, payload) {
   console.warn('[apiProductionCutting] payload:', JSON.stringify(payload));
+  const countNum = parseInt(payload.count || 1, 10);
   const logPayload = {
     screen_context: 'LEATHER_CUT',
-    stage: 'Cutting',
-    sku_id: payload.sku_id,
-    employee_id: payload.employee_id,
+    actor: {
+      employee_id: payload.employee_id
+    },
+    targets: {
+      sku_id: payload.sku_id,
+      piece_seqs: Array.from({ length: countNum }, (_, i) => i + 1)
+    },
     work_date: payload.work_date,
-    count: payload.count
+    consumption: {
+      dcm: payload.dcm ? Number(payload.dcm) : 10
+    }
   };
   const res = await fetch(`${API_BASE_URL}/api/v1/production/log`, {
     method: 'POST',
