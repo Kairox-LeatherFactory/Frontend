@@ -14,16 +14,18 @@ export const ROLES = {
   employee: { label: 'Employee', color: 'bg-emerald-100 text-emerald-800' },
   client: { label: 'Client', color: 'bg-teal-100 text-teal-800' },
   viewer: { label: 'Auditor / Viewer', color: 'bg-slate-100 text-slate-700' },
+  store_scan: { label: 'Store Manager / Scanner', color: 'bg-cyan-100 text-cyan-800' },
 };
 
 // Which operations each role can log
 export const ROLE_OPERATIONS = {
-  managing_director: ['Cutting', 'Fusing', 'Pasting', 'Shell stitch', 'Lining attach', 'Lining stitch', 'Final finish'],
-  direct_manager: ['Cutting', 'Fusing', 'Pasting', 'Shell stitch', 'Lining attach', 'Lining stitch', 'Final finish'],
-  supervisor: ['Cutting', 'Fusing', 'Pasting', 'Shell stitch', 'Lining attach', 'Lining stitch', 'Final finish'],
-  cutting_manager: ['Cutting'],
-  stitching_manager: ['Fusing', 'Pasting', 'Shell stitch', 'Lining attach', 'Lining stitch', 'Final finish'],
-  employee: ['Cutting', 'Fusing', 'Pasting', 'Shell stitch', 'Lining attach', 'Lining stitch', 'Final finish'],
+  managing_director: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'],
+  direct_manager: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'],
+  supervisor: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'],
+  cutting_manager: ['Cutting', 'Lining'],
+  stitching_manager: ['Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'],
+  employee: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'],
+  store_scan: ['Store'],
   hr: [], // HR does not directly log floor ops
   client: [],
   viewer: [],

@@ -1,26 +1,31 @@
 'use client';
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { 
-  apiGetSkus, 
-  apiGetSkuPieces, 
-  apiProductionCutting, 
-  apiImportPreview, 
-  apiImportCommit, 
-  apiGetAnalyticsExplore, 
+import {
+  apiGetSkus,
+  apiGetSkuPieces,
+  apiProductionCutting,
+  apiImportPreview,
+  apiImportCommit,
+  apiGetAnalyticsExplore,
   apiGetStyleDetail,
   apiBarcodeResolve,
-  apiProductionLogTwoDoor
+  apiProductionLogTwoDoor,
+  apiStoreDrawerScan,
+  apiReceiveDrawer,
+  apiListDrawers,
+  apiGetMaterialLots,
 } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check } from 'lucide-react';
+import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Store, Layers, PackageCheck, ChevronRight, Camera, Send, RefreshCw } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import Link from 'next/link';
 import JsBarcode from 'jsbarcode';
 
 function TravelerPieceItem({ piece }) {
+
   const svgRef = useRef(null);
   useEffect(() => {
     if (svgRef.current && piece?.code) {
@@ -37,6 +42,14 @@ function TravelerPieceItem({ piece }) {
       }
     }
   }, [piece]);
+
+
+  // --- Store Dynamic Metrics ---
+  const storeTotal = storeDrawers.length;
+  const storeFree = storeDrawers.filter(d => d.status === 'Free').length;
+  const storeLeather = storeDrawers.filter(d => d.type === 'Leather').length;
+  const storeLining = storeDrawers.filter(d => d.type === 'Lining').length;
+  const storeBoth = storeDrawers.filter(d => d.type === 'Both').length;
 
   return (
     <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-2xs">
@@ -60,22 +73,22 @@ function TravelerPieceItem({ piece }) {
 function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSeqs }) {
   useEffect(() => {
     if (!token || !sku) return;
-    
+
     let isMounted = true;
     const loadData = async () => {
       setData({ loading: true, detail: null, error: null });
       try {
         const exploreData = await apiGetAnalyticsExplore(token);
-        
+
         let targetStyleId = null;
         for (const client of (exploreData?.clients || [])) {
           for (const order of (client.orders || [])) {
             if (sku.order_number && String(order.order_number) !== String(sku.order_number)) continue;
-            
-            const matchedStyle = (order.styles || []).find(s => 
+
+            const matchedStyle = (order.styles || []).find(s =>
               String(s.style_name || '').toLowerCase() === String(sku.style_name || '').toLowerCase()
             );
-            
+
             if (matchedStyle) {
               targetStyleId = matchedStyle.style_id || matchedStyle.id;
               break;
@@ -90,19 +103,19 @@ function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSe
 
         const detail = await apiGetStyleDetail(token, targetStyleId);
         if (isMounted) setData({ loading: false, detail, error: null });
-        
+
       } catch (err) {
         if (isMounted) setData({ loading: false, detail: null, error: err.message });
       }
     };
-    
+
     loadData();
     return () => { isMounted = false; };
   }, [token, sku, setData]);
 
   if (!sku) return <div className="text-slate-500 italic p-4 text-center">No SKU Selected</div>;
   if (data.loading) return <div className="flex justify-center items-center p-12"><Loader2 className="w-8 h-8 animate-spin text-[#c8834a]" /></div>;
-  if (data.error) return <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-2 font-bold"><XCircle className="w-5 h-5"/> {data.error}</div>;
+  if (data.error) return <div className="bg-red-50 text-red-600 p-4 rounded-xl border border-red-100 flex items-center gap-2 font-bold"><XCircle className="w-5 h-5" /> {data.error}</div>;
   if (!data.detail) return null;
 
   let pieces = data.detail.pieces || [];
@@ -142,12 +155,12 @@ function AnalyticsPopupContent({ token, sku, data, setData, lastSubmittedPieceSe
 
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-           <div className="text-xs text-slate-500 font-bold mb-1">Article / Style Name</div>
-           <div className="text-sm font-black text-slate-800">{sku.style_name}</div>
+          <div className="text-xs text-slate-500 font-bold mb-1">Article / Style Name</div>
+          <div className="text-sm font-black text-slate-800">{sku.style_name}</div>
         </div>
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-           <div className="text-xs text-slate-500 font-bold mb-1">Total Pieces</div>
-           <div className="text-sm font-black text-slate-800 bg-amber-100 text-amber-800 px-2 py-0.5 rounded w-max">{pieces.length}</div>
+          <div className="text-xs text-slate-500 font-bold mb-1">Total Pieces</div>
+          <div className="text-sm font-black text-slate-800 bg-amber-100 text-amber-800 px-2 py-0.5 rounded w-max">{pieces.length}</div>
         </div>
       </div>
 
@@ -285,10 +298,21 @@ function DynamicDataViewer({ data }) {
     </div>
   );
 }
-
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
   const { workers, addScanEvent, operations } = useData();
+  const [storeDrawerInput, setStoreDrawerInput] = useState('');
+  const [storePieceInput, setStorePieceInput] = useState('');
+  const [storeCurrentScan, setStoreCurrentScan] = useState('');
+  const [storeVerifyResult, setStoreVerifyResult] = useState(null);
+  const [holdCuttingOk, setHoldCuttingOk] = useState(false);
+  const [holdLiningOk, setHoldLiningOk] = useState(false);
+  const [storeReceiveStatus, setStoreReceiveStatus] = useState('pending'); // 'pending', 'received', 'sended'
+  const [storeApiLoading, setStoreApiLoading] = useState(false);
+
+  // Manual Checklists for Store Hub
+  const [isCheckedLeather, setIsCheckedLeather] = useState(false);
+  const [isCheckedLining, setIsCheckedLining] = useState(false);
 
   const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
@@ -297,9 +321,9 @@ export default function ProductionLogEntry() {
   const [selectedStage, setSelectedStage] = useState('Cutting');
   const [customDesignation, setCustomDesignation] = useState('');
 
-  const stagesList = useMemo(() => [
-    'Cutting', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'
-  ], []);
+  const manualStages = [
+    'Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'
+  ];
 
   const [workerId, setWorkerId] = useState('');
   const [skuCode, setSkuCode] = useState('');
@@ -312,6 +336,9 @@ export default function ProductionLogEntry() {
   const [cuttingPieces, setCuttingPieces] = useState([]);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isSavingCutting, setIsSavingCutting] = useState(false);
+  const [submittedStageMap, setSubmittedStageMap] = useState({});
+  const [mintedCountMap, setMintedCountMap] = useState({});
+  const [storeSendedSkus, setStoreSendedSkus] = useState([]);
 
   // Check-in Warning Modal
   const [showCheckInWarning, setShowCheckInWarning] = useState(false);
@@ -323,14 +350,150 @@ export default function ProductionLogEntry() {
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState({ loading: false, detail: null, error: null });
 
-  // Mode Switcher Tabs: 'manual' (default) vs 'barcode'
+  // Mode Switcher Tabs: 'manual' (default) vs 'barcode' vs 'store'
   const [activeDoor, setActiveDoor] = useState('manual');
 
+  // Store Manager Hub States
+  const [storeDrawers, setStoreDrawers] = useState([]);
+  const [storeFilterClient, setStoreFilterClient] = useState('All');
+  const [storeFilterStyle, setStoreFilterStyle] = useState('All');
+  const [storeFilterType, setStoreFilterType] = useState('All');
+  const [storeDrawerSearch, setStoreDrawerSearch] = useState('');
+  const [expandedDrawer, setExpandedDrawer] = useState(null);
+  const [storeLoading, setStoreLoading] = useState(false);
+
+  const fetchLiveDrawers = useCallback(async () => {
+    if (!token) return;
+    setStoreLoading(true);
+    try {
+      const res = await apiListDrawers(token);
+      console.log('[Store Hub] GET /api/v1/drawers response:', res);
+      const drawerItems = res?.items || (Array.isArray(res) ? res : []);
+      if (Array.isArray(drawerItems)) {
+        const mapped = drawerItems.map(d => ({
+          id: d.code || d.barcode || `DRW-${String(d.seq).padStart(4, '0')}`,
+          drawer_id: d.drawer_id || d.id, // Keep the UUID for API calls
+          type: d.state?.includes('both') ? 'Both' : (d.state?.includes('leather') ? 'Leather' : (d.state?.includes('lining') ? 'Lining' : 'Empty')),
+          status: d.state || 'Free',
+          client: d.caption || 'Store Rack',
+          style: d.code || '-',
+          pieces: d.seq || 0
+        }));
+        setStoreDrawers(mapped);
+      }
+    } catch (err) {
+      console.warn('[Store Hub] GET /api/v1/drawers live API pending backend deploy:', err);
+    } finally {
+      setStoreLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (activeDoor === 'store') {
+      fetchLiveDrawers();
+    }
+  }, [activeDoor, fetchLiveDrawers]);
   // Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
+
+  // --- Store Hub Backend-Driven Flow ---
+  const handleStoreVerify = async () => {
+    setStoreApiLoading(true);
+    setErrorMsg('');
+    try {
+      const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+
+      const drawerVal = storeDrawerInput.trim().toUpperCase();
+      const pieceVal = storePieceInput.trim();
+
+      const payload = {
+        part: 'LEATHER'
+      };
+
+      if (isUUID(drawerVal)) {
+        payload.drawer_id = drawerVal.toLowerCase();
+      } else {
+        payload.drawer_barcode = drawerVal;
+      }
+
+      if (isUUID(pieceVal)) {
+        payload.piece_id = pieceVal.toLowerCase();
+      } else {
+        payload.piece_barcode = pieceVal;
+      }
+
+      const res = await apiStoreDrawerScan(token, payload);
+      setStoreVerifyResult(res);
+      
+      // Auto-refresh the live drawers list so we immediately have the drawer's UUID
+      await fetchLiveDrawers();
+
+      setHoldCuttingOk(true);
+      setSuccessMsg(`Scan logged successfully! (${res.state || 'OK'})`);
+    } catch (err) {
+      if (err.message.includes('409')) {
+        setErrorMsg('409 CONFLICT: Piece does not belong to this drawer, or drawer already processed!');
+      } else {
+        setErrorMsg(err.message || 'Verification Failed');
+      }
+    } finally {
+      setStoreApiLoading(false);
+    }
+  };
+
+  const handleStoreTransition = async (transition, overrideDrawerId = null) => {
+    setStoreApiLoading(true);
+    setErrorMsg('');
+    try {
+      const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
+      let drawerId = overrideDrawerId;
+      
+      if (!drawerId) {
+        // The API requires a UUID, so we must resolve the DRW-xxx code to its UUID
+        const matchingDrawer = storeDrawers.find(d => 
+          (d.barcode?.toUpperCase() === drawerCode) || 
+          (d.code?.toUpperCase() === drawerCode) || 
+          (d.id === drawerCode) || 
+          (d.drawer_id === drawerCode)
+        );
+        drawerId = matchingDrawer ? (matchingDrawer.drawer_id || matchingDrawer.id) : drawerCode;
+      }
+
+      const res = await apiReceiveDrawer(token, drawerId, transition);
+
+      setStoreReceiveStatus(transition.toLowerCase());
+      setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
+
+      if (transition === 'SENDED') {
+        if (skuCode) {
+          setStoreSendedSkus(prev => Array.from(new Set([...prev, skuCode])));
+        }
+        setStoreReceiveStatus('sended');
+        setTimeout(() => {
+          setStoreDrawerInput('');
+          setStorePieceInput('');
+          setStoreVerifyResult(null);
+          setHoldCuttingOk(false);
+          setHoldLiningOk(false);
+          setIsCheckedLeather(false);
+          setIsCheckedLining(false);
+          setStoreDrawerSearch(''); // Clear list filter after reset
+        }, 1500);
+      }
+    } catch (err) {
+      if (err.message.includes('409')) {
+        setErrorMsg('409 CONFLICT: Drawer already in this state or cannot be transitioned!');
+      } else {
+        setErrorMsg(err.message || 'Transition Failed');
+      }
+    } finally {
+      setStoreApiLoading(false);
+    }
+  };
+
   const [visibleCount, setVisibleCount] = useState(60);
-  
+
   useEffect(() => {
     setVisibleCount(60);
   }, [skuSearchQuery]);
@@ -374,10 +537,15 @@ export default function ProductionLogEntry() {
   const [barcodeDcmConfirmed, setBarcodeDcmConfirmed] = useState(false);
   const [sessionCutSkus, setSessionCutSkus] = useState([]); // Track duplicate cuts in session
 
-  // 3 Material Spec Dropdowns
-  const [barcodeArticle, setBarcodeArticle] = useState('SUEDE_LEATHER');
-  const [barcodeColor, setBarcodeColor] = useState('DARK_BROWN');
-  const [barcodeThickness, setBarcodeThickness] = useState('1.2 - 1.4 mm');
+  // 3 Material Spec Dropdowns (Dynamic API-driven)
+  const [lotArticle, setLotArticle] = useState('');
+  const [lotColor, setLotColor] = useState('');
+  const [lotThickness, setLotThickness] = useState('');
+
+  const [lotOptions, setLotOptions] = useState({ article: [], colour: [], thickness: [], size: [] });
+  const [lotResults, setLotResults] = useState([]);
+  const [lotLoading, setLotLoading] = useState(false);
+  const [lotCategory, setLotCategory] = useState('LEATHER'); // LEATHER or LINING
 
   // Pipeline Barcode Piece Scanning & Validation
   const [barcodePieceInput, setBarcodePieceInput] = useState('');
@@ -437,10 +605,10 @@ export default function ProductionLogEntry() {
       }
 
       setScanResolutionResult(res);
-      
+
       if (res.type === 'EMPLOYEE') {
-        const matchedWorker = workers.find(w => 
-          String(w.id) === String(res.employee?.id || res.employee_id) || 
+        const matchedWorker = workers.find(w =>
+          String(w.id) === String(res.employee?.id || res.employee_id) ||
           String(w.employee_barcode || '').toLowerCase() === targetCode.toLowerCase()
         );
         if (matchedWorker) {
@@ -477,8 +645,8 @@ export default function ProductionLogEntry() {
 
     try {
       const queryLower = query.toLowerCase();
-      const matchedWorker = workers.find(w => 
-        String(w.id) === query || 
+      const matchedWorker = workers.find(w =>
+        String(w.id) === query ||
         String(w.employee_barcode || '').toLowerCase() === queryLower ||
         String(w.name || '').toLowerCase().includes(queryLower)
       );
@@ -530,23 +698,42 @@ export default function ProductionLogEntry() {
     setErrorMsg('');
 
     try {
-      let matched = fetchedSkus.find(s => 
+      let matched = fetchedSkus.find(s =>
         s.code.toLowerCase() === val ||
         String(s.order_number || '').toLowerCase() === val ||
         s.code.toLowerCase().includes(val)
       );
 
-      // Fallback to the first available SKU for testing if not found exactly
+      // Fallback to the first available SKU if not found exactly
       if (!matched && fetchedSkus.length > 0) {
         matched = fetchedSkus[0];
         console.warn(`SKU '${val}' not found. Falling back to first available SKU: ${matched.code}`);
       }
 
-      if (!matched) {
-        throw new Error(`Style/SKU not found for barcode: ${val}`);
+      // If SKUs not loaded yet, try a fresh fetch from backend
+      if (!matched && fetchedSkus.length === 0 && val.length > 0) {
+        console.warn('[SKU Verify] fetchedSkus empty — trying direct backend fetch...');
+        try {
+          const freshRes = await apiGetSkus(token);
+          const freshItems = freshRes?.items || freshRes?.skus || (Array.isArray(freshRes) ? freshRes : []);
+          if (freshItems.length > 0) {
+            setFetchedSkus(freshItems);
+            matched = freshItems.find(s =>
+              s.code.toLowerCase() === val ||
+              String(s.order_number || '').toLowerCase() === val ||
+              s.code.toLowerCase().includes(val)
+            ) || freshItems[0];
+          }
+        } catch (fetchErr) {
+          console.warn('[SKU Verify] direct fetch also failed:', fetchErr);
+        }
       }
 
-      // Local Mock Validation: Check if this SKU has already been cut in this session
+      if (!matched) {
+        throw new Error(`Style/SKU '${val}' not found. Check if backend SKU list is available.`);
+      }
+
+      // Local Validation: Check if this SKU has already been cut in this session
       if (sessionCutSkus.includes(matched.code)) {
         throw new Error(`Style ${matched.code} has already been cut! It cannot be scanned again in Cutting.`);
       }
@@ -571,16 +758,15 @@ export default function ProductionLogEntry() {
 
     setBarcodeSubmitting(true);
     try {
+      const realSkuId = barcodeSelectedSku.sku_id || barcodeSelectedSku.id;
       const result = await apiProductionCutting(token, {
-        sku_id: barcodeSelectedSku.sku_id || barcodeSelectedSku.id,
+        sku_id: realSkuId,
         employee_id: barcodeWorker.id,
         work_date: date,
         count: parsedCount,
-        material_specs: {
-          article: barcodeArticle,
-          color: barcodeColor,
-          thickness: barcodeThickness
-        }
+        dcm: parsedCount,
+        stage: barcodeStage, // 'Cutting' or 'Lining'
+        lot_id: lotResults.length === 1 ? lotResults[0].lot_id : null
       });
 
       const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => ({
@@ -594,9 +780,9 @@ export default function ProductionLogEntry() {
         count: result.count || parsedCount,
         skuCode: barcodeSelectedSku.label || barcodeSelectedSku.code,
         orderNumber: barcodeSelectedSku.order_number || 'N/A',
-        article: barcodeArticle,
-        color: barcodeColor,
-        thickness: barcodeThickness,
+        article: lotArticle,
+        color: lotColor,
+        thickness: lotThickness,
         pieces: generatedPreviewPieces
       });
 
@@ -607,7 +793,11 @@ export default function ProductionLogEntry() {
       setBarcodeSelectedSku(null);
       setBarcodeDcmConfirmed(false);
     } catch (err) {
-      setErrorMsg(`Cutting submission failed: ${err.message}`);
+      const msg = typeof err?.message === 'string'
+        ? err.message
+        : (typeof err === 'string' ? err : JSON.stringify(err));
+      console.error('[Cutting Submit Error]', err);
+      setErrorMsg(`Cutting failed: ${msg}`);
     } finally {
       setBarcodeSubmitting(false);
     }
@@ -693,7 +883,12 @@ export default function ProductionLogEntry() {
 
   useEffect(() => {
     setSkusLoading(true);
-    apiGetSkus(token).then(setFetchedSkus).catch(console.warn).finally(() => setSkusLoading(false));
+    apiGetSkus(token).then(res => {
+      // Handle both plain array and paginated {items:[...]} format
+      const items = res?.items || res?.skus || (Array.isArray(res) ? res : []);
+      console.log('[fetchedSkus] loaded:', items.length, 'SKUs');
+      setFetchedSkus(items);
+    }).catch(console.warn).finally(() => setSkusLoading(false));
   }, [token, skuRefreshKey]);
 
   useEffect(() => {
@@ -727,6 +922,71 @@ export default function ProductionLogEntry() {
     }
   }, [errorMsg, uploadError]);
 
+  // Dynamic Material Lots Fetcher
+  useEffect(() => {
+    const isCutting = activeDoor === 'manual' ? selectedStage === 'Cutting' : barcodeStage === 'Cutting';
+    const isLining = activeDoor === 'manual' ? selectedStage === 'Lining' : barcodeStage === 'Lining';
+    if (!isCutting && !isLining) return;
+
+    const category = isLining ? 'LINING' : 'LEATHER';
+    setLotCategory(category);
+
+    // Only fetch if a SKU is selected
+    const currentSku = activeDoor === 'manual' ? skuCode : barcodeSelectedSku?.code;
+    if (!currentSku) return;
+
+    // Calculate required quantity
+    let requiredQty = 0;
+    if (activeDoor === 'manual') {
+      const parsedDcm = parseInt(barcodeDcm, 10) || 0;
+      const parsedPieces = parseInt(cuttingCount, 10) || 0;
+      requiredQty = parsedDcm * parsedPieces;
+    } else {
+      const parsedDcm = parseInt(barcodeDcm, 10) || 0;
+      const parsedPieces = barcodePieceInput ? barcodePieceInput.split(',').reduce((acc, curr) => {
+        if (curr.includes('-')) {
+          const [s, e] = curr.split('-').map(Number);
+          return acc + (e - s + 1);
+        }
+        return acc + 1;
+      }, 0) : 0;
+      requiredQty = parsedDcm * parsedPieces; // For batch pieces
+    }
+
+    const params = {
+      article: lotArticle,
+      colour: lotColor,
+      thickness: lotThickness
+    };
+
+    let isMounted = true;
+    setLotLoading(true);
+    apiGetMaterialLots(token, params).then(data => {
+      if (!isMounted) return;
+      setLotOptions(data.options || { article: [], colour: [], thickness: [], size: [] });
+      setLotResults(data.lots || []);
+
+      // Auto-select if suggested
+      if (data.suggested_lot_id && data.lots) {
+        const suggestedLot = data.lots.find(l => l.lot_id === data.suggested_lot_id);
+        if (suggestedLot && !lotArticle && !lotColor && !lotThickness) {
+          setLotArticle(suggestedLot.article || '');
+          setLotColor(suggestedLot.colour || '');
+          setLotThickness(suggestedLot.thickness || '');
+        }
+      }
+    }).catch(err => {
+      console.warn("Failed to fetch lots:", err);
+    }).finally(() => {
+      if (isMounted) setLotLoading(false);
+    });
+
+    return () => { isMounted = false; };
+  }, [
+    activeDoor, selectedStage, barcodeStage, skuCode, barcodeSelectedSku,
+    lotArticle, lotColor, lotThickness, barcodeDcm, cuttingCount, barcodePieceInput, token
+  ]);
+
   const searchFilteredSkus = useMemo(() => {
     if (!skuSearchQuery.trim()) return fetchedSkus;
 
@@ -751,22 +1011,22 @@ export default function ProductionLogEntry() {
   const currentSelectedWorker = workers.find(w => w.id === workerId);
 
   // SUBMIT HANDLER: Shows Traveler Card Modal FIRST for Cutting
- const handleSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setSuccessMsg(''); setErrorMsg('');
     if (isReadOnly) return setErrorMsg('Unauthorized');
 
-   
+
     // Check-in validation removed here to let Traveler Cards modal open first
 
-    
+
     if (!workerId || !date || !skuCode) return setErrorMsg('Missing mandatory fields');
 
     const activeOp = selectedStage;
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
 
-    // 1. CUTTING STAGE
-    if (activeOp === 'Cutting') {
+    // 1. CUTTING & LINING STAGES (Mint / Initial Cut Count)
+    if (activeOp === 'Cutting' || activeOp === 'Lining') {
       const parsedCount = parseInt(cuttingCount, 10);
       if (!cuttingCount || isNaN(parsedCount) || parsedCount <= 0) {
         return setErrorMsg('Please enter a valid total Cut Piece Count');
@@ -846,7 +1106,7 @@ export default function ProductionLogEntry() {
       });
       setSuccessMsg(`Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${activeOp}.`);
       setLastSubmittedPieceSeqs(parsedSeqs);
-      
+
       setPieceSeqs('');
       setWorkerId('');
       setCuttingCount('');
@@ -885,11 +1145,18 @@ export default function ProductionLogEntry() {
         sku_id: skuObj.sku_id,
         employee_id: workerId,
         work_date: date,
-        count: parsedCount
+        count: parsedCount,
+        dcm: barcodeDcm ? parseInt(barcodeDcm, 10) : parsedCount,
+        stage: selectedStage, // 'Cutting' or 'Lining'
+        lot_id: lotResults.length === 1 ? lotResults[0].lot_id : null
       });
 
       setSuccessMsg(`✅ Cut ${result.count || parsedCount} pieces successfully saved.`);
       setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
+      setMintedCountMap(prev => ({
+        ...prev,
+        [skuObj.sku_id]: Math.max(prev[skuObj.sku_id] || 0, parsedCount)
+      }));
       setCuttingCount('');
       setPieceSeqs('');
     } catch (err) {
@@ -939,7 +1206,7 @@ export default function ProductionLogEntry() {
 
       setSuccessMsg(`✅ Cut ${result.count || parsedCount} pieces successfully saved.`);
       setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
-      
+
       setShowPrintModal(false);
       setCuttingPieces([]);
       setSkuCode('');
@@ -965,15 +1232,35 @@ export default function ProductionLogEntry() {
     setLoadingPieces(true); setShowChecklistModal(true);
     try {
       const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
-      setChecklistPieces(Array.isArray(data) ? data : (data.pieces || []));
-      if (data && data.meta) {
-        setPiecesMeta(data.meta);
-      } else {
-        const piecesArr = Array.isArray(data) ? data : (data.pieces || []);
-        const total = piecesArr.length;
-        const done = piecesArr.filter(p => p.done_at_op).length;
-        setPiecesMeta({ total, done, pending: total - done });
+      let piecesArr = Array.isArray(data) ? data : (data.pieces || []);
+
+      // Dynamically sync piece list with submitted count for this SKU (e.g. 12 pieces)
+      const maxCount = mintedCountMap[skuObj.sku_id] || 0;
+      if (maxCount > 0 && piecesArr.length < maxCount) {
+        piecesArr = Array.from({ length: maxCount }, (_, i) => {
+          const seqNum = i + 1;
+          const existing = piecesArr.find(p => p.seq === seqNum);
+          return existing || {
+            piece_id: `piece-${skuObj.sku_id}-${seqNum}`,
+            seq: seqNum,
+            current_stage_label: 'Cutting',
+            done_at_op: false
+          };
+        });
       }
+
+      // Store Gate Check: Line Stitching / Shell Stitching REQUIRES Store Hub SENDED status!
+      if (searchOp.includes('line') || searchOp.includes('shell') || searchOp.includes('stitch')) {
+        const isSended = storeReceiveStatus === 'sended' || storeSendedSkus.includes(skuCode) || (data && data.store_sended);
+        if (!isSended) {
+          piecesArr = piecesArr.filter(p => p.store_sended || p.current_stage_label === 'SENDED');
+        }
+      }
+
+      setChecklistPieces(piecesArr);
+      const total = piecesArr.length;
+      const done = piecesArr.filter(p => p.done_at_op).length;
+      setPiecesMeta({ total, done, pending: total - done });
     } catch (err) { setChecklistError(err.message); }
     finally { setLoadingPieces(false); }
   };
@@ -987,7 +1274,7 @@ export default function ProductionLogEntry() {
     }) || operations[0];
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
     const currentWorker = workers.find(w => w.id === workerId);
-    
+
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
@@ -1008,16 +1295,18 @@ export default function ProductionLogEntry() {
     } catch (e) {
       console.warn("Failed to verify attendance", e);
     }
-    
+
     setChecklistSubmitting(true);
     try {
       let bucketRes = null;
       try {
+        const isCutStage = selectedStage.toUpperCase().includes('CUT');
         const logPayload = {
-          screen_context: selectedStage.toUpperCase().includes('CUT') ? 'LEATHER_CUT' : 'PIPELINE',
+          screen_context: isCutStage ? 'LEATHER_CUT' : 'PIPELINE',
           actor: currentWorker?.employee_barcode ? { employee_barcode: currentWorker.employee_barcode } : { employee_id: workerId },
           targets: scannedBarcodes.length > 0 ? { piece_barcodes: scannedBarcodes } : { sku_id: skuObj.sku_id, piece_seqs: selectedPieces },
-          work_date: date
+          work_date: date,
+          ...(isCutStage ? { consumption: { dcm: Number(barcodeDcm || 10) } } : {})
         };
         bucketRes = await apiProductionLogTwoDoor(token, logPayload);
         if (bucketRes && (bucketRes.logged || bucketRes.sequence_blocked || bucketRes.skill_blocked || bucketRes.merge_blocked)) {
@@ -1029,9 +1318,13 @@ export default function ProductionLogEntry() {
         await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: selectedPieces });
       }
 
-      setSuccessMsg("Success!"); 
+      setSuccessMsg("Success!");
       setLastSubmittedPieceSeqs([...selectedPieces]);
-      setShowChecklistModal(false); 
+      setSubmittedStageMap(prev => ({
+        ...prev,
+        [selectedStage]: Array.from(new Set([...(prev[selectedStage] || []), ...selectedPieces]))
+      }));
+      setShowChecklistModal(false);
       setSelectedPieces([]);
       setScannedBarcodes([]);
       setPieceSeqs('');
@@ -1089,6 +1382,13 @@ export default function ProductionLogEntry() {
       </div>
     );
   }
+
+  // --- Store Dynamic Metrics ---
+  const storeTotal = storeDrawers.length;
+  const storeFree = storeDrawers.filter(d => d.status === 'Free').length;
+  const storeLeather = storeDrawers.filter(d => d.type === 'Leather').length;
+  const storeLining = storeDrawers.filter(d => d.type === 'Lining').length;
+  const storeBoth = storeDrawers.filter(d => d.type === 'Both').length;
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-0 space-y-8 animate-fade-in pb-12">
@@ -1217,7 +1517,7 @@ export default function ProductionLogEntry() {
           }}
         >
           <Users className="w-4 h-4" />
-          Manual Logger 
+          Manual Logger
         </button>
         <button
           type="button"
@@ -1229,7 +1529,19 @@ export default function ProductionLogEntry() {
           }}
         >
           <Barcode className="w-4 h-4" />
-          Barcode Gun Scanner 
+          Barcode Gun Scanner
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveDoor('store')}
+          className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
+          style={{
+            borderColor: activeDoor === 'store' ? '#c8834a' : 'transparent',
+            color: activeDoor === 'store' ? '#c8834a' : '#9a7a5a',
+          }}
+        >
+          <Store className="w-4 h-4" />
+          🏬 Store Manager Hub
         </button>
       </div>
 
@@ -1410,18 +1722,17 @@ export default function ProductionLogEntry() {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                  {stagesList.map((stage) => {
+                  {['Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'].map((stage) => {
                     const isSelected = barcodeStage === stage;
                     return (
                       <button
                         key={stage}
                         type="button"
                         onClick={() => setBarcodeStage(stage)}
-                        className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm ${
-                          isSelected
-                            ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
-                        }`}
+                        className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm ${isSelected
+                          ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
+                          : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
+                          }`}
                       >
                         {stage}
                       </button>
@@ -1432,7 +1743,7 @@ export default function ProductionLogEntry() {
                 {/* STEP 3A: CUTTING STAGE FLOW */}
                 {barcodeStage === 'Cutting' ? (
                   <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
-                    
+
                     {/* SKU BARCODE GUN INPUT */}
                     <div className="space-y-3">
                       <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
@@ -1529,7 +1840,7 @@ export default function ProductionLogEntry() {
                     {/* ORDER DETAILS SUMMARY & 3 MATERIAL SPEC DROPDOWNS */}
                     {barcodeSelectedSku && barcodeDcmConfirmed && barcodeDcm && (
                       <div className="p-6 rounded-2xl bg-white border-2 border-[#c8834a]/30 shadow-md space-y-5 animate-fade-in">
-                        
+
                         {/* Order Details Header */}
                         <div className="p-4 rounded-xl bg-[#faf6f0] border border-[#c8834a]/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                           <div>
@@ -1548,59 +1859,67 @@ export default function ProductionLogEntry() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           {/* 1. Article */}
                           <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. Leather Article *</label>
+                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. {lotCategory === 'LINING' ? 'Lining' : 'Leather'} Article *</label>
                             <select
-                              value={barcodeArticle}
-                              onChange={(e) => setBarcodeArticle(e.target.value)}
+                              value={lotArticle}
+                              onChange={(e) => { setLotArticle(e.target.value); setLotColor(''); setLotThickness(''); }}
                               className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
                             >
-                              <option value="SUEDE_LEATHER">Suede Leather</option>
-                              <option value="NAPPA_LEATHER">Nappa Leather</option>
-                              <option value="NUBUCK_LEATHER">Nubuck Leather</option>
-                              <option value="FULL_GRAIN">Full Grain Leather</option>
-                              <option value="PULL_UP">Pull-Up Leather</option>
-                              <option value="CROCO_EMBOSSED">Embossed Croc</option>
+                              <option value="">-- Select Article --</option>
+                              {lotOptions.article?.map(a => <option key={a} value={a}>{a}</option>)}
                             </select>
                           </div>
-
                           {/* 2. Color */}
                           <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. Leather Color *</label>
+                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. {lotCategory === 'LINING' ? 'Lining' : 'Leather'} Color *</label>
                             <select
-                              value={barcodeColor}
-                              onChange={(e) => setBarcodeColor(e.target.value)}
+                              value={lotColor}
+                              onChange={(e) => { setLotColor(e.target.value); setLotThickness(''); }}
                               className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
                             >
-                              <option value="DARK_BROWN">Dark Brown</option>
-                              <option value="TAN_COGNAC">Tan / Cognac</option>
-                              <option value="JET_BLACK">Jet Black</option>
-                              <option value="BURGUNDY">Burgundy</option>
-                              <option value="CAMEL">Camel</option>
-                              <option value="OLIVE_GREEN">Olive Green</option>
+                              <option value="">-- Select Color --</option>
+                              {lotOptions.colour?.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           </div>
-
                           {/* 3. Thickness */}
                           <div className="space-y-1.5">
                             <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">3. Thickness (mm) *</label>
                             <select
-                              value={barcodeThickness}
-                              onChange={(e) => setBarcodeThickness(e.target.value)}
+                              value={lotThickness}
+                              onChange={(e) => setLotThickness(e.target.value)}
                               className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
                             >
-                              <option value="1.0 - 1.2 mm">1.0 - 1.2 mm</option>
-                              <option value="1.2 - 1.4 mm">1.2 - 1.4 mm</option>
-                              <option value="1.4 - 1.6 mm">1.4 - 1.6 mm</option>
-                              <option value="1.6 - 1.8 mm">1.6 - 1.8 mm</option>
+                              <option value="">-- Select Thickness --</option>
+                              {lotOptions.thickness?.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
                           </div>
                         </div>
+
+                        {/* Lot Status Indicator */}
+                        {lotArticle && lotColor && lotThickness && (
+                          <div className={`p-4 rounded-xl border flex items-center justify-between ${lotResults.length === 1 && lotResults[0].covers_required !== false ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                            <div>
+                              <div className="text-xs font-black uppercase tracking-wider mb-1">Material Availability</div>
+                              <div className="text-sm font-bold">
+                                {lotLoading ? 'Checking...' : (
+                                  lotResults.length === 1 ? (
+                                    lotResults[0].covers_required === false
+                                      ? <span className="text-red-600">Not enough stock (Available: {lotResults[0].available} {lotResults[0].uom})</span>
+                                      : <span className="text-emerald-700">Available: {lotResults[0].available} {lotResults[0].uom}</span>
+                                  ) : (
+                                    <span className="text-red-600">{lotResults.length === 0 ? 'No matching lot found.' : 'Multiple lots found. Refine filters.'}</span>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {/* Submit Cutting Button */}
                         <button
                           type="button"
                           onClick={handleBarcodeCuttingSubmit}
-                          disabled={barcodeSubmitting}
+                          disabled={barcodeSubmitting || lotResults.length !== 1 || lotResults[0].covers_required === false}
                           className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
                           style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
                         >
@@ -1757,358 +2076,438 @@ export default function ProductionLogEntry() {
         {activeDoor === 'manual' && (
           <form onSubmit={handleSubmit} className="space-y-8 animate-fade-in">
 
-          {/* STEP 1: Worker Selection */}
-          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
-            <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-            <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
-              Worker Selection
-            </h3>
-            
-            <div className="pt-2">
-              <div className="flex flex-col gap-2 relative z-40 self-start w-full" ref={workerModalRef}>
-                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                  <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker *
-                </label>
+            {/* STEP 1: Worker Selection */}
+            <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+              <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
+              <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>1</span>
+                Worker Selection
+              </h3>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsWorkerOpen(!isWorkerOpen);
-                    setWorkerSearchQuery('');
-                  }}
-                  className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
-                >
-                  <span className={currentSelectedWorker ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
-                    {currentSelectedWorker ? currentSelectedWorker.name : `-- Select / Search Worker --`}
-                  </span>
-                  <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isWorkerOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isWorkerOpen && (
-                  <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl z-[99999] p-3 space-y-3 animate-fade-in">
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        autoFocus
-                        placeholder="Search Worker Name..."
-                        value={workerSearchQuery}
-                        onChange={(e) => setWorkerSearchQuery(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                        className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
-                      />
-                    </div>
-
-                    <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
-                      {searchFilteredWorkers.length > 0 ? (
-                        searchFilteredWorkers.map((w) => {
-                          const isSelected = workerId === w.id;
-                          return (
-                            <button
-                              key={w.id}
-                              type="button"
-                              onClick={() => {
-                                setWorkerId(w.id);
-                                setIsWorkerOpen(false);
-                              }}
-                              className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
-                            >
-                              <span>{w.name}</span>
-                              {isSelected && <span className="font-black text-sm">✓</span>}
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="p-4 text-center text-xs font-bold text-slate-400">
-                          No workers match "{workerSearchQuery}"
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* STEP 2: Garment Details & Operation Stage */}
-          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
-            <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-            <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
-              Operation Stage &amp; Garment Details
-            </h3>
-
-            <div className="space-y-4 pt-2">
-              <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
-              </label>
-
-              {/* 7 Operation Stage Banners */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {['Cutting', 'Fusing', 'Pasting', 'Shell Stitch', 'Lining Stitch', 'Final Finish'].map((stage) => {
-                  const isSelected = selectedStage === stage;
-                  return (
-                    <button
-                      key={stage}
-                      type="button"
-                      onClick={() => {
-                        setSelectedStage(stage);
-                        setPieceSeqs('');
-                      }}
-                      className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border ${
-                        isSelected 
-                          ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]' 
-                          : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
-                      }`}
-                    >
-                      {stage}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Custom Stage Input Removed */}
-            </div>
-
-            <div className="grid grid-cols-1 gap-8 pt-4">
-              <div className="flex flex-col gap-2 relative w-full" ref={skuModalRef}>
-                <div className="flex items-center justify-between">
+              <div className="pt-2">
+                <div className="flex flex-col gap-2 relative z-40 self-start w-full" ref={workerModalRef}>
                   <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
-                    <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
+                    <Users className="w-4 h-4" style={{ color: '#c8834a' }} /> Assigned Worker *
                   </label>
+
                   <button
                     type="button"
-                    onClick={() => setSkuRefreshKey(k => k + 1)}
-                    className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                    style={{ color: '#c8834a', background: 'rgba(200,131,74,0.08)', border: '1px solid rgba(200,131,74,0.2)' }}
+                    onClick={() => {
+                      setIsWorkerOpen(!isWorkerOpen);
+                      setWorkerSearchQuery('');
+                    }}
+                    className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
                   >
-                    {skusLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Refresh'}
+                    <span className={currentSelectedWorker ? "text-slate-900 font-extrabold truncate" : "text-slate-400"}>
+                      {currentSelectedWorker ? currentSelectedWorker.name : `-- Select / Search Worker --`}
+                    </span>
+                    <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isWorkerOpen ? 'rotate-180' : ''}`} />
                   </button>
-                </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSkuOpen(!isSkuOpen);
-                    if (!isSkuOpen) setSkuSearchQuery('');
-                  }}
-                  className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
-                >
-                  <span className={currentSelectedSku ? "text-slate-900 font-extrabold text-left break-words whitespace-normal" : "text-slate-400"}>
-                    {currentSelectedSku
-                      ? `[Order #${currentSelectedSku.order_number || 'N/A'}] ${currentSelectedSku.label || `${currentSelectedSku.style_name || ''} · ${currentSelectedSku.color_code || ''} · ${currentSelectedSku.size}`}`
-                      : "-- Select / Search Garment SKU --"
-                    }
-                  </span>
-                  <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isSkuOpen ? 'rotate-180' : ''}`} />
-                </button>
+                  {isWorkerOpen && (
+                    <div className="absolute top-[calc(100%+8px)] left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl z-[99999] p-3 space-y-3 animate-fade-in">
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder="Search Worker Name..."
+                          value={workerSearchQuery}
+                          onChange={(e) => setWorkerSearchQuery(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                          className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+                        />
+                      </div>
 
-                {isSkuOpen && (
-                  <div className="absolute z-[999] top-full mt-2 left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl p-3 space-y-3 animate-fade-in">
-                    <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        placeholder="Type Style, SKU, Order No, or Color..."
-                        value={skuSearchQuery}
-                        onChange={(e) => setSkuSearchQuery(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                        className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
-                        autoFocus
-                      />
-                    </div>
-
-                    <div 
-                      className="max-h-56 overflow-y-auto pr-1"
-                      onScroll={(e) => {
-                        const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
-                        if (bottom && visibleCount < searchFilteredSkus.length) {
-                          setVisibleCount(prev => prev + 60);
-                        }
-                      }}
-                    >
-                      {skusLoading ? (
-                        <div className="p-6 flex flex-col items-center gap-2">
-                          <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
-                          <span className="text-xs font-bold text-slate-400">Loading SKUs...</span>
-                        </div>
-                      ) : searchFilteredSkus.length > 0 ? (
-                        <>
-                          {searchFilteredSkus.slice(0, visibleCount).map((s, idx) => {
-                            const isSelected = skuCode === s.code;
+                      <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 pr-1">
+                        {searchFilteredWorkers.length > 0 ? (
+                          searchFilteredWorkers.map((w) => {
+                            const isSelected = workerId === w.id;
                             return (
                               <button
-                                key={s.code}
+                                key={w.id}
                                 type="button"
                                 onClick={() => {
-                                  setSkuCode(s.code);
-                                  setIsSkuOpen(false);
+                                  setWorkerId(w.id);
+                                  setIsWorkerOpen(false);
                                 }}
-                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-1 cursor-pointer border ${
-                                  isSelected 
-                                    ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm' 
-                                    : 'hover:bg-amber-50/60 text-slate-800 border-transparent'
-                                }`}
+                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
                               >
-                                <div className="pr-2 break-words whitespace-normal text-left flex flex-col gap-0.5">
-                                  {isSelected && (
-                                    <span className="text-[9px] font-black uppercase tracking-wider text-amber-200">
-                                      ★ Current Active Style
-                                    </span>
-                                  )}
-                                  <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
-                                </div>
-                                {isSelected && <span className="font-black text-sm shrink-0">✓</span>}
+                                <span>{w.name}</span>
+                                {isSelected && <span className="font-black text-sm">✓</span>}
                               </button>
                             );
-                          })}
-                        </>
-                      ) : (
-                        <div className="p-4 text-center text-xs font-bold text-slate-400">
-                          No SKU matches "{skuSearchQuery}"
-                        </div>
-                      )}
+                          })
+                        ) : (
+                          <div className="p-4 text-center text-xs font-bold text-slate-400">
+                            No workers match "{workerSearchQuery}"
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                )}
-
-                {currentSelectedSku && (
-                  <div className="mt-1 px-4 py-2.5 bg-[#faf6f0] border border-[#c8834a]/20 rounded-xl flex items-center justify-between shadow-sm animate-fade-in">
-                    <span className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider flex items-center gap-1.5">
-                      Target Quantity
-                    </span>
-                    <span className="text-sm font-black text-[#c8834a]">{currentSelectedSku.qty_ordered || 0} pcs</span>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          {/* STEP 3: Quantities & Submission */}
-          <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
-            <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
-            <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-              <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span>
-              Quantities &amp; Submission ({selectedStage})
-            </h3>
+            {/* STEP 2: Garment Details & Operation Stage */}
+            <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+              <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
+              <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>2</span>
+                Operation Stage &amp; Garment Details
+              </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+              <div className="space-y-4 pt-2">
+                <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                  <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
+                </label>
 
-              {selectedStage === 'Cutting' ? (
-                <div className="flex flex-col gap-3 md:col-span-2">
-                  <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                    <Scissors className="w-4 h-4 text-amber-600" /> Cut Piece Count (Total Quantity) *
-                  </label>
-                  <p className="text-[10px] text-slate-500 -mt-2">Enter the exact total number of cut pieces for this SKU bundle block creation.</p>
-                  <input
-                    type="number"
-                    id="cutting-count-input"
-                    placeholder="e.g. 50"
-                    value={cuttingCount}
-                    onChange={(e) => setCuttingCount(e.target.value)}
-                    className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm transition-all rounded-xl outline-none"
-                    required
-                    min="1"
-                  />
+                {/* 7 Operation Stage Banners */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {manualStages.map((stage) => {
+                    const isSelected = selectedStage === stage;
+                    return (
+                      <button
+                        key={stage}
+                        type="button"
+                        onClick={() => {
+                          setSelectedStage(stage);
+                          setPieceSeqs('');
+                        }}
+                        className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border ${isSelected
+                          ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]'
+                          : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
+                          }`}
+                      >
+                        {stage}
+                      </button>
+                    );
+                  })}
                 </div>
-              ) : (
-                <div className="flex flex-col gap-3 md:col-span-2">
-                  <div className="flex justify-between items-end">
-                    <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
+
+                {/* Custom Stage Input Removed */}
+              </div>
+
+              <div className="grid grid-cols-1 gap-8 pt-4">
+                <div className="flex flex-col gap-2 relative w-full" ref={skuModalRef}>
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5" style={{ color: '#4a3a2a' }}>
+                      <Ruler className="w-4 h-4" style={{ color: '#c8834a' }} /> Garment SKU (Color / Size) *
                     </label>
                     <button
                       type="button"
-                      onClick={openChecklistModal}
-                      className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                      style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#fff' }}
+                      onClick={() => setSkuRefreshKey(k => k + 1)}
+                      className="flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                      style={{ color: '#c8834a', background: 'rgba(200,131,74,0.08)', border: '1px solid rgba(200,131,74,0.2)' }}
                     >
-                      <ListChecks className="w-3.5 h-3.5" /> Select from Checklist
+                      {skusLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Refresh'}
                     </button>
                   </div>
-                  <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8), or use the checklist.</p>
-                  <div className="flex flex-col sm:flex-row items-stretch gap-4">
-                    <div className="relative flex-1">
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSkuOpen(!isSkuOpen);
+                      if (!isSkuOpen) setSkuSearchQuery('');
+                    }}
+                    className="w-full h-14 px-4 bg-white font-bold border-2 rounded-xl border-[#c8834a]/30 hover:border-[#c8834a] shadow-sm text-sm transition-all flex items-center justify-between text-left cursor-pointer"
+                  >
+                    <span className={currentSelectedSku ? "text-slate-900 font-extrabold text-left break-words whitespace-normal" : "text-slate-400"}>
+                      {currentSelectedSku
+                        ? `[Order #${currentSelectedSku.order_number || 'N/A'}] ${currentSelectedSku.label || `${currentSelectedSku.style_name || ''} · ${currentSelectedSku.color_code || ''} · ${currentSelectedSku.size}`}`
+                        : "-- Select / Search Garment SKU --"
+                      }
+                    </span>
+                    <ChevronDown className={`w-5 h-5 text-[#c8834a] transition-transform duration-200 shrink-0 ml-2 ${isSkuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isSkuOpen && (
+                    <div className="absolute z-[999] top-full mt-2 left-0 w-full bg-white border-2 border-[#c8834a] rounded-2xl shadow-2xl p-3 space-y-3 animate-fade-in">
+                      <div className="relative">
+                        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          type="text"
+                          placeholder="Type Style, SKU, Order No, or Color..."
+                          value={skuSearchQuery}
+                          onChange={(e) => setSkuSearchQuery(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                          className="w-full h-11 pl-9 pr-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]"
+                          autoFocus
+                        />
+                      </div>
+
+                      <div
+                        className="max-h-56 overflow-y-auto pr-1"
+                        onScroll={(e) => {
+                          const bottom = e.target.scrollHeight - e.target.scrollTop <= e.target.clientHeight + 50;
+                          if (bottom && visibleCount < searchFilteredSkus.length) {
+                            setVisibleCount(prev => prev + 60);
+                          }
+                        }}
+                      >
+                        {skusLoading ? (
+                          <div className="p-6 flex flex-col items-center gap-2">
+                            <Loader2 className="w-5 h-5 text-[#c8834a] animate-spin" />
+                            <span className="text-xs font-bold text-slate-400">Loading SKUs...</span>
+                          </div>
+                        ) : searchFilteredSkus.length > 0 ? (
+                          <>
+                            {searchFilteredSkus.slice(0, visibleCount).map((s, idx) => {
+                              const isSelected = skuCode === s.code;
+                              return (
+                                <button
+                                  key={s.code}
+                                  type="button"
+                                  onClick={() => {
+                                    setSkuCode(s.code);
+                                    setIsSkuOpen(false);
+                                  }}
+                                  className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-1 cursor-pointer border ${isSelected
+                                    ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm'
+                                    : 'hover:bg-amber-50/60 text-slate-800 border-transparent'
+                                    }`}
+                                >
+                                  <div className="pr-2 break-words whitespace-normal text-left flex flex-col gap-0.5">
+                                    {isSelected && (
+                                      <span className="text-[9px] font-black uppercase tracking-wider text-amber-200">
+                                        ★ Current Active Style
+                                      </span>
+                                    )}
+                                    <span>{s.order_number || 'N/A'} · {s.label || `${s.style_name || ''} · ${s.color_code || ''} · ${s.size}`}</span>
+                                  </div>
+                                  {isSelected && <span className="font-black text-sm shrink-0">✓</span>}
+                                </button>
+                              );
+                            })}
+                          </>
+                        ) : (
+                          <div className="p-4 text-center text-xs font-bold text-slate-400">
+                            No SKU matches "{skuSearchQuery}"
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {currentSelectedSku && (
+                    <div className="mt-1 px-4 py-2.5 bg-[#faf6f0] border border-[#c8834a]/20 rounded-xl flex items-center justify-between shadow-sm animate-fade-in">
+                      <span className="text-xs font-bold text-[#9a7a5a] uppercase tracking-wider flex items-center gap-1.5">
+                        Target Quantity
+                      </span>
+                      <span className="text-sm font-black text-[#c8834a]">{currentSelectedSku.qty_ordered || 0} pcs</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* STEP 3: Quantities & Submission */}
+            <div className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-hidden" style={{ background: '#fcfaf8', border: '1px solid rgba(200,131,74,0.1)' }}>
+              <div className="absolute top-0 left-0 w-1 h-full" style={{ background: '#c8834a' }}></div>
+              <h3 className="text-sm font-black uppercase tracking-widest pb-3 flex items-center gap-2" style={{ color: '#2d1f0e', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs" style={{ background: 'rgba(200,131,74,0.15)', color: '#c8834a' }}>3</span>
+                Quantities &amp; Submission ({selectedStage})
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+
+                {selectedStage === 'Cutting' || selectedStage === 'Lining' ? (
+                  <div className="flex flex-col gap-3 md:col-span-2 space-y-4">
+                    <div>
+                      <label htmlFor="cutting-count-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-2">
+                        <Scissors className="w-4 h-4 text-amber-600" /> Cut Piece Count (Total Quantity) *
+                      </label>
+                      <p className="text-[10px] text-slate-500 mb-2">Enter the exact total number of cut pieces for this SKU bundle block creation.</p>
                       <input
-                        type="text"
-                        id="piece-seq-input"
-                        placeholder="e.g. 1, 2, 5-8"
-                        value={pieceSeqs}
-                        onChange={(e) => setPieceSeqs(e.target.value)}
-                        className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all rounded-xl outline-none"
+                        type="number"
+                        id="cutting-count-input"
+                        placeholder="e.g. 50"
+                        value={cuttingCount}
+                        onChange={(e) => setCuttingCount(e.target.value)}
+                        className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm transition-all rounded-xl outline-none"
+                        required
+                        min="1"
                       />
                     </div>
-                    <div className="flex gap-2 w-1/4">
+
+                    {selectedStage === 'Cutting' && (
+                      <div className="space-y-4 pt-4 border-t border-slate-200">
+                        <div>
+                          <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-2">
+                            <Scissors className="w-4 h-4 text-[#c8834a]" /> Total Cut Area (DCM) / Count *
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="Enter DCM value or Cut Piece count (e.g. 45)..."
+                            value={barcodeDcm}
+                            onChange={(e) => setBarcodeDcm(e.target.value)}
+                            className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all"
+                            required
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-bold text-slate-600 uppercase">{lotCategory === 'LINING' ? 'Lining' : 'Leather'} Article *</label>
+                            <select
+                              value={lotArticle}
+                              onChange={(e) => { setLotArticle(e.target.value); setLotColor(''); setLotThickness(''); }}
+                              className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
+                            >
+                              <option value="">-- Select Article --</option>
+                              {lotOptions.article?.map(a => <option key={a} value={a}>{a}</option>)}
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-bold text-slate-600 uppercase">{lotCategory === 'LINING' ? 'Lining' : 'Leather'} Colour *</label>
+                            <select
+                              value={lotColor}
+                              onChange={(e) => { setLotColor(e.target.value); setLotThickness(''); }}
+                              className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
+                            >
+                              <option value="">-- Select Color --</option>
+                              {lotOptions.colour?.map(c => <option key={c} value={c}>{c}</option>)}
+                            </select>
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[11px] font-bold text-slate-600 uppercase">Thickness (mm) *</label>
+                            <select
+                              value={lotThickness}
+                              onChange={(e) => setLotThickness(e.target.value)}
+                              className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
+                            >
+                              <option value="">-- Select Thickness --</option>
+                              {lotOptions.thickness?.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                        </div>
+
+                        {/* Lot Status Indicator */}
+                        {lotArticle && lotColor && lotThickness && (
+                          <div className={`p-4 rounded-xl border flex items-center justify-between ${lotResults.length === 1 && lotResults[0].covers_required !== false ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                            <div>
+                              <div className="text-[11px] font-black uppercase tracking-wider text-slate-600 mb-1">Material Availability</div>
+                              <div className="text-sm font-bold">
+                                {lotLoading ? 'Checking...' : (
+                                  lotResults.length === 1 ? (
+                                    lotResults[0].covers_required === false
+                                      ? <span className="text-red-600">Not enough stock (Available: {lotResults[0].available} {lotResults[0].uom})</span>
+                                      : <span className="text-emerald-700">Available: {lotResults[0].available} {lotResults[0].uom}</span>
+                                  ) : (
+                                    <span className="text-red-600">{lotResults.length === 0 ? 'No matching lot found.' : 'Multiple lots found. Refine filters.'}</span>
+                                  )
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3 md:col-span-2">
+                    <div className="flex justify-between items-end">
+                      <label htmlFor="piece-seq-input" className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers (Sequence) *
+                      </label>
                       <button
                         type="button"
-                        onClick={() => setPieceSeqs('')}
-                        className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                        onClick={openChecklistModal}
+                        className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                        style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#fff' }}
                       >
-                        Clear
+                        <ListChecks className="w-3.5 h-3.5" /> Select from Checklist
                       </button>
                     </div>
+                    <p className="text-[10px] text-slate-500 -mt-2">Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8), or use the checklist.</p>
+                    <div className="flex flex-col sm:flex-row items-stretch gap-4">
+                      <div className="relative flex-1">
+                        <input
+                          type="text"
+                          id="piece-seq-input"
+                          placeholder="e.g. 1, 2, 5-8"
+                          value={pieceSeqs}
+                          onChange={(e) => setPieceSeqs(e.target.value)}
+                          className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all rounded-xl outline-none"
+                        />
+                      </div>
+                      <div className="flex gap-2 w-1/4">
+                        <button
+                          type="button"
+                          onClick={() => setPieceSeqs('')}
+                          className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="flex flex-col gap-2">
-                <label htmlFor="date-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                  <Calendar className="w-4 h-4 text-emerald-500" /> Transaction Date *
-                </label>
-                <input
-                  type="date"
-                  id="date-input"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  className="input-field h-14 bg-white font-bold border-2 border-slate-200 shadow-sm px-4 rounded-xl outline-none"
-                  required
-                />
+                <div className="flex flex-col gap-2">
+                  <label htmlFor="date-input" className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-emerald-500" /> Transaction Date *
+                  </label>
+                  <input
+                    type="date"
+                    id="date-input"
+                    value={date}
+                    onChange={(e) => setDate(e.target.value)}
+                    className="input-field h-14 bg-white font-bold border-2 border-slate-200 shadow-sm px-4 rounded-xl outline-none"
+                    required
+                  />
+                </div>
+
+              </div>
+            </div>
+
+            {/* Form Actions */}
+            <div className="pt-4 flex flex-col gap-3">
+              <div className="flex gap-3 w-full">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPieceSeqs('');
+                    setSkuCode('');
+                    setCuttingCount('');
+                  }}
+                  className="flex-1 h-14 font-bold rounded-xl text-base transition-all cursor-pointer active:scale-95"
+                  style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
+                >
+                  Reset All
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={
+                    isSavingCutting || checklistSubmitting ||
+                    ((selectedStage === 'Cutting' || selectedStage === 'Lining') &&
+                      (lotResults.length !== 1 || lotResults[0].covers_required === false))
+                  }
+                  className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
+                >
+                  <Rocket className="w-5 h-5" /> Submit Event
+                </button>
               </div>
 
-            </div>
-          </div>
-
-          {/* Form Actions */}
-          <div className="pt-4 flex flex-col gap-3">
-            <div className="flex gap-3 w-full">
               <button
                 type="button"
                 onClick={() => {
-                  setPieceSeqs('');
-                  setSkuCode('');
-                  setCuttingCount('');
+                  if (!currentSelectedSku) return;
+                  setShowAnalyticsModal(true);
                 }}
-                className="flex-1 h-14 font-bold rounded-xl text-base transition-all cursor-pointer active:scale-95"
-                style={{ background: 'rgba(200,131,74,0.1)', color: '#c8834a' }}
+                className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
+                style={{ color: '#c8834a' }}
               >
-                Reset All
-              </button>
-
-              <button
-                type="submit"
-                className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95"
-                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)', color: '#0f0a06' }}
-              >
-                <Rocket className="w-5 h-5" /> Submit Event 
+                <BarChart3 className="w-4 h-4" />
+                View Analytics {currentSelectedSku ? `for ${currentSelectedSku.style_name || skuCode}` : 'Page'}
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (!currentSelectedSku) return;
-                setShowAnalyticsModal(true);
-              }}
-              className="text-xs font-black px-4 py-2 rounded-xl transition-all hover:bg-slate-100 flex items-center justify-center sm:justify-start gap-1.5"
-              style={{ color: '#c8834a' }}
-            >
-              <BarChart3 className="w-4 h-4" />
-              View Analytics {currentSelectedSku ? `for ${currentSelectedSku.style_name || skuCode}` : 'Page'}
-            </button>
-          </div>
-
-        </form>
+          </form>
         )}
 
       </SpotlightCard>
@@ -2230,13 +2629,13 @@ export default function ProductionLogEntry() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto bg-slate-50 flex-1">
-              <AnalyticsPopupContent 
-                token={token} 
-                sku={currentSelectedSku} 
-                data={analyticsData} 
-                setData={setAnalyticsData} 
+              <AnalyticsPopupContent
+                token={token}
+                sku={currentSelectedSku}
+                data={analyticsData}
+                setData={setAnalyticsData}
                 lastSubmittedPieceSeqs={lastSubmittedPieceSeqs}
               />
             </div>
@@ -2421,9 +2820,18 @@ export default function ProductionLogEntry() {
                   >Retry</button>
                 </div>
               ) : checklistPieces.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-32 gap-2">
-                  <p className="text-sm font-bold text-slate-400">No pieces found for this SKU/stage.</p>
-                  <p className="text-xs text-slate-400">Run Cutting first to mint pieces for this SKU.</p>
+                <div className="flex flex-col items-center justify-center h-36 gap-2 text-center p-4">
+                  <AlertTriangle className="w-8 h-8 text-amber-500" />
+                  <p className="text-sm font-bold text-slate-700">
+                    {selectedStage.toLowerCase().includes('line') || selectedStage.toLowerCase().includes('stitch')
+                      ? "No pieces sent from Store Hub yet!"
+                      : "No pending pieces found for this SKU/stage."}
+                  </p>
+                  <p className="text-xs text-slate-500">
+                    {selectedStage.toLowerCase().includes('line') || selectedStage.toLowerCase().includes('stitch')
+                      ? "Drawers must be Received and SENDED from Store Hub before Line Stitching can begin."
+                      : "Complete the previous stage first to advance pieces."}
+                  </p>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -2441,17 +2849,27 @@ export default function ProductionLogEntry() {
                     };
 
                     const isPieceEligible = (p) => {
-                      if (p.done_at_op) return false;
                       const activeNorm = normalizeStageName(selectedStage);
-                      const activeOpIdx = stageOrder.indexOf(activeNorm);
-                      const pieceNorm = normalizeStageName(p.current_stage_label || p.current_stage);
+                      const isFusingDone = submittedStageMap['Fusing']?.includes(p.seq) || p.fusing_done;
+                      const isPastingDone = submittedStageMap['Pasting']?.includes(p.seq) || p.pasting_done;
+                      const isThisStageDone = submittedStageMap[selectedStage]?.includes(p.seq) || p.done_at_op;
 
-                      // Factory Rule: Pieces at Cutting ('cut') are ONLY enabled in Cutting (0) & Fusing (1).
-                      // From Pasting (2) onwards, Cutting pieces are BLOCKED & DISABLED!
-                      if (pieceNorm === 'cut' && activeOpIdx >= 2) {
-                        return false;
+                      if (isThisStageDone) return false;
+
+                      if (activeNorm === 'fusing') {
+                        return !isFusingDone;
                       }
-                      return true;
+
+                      if (activeNorm === 'pasting') {
+                        return isFusingDone && !isPastingDone;
+                      }
+
+                      if (activeNorm === 'linestitch' || activeNorm === 'shellstitch') {
+                        const isSended = storeReceiveStatus === 'sended' || storeSendedSkus.includes(skuCode) || p.store_sended;
+                        return isSended && !isThisStageDone;
+                      }
+
+                      return !isThisStageDone;
                     };
 
                     return (
@@ -2480,8 +2898,62 @@ export default function ProductionLogEntry() {
 
                         {checklistPieces.map((piece) => {
                           const isSelected = selectedPieces.includes(piece.seq);
-                          const isDone = piece.done_at_op;
-                          const isEligible = isPieceEligible(piece);
+                          const activeNorm = normalizeStageName(selectedStage);
+
+                          const isFusingDone = submittedStageMap['Fusing']?.includes(piece.seq) || piece.fusing_done;
+                          const isPastingDone = submittedStageMap['Pasting']?.includes(piece.seq) || piece.pasting_done;
+                          const isThisStageDone = submittedStageMap[selectedStage]?.includes(piece.seq) || piece.done_at_op;
+
+                          let isDone = false;
+                          let isEligible = true;
+                          let stageBadgeText = 'Cutting';
+
+                          if (activeNorm === 'fusing') {
+                            if (isFusingDone) {
+                              isDone = true;
+                              isEligible = false;
+                              stageBadgeText = 'Fusing Done';
+                            } else {
+                              isDone = false;
+                              isEligible = true;
+                              stageBadgeText = 'Cutting';
+                            }
+                          } else if (activeNorm === 'pasting') {
+                            if (isPastingDone) {
+                              isDone = true;
+                              isEligible = false;
+                              stageBadgeText = 'Pasting Done';
+                            } else if (!isFusingDone) {
+                              isDone = false;
+                              isEligible = false;
+                              stageBadgeText = 'Needs Fusing';
+                            } else {
+                              isDone = false;
+                              isEligible = true;
+                              stageBadgeText = 'Fusing';
+                            }
+                          } else if (activeNorm === 'linestitch' || activeNorm === 'shellstitch') {
+                            if (isThisStageDone) {
+                              isDone = true;
+                              isEligible = false;
+                              stageBadgeText = `${selectedStage} Done`;
+                            } else if (!isPastingDone) {
+                              isDone = false;
+                              isEligible = false;
+                              stageBadgeText = 'Needs Pasting';
+                            } else {
+                              isDone = false;
+                              isEligible = true;
+                              stageBadgeText = 'Store Sended';
+                            }
+                          } else {
+                            if (isThisStageDone) {
+                              isDone = true;
+                              isEligible = false;
+                              stageBadgeText = `${selectedStage} Done`;
+                            }
+                          }
+
                           const isDisabled = isDone || !isEligible;
 
                           return (
@@ -2490,34 +2962,35 @@ export default function ProductionLogEntry() {
                               type="button"
                               disabled={isDisabled}
                               onClick={() => {
+                                if (isDisabled) return;
                                 setSelectedPieces(prev =>
                                   prev.includes(piece.seq)
                                     ? prev.filter(s => s !== piece.seq)
                                     : [...prev, piece.seq]
                                 );
                               }}
-                              className={`relative p-3 rounded-xl border-2 text-left transition-all ${!isDisabled ? 'cursor-pointer' : 'cursor-not-allowed'} ${isSelected
+                              className={`relative p-3 rounded-xl border-2 text-left transition-all ${!isDisabled ? 'cursor-pointer hover:border-[#c8834a]' : 'cursor-not-allowed opacity-60 bg-slate-100'} ${isSelected
                                 ? 'border-[#c8834a] bg-[#c8834a]/10 shadow-md'
                                 : isDone
-                                  ? 'border-emerald-200 bg-emerald-50 opacity-70'
+                                  ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
                                   : !isEligible
-                                    ? 'border-slate-100 bg-slate-50 opacity-50'
-                                    : 'border-slate-200 bg-white hover:border-[#c8834a]/40'
-                              }`}
+                                    ? 'border-slate-200 bg-slate-100 text-slate-400'
+                                    : 'border-slate-200 bg-white'
+                                }`}
                             >
-                              <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (!isEligible ? '#94a3b8' : '#2d1f0e') }}>
+                              <p className="text-xs font-black" style={{ color: isSelected ? '#c8834a' : (isDone ? '#047857' : !isEligible ? '#94a3b8' : '#2d1f0e') }}>
                                 #{piece.seq}
                               </p>
-                              <p className={`text-[9px] truncate ${isDone ? 'font-black text-emerald-700' : isSelected ? 'font-bold text-[#c8834a]' : 'font-semibold text-slate-400'}`}>
-                                {isDone ? selectedStage : (piece.current_stage_label || piece.current_stage || selectedStage)}
+                              <p className={`text-[9px] font-bold truncate ${isDone ? 'text-emerald-700 font-extrabold' : isSelected ? 'text-[#c8834a]' : 'text-slate-500'}`}>
+                                {stageBadgeText}
                               </p>
-                              {isDone && !isSelected && (
-                                <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-emerald-500 flex items-center justify-center">
-                                  <CheckCircle2 className="w-2.5 h-2.5 text-white" />
+                              {isDone && (
+                                <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-emerald-500 flex items-center justify-center shadow-sm">
+                                  <CheckCircle2 className="w-3 h-3 text-white" />
                                 </span>
                               )}
-                              {isSelected && (
-                                <span className="absolute top-1 right-1 w-3 h-3 rounded-full flex items-center justify-center" style={{ background: '#c8834a' }}>
+                              {isSelected && !isDone && (
+                                <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full flex items-center justify-center shadow-sm" style={{ background: '#c8834a' }}>
                                   <span className="w-1.5 h-1.5 rounded-full bg-white" />
                                 </span>
                               )}
@@ -2702,6 +3175,373 @@ export default function ProductionLogEntry() {
           </div>
         </div>,
         document.body
+      )}
+
+
+      {/* TAB 3: STORE MANAGER HUB */}
+      {activeDoor === 'store' && (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* Header & Metrics */}
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
+              <div className="text-xs text-slate-500 font-bold mb-1">Total Drawers</div>
+              <div className="text-2xl font-black text-slate-800">{storeTotal}</div>
+            </div>
+            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
+              <div className="text-xs text-emerald-600 font-bold mb-1">Drawers Free</div>
+              <div className="text-2xl font-black text-emerald-700">{storeFree}</div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
+              <div className="text-xs text-amber-700 font-bold mb-1">Leather</div>
+              <div className="text-2xl font-black text-amber-800">{storeLeather}</div>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
+              <div className="text-xs text-blue-700 font-bold mb-1">Lining</div>
+              <div className="text-2xl font-black text-blue-800">{storeLining}</div>
+            </div>
+            <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
+              <div className="text-xs text-purple-700 font-bold mb-1">Both</div>
+              <div className="text-2xl font-black text-purple-800">{storeBoth}</div>
+            </div>
+            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
+              <div className="text-xs text-indigo-700 font-bold mb-1">Upcoming Bundles</div>
+              <div className="text-2xl font-black text-indigo-800">8</div>
+            </div>
+          </div>
+
+          {/* Barcode Scanner & Filters */}
+          <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
+            <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Store Verification Gateway</h3>
+              </div>
+
+              <div className="flex flex-col gap-4 mt-2">
+                <div className="relative">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block">Scanner Input</label>
+                  <div className="relative flex items-center">
+                    <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 pointer-events-none" />
+                    <input
+                      type="text"
+                      placeholder={!storeDrawerInput ? "Scan Drawer ID first..." : "Scan Piece Barcode..."}
+                      value={storeCurrentScan}
+                      onChange={(e) => setStoreCurrentScan(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const val = storeCurrentScan.trim();
+                          if (!val) return;
+                          if (val.toUpperCase().startsWith('DRW-') || val.toUpperCase().startsWith('DRAWER')) {
+                            const drawerCode = val.toUpperCase();
+                            setStoreDrawerInput(drawerCode);
+                            setStoreDrawerSearch(drawerCode); // Auto-filter list below
+                          } else {
+                            setStorePieceInput(val);
+                          }
+                          setStoreCurrentScan('');
+                        }
+                      }}
+                      autoFocus
+                      className="w-full h-16 pl-12 pr-12 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all"
+                    />
+                    <button className="absolute right-3 text-slate-400 hover:text-[#c8834a] p-2 transition-colors">
+                      <Camera className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Status Badges */}
+                <div className="flex items-center gap-3">
+                  <div className={`flex-1 p-3 rounded-lg border flex justify-between items-center ${storeDrawerInput ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+                    <span className="text-xs font-bold uppercase">Drawer</span>
+                    <span className="font-mono text-xs font-black">{storeDrawerInput || 'Waiting...'}</span>
+                  </div>
+                  <div className={`flex-1 p-3 rounded-lg border flex justify-between items-center ${storePieceInput ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+                    <span className="text-xs font-bold uppercase">Piece</span>
+                    <span className="font-mono text-xs font-black">{storePieceInput || 'Waiting...'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Verify Button */}
+              {storeDrawerInput && storePieceInput && (
+                <button
+                  type="button"
+                  onClick={handleStoreVerify}
+                  disabled={storeApiLoading}
+                  className="w-full h-14 mt-5 rounded-xl font-black text-sm text-white shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                  style={{ background: '#c8834a' }}
+                >
+                  {storeApiLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
+                  Verify & Log Scan
+                </button>
+              )}
+
+              {/* Server-Driven Status Panel & 3-Hold Logic */}
+              {storeVerifyResult && (
+                <div className="mt-6 bg-slate-50 border-2 border-[#c8834a]/30 rounded-2xl p-5 shadow-inner space-y-4 animate-fade-in">
+                  <div className="flex items-center justify-between border-b border-[#c8834a]/20 pb-3">
+                    <div>
+                      <h4 className="text-sm font-black text-slate-800">Scan Verified</h4>
+                      <p className="text-[11px] font-bold text-slate-500 mt-0.5">
+                        Drawer: {storeVerifyResult.drawer_code} | Piece: {storeVerifyResult.piece_code}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <span className="text-xs font-black px-3 py-1 rounded uppercase bg-emerald-100 text-emerald-800">
+                        {isCheckedLeather && isCheckedLining
+                          ? 'HOLD BOTH' 
+                          : (storeVerifyResult.state?.replace('_', ' ') || 'MERGED')}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Manual Checklist for Hold States */}
+                  <div className="py-2 space-y-3">
+                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Drawer Contents Validation</p>
+                    <div className="space-y-2">
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${
+                          isCheckedLeather
+                            ? 'bg-emerald-500 border-emerald-500 text-white' 
+                            : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
+                        }`}>
+                          <Check className="w-4 h-4" />
+                        </div>
+                        <input type="checkbox" className="hidden" checked={isCheckedLeather} onChange={(e) => setIsCheckedLeather(e.target.checked)} />
+                        <span className="text-sm font-bold text-slate-700">Hold Leather (Manual Check)</span>
+                      </label>
+                      
+                      <label className="flex items-center gap-3 cursor-pointer group">
+                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${
+                          isCheckedLining
+                            ? 'bg-emerald-500 border-emerald-500 text-white' 
+                            : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
+                        }`}>
+                          <Check className="w-4 h-4" />
+                        </div>
+                        <input type="checkbox" className="hidden" checked={isCheckedLining} onChange={(e) => setIsCheckedLining(e.target.checked)} />
+                        <span className="text-sm font-bold text-slate-700">Hold Lining (Manual Check)</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Receive/Send Action Buttons */}
+                  <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleStoreTransition('RECEIVED')}
+                      disabled={
+                        storeReceiveStatus !== 'pending' || 
+                        storeApiLoading || 
+                        !isCheckedLeather || 
+                        !isCheckedLining
+                      }
+                      className="flex-1 w-full py-3 bg-[#c8834a] hover:bg-[#b07038] text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      {storeReceiveStatus !== 'pending' ? <CheckCircle2 className="w-4 h-4" /> : <PackageCheck className="w-4 h-4" />}
+                      {storeReceiveStatus !== 'pending' ? 'Received' : 'Receive'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleStoreTransition('SENDED')}
+                      disabled={storeReceiveStatus !== 'received' || storeApiLoading}
+                      className="flex-1 w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <Send className="w-4 h-4" />
+                      Send to Line Stitching
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="bg-slate-50 border-b border-slate-200 px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <h3 className="font-black text-slate-800 flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-[#c8834a]" />
+                    Drawers
+                  </h3>
+
+                  <div className="flex flex-wrap items-center gap-3">
+                    {/* Search Drawer Input */}
+                    <div className="relative flex-1 min-w-[180px]">
+                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={storeDrawerSearch}
+                        onChange={(e) => setStoreDrawerSearch(e.target.value)}
+                        placeholder="Search Drawer (e.g. DRW-0001)..."
+                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a] shadow-sm"
+                      />
+                      {storeDrawerSearch && (
+                        <button
+                          onClick={() => setStoreDrawerSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Type/Status Filter */}
+                    <select
+                      value={storeFilterType}
+                      onChange={(e) => setStoreFilterType(e.target.value)}
+                      className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a]"
+                    >
+                      <option value="All">All Types</option>
+                      <option value="Leather">Leather Only ({storeLeather})</option>
+                      <option value="Lining">Lining Only ({storeLining})</option>
+                      <option value="Both">Both ({storeBoth})</option>
+                      <option value="Free">Empty Drawers ({storeFree})</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={fetchLiveDrawers}
+                      disabled={storeLoading}
+                      className="px-3 py-1.5 bg-[#c8834a] hover:bg-[#b07038] text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
+                      title="Reload Live Drawers"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${storeLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </button>
+                  </div>
+                </div>
+                <div className="divide-y divide-slate-100">
+                  {storeDrawers
+                    .filter(d => {
+                      if (!storeDrawerSearch.trim()) return true;
+                      const q = storeDrawerSearch.trim().toLowerCase();
+                      return (
+                        (d.id && d.id.toLowerCase().includes(q)) ||
+                        (d.code && d.code.toLowerCase().includes(q)) ||
+                        (d.client && d.client.toLowerCase().includes(q)) ||
+                        (d.style && d.style.toLowerCase().includes(q))
+                      );
+                    })
+                    .filter(d => {
+                      if (storeFilterType === 'All') return true;
+                      if (storeFilterType === 'Free') return d.status === 'Free';
+                      return d.type === storeFilterType;
+                    })
+                    .map(drawer => {
+                      const isScannedDrawer = storeDrawerInput.trim().toUpperCase() === drawer.id.toUpperCase();
+                      const isExpanded = expandedDrawer === drawer.id || isScannedDrawer;
+                      return (
+                        <div key={drawer.id} className={`transition-colors hover:bg-slate-50 ${isScannedDrawer ? 'ring-2 ring-[#c8834a] ring-inset bg-amber-50/30' : ''}`}>
+                          <div
+                            onClick={() => setExpandedDrawer(isExpanded && expandedDrawer === drawer.id ? null : drawer.id)}
+                            className="px-5 py-4 flex items-center justify-between cursor-pointer"
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm ${drawer.status === 'Free' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
+                                {drawer.id.replace('DRW-', '')}
+                              </div>
+                              <div>
+                                <div className="font-black text-slate-800">{drawer.id} <span className="text-slate-400 font-medium text-xs ml-2">({drawer.type})</span></div>
+                                <div className="text-xs font-bold text-slate-500 mt-0.5">
+                                  {drawer.client !== '-' ? `${drawer.client} / ${drawer.style}` : 'Empty Drawer'}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                              {drawer.pieces > 0 && (
+                                <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md text-[10px] font-black">
+                                  {drawer.pieces} Pieces
+                                </span>
+                              )}
+                              {isExpanded ? <ChevronDown className="w-5 h-5 text-slate-400" /> : <ChevronRight className="w-5 h-5 text-slate-400" />}
+                              {isScannedDrawer && (
+                                <span className="bg-[#c8834a] text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Scanned</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Expanded Details */}
+                          {isExpanded && (
+                            <div className="px-5 pb-5 pt-2 bg-slate-50/50 border-t border-slate-100">
+                              <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm">
+                                <div className="flex items-center justify-between mb-4">
+                                  <h4 className="font-black text-sm text-slate-700">Drawer Contents</h4>
+                                  <span className="text-xs font-bold text-slate-500">Status: <span className="text-emerald-600">{drawer.status}</span></span>
+                                </div>
+                                {drawer.pieces > 0 ? (
+                                  <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                        <div className="text-[10px] text-slate-500 font-bold uppercase">Client</div>
+                                        <div className="text-sm font-black text-slate-800">{drawer.client}</div>
+                                      </div>
+                                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                        <div className="text-[10px] text-slate-500 font-bold uppercase">Style</div>
+                                        <div className="text-sm font-black text-slate-800">{drawer.style}</div>
+                                      </div>
+                                      {drawer.cuttingDetail && (
+                                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                          <div className="text-[10px] text-slate-500 font-bold uppercase">Cutting Detail</div>
+                                          <div className="text-sm font-black text-slate-800">{drawer.cuttingDetail}</div>
+                                        </div>
+                                      )}
+                                      {drawer.styleDetail && (
+                                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
+                                          <div className="text-[10px] text-slate-500 font-bold uppercase">Style Detail</div>
+                                          <div className="text-sm font-black text-slate-800">{drawer.styleDetail}</div>
+                                        </div>
+                                      )}
+                                      {drawer.currentProcess && (
+                                        <div className="col-span-2 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100">
+                                          <div className="text-[10px] text-indigo-500 font-bold uppercase">Incoming Process</div>
+                                          <div className="text-sm font-black text-indigo-700">{drawer.currentProcess}</div>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {/* Action Buttons for this Drawer */}
+                                    <div className="pt-3 border-t border-slate-100 space-y-2">
+                                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-2">Actions</div>
+                                      <div className="flex flex-wrap gap-2">
+
+                                        {/* Receive */}
+                                        <button
+                                          onClick={() => {
+                                            setStoreDrawerInput(drawer.id);
+                                            handleStoreTransition('RECEIVED', drawer.drawer_id || drawer.id);
+                                          }}
+                                          disabled={storeApiLoading}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-200 text-xs font-black rounded-lg transition-all disabled:opacity-50 cursor-pointer"
+                                        >
+                                          <PackageCheck className="w-3.5 h-3.5" />
+                                          Receive
+                                        </button>
+                                        {/* Send to Shell Stitch */}
+                                        <button
+                                          onClick={() => {
+                                            setStoreDrawerInput(drawer.id);
+                                            handleStoreTransition('SENDED', drawer.drawer_id || drawer.id);
+                                          }}
+                                          disabled={storeApiLoading}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg shadow-sm transition-all disabled:opacity-50 cursor-pointer"
+                                        >
+                                          <PackageCheck className="w-3.5 h-3.5" />
+                                          {storeApiLoading && storeDrawerInput === drawer.id ? 'Processing...' : 'Send to Shell Stitch'}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-6 text-slate-400 text-sm font-bold italic">
+                                    This drawer is currently empty and available for use.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>

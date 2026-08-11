@@ -7,7 +7,7 @@ import {
   Lock, RefreshCw, CheckSquare, Square, X,
   Timer, CalendarDays, Shield, Zap, Filter,
   UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff,
-  Barcode, QrCode, Check, Camera
+  Barcode, QrCode, Check
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
@@ -537,10 +537,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
   const [isResolvingScan, setIsResolvingScan] = useState(false);
   const scanInputRef = useRef(null);
 
-  // Mobile/webcam barcode scanning (Code128) via html5-qrcode
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const html5QrRef = useRef(null);
-
   const playBeep = (freq = 880, type = 'sine') => {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -553,7 +549,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       gain.connect(ctx.destination);
       osc.start();
       osc.stop(ctx.currentTime + 0.15);
-    } catch (e) {}
+    } catch (e) { }
   };
 
   const handleScanAttendance = async (codeToResolve) => {
@@ -564,8 +560,8 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
 
     try {
       const targetCode = rawCode.toUpperCase();
-      
-      const matchedWorker = workers.find(w => 
+
+      const matchedWorker = workers.find(w =>
         String(w.employee_barcode || '').toUpperCase() === targetCode ||
         String(w.id).toUpperCase() === targetCode ||
         String(w.id).toUpperCase() === targetCode.replace('EMP-', '') ||
@@ -575,8 +571,8 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       let targetId = targetCode;
       let targetName = "Unknown Worker";
       if (matchedWorker) {
-         targetId = String(matchedWorker.id);
-         targetName = matchedWorker.name;
+        targetId = String(matchedWorker.id);
+        targetName = matchedWorker.name;
       }
 
       const isAlreadyIn = checkedInIds.has(targetId);
@@ -590,25 +586,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       }
 
       const direction = !isAlreadyIn ? 'in' : 'out';
-
-      if (isSecurity) {
-        // MOCK FLOW FOR SECURITY
-        await new Promise(r => setTimeout(r, 600)); // Simulate API delay
-        playBeep(1046, 'sine');
-
-        const timeStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
-
-
-        if (direction === 'in') {
-          setCheckedInIds(prev => new Set([...prev, targetId]));
-          showAlert('success', `🟢 AUTOMATIC CHECK-IN CONFIRMED: ${targetName} (${targetCode}) at ${timeStr}`);
-        } else {
-          setCheckedOutIds(prev => new Set([...prev, targetId]));
-          showAlert('success', `🔴 AUTOMATIC CHECK-OUT CONFIRMED: ${targetName} (${targetCode}) at ${timeStr} (Shift Complete)`);
-        }
-        setScanInput('');
-        return;
-      }
 
       let coords = null;
       let reason = undefined;
@@ -662,17 +639,16 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
 
   useEffect(() => {
     async function initStatus() {
-      if (isSecurity) return; // Mock: don't fetch real data if Security Workspace
       try {
         const rosterData = await apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token);
         if (rosterData && Array.isArray(rosterData)) {
           // One-time per day logic:
           // 1. If they have ANY record today, they have already checked in (disable Check-In)
           const inIds = rosterData.map(r => String(r.employee_id));
-          
+
           // 2. If their record has check_out_at, they have already checked out (disable Check-Out)
           const outIds = rosterData.filter(r => r.check_out_at).map(r => String(r.employee_id));
-          
+
           setCheckedInIds(prev => new Set([...prev, ...inIds]));
           setCheckedOutIds(prev => new Set([...prev, ...outIds]));
         }
@@ -689,52 +665,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
     setAlert({ type, message });
     if (type === 'success') setTimeout(() => setAlert(null), 6000);
   };
-
-  // Mobile/webcam Code128 scanning — starts the camera + decoder when the
-  // scan modal opens, tears it down on close/unmount either way.
-  useEffect(() => {
-    if (!cameraOpen) return;
-    let cancelled = false;
-    let handled = false;
-
-    (async () => {
-      try {
-        const { Html5Qrcode, Html5QrcodeSupportedFormats } = await import('html5-qrcode');
-        if (cancelled) return;
-        const scanner = new Html5Qrcode('barcode-camera-region', {
-          formatsToSupport: [Html5QrcodeSupportedFormats.CODE_128],
-          verbose: false,
-        });
-        html5QrRef.current = scanner;
-        await scanner.start(
-          { facingMode: 'environment' },
-          { fps: 10, qrbox: { width: 280, height: 120 } },
-          (decodedText) => {
-            if (handled) return;
-            handled = true;
-            setCameraOpen(false);
-            setScanInput(decodedText);
-            handleScanAttendance(decodedText);
-          },
-          () => {}, // per-frame "nothing decoded yet" — expected while aiming, ignore
-        );
-      } catch (err) {
-        if (!cancelled) {
-          showAlert('error', 'Camera unavailable — check browser permissions or use a USB scanner instead.');
-          setCameraOpen(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-      const scanner = html5QrRef.current;
-      html5QrRef.current = null;
-      if (scanner) {
-        scanner.stop().then(() => scanner.clear()).catch(() => {});
-      }
-    };
-  }, [cameraOpen]);
 
   const handleAddWorker = async () => {
     const { name, phone, designation, wage_type, daily_rate, password } = addForm;
@@ -810,35 +740,18 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
     try {
       const requestedIds = [...selected];
 
-      if (isSecurity) {
-        // MOCK BATCH ACTION FOR SECURITY
-        await new Promise(r => setTimeout(r, 600)); // simulate delay
-        const normalizedRequested = requestedIds.map((id) => String(id));
-        const succeeded = normalizedRequested;
-        const failed = [];
-        
-        if (type === 'check-in') {
-          setCheckedInIds(prev => new Set([...prev, ...succeeded]));
-        } else {
-          setCheckedOutIds(prev => new Set([...prev, ...succeeded]));
-        }
-        setSelected(new Set());
-        setTimeout(() => setDiffModal({ type, succeeded, failed }), 0);
-        return;
-      }
-
       const coords = await gps.getPosition();
       const endpoint = type === 'check-in' ? `${API}/proxy/check-in` : `${API}/proxy/check-out`;
       const result = await apiFetch(endpoint, {
         method: 'POST',
         body: JSON.stringify({ employee_ids: requestedIds, lat: coords.lat, lon: coords.lon }),
       }, token);
-      
+
       const succeededIds = new Set(result.map((r) => String(r.employee_id)));
       const normalizedRequested = requestedIds.map((id) => String(id));
       const succeeded = normalizedRequested.filter((id) => succeededIds.has(id));
       const failed = normalizedRequested.filter((id) => !succeededIds.has(id));
-      
+
       if (type === 'check-in') {
         setCheckedInIds(prev => new Set([...prev, ...succeeded]));
       } else {
@@ -876,7 +789,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       {/* AUTOMATIC BARCODE GUN ATTENDANCE SCANNER HEADER BAR */}
       <div className="bg-gradient-to-r from-[#2d1f0e] via-[#3a2817] to-[#1c1207] p-5 sm:p-6 rounded-3xl shadow-2xl text-white relative overflow-hidden border border-[#c8834a]/30">
         <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
-        
+
         <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-5 relative z-10">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center shrink-0 shadow-inner">
@@ -895,8 +808,8 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
             </div>
           </div>
 
-          <div className="flex-1 max-w-xl flex items-center gap-2">
-            <div className="relative flex-1 flex items-center shadow-lg rounded-2xl overflow-hidden border border-[#c8834a]/40 bg-white/10 backdrop-blur-md focus-within:border-[#f5d4a4] transition-all">
+          <div className="flex-1 max-w-xl">
+            <div className="relative flex items-center shadow-lg rounded-2xl overflow-hidden border border-[#c8834a]/40 bg-white/10 backdrop-blur-md focus-within:border-[#f5d4a4] transition-all">
               <QrCode className="w-5 h-5 text-[#f5d4a4] absolute left-4 pointer-events-none" />
               <input
                 ref={scanInputRef}
@@ -926,36 +839,9 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
                 )}
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setCameraOpen(true)}
-              disabled={isResolvingScan}
-              title="Scan with phone/webcam camera"
-              className="h-12 w-12 shrink-0 flex items-center justify-center rounded-2xl border border-[#c8834a]/40 bg-white/10 backdrop-blur-md text-[#f5d4a4] hover:bg-white/20 hover:border-[#f5d4a4] active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40"
-            >
-              <Camera className="w-5 h-5" />
-            </button>
           </div>
         </div>
       </div>
-
-      {/* Camera-based barcode scan modal — mobile/webcam alternative to the USB gun */}
-      <AnimatedModal
-        isOpen={cameraOpen}
-        onClose={() => setCameraOpen(false)}
-        zIndex={2000}
-        panelClassName="rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
-        panelStyle={{ background: '#1c1207', border: '1px solid rgba(200,131,74,0.4)' }}
-      >
-        <div className="flex items-center justify-between px-5 py-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.25)' }}>
-          <h3 className="font-bold text-sm text-white flex items-center gap-2"><Camera className="w-4 h-4 text-[#f5d4a4]" /> Scan with Camera</h3>
-          <button onClick={() => setCameraOpen(false)}><X className="w-5 h-5 text-[#e2d5c3]/70" /></button>
-        </div>
-        <div className="p-5 space-y-3">
-          <p className="text-xs text-[#e2d5c3]/70 font-medium">Point the camera at the worker&apos;s ID barcode. It scans automatically — no need to tap anything.</p>
-          <div id="barcode-camera-region" className="w-full rounded-xl overflow-hidden bg-black" style={{ minHeight: 220 }} />
-        </div>
-      </AnimatedModal>
 
       <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-4 relative overflow-hidden rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
@@ -1018,9 +904,9 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
                       </td>
                       <td className="p-3 font-semibold" style={{ color: '#a86022' }}>{w.designation || '—'}</td>
                       <td className="p-3 relative">
-                        <Badge 
-                          label={isPieceRate ? 'Daily Wage' : 'Monthly'} 
-                          type={isPieceRate ? 'proxy' : 'active'} 
+                        <Badge
+                          label={isPieceRate ? 'Daily Wage' : 'Monthly'}
+                          type={isPieceRate ? 'proxy' : 'active'}
                         />
                         {isSelected && isPieceRate && (
                           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-20" onClick={(e) => e.stopPropagation()}>
@@ -1541,7 +1427,7 @@ function EmployeesListView({ workers = [] }) {
       <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
-            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Employees Directory (Mocked)
+            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Employees Directory
           </h3>
           <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1582,31 +1468,36 @@ function EmployeesListView({ workers = [] }) {
   );
 }
 
+
 // ═══════════════════════════════════════════════════════════════════════════════
-// VIEW F — ATTENDANCE HISTORY (MOCKED)
-// ═══════════════════════════════════════════════════════════════════════════════
-function AttendanceHistoryView() {
+function AttendanceHistoryView({ token }) {
   const [history, setHistory] = useState([]);
-  
-  // Generate dummy data on mount
+  const [loading, setLoading] = useState(false);
+
+  // Fetch live today's roster from API
   useEffect(() => {
-    const d = new Date();
-    const today = d.toISOString().split('T')[0];
-    const dummyData = [
-      { id: 1, employee_id: 'EMP-001', employee_name: 'John Doe', check_in_at: `${today}T08:50:00Z`, check_out_at: `${today}T18:05:00Z`, status: 'Present', source: 'proxy' },
-      { id: 2, employee_id: 'EMP-002', employee_name: 'Jane Smith', check_in_at: `${today}T09:15:00Z`, check_out_at: null, status: 'Late', source: 'self' },
-      { id: 3, employee_id: 'EMP-003', employee_name: 'Mike Johnson', check_in_at: `${today}T08:55:00Z`, check_out_at: `${today}T17:30:00Z`, status: 'Short', source: 'proxy' },
-    ];
-    setHistory(dummyData);
-  }, []);
+    let isMounted = true;
+    setLoading(true);
+    apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token)
+      .then((data) => {
+        if (!isMounted) return;
+        setHistory(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => console.error('Failed to fetch attendance history', err))
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+      
+    return () => { isMounted = false; };
+  }, [token]);
 
   return (
     <div className="space-y-6">
       <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2 mb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
-          <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster (Mocked)
+          <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster {loading && <span className="text-xs text-slate-400 animate-pulse">(Updating...)</span>}
         </h3>
-        
+
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs whitespace-nowrap">
             <thead>
@@ -1646,21 +1537,22 @@ function AttendanceHistoryView() {
 export default function AttendancePage() {
   const { user, token } = useAuth();
 
-  const isManager = user === 'direct_manager';
+  const isManager = user === 'direct_manager' || user === 'managing_director';
   const isSupervisor = user === 'cutting_manager' || user === 'stitching_manager' || isManager;
   const isSecurity = user === 'security';
+  const isMD = user === 'managing_director';
 
   const tabs = isSecurity ? [
     { key: 'employees', label: 'Employees List', icon: Users, show: true },
     { key: 'proxy', label: 'Floor Command', icon: QrCode, show: true },
     { key: 'history', label: 'Attendance History', icon: CalendarDays, show: true },
   ] : [
-    { key: 'me', label: 'My Attendance', icon: Clock, show: true },
+    { key: 'me', label: 'My Attendance', icon: Clock, show: !isMD },
     { key: 'proxy', label: 'Floor Command', icon: Users, show: isSupervisor },
     { key: 'admin', label: 'Operations & HR', icon: Building2, show: isManager },
   ].filter((t) => t.show);
 
-  const [activeTab, setActiveTab] = useState(isSecurity ? 'employees' : 'me');
+  const [activeTab, setActiveTab] = useState(isSecurity ? 'employees' : (isMD ? 'admin' : 'me'));
   const [workers, setWorkers] = useState([]);
   const [workerRefreshKey, setWorkerRefreshKey] = useState(0);
 
@@ -1669,30 +1561,12 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    if (isSecurity) {
-      // MOCK DATA FOR SECURITY WORKSPACE
-      setWorkers([
-        { id: 1, name: 'John Doe', employee_barcode: 'EMP-001', phone: '9876543210', designation: 'cutting_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 2, name: 'Jane Smith', employee_barcode: 'EMP-002', phone: '9876543211', designation: 'stitching_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 3, name: 'Mike Johnson', employee_barcode: 'EMP-003', phone: '9876543212', designation: 'helper', wage_type: 'piece_rate', is_active: false },
-        { id: 12, name: 'Test User', employee_barcode: 'EMP-000012', phone: '1234567890', designation: 'operator', wage_type: 'piece_rate', is_active: true },
-        { id: 4, name: 'Arun Kumar', employee_barcode: 'EMP-004', phone: '9876543214', designation: 'supervisor', wage_type: 'piece_rate', is_active: true },
-        { id: 5, name: 'Priya Raj', employee_barcode: 'EMP-005', phone: '9876543215', designation: 'packing_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 6, name: 'Mani Kandan', employee_barcode: 'EMP-006', phone: '9876543216', designation: 'ironing_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 7, name: 'Karthik', employee_barcode: 'EMP-007', phone: '9876543217', designation: 'stitching_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 8, name: 'Selvi', employee_barcode: 'EMP-008', phone: '9876543218', designation: 'helper', wage_type: 'piece_rate', is_active: true },
-        { id: 9, name: 'Ramesh', employee_barcode: 'EMP-009', phone: '9876543219', designation: 'cutting_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 10, name: 'Gowtham', employee_barcode: 'EMP-010', phone: '9876543220', designation: 'skiving_operator', wage_type: 'piece_rate', is_active: true },
-      ]);
-      return;
-    }
-
     if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
       apiFetch('/api/v1/employees', {}, token)
         .then(setWorkers)
         .catch(() => { });
     }
-  }, [activeTab, token, workerRefreshKey, isSecurity]);
+  }, [activeTab, token, workerRefreshKey]);
 
   return (
     <div className="space-y-6">
@@ -1724,7 +1598,7 @@ export default function AttendancePage() {
 
           {activeTab === 'employees' && isSecurity && <EmployeesListView workers={workers} />}
 
-          {activeTab === 'history' && isSecurity && <AttendanceHistoryView />}
+          {activeTab === 'history' && isSecurity && <AttendanceHistoryView token={token} />}
 
           {activeTab === 'proxy' && (
             (isSupervisor || isSecurity)

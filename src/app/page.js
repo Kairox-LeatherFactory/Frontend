@@ -13,7 +13,7 @@ import {
   ArrowRight,
   Loader2,
 } from 'lucide-react';
-import { apiLogin } from '@/lib/api'; // 👈 Centralized API helper பயன்படுத்தப்படுகிறது
+import { apiLogin } from '@/lib/api'; 
 
 /* ─── Animated Gold Text Component ────────────────── */
 function AnimatedGoldText({ text }) {
@@ -89,7 +89,7 @@ const PANELS = [
     accent: '#b07bc8',
     icon: Layers,
     img: '/images/roles/stitching.png',
-    allowedRoles: ['hr', 'hr_admin'] // 👈 HR & HR Admin இரண்டிற்கும் அனுமதி
+    allowedRoles: ['hr', 'hr_admin'] 
   },
   {
     role: 'client_workspace',
@@ -214,19 +214,10 @@ export default function Home() {
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
 
-    // MOCK LOGIN FOR SECURITY WORKSPACE
-    if (activePanel && activePanel.role === 'security_workspace') {
-      setLoginError('');
-      setIsSubmitting(true);
-      setTimeout(() => {
-        setIsSuccess(true);
-        login('security', 'mock-security-token-12345');
-        router.push('/dashboard');
-      }, 500); // Small delay to simulate API call
+    if (!username || !password) {
+      setLoginError('Please enter username and password');
       return;
     }
-
-    if (!username || !password) return;
 
     setLoginError('');
     setIsSubmitting(true);
@@ -531,8 +522,8 @@ export default function Home() {
                         type="text"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
-                        required={activePanel?.role !== 'security_workspace'}
-                        placeholder={activePanel?.role === 'security_workspace' ? "Not required for Security" : "Enter username"}
+                        required
+                        placeholder="Enter username"
                         className="w-full bg-[#111] border border-[#222] text-white p-4 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
                       />
                     </div>
@@ -544,8 +535,8 @@ export default function Home() {
                           type={showPassword ? 'text' : 'password'}
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          required={activePanel?.role !== 'security_workspace'}
-                          placeholder={activePanel?.role === 'security_workspace' ? "Not required for Security" : "Enter password"}
+                          required
+                          placeholder="Enter password"
                           className="w-full bg-[#111] border border-[#222] text-white p-4 pr-12 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
                         />
                         <button

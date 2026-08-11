@@ -37,14 +37,14 @@ export default function StyleStageProgress() {
       .finally(() => { setProgressLoading(false); });
   }, [token, effectiveOrderId, activeOrder?.style_id]);
 
-  // Define operational stages
   const operations = [
-    { name: 'Cutting',       desc: 'Raw leather hides die-cut into design panels' },
-    { name: 'Fusing',        desc: 'Heat-bonding structural interlining to panels' },
-    { name: 'Pasting',       desc: 'Adhering seams and align components temporarily' },
+    { name: 'Cutting',       desc: 'Raw leather hides die-cut into design panels (Leather Line Start)' },
+    { name: 'Lining',        desc: 'Lining cut & prepped simultaneously with Cutting (Parallel Start)' },
+    { name: 'Fusing',        desc: 'Heat-bonding structural interlining to leather panels' },
+    { name: 'Pasting',       desc: 'Adhering seams and aligning leather components' },
+    { name: 'Store',         desc: 'Material verification: Hold Leather + Hold Lining → Hold Both' },
     { name: 'Shell stitch',  desc: 'Primary leather exterior structure stitch' },
-    { name: 'Lining attach', desc: 'Inner satin lining matched and sewn to leather shell' },
-    { name: 'Lining stitch', desc: 'Closing inner seams and pocket bag fittings' },
+    { name: 'Lining stitch', desc: 'Closing inner seams, lining stitch & pocket bag fittings' },
     { name: 'Final finish',  desc: 'Final visual inspection, edge coat, and label tag' },
   ];
 

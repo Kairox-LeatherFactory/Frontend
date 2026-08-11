@@ -74,6 +74,7 @@ const NAV_ICONS = {
   '/dashboard': LayoutDashboard,
   '/dashboard/analytics': BarChart3,
   '/dashboard/entry': ClipboardPen,
+  '/dashboard/store': Layers,
   '/dashboard/progress': BarChart3,
   '/dashboard/orders': TreePine,
   '/dashboard/wages': Wallet,

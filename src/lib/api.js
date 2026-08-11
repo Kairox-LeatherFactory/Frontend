@@ -1,5 +1,5 @@
 // API service for Kairox Leather Platform backend
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || '';
+const API_BASE_URL = '';
 
 /**
  * Login with username and password
@@ -35,14 +35,14 @@ export async function apiGetClients(token) {
  * Create a new client (mints first order in same call)
  * @returns {{ id, name, country, code, order_number, order_id }}
  */
-export async function apiCreateClient(token, name, country,order_number,code) {
+export async function apiCreateClient(token, name, country, order_number, code) {
   const res = await fetch(`${API_BASE_URL}/api/v1/clients`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ name, country ,order_number,code}),
+    body: JSON.stringify({ name, country, order_number, code }),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to create client');
@@ -190,13 +190,24 @@ export async function apiGetSkuPieces(token, skuId, operationId) {
  */
 export async function apiProductionScan(token, payload) {
   console.warn('[apiProductionScan] payload:', JSON.stringify(payload));
-  const res = await fetch(`${API_BASE_URL}/api/v1/production/scan`, {
+  const logPayload = {
+    screen_context: 'PIPELINE',
+    actor: {
+      employee_id: payload.employee_id
+    },
+    targets: {
+      sku_id: payload.sku_id,
+      piece_seqs: payload.piece_seqs || []
+    },
+    work_date: payload.work_date
+  };
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/log`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(logPayload),
   });
   if (!res.ok) {
     let errText;
@@ -219,24 +230,52 @@ export async function apiProductionScan(token, payload) {
  */
 export async function apiProductionCutting(token, payload) {
   console.warn('[apiProductionCutting] payload:', JSON.stringify(payload));
-  const res = await fetch(`${API_BASE_URL}/api/v1/production/cutting`, {
+  const countNum = parseInt(payload.count || 1, 10);
+  const isLining = payload.stage === 'Lining';
+  
+  const logPayload = {
+    screen_context: isLining ? 'LINING_CUT' : 'LEATHER_CUT',
+    actor: {
+      employee_id: payload.employee_id
+    },
+    targets: {
+      sku_id: payload.sku_id,
+      piece_seqs: Array.from({ length: countNum }, (_, i) => i + 1)
+    },
+    work_date: payload.work_date,
+    consumption: {
+      dcm: payload.dcm ? Number(payload.dcm) : 10
+    }
+  };
+
+  if (isLining) {
+    logPayload.consumption.lining_lot_id = payload.lot_id;
+  } else {
+    logPayload.consumption.leather_lot_id = payload.lot_id;
+  }
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/log`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(logPayload),
   });
   if (!res.ok) {
     let errText;
     try {
       const errObj = await res.json();
-      errText = errObj.detail || errObj.message || JSON.stringify(errObj);
+      if (Array.isArray(errObj.detail)) {
+        // Pydantic validation errors: [{loc, msg, type}, ...]
+        errText = errObj.detail.map(e => e.msg || JSON.stringify(e)).join('; ');
+      } else {
+        errText = errObj.detail || errObj.message || JSON.stringify(errObj);
+      }
     } catch {
       errText = await res.text().catch(() => 'Failed to create cutting event');
     }
     console.warn('[apiProductionCutting] error response:', errText);
-    throw new Error(errText || `Failed to create cutting event (${res.status})`);
+    throw new Error(typeof errText === 'string' ? errText : JSON.stringify(errText) || `Failed to create cutting event (${res.status})`);
   }
   return res.json();
 }
@@ -304,7 +343,7 @@ export async function apiImportPreview(token, file, orderNumber) {
     try {
       const parsed = JSON.parse(errText);
       if (parsed.detail) errText = parsed.detail;
-    } catch (e) {}
+    } catch (e) { }
     console.error('[API] /imports/preview failed:', res.status, errText);
     const err = new Error(errText || `Failed to preview import (${res.status})`);
     err.status = res.status;
@@ -330,7 +369,7 @@ export async function apiImportCommit(token, file, orderNumber) {
     try {
       const parsed = JSON.parse(errText);
       if (parsed.detail) errText = parsed.detail;
-    } catch (e) {}
+    } catch (e) { }
     console.error('[API] /imports/commit failed:', res.status, errText);
     const err = new Error(errText || `Failed to commit import (${res.status})`);
     err.status = res.status;
@@ -697,7 +736,7 @@ export async function apiSendPO(token, poId) {
  * 1. GET /wages/styles - List of styles with pricing coverage
  */
 export async function apiGetWageStyles(token, queryParams = {}) {
-    console.log(token)
+  console.log(token)
   const params = new URLSearchParams(queryParams);
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/styles?${params.toString()}`, {
     method: 'GET',
@@ -714,7 +753,7 @@ export async function apiGetWageStyles(token, queryParams = {}) {
 export async function apiGetRateSheet(token, styleCode, onDate = null) {
   let url = `${API_BASE_URL}/api/v1/wages/rate-sheet?style_code=${encodeURIComponent(styleCode)}`;
   if (onDate) url += `&on=${onDate}`;
-  
+
   const res = await fetch(url, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
@@ -729,9 +768,9 @@ export async function apiGetRateSheet(token, styleCode, onDate = null) {
 export async function apiSetWageRatesBulk(token, payload) {
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/rates/bulk`, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}` 
+      Authorization: `Bearer ${token}`
     },
     body: JSON.stringify(payload),
   });
@@ -748,9 +787,9 @@ export async function apiSetWageRatesBulk(token, payload) {
 export async function apiSetWageRateSingle(token, payload) {
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/rates`, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}` 
+      Authorization: `Bearer ${token}`
     },
     body: JSON.stringify(payload),
   });
@@ -922,6 +961,23 @@ export async function apiCreateMaterialLot(token, lotData) {
 }
 
 /**
+ * 5b. GET /api/v1/materials/lots
+ * Fetch available material lots based on category and filters
+ */
+export async function apiGetMaterialLots(token, params = {}) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value) query.append(key, value);
+  }
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/lots?${query.toString()}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch material lots (${res.status})`);
+  return res.json();
+}
+
+/**
  * 6. GET /api/v1/materials/stock
  * Check stock on-hand, reserved, available, shortfall
  */
@@ -1069,3 +1125,167 @@ export async function apiGetAnalyticsConsumption(token, params = {}) {
   if (!res.ok) throw new Error(`Failed to fetch consumption analytics (${res.status})`);
   return res.json();
 }
+
+// ─── BARCODE REGISTRY (mounted at /api/v1/barcode) ───
+// Every printed code (piece / employee / drawer / material lot) resolves
+// through this one registry. Piece barcodes are pre-minted during Cutting —
+// there is no "generate" endpoint here, only resolve/print/browse/audit.
+
+/**
+ * 15. GET /api/v1/barcode/resolve
+ * Resolve one scanned code to its full detail (piece/employee/drawer/lot).
+ * A retired code responds 410; an unknown code responds 404 — both are
+ * surfaced as thrown Errors with the backend's message.
+ * @returns {{ code, type, active, caption, piece, employee, drawer, lot }}
+ */
+export async function apiResolveBarcode(token, code) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/resolve?code=${encodeURIComponent(code)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to resolve barcode (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * 16. GET /api/v1/barcode/detail
+ * Full detail for one clicked/scanned code — reuses the /resolve payload shape.
+ * @returns {{ code, type, active, caption, piece, employee, drawer, lot }}
+ */
+export async function apiGetBarcodeDetail(token, code) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/detail?code=${encodeURIComponent(code)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to fetch barcode detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * 17. POST /api/v1/barcode/print
+ * Produce printable label payloads for explicit codes, a whole SKU, or a
+ * whole order. Provide exactly one of { codes, sku_id, order_id }.
+ * @returns {Array<{ code, symbology, caption, known }>} labels
+ */
+export async function apiPrintBarcodes(token, { codes, sku_id, order_id } = {}) {
+  const body = {};
+  if (codes) body.codes = codes;
+  if (sku_id) body.sku_id = sku_id;
+  if (order_id) body.order_id = order_id;
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/print`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail?.[0]?.msg || JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to generate print labels (${res.status})`);
+  }
+  const data = await res.json();
+  return data.labels;
+}
+
+/**
+ * 18. GET /api/v1/barcode/orders
+ * The order picker — every order that has generated barcodes.
+ * @returns {Array<{ order_id, order_number, client_name, minted, first_generated_at, last_generated_at }>}
+ */
+export async function apiGetBarcodeOrders(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/orders`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch barcode orders (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 19. GET /api/v1/barcode/orders/{order_id}/skus
+ * SKU + style options to populate the history filter dropdowns for an order.
+ * @returns {Array<{ sku_id, sku_code, colour, size, style_id, style_name }>}
+ */
+export async function apiGetOrderBarcodeSkus(token, orderId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/orders/${encodeURIComponent(orderId)}/skus`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch order SKU options (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 20. GET /api/v1/barcode/orders/{order_id}/analytics
+ * Per-order barcode analytics: planned vs generated vs balance, plus a
+ * per-style breakdown, a duplicates=0 integrity proof and a half_minted flag.
+ * @returns {{ order_id, order_total: object, by_style: Array<object> }}
+ */
+export async function apiGetOrderBarcodeAnalytics(token, orderId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/orders/${encodeURIComponent(orderId)}/analytics`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch order barcode analytics (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 21. GET /api/v1/barcode/orders/{order_id}/barcodes
+ * The filterable, paginated history: order → style → piece, with generated
+ * date/time, sku, style, colour, size, seq, current stage, and status.
+ * @param {{ skuId, styleId, size, status, dateFrom, dateTo, page, pageSize }} filters
+ * @returns {{ order_id, page, page_size, total, pages, items: Array<object> }}
+ */
+export async function apiGetOrderBarcodes(token, orderId, filters = {}) {
+  const { skuId, styleId, size, status, dateFrom, dateTo, page, pageSize } = filters;
+  const params = new URLSearchParams();
+  if (skuId) params.set('sku_id', skuId);
+  if (styleId) params.set('style_id', styleId);
+  if (size) params.set('size', size);
+  if (status) params.set('status', status);
+  if (dateFrom) params.set('date_from', dateFrom);
+  if (dateTo) params.set('date_to', dateTo);
+  if (page) params.set('page', page);
+  if (pageSize) params.set('page_size', pageSize);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/orders/${encodeURIComponent(orderId)}/barcodes${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch order barcode history (${res.status})`);
+  return res.json();
+}
+
+/**
+ * 22. GET /api/v1/drawers
+ * The drawer label sheet: every drawer plus its scannable DRAWER-type code.
+ * A row with `barcode: null` has no registry code and cannot be printed —
+ * the caller must show it, not silently drop it.
+ * @param {{ state, seq_from, seq_to, limit, offset }} params
+ * @returns {{ total, count, items: Array<{ drawer_id, seq, code, state, barcode_id, barcode, caption, barcode_status }> }}
+ */
+export async function apiListDrawers(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to list drawers (${res.status})`);
+  }
+  return res.json();
+}
+
