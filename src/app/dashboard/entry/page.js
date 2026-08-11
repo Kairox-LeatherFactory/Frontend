@@ -322,7 +322,7 @@ export default function ProductionLogEntry() {
   const [customDesignation, setCustomDesignation] = useState('');
 
   const manualStages = [
-    'Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'
+    'Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish', 'Final Inspection', 'Package Export'
   ];
 
   const [workerId, setWorkerId] = useState('');
@@ -425,7 +425,7 @@ export default function ProductionLogEntry() {
 
       const res = await apiStoreDrawerScan(token, payload);
       setStoreVerifyResult(res);
-      
+
       // Auto-refresh the live drawers list so we immediately have the drawer's UUID
       await fetchLiveDrawers();
 
@@ -453,39 +453,39 @@ export default function ProductionLogEntry() {
       if (isUUID(overrideDrawerId)) {
         finalUuid = overrideDrawerId;
       }
-      
+
       // 2. Check if storeVerifyResult already contains the valid UUID
       if (!finalUuid && isUUID(storeVerifyResult?.drawer_id)) {
         finalUuid = storeVerifyResult.drawer_id;
       }
-      
+
       // 3. Fallback: Search in storeDrawers list
       if (!finalUuid) {
         const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
-        let matchingDrawer = storeDrawers.find(d => 
-          (d.barcode?.toUpperCase() === drawerCode) || 
-          (d.code?.toUpperCase() === drawerCode) || 
-          (d.id === drawerCode) || 
+        let matchingDrawer = storeDrawers.find(d =>
+          (d.barcode?.toUpperCase() === drawerCode) ||
+          (d.code?.toUpperCase() === drawerCode) ||
+          (d.id === drawerCode) ||
           (d.drawer_id === drawerCode)
         );
-        
+
         // If not found in the initial 500 local drawers, ask the backend directly!
         if (!matchingDrawer && drawerCode.startsWith('DRW-')) {
           const seqMatch = drawerCode.match(/DRW-(\d+)/i);
           if (seqMatch) {
-             const seqNum = parseInt(seqMatch[1], 10);
-             try {
-               const fetchRes = await apiListDrawers(token, { seq_from: seqNum, seq_to: seqNum, limit: 1 });
-               if (fetchRes?.items && fetchRes.items.length > 0) {
-                 matchingDrawer = fetchRes.items[0];
-                 // Note: backend apiListDrawers returns drawer_id natively in the items array
-               }
-             } catch (e) {
-               console.error("Failed to query specific drawer from backend", e);
-             }
+            const seqNum = parseInt(seqMatch[1], 10);
+            try {
+              const fetchRes = await apiListDrawers(token, { seq_from: seqNum, seq_to: seqNum, limit: 1 });
+              if (fetchRes?.items && fetchRes.items.length > 0) {
+                matchingDrawer = fetchRes.items[0];
+                // Note: backend apiListDrawers returns drawer_id natively in the items array
+              }
+            } catch (e) {
+              console.error("Failed to query specific drawer from backend", e);
+            }
           }
         }
-        
+
         if (matchingDrawer && isUUID(matchingDrawer.drawer_id)) {
           finalUuid = matchingDrawer.drawer_id;
         }
@@ -864,7 +864,7 @@ export default function ProductionLogEntry() {
         screen_context: 'PIPELINE',
         actor: { employee_barcode: barcodeWorker.employee_barcode || barcodeWorker.id },
         targets: { piece_barcodes: barcodeBatchPieces.map(p => p.code) },
-        operation_stage: barcodeStage,
+        operation_stage: barcodeStage.toUpperCase().replace(' ', '_'),
         work_date: date
       });
 
@@ -1759,7 +1759,7 @@ export default function ProductionLogEntry() {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                  {['Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'].map((stage) => {
+                  {manualStages.map((stage) => {
                     const isSelected = barcodeStage === stage;
                     return (
                       <button
@@ -3326,7 +3326,7 @@ export default function ProductionLogEntry() {
                     <div className="flex flex-col items-end">
                       <span className="text-xs font-black px-3 py-1 rounded uppercase bg-emerald-100 text-emerald-800">
                         {isCheckedLeather && isCheckedLining
-                          ? 'HOLD BOTH' 
+                          ? 'HOLD BOTH'
                           : (storeVerifyResult.state?.replace('_', ' ') || 'MERGED')}
                       </span>
                     </div>
@@ -3337,23 +3337,21 @@ export default function ProductionLogEntry() {
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Drawer Contents Validation</p>
                     <div className="space-y-2">
                       <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${
-                          isCheckedLeather
-                            ? 'bg-emerald-500 border-emerald-500 text-white' 
+                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLeather
+                            ? 'bg-emerald-500 border-emerald-500 text-white'
                             : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
-                        }`}>
+                          }`}>
                           <Check className="w-4 h-4" />
                         </div>
                         <input type="checkbox" className="hidden" checked={isCheckedLeather} onChange={(e) => setIsCheckedLeather(e.target.checked)} />
                         <span className="text-sm font-bold text-slate-700">Hold Leather (Manual Check)</span>
                       </label>
-                      
+
                       <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${
-                          isCheckedLining
-                            ? 'bg-emerald-500 border-emerald-500 text-white' 
+                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLining
+                            ? 'bg-emerald-500 border-emerald-500 text-white'
                             : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
-                        }`}>
+                          }`}>
                           <Check className="w-4 h-4" />
                         </div>
                         <input type="checkbox" className="hidden" checked={isCheckedLining} onChange={(e) => setIsCheckedLining(e.target.checked)} />
@@ -3368,9 +3366,9 @@ export default function ProductionLogEntry() {
                       type="button"
                       onClick={() => handleStoreTransition('RECEIVED')}
                       disabled={
-                        storeReceiveStatus !== 'pending' || 
-                        storeApiLoading || 
-                        !isCheckedLeather || 
+                        storeReceiveStatus !== 'pending' ||
+                        storeApiLoading ||
+                        !isCheckedLeather ||
                         !isCheckedLining
                       }
                       className="flex-1 w-full py-3 bg-[#c8834a] hover:bg-[#b07038] text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
