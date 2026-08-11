@@ -712,11 +712,12 @@ export default function ProductionLogEntry() {
       try {
         const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
         const rosterData = await response.json();
-        const workerRoster = Array.isArray(rosterData) ? rosterData.find(r => 
+        const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+        const workerRoster = rosterArray.find(r => 
           String(r.employee_id) === String(targetWorker.id) || 
           (r.employee_barcode && String(r.employee_barcode).toLowerCase() === query.toLowerCase()) ||
           (r.barcode && String(r.barcode).toLowerCase() === query.toLowerCase())
-        ) : null;
+        ) || null;
 
         if (!workerRoster || workerRoster.check_out_at) {
           setBarcodeNotCheckedInModal({
@@ -1123,7 +1124,8 @@ export default function ProductionLogEntry() {
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setWarningWorkerName(currentWorker?.name || 'Unknown');
         setShowCheckInWarning(true);
@@ -1180,7 +1182,8 @@ export default function ProductionLogEntry() {
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setWarningWorkerName(currentWorker?.name || 'Unknown');
         setShowCheckInWarning(true);
@@ -1232,7 +1235,8 @@ export default function ProductionLogEntry() {
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setShowPrintModal(false);
         setCuttingPieces([]);
@@ -1338,7 +1342,8 @@ export default function ProductionLogEntry() {
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setShowChecklistModal(false);
         setWarningWorkerName(currentWorker?.name || 'Unknown');
