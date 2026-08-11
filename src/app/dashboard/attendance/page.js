@@ -519,6 +519,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
 
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
+  const scanLockRef = useRef(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [alert, setAlert] = useState(null);
   const [diffModal, setDiffModal] = useState(null);
@@ -555,6 +556,9 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
   const handleScanAttendance = async (codeToResolve) => {
     const rawCode = (codeToResolve || scanInput).trim();
     if (!rawCode) return;
+    if (scanLockRef.current) return;
+    
+    scanLockRef.current = true;
     setIsResolvingScan(true);
     setAlert(null);
 
@@ -633,6 +637,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       showAlert('error', err.message || 'Scan attendance failed');
     } finally {
       setIsResolvingScan(false);
+      scanLockRef.current = false;
       scanInputRef.current?.focus();
     }
   };

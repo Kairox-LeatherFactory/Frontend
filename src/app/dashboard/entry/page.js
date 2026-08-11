@@ -457,7 +457,7 @@ export default function ProductionLogEntry() {
           (d.id === drawerCode) || 
           (d.drawer_id === drawerCode)
         );
-        drawerId = matchingDrawer ? (matchingDrawer.drawer_id || matchingDrawer.id) : drawerCode;
+        drawerId = storeVerifyResult?.drawer_id || (matchingDrawer ? (matchingDrawer.drawer_id || matchingDrawer.id) : drawerCode);
       }
 
       const res = await apiReceiveDrawer(token, drawerId, transition);
