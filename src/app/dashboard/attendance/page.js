@@ -519,6 +519,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
 
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState(new Set());
+  const scanLockRef = useRef(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [alert, setAlert] = useState(null);
   const [diffModal, setDiffModal] = useState(null);
@@ -555,6 +556,9 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
   const handleScanAttendance = async (codeToResolve) => {
     const rawCode = (codeToResolve || scanInput).trim();
     if (!rawCode) return;
+    if (scanLockRef.current) return;
+
+    scanLockRef.current = true;
     setIsResolvingScan(true);
     setAlert(null);
 
@@ -633,6 +637,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       showAlert('error', err.message || 'Scan attendance failed');
     } finally {
       setIsResolvingScan(false);
+      scanLockRef.current = false;
       scanInputRef.current?.focus();
     }
   };
@@ -1269,7 +1274,7 @@ function OperationsHRView({ token }) {
               <table className="w-full text-left text-xs font-semibold">
                 <thead>
                   <tr className="font-bold uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', color: '#9a7a5a' }}>
-                    <th className="p-3">Employee ID</th>
+                    <th className="p-3">Name</th>
                     <th className="p-3">Check In</th>
                     <th className="p-3">Check Out</th>
                     <th className="p-3">Distance</th>
@@ -1281,7 +1286,7 @@ function OperationsHRView({ token }) {
                   {paginated.map((row) => (
                     <motion.tr key={row.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                       <td className="p-3 font-mono text-[10px] font-black" style={{ color: '#9a7a5a' }}>
-                        {String(row.employee_id).slice(0, 8)}…
+                        {String(row.name)}…
                       </td>
                       <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{fmtTime(row.check_in_at)}</td>
                       <td className="p-3">
@@ -1487,7 +1492,7 @@ function AttendanceHistoryView({ token }) {
       .finally(() => {
         if (isMounted) setLoading(false);
       });
-      
+
     return () => { isMounted = false; };
   }, [token]);
 
@@ -1514,12 +1519,12 @@ function AttendanceHistoryView({ token }) {
               {history.map(row => (
                 <tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
                   <td className="p-3 font-mono font-black text-slate-600">{row.employee_id}</td>
-                  <td className="p-3 font-black text-[#2d1f0e]">{row.employee_name}</td>
+                  <td className="p-3 font-black text-[#2d1f0e]">{row.name}</td>
                   <td className="p-3 font-black" style={{ color: '#9a7a5a' }}>{fmtTime(row.check_in_at)}</td>
                   <td className="p-3 font-black" style={{ color: '#9a7a5a' }}>{fmtTime(row.check_out_at)}</td>
                   <td className="p-3"><Badge label={row.source} type={row.source} /></td>
                   <td className="p-3">
-                    <Badge label={row.status} type={row.status.toLowerCase() === 'late' ? 'late' : row.status.toLowerCase() === 'short' ? 'short' : 'active'} />
+                    <Badge label={row.status || 'Active'} type={row.status?.toLowerCase() === 'late' ? 'late' : row.status?.toLowerCase() === 'short' ? 'short' : 'active'} />
                   </td>
                 </tr>
               ))}
