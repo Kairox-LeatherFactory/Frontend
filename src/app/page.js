@@ -71,7 +71,7 @@ const PANELS = [
     accent: '#d4915a',
     icon: ShieldCheck,
     img: '/images/roles/manager.png',
-    allowedRoles: ['direct_manager', 'managing_director', 'cutting_manager', 'stitching_manager', 'supervisor']
+    allowedRoles: ['direct_manager', 'managing_director', 'cutting_manager', 'lining_manager', 'stitching_manager', 'supervisor']
   },
   {
     role: 'security_workspace',

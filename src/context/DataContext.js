@@ -49,15 +49,16 @@ export function DataProvider({ children }) {
 
       setClients(clientsData.map((c) => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—' })));
       
-      const mappedWorkers = empData.map((e) => ({ 
-        id: e.id, 
-        name: e.name, 
+      const mappedWorkers = empData.map((e) => ({
+        id: e.id,
+        name: e.name,
         role: e.designation,
         designation: e.designation,
-        wage_type: e.wage_type, 
+        wage_type: e.wage_type,
         monthly_salary: e.monthly_salary,
         is_checked_in: e.is_checked_in ?? null,
         status: e.status ?? null,
+        employee_barcode: e.employee_barcode || `EMP-${String(e.id).slice(0, 8).toUpperCase()}`,
       }));
       setWorkers(mappedWorkers);
       

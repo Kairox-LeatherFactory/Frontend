@@ -693,17 +693,14 @@ export default function ProductionLogEntry() {
     setErrorMsg('');
 
     try {
+      // A scanned piece barcode (e.g. HAN123-CARNABY-PINE_GREEN-S-003) is
+      // longer than its SKU code, so the match has to check whether the
+      // scanned value CONTAINS the SKU code — not the other way around.
       let matched = fetchedSkus.find(s =>
         s.code.toLowerCase() === val ||
         String(s.order_number || '').toLowerCase() === val ||
-        s.code.toLowerCase().includes(val)
+        val.includes(s.code.toLowerCase())
       );
-
-      // Fallback to the first available SKU if not found exactly
-      if (!matched && fetchedSkus.length > 0) {
-        matched = fetchedSkus[0];
-        console.warn(`SKU '${val}' not found. Falling back to first available SKU: ${matched.code}`);
-      }
 
       // If SKUs not loaded yet, try a fresh fetch from backend
       if (!matched && fetchedSkus.length === 0 && val.length > 0) {
@@ -716,8 +713,8 @@ export default function ProductionLogEntry() {
             matched = freshItems.find(s =>
               s.code.toLowerCase() === val ||
               String(s.order_number || '').toLowerCase() === val ||
-              s.code.toLowerCase().includes(val)
-            ) || freshItems[0];
+              val.includes(s.code.toLowerCase())
+            );
           }
         } catch (fetchErr) {
           console.warn('[SKU Verify] direct fetch also failed:', fetchErr);
