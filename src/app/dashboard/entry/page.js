@@ -44,13 +44,6 @@ function TravelerPieceItem({ piece }) {
   }, [piece]);
 
 
-  // --- Store Dynamic Metrics ---
-  const storeTotal = storeDrawers.length;
-  const storeFree = storeDrawers.filter(d => d.status === 'Free').length;
-  const storeLeather = storeDrawers.filter(d => d.type === 'Leather').length;
-  const storeLining = storeDrawers.filter(d => d.type === 'Lining').length;
-  const storeBoth = storeDrawers.filter(d => d.type === 'Both').length;
-
   return (
     <div className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between shadow-2xs">
       <div className="space-y-0.5">
@@ -303,6 +296,7 @@ export default function ProductionLogEntry() {
   const { workers, addScanEvent, operations } = useData();
   const [storeDrawerInput, setStoreDrawerInput] = useState('');
   const [storePieceInput, setStorePieceInput] = useState('');
+  const [storeScanPart, setStoreScanPart] = useState('LEATHER'); // 'LEATHER' or 'LINING' — same barcode, different part gate
   const [storeCurrentScan, setStoreCurrentScan] = useState('');
   const [storeVerifyResult, setStoreVerifyResult] = useState(null);
   const [holdCuttingOk, setHoldCuttingOk] = useState(false);
@@ -405,9 +399,13 @@ export default function ProductionLogEntry() {
 
   useEffect(() => {
     if (activeDoor === 'store') {
+      if (!isFullAccess) {
+        setActiveDoor('manual');
+        return;
+      }
       fetchLiveDrawers();
     }
-  }, [activeDoor, fetchLiveDrawers]);
+  }, [activeDoor, fetchLiveDrawers, isFullAccess]);
   // Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
@@ -423,7 +421,7 @@ export default function ProductionLogEntry() {
       const pieceVal = storePieceInput.trim();
 
       const payload = {
-        part: 'LEATHER'
+        part: storeScanPart
       };
 
       if (isUUID(drawerVal)) {
@@ -446,6 +444,7 @@ export default function ProductionLogEntry() {
 
       setHoldCuttingOk(true);
       setSuccessMsg(`Scan logged successfully! (${res.state || 'OK'})`);
+      fetchLiveDrawers();
     } catch (err) {
       if (err.message.includes('409')) {
         setErrorMsg('409 CONFLICT: Piece does not belong to this drawer, or drawer already processed!');
@@ -516,6 +515,7 @@ export default function ProductionLogEntry() {
 
       setStoreReceiveStatus(transition.toLowerCase());
       setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
+      fetchLiveDrawers();
 
       if (transition === 'SENDED') {
         if (skuCode) {
@@ -755,17 +755,14 @@ export default function ProductionLogEntry() {
     setErrorMsg('');
 
     try {
+      // A scanned piece barcode (e.g. HAN123-CARNABY-PINE_GREEN-S-003) is
+      // longer than its SKU code, so the match has to check whether the
+      // scanned value CONTAINS the SKU code — not the other way around.
       let matched = fetchedSkus.find(s =>
         s.code.toLowerCase() === val ||
         String(s.order_number || '').toLowerCase() === val ||
-        s.code.toLowerCase().includes(val)
+        val.includes(s.code.toLowerCase())
       );
-
-      // Fallback to the first available SKU if not found exactly
-      if (!matched && fetchedSkus.length > 0) {
-        matched = fetchedSkus[0];
-        console.warn(`SKU '${val}' not found. Falling back to first available SKU: ${matched.code}`);
-      }
 
       // If SKUs not loaded yet, try a fresh fetch from backend
       if (!matched && fetchedSkus.length === 0 && val.length > 0) {
@@ -778,8 +775,8 @@ export default function ProductionLogEntry() {
             matched = freshItems.find(s =>
               s.code.toLowerCase() === val ||
               String(s.order_number || '').toLowerCase() === val ||
-              s.code.toLowerCase().includes(val)
-            ) || freshItems[0];
+              val.includes(s.code.toLowerCase())
+            );
           }
         } catch (fetchErr) {
           console.warn('[SKU Verify] direct fetch also failed:', fetchErr);
@@ -3336,6 +3333,38 @@ export default function ProductionLogEntry() {
               </div>
 
               <div className="flex flex-col gap-4 mt-2">
+                <div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block">Scanning For</label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStoreScanPart('LEATHER');
+                        setStoreDrawerInput('');
+                        setStorePieceInput('');
+                        setStoreCurrentScan('');
+                        setStoreVerifyResult(null);
+                      }}
+                      className={`h-12 rounded-xl font-black text-sm border-2 transition-all ${storeScanPart === 'LEATHER' ? 'bg-amber-100 border-amber-400 text-amber-800' : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'}`}
+                    >
+                      Leather
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setStoreScanPart('LINING');
+                        setStoreDrawerInput('');
+                        setStorePieceInput('');
+                        setStoreCurrentScan('');
+                        setStoreVerifyResult(null);
+                      }}
+                      className={`h-12 rounded-xl font-black text-sm border-2 transition-all ${storeScanPart === 'LINING' ? 'bg-blue-100 border-blue-400 text-blue-800' : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'}`}
+                    >
+                      Lining
+                    </button>
+                  </div>
+                </div>
+
                 <div className="relative">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block">Scanner Input</label>
                   <div className="relative flex items-center">

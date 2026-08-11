@@ -29,6 +29,7 @@ const inputCls = "w-full h-11 px-4 rounded-xl text-sm font-semibold outline-none
 const ROLE_COLORS = {
   direct_manager: { bg: '#fff9f0', color: '#c8834a', border: 'rgba(200,131,74,0.3)', label: 'Direct Manager' },
   cutting_manager: { bg: '#eff6ff', color: '#2563eb', border: 'rgba(37,99,235,0.2)', label: 'Cutting Manager' },
+  lining_manager: { bg: '#fff1f2', color: '#e11d48', border: 'rgba(225,29,72,0.2)', label: 'Lining Manager' },
   stitching_manager: { bg: '#f5f3ff', color: '#7c3aed', border: 'rgba(124,58,237,0.2)', label: 'Stitching Manager' },
   hr_admin: { bg: '#f0fdf4', color: '#16a34a', border: 'rgba(22,163,74,0.2)', label: 'HR Admin' },
   client_viewer: { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: 'Client Viewer' },
@@ -557,6 +558,7 @@ export default function AdminDashboard() {
                     <option value="viewer">Viewer</option>
                     <option value="supervisor">Supervisor</option>
                     <option value="cutting_manager">Cutting Manager</option>
+                    <option value="lining_manager">Lining Manager</option>
                     <option value="stitching_manager">Stitching Manager</option>
                     <option value="hr">HR</option>
                     <option value="direct_manager">Direct Manager</option>

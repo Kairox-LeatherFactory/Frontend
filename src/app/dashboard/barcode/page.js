@@ -311,6 +311,10 @@ function EmployeeTicketCard({ barcode, cardRef, width }) {
 const BUCKET_LABEL = { widthMm: 100, heightMm: 70 };
 // 2 across × 4 down on A4 at a 5mm page margin.
 const BUCKET_LABELS_PER_PAGE = 8;
+// Style print sheet carries barcode + code only (no field grid), so it packs
+// 2 across × 4 down like the bucket sheet instead of the 2×2 card layout
+// employee badges use.
+const STYLE_LABELS_PER_PAGE = 8;
 
 function DrawerBarcodeLabel({ barcode, cardRef }) {
   return (
@@ -383,7 +387,7 @@ function statusBadgeClass(status) {
 }
 
 // ─── SHARED CANVAS RENDERER ───────────────────────────────────────────────────
-function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true, displayWidth }) {
+function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true, displayWidth, margin = 0 }) {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -394,7 +398,7 @@ function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true, 
           width: moduleWidth,
           height: height,
           displayValue: showText,
-          margin: 0,
+          margin,
         });
       } catch (err) {
         console.error(err);
@@ -451,15 +455,18 @@ function formatRegistryValue(value) {
 // passthrough dict server-side, so this dumps whatever keys are present
 // instead of hard-coding fields that might not exist for every code type.
 function LiveBarcodeDetailModal({ open, loading, error, data, onClose }) {
-  const cardRef = useRef(null);
+  const barcodeRef = useRef(null);
   const [exporting, setExporting] = useState(null);
   const payload = data ? (data.piece || data.employee || data.drawer || data.lot) : null;
 
+  // Downloads only the barcode symbol itself — not the surrounding card/field
+  // grid — since this lookup modal is used for style barcodes, which only
+  // ever need the printable symbol.
   const handleDownload = async (format) => {
-    if (!cardRef.current || exporting || !data) return;
+    if (!barcodeRef.current || exporting || !data) return;
     setExporting(format);
     try {
-      const canvas = await captureNodeToCanvas(cardRef.current);
+      const canvas = await captureNodeToCanvas(barcodeRef.current);
       if (format === 'png') await saveCanvasAsPng(canvas, data.code);
       else await saveCanvasAsPdf(canvas, data.code);
     } finally {
@@ -493,8 +500,8 @@ function LiveBarcodeDetailModal({ open, loading, error, data, onClose }) {
         </div>
       ) : data ? (
         <>
-          <div ref={cardRef} className="p-6 text-center" style={{ background: '#ffffff' }}>
-            <div className="p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
+          <div className="p-6 text-center" style={{ background: '#ffffff' }}>
+            <div ref={barcodeRef} className="p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
               <BarcodeCanvas code={data.code} displayWidth={260} />
             </div>
             <div className="font-mono font-bold mb-2" style={{ color: '#5a3518' }}>{data.code}</div>
@@ -2469,6 +2476,17 @@ export default function BarcodeManagementPage() {
             gap: 8mm; width: 100%; height: 287mm; page-break-after: always; box-sizing: border-box;
           }
           .print-page:last-child { page-break-after: auto; }
+          /* These codes run ~30+ characters, so CODE128 needs ~390 modules.
+             A 2-column cell (~90mm) can't fit that many modules at a
+             scanner-safe bar width (0.25mm+) without the browser downscaling
+             the canvas — which blurs adjacent bars together and is exactly
+             why scans were failing. One column gives each barcode the full
+             page width (~190mm) instead, so 8 per page now stack as 8 rows. */
+          .print-page-barcodes {
+            display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(8, 1fr);
+            gap: 3mm; width: 100%; height: 287mm; page-break-after: always; box-sizing: border-box;
+          }
+          .print-page-barcodes:last-child { page-break-after: auto; }
           /* Bucket labels: 2 across × 4 down = 8 exact 100×70mm labels per A4.
              No gap — the dashed border doubles as the cut line. */
           .print-label-page {
@@ -2481,15 +2499,16 @@ export default function BarcodeManagementPage() {
           }
           .print-label-page .bucket-label svg { width: 92mm; height: auto; }
           .print-card {
-            border: 1px dashed #999; border-radius: 6px; padding: 4mm; box-sizing: border-box;
+            border: 1px dashed #999; border-radius: 6px; padding: 3mm; box-sizing: border-box;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             break-inside: avoid; overflow: hidden;
           }
-          .print-card canvas { max-width: 90%; max-height: 22mm; }
-          .print-card .card-code { font-family: monospace; font-weight: bold; font-size: 9pt; margin: 2mm 0; color: #000; }
-          .print-card .card-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 1mm 4mm; width: 100%; }
-          .print-card .card-fields .f-label { color: #666; text-transform: uppercase; font-size: 5.5pt; font-weight: 700; }
-          .print-card .card-fields .f-value { font-weight: 600; color: #111; font-size: 7pt; }
+          /* Capped only as a safety net for unusually long codes — at the
+             sizing set on BarcodeCanvas below, the barcode renders at its
+             true native resolution and never actually hits this cap, so the
+             browser never has to downscale (blur) or upscale (pixelate) it. */
+          .print-card canvas { max-width: 94%; max-height: 20mm; }
+          .print-card .card-code { font-family: monospace; font-weight: bold; font-size: 8pt; margin: 1mm 0; color: #000; }
           .print-ticket-cell {
             display: flex; align-items: center; justify-content: center;
             break-inside: avoid; overflow: hidden;
@@ -2656,7 +2675,8 @@ export default function BarcodeManagementPage() {
         onConfirm={() => executeThermalPrint(Array.from(activeSelectedPrint))}
       />
 
-      {/* Print sheet — 4 ID cards per page, or 8 bucket labels at 100×70mm */}
+      {/* Print sheet — 4 employee ID cards per page, 8 style barcodes per
+          page (1 column, full page width), or 8 bucket labels at 100×70mm */}
       <div id="thermalPrintSheet" ref={printSheetRef} style={{ display: 'none' }}>
         {isBucketSheet
           ? chunkArray(printSheetItems, BUCKET_LABELS_PER_PAGE).map((group, pageIdx) => (
@@ -2664,27 +2684,23 @@ export default function BarcodeManagementPage() {
               {group.map((b) => <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />)}
             </div>
           ))
-          : chunkArray(printSheetItems, 4).map((group, pageIdx) => (
+          : category === 'employee'
+          ? chunkArray(printSheetItems, 4).map((group, pageIdx) => (
             <div className="print-page" key={pageIdx}>
               {group.map((b) => (
-                category === 'employee' ? (
-                  <div className="print-ticket-cell" key={b.pieceCode}>
-                    <EmployeeTicketCard barcode={b} />
-                  </div>
-                ) : (
-                  <div className="print-card" key={b.pieceCode}>
-                    <BarcodeCanvas code={b.pieceCode} displayWidth={200} showText={false} />
-                    <div className="card-code">{b.pieceCode}</div>
-                    <div className="card-fields">
-                      {buildCardFields(b, activeLabels).map(([label, value]) => (
-                        <div key={label}>
-                          <div className="f-label">{label}</div>
-                          <div className="f-value">{value || '—'}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
+                <div className="print-ticket-cell" key={b.pieceCode}>
+                  <EmployeeTicketCard barcode={b} />
+                </div>
+              ))}
+            </div>
+          ))
+          : chunkArray(printSheetItems, STYLE_LABELS_PER_PAGE).map((group, pageIdx) => (
+            <div className="print-page-barcodes" key={pageIdx}>
+              {group.map((b) => (
+                <div className="print-card" key={b.pieceCode}>
+                  <BarcodeCanvas code={b.pieceCode} height={55} moduleWidth={1.5} margin={8} showText={false} />
+                  <div className="card-code">{b.pieceCode}</div>
+                </div>
               ))}
             </div>
           ))}
