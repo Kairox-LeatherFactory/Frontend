@@ -232,7 +232,7 @@ export async function apiProductionCutting(token, payload) {
   console.warn('[apiProductionCutting] payload:', JSON.stringify(payload));
   const countNum = parseInt(payload.count || 1, 10);
   const isLining = payload.stage === 'Lining';
-  
+
   const logPayload = {
     screen_context: isLining ? 'LINING_CUT' : 'LEATHER_CUT',
     actor: {
@@ -1275,8 +1275,17 @@ export async function apiGetOrderBarcodes(token, orderId, filters = {}) {
  * @param {{ state, seq_from, seq_to, limit, offset }} params
  * @returns {{ total, count, items: Array<{ drawer_id, seq, code, state, barcode_id, barcode, caption, barcode_status }> }}
  */
-export async function apiListDrawers(token) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers`, {
+export async function apiListDrawers(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.limit) qs.append('limit', params.limit);
+  else qs.append('limit', 500); // Default fallback
+  
+  if (params.seq_from) qs.append('seq_from', params.seq_from);
+  if (params.seq_to) qs.append('seq_to', params.seq_to);
+  if (params.state) qs.append('state', params.state);
+  if (params.offset) qs.append('offset', params.offset);
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers?${qs.toString()}`, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -1288,4 +1297,4 @@ export async function apiListDrawers(token) {
   }
   return res.json();
 }
-
+

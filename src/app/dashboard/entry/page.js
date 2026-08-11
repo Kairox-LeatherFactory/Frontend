@@ -462,12 +462,29 @@ export default function ProductionLogEntry() {
       // 3. Fallback: Search in storeDrawers list
       if (!finalUuid) {
         const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
-        const matchingDrawer = storeDrawers.find(d => 
+        let matchingDrawer = storeDrawers.find(d => 
           (d.barcode?.toUpperCase() === drawerCode) || 
           (d.code?.toUpperCase() === drawerCode) || 
           (d.id === drawerCode) || 
           (d.drawer_id === drawerCode)
         );
+        
+        // If not found in the initial 500 local drawers, ask the backend directly!
+        if (!matchingDrawer && drawerCode.startsWith('DRW-')) {
+          const seqMatch = drawerCode.match(/DRW-(\d+)/i);
+          if (seqMatch) {
+             const seqNum = parseInt(seqMatch[1], 10);
+             try {
+               const fetchRes = await apiListDrawers(token, { seq_from: seqNum, seq_to: seqNum, limit: 1 });
+               if (fetchRes?.items && fetchRes.items.length > 0) {
+                 matchingDrawer = fetchRes.items[0];
+                 // Note: backend apiListDrawers returns drawer_id natively in the items array
+               }
+             } catch (e) {
+               console.error("Failed to query specific drawer from backend", e);
+             }
+          }
+        }
         
         if (matchingDrawer && isUUID(matchingDrawer.drawer_id)) {
           finalUuid = matchingDrawer.drawer_id;
@@ -3445,11 +3462,11 @@ export default function ProductionLogEntry() {
                     })
                     .map(drawer => {
                       const isScannedDrawer = storeDrawerInput.trim().toUpperCase() === drawer.id.toUpperCase();
-                      const isExpanded = expandedDrawer === drawer.id || isScannedDrawer;
+                      const isExpanded = expandedDrawer === drawer.id;
                       return (
                         <div key={drawer.id} className={`transition-colors hover:bg-slate-50 ${isScannedDrawer ? 'ring-2 ring-[#c8834a] ring-inset bg-amber-50/30' : ''}`}>
                           <div
-                            onClick={() => setExpandedDrawer(isExpanded && expandedDrawer === drawer.id ? null : drawer.id)}
+                            onClick={() => setExpandedDrawer(isExpanded ? null : drawer.id)}
                             className="px-5 py-4 flex items-center justify-between cursor-pointer"
                           >
                             <div className="flex items-center gap-4">
