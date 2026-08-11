@@ -3296,8 +3296,8 @@ export default function ProductionLogEntry() {
                     <div className="space-y-2">
                       <label className="flex items-center gap-3 cursor-pointer group">
                         <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLeather
-                            ? 'bg-emerald-500 border-emerald-500 text-white'
-                            : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
                           }`}>
                           <Check className="w-4 h-4" />
                         </div>
@@ -3307,8 +3307,8 @@ export default function ProductionLogEntry() {
 
                       <label className="flex items-center gap-3 cursor-pointer group">
                         <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLining
-                            ? 'bg-emerald-500 border-emerald-500 text-white'
-                            : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
                           }`}>
                           <Check className="w-4 h-4" />
                         </div>
