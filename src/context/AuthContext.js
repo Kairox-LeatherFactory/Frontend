@@ -25,6 +25,7 @@ export const ROLE_OPERATIONS = {
   direct_manager: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'],
   supervisor: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'],
   cutting_manager: ['Cutting', 'Lining'],
+  lining_manager: ['Cutting', 'Lining'],
   stitching_manager: ['Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'],
   employee: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Shell Stitch', 'Lining Stitch', 'Final Finish'],
   store_scan: ['Store'],
