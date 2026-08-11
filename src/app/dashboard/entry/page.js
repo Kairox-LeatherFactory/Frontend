@@ -316,6 +316,7 @@ export default function ProductionLogEntry() {
 
   const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
+  const isFullAccess = user === 'managing_director' || user === 'direct_manager' || user === 'supervisor';
 
   // Stage & Operation Synchronization State
   const [selectedStage, setSelectedStage] = useState('Cutting');
@@ -699,7 +700,11 @@ export default function ProductionLogEntry() {
       try {
         const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
         const rosterData = await response.json();
-        const workerRoster = Array.isArray(rosterData) ? rosterData.find(r => String(r.employee_id) === String(targetWorker.id)) : null;
+        const workerRoster = Array.isArray(rosterData) ? rosterData.find(r => 
+          String(r.employee_id) === String(targetWorker.id) || 
+          (r.employee_barcode && String(r.employee_barcode).toLowerCase() === query.toLowerCase()) ||
+          (r.barcode && String(r.barcode).toLowerCase() === query.toLowerCase())
+        ) : null;
 
         if (!workerRoster || workerRoster.check_out_at) {
           setBarcodeNotCheckedInModal({
@@ -1766,11 +1771,14 @@ export default function ProductionLogEntry() {
                         key={stage}
                         type="button"
                         onClick={() => setBarcodeStage(stage)}
-                        className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm ${isSelected
+                        className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm relative ${isSelected
                           ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
                           : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
-                          }`}
+                          } ${!isFullAccess && !allowedOperations.includes(stage) ? 'opacity-50 grayscale' : ''}`}
                       >
+                        {!isFullAccess && allowedOperations.includes(stage) && (
+                          <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
+                        )}
                         {stage}
                       </button>
                     );
@@ -2212,11 +2220,14 @@ export default function ProductionLogEntry() {
                           setSelectedStage(stage);
                           setPieceSeqs('');
                         }}
-                        className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border ${isSelected
+                        className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border relative ${isSelected
                           ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]'
                           : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
-                          }`}
+                          } ${!isFullAccess && !allowedOperations.includes(stage) ? 'opacity-50 grayscale' : ''}`}
                       >
+                        {!isFullAccess && allowedOperations.includes(stage) && (
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
+                        )}
                         {stage}
                       </button>
                     );
@@ -3338,8 +3349,8 @@ export default function ProductionLogEntry() {
                     <div className="space-y-2">
                       <label className="flex items-center gap-3 cursor-pointer group">
                         <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLeather
-                            ? 'bg-emerald-500 border-emerald-500 text-white'
-                            : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
                           }`}>
                           <Check className="w-4 h-4" />
                         </div>
@@ -3349,8 +3360,8 @@ export default function ProductionLogEntry() {
 
                       <label className="flex items-center gap-3 cursor-pointer group">
                         <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLining
-                            ? 'bg-emerald-500 border-emerald-500 text-white'
-                            : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
+                          ? 'bg-emerald-500 border-emerald-500 text-white'
+                          : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
                           }`}>
                           <Check className="w-4 h-4" />
                         </div>

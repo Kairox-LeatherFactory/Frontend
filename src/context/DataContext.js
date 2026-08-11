@@ -58,6 +58,7 @@ export function DataProvider({ children }) {
         monthly_salary: e.monthly_salary,
         is_checked_in: e.is_checked_in ?? null,
         status: e.status ?? null,
+        employee_barcode: e.employee_barcode || e.barcode || `EMP-${String(e.id).padStart(6, '0')}`
       }));
       setWorkers(mappedWorkers);
       
