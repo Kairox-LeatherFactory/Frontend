@@ -1147,6 +1147,22 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
           </>
         )}
       </AnimatedModal>
+
+      {/* Camera Scanner Modal */}
+      {showCamera && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-md transform transition-all">
+            <CameraScanner
+              onClose={() => setShowCamera(false)}
+              onScan={(code) => {
+                setScanInput(code);
+                handleScanAttendance(code);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
     </motion.div>
   );
 }
@@ -1516,22 +1532,6 @@ function EmployeesListView({ workers = [] }) {
           </table>
         </div>
       </SpotlightCard>
-
-      {/* Camera Scanner Modal */}
-      {showCamera && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-md transform transition-all">
-            <CameraScanner
-              onClose={() => setShowCamera(false)}
-              onScan={(code) => {
-                setScanInput(code);
-                handleScanAttendance(code);
-              }}
-            />
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
