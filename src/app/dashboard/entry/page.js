@@ -461,6 +461,7 @@ export default function ProductionLogEntry() {
     try {
       const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
       let finalUuid = null;
+      const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase() || 'Unknown';
 
       // 1. Check if override is a valid UUID
       if (isUUID(overrideDrawerId)) {
@@ -474,7 +475,6 @@ export default function ProductionLogEntry() {
 
       // 3. Fallback: Search in storeDrawers list
       if (!finalUuid) {
-        const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
         let matchingDrawer = storeDrawers.find(d =>
           (d.barcode?.toUpperCase() === drawerCode) ||
           (d.code?.toUpperCase() === drawerCode) ||
@@ -885,11 +885,17 @@ export default function ProductionLogEntry() {
         work_date: date
       });
 
-      setBarcodeSuccessModal({
-        stage: barcodeStage,
-        count: barcodeBatchPieces.length,
-        pieces: barcodeBatchPieces
-      });
+      if (result && (result.logged || result.sequence_blocked || result.skill_blocked || result.merge_blocked)) {
+        result.stage = barcodeStage;
+        setBucketResult(result);
+        setShowBucketModal(true);
+      } else {
+        setBarcodeSuccessModal({
+          stage: barcodeStage,
+          count: barcodeBatchPieces.length,
+          pieces: barcodeBatchPieces
+        });
+      }
 
       setBarcodeBatchPieces([]);
     } catch (err) {
@@ -3191,10 +3197,17 @@ export default function ProductionLogEntry() {
                     <AlertTriangle className="w-4 h-4 text-red-500" />
                     Sequence Blocked ({bucketResult.sequence_blocked.length})
                   </div>
-                  <ul className="text-xs text-red-700 font-semibold space-y-1 list-disc pl-5">
-                    {bucketResult.sequence_blocked.map((msg, i) => (
-                      <li key={i}>{typeof msg === 'string' ? msg : JSON.stringify(msg)}</li>
-                    ))}
+                  <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
+                    {bucketResult.sequence_blocked.map((msg, i) => {
+                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
+                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
+                      return (
+                        <li key={i}>
+                          <span>{pieceStr}</span>
+                          {reasonObj && <div className="text-[10px] text-red-500 font-medium mt-0.5">{reasonObj.reason}</div>}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -3206,10 +3219,17 @@ export default function ProductionLogEntry() {
                     <Lock className="w-4 h-4 text-red-500" />
                     Skill / Designation Blocked ({bucketResult.skill_blocked.length})
                   </div>
-                  <ul className="text-xs text-red-700 font-semibold space-y-1 list-disc pl-5">
-                    {bucketResult.skill_blocked.map((msg, i) => (
-                      <li key={i}>{typeof msg === 'string' ? msg : JSON.stringify(msg)}</li>
-                    ))}
+                  <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
+                    {bucketResult.skill_blocked.map((msg, i) => {
+                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
+                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
+                      return (
+                        <li key={i}>
+                          <span>{pieceStr}</span>
+                          {reasonObj && <div className="text-[10px] text-red-500 font-medium mt-0.5">{reasonObj.reason}</div>}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -3221,10 +3241,17 @@ export default function ProductionLogEntry() {
                     <AlertTriangle className="w-4 h-4 text-orange-500" />
                     Merge Gate Blocked ({bucketResult.merge_blocked.length})
                   </div>
-                  <ul className="text-xs text-orange-700 font-semibold space-y-1 list-disc pl-5">
-                    {bucketResult.merge_blocked.map((msg, i) => (
-                      <li key={i}>{typeof msg === 'string' ? msg : JSON.stringify(msg)}</li>
-                    ))}
+                  <ul className="text-xs text-orange-700 font-semibold space-y-1.5 list-disc pl-5">
+                    {bucketResult.merge_blocked.map((msg, i) => {
+                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
+                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
+                      return (
+                        <li key={i}>
+                          <span>{pieceStr}</span>
+                          {reasonObj && <div className="text-[10px] text-orange-600 font-medium mt-0.5">{reasonObj.reason}</div>}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -3504,18 +3531,22 @@ export default function ProductionLogEntry() {
                                 {drawer.id.replace('DRW-', '')}
                               </div>
                               <div>
-                                <div className="font-black text-slate-800">{drawer.id} <span className="text-slate-400 font-medium text-xs ml-2">({drawer.type})</span></div>
+                                <div className="font-black text-slate-800">{drawer.id}</div>
                                 <div className="text-xs font-bold text-slate-500 mt-0.5">
                                   {drawer.client !== '-' ? `${drawer.client} / ${drawer.style}` : 'Empty Drawer'}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-4">
-                              {drawer.pieces > 0 && (
-                                <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md text-[10px] font-black">
-                                  {drawer.pieces} Pieces
-                                </span>
-                              )}
+                              <span className={`px-2.5 py-1 rounded-md text-[10px] font-black tracking-wide uppercase border ${
+                                drawer.type === 'Empty' ? 'bg-slate-200 text-slate-600 border-slate-300' :
+                                drawer.type === 'Both' ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' :
+                                drawer.type === 'Leather' ? 'bg-amber-600 text-white border-amber-700 shadow-sm' :
+                                drawer.type === 'Lining' ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' :
+                                'bg-[#c8834a] text-white border-[#b06f36] shadow-sm'
+                              }`}>
+                                {drawer.type}
+                              </span>
                               {isExpanded ? <ChevronDown className="w-5 h-5 text-slate-400" /> : <ChevronRight className="w-5 h-5 text-slate-400" />}
                               {isScannedDrawer && (
                                 <span className="bg-[#c8834a] text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Scanned</span>
@@ -3531,7 +3562,7 @@ export default function ProductionLogEntry() {
                                   <h4 className="font-black text-sm text-slate-700">Drawer Contents</h4>
                                   <span className="text-xs font-bold text-slate-500">Status: <span className="text-emerald-600">{drawer.status}</span></span>
                                 </div>
-                                {drawer.pieces > 0 ? (
+                                {drawer.type !== 'Empty' ? (
                                   <div className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
