@@ -309,13 +309,14 @@ export default function ProductionLogEntry() {
 
   const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
+  const isFullAccess = user === 'managing_director' || user === 'direct_manager' || user === 'supervisor';
 
   // Stage & Operation Synchronization State
   const [selectedStage, setSelectedStage] = useState('Cutting');
   const [customDesignation, setCustomDesignation] = useState('');
 
   const manualStages = [
-    'Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'
+    'Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish', 'Final Inspection', 'Package Export'
   ];
 
   const [workerId, setWorkerId] = useState('');
@@ -354,6 +355,18 @@ export default function ProductionLogEntry() {
   const [storeDrawerSearch, setStoreDrawerSearch] = useState('');
   const [expandedDrawer, setExpandedDrawer] = useState(null);
   const [storeLoading, setStoreLoading] = useState(false);
+  const [storeVisibleCount, setStoreVisibleCount] = useState(50);
+
+  const observerRef = useRef();
+  const lastDrawerElementRef = useCallback(node => {
+    if (observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        setStoreVisibleCount(prev => prev + 50);
+      }
+    }, { rootMargin: '400px' });
+    if (node) observerRef.current.observe(node);
+  }, []);
 
   const fetchLiveDrawers = useCallback(async () => {
     if (!token) return;
@@ -383,9 +396,13 @@ export default function ProductionLogEntry() {
 
   useEffect(() => {
     if (activeDoor === 'store') {
+      if (!isFullAccess) {
+        setActiveDoor('manual');
+        return;
+      }
       fetchLiveDrawers();
     }
-  }, [activeDoor, fetchLiveDrawers]);
+  }, [activeDoor, fetchLiveDrawers, isFullAccess]);
   // Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
@@ -440,21 +457,58 @@ export default function ProductionLogEntry() {
     setStoreApiLoading(true);
     setErrorMsg('');
     try {
-      const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
-      let drawerId = overrideDrawerId;
+      const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
+      let finalUuid = null;
+      const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase() || 'Unknown';
 
-      if (!drawerId) {
-        // The API requires a UUID, so we must resolve the DRW-xxx code to its UUID
-        const matchingDrawer = storeDrawers.find(d =>
+      // 1. Check if override is a valid UUID
+      if (isUUID(overrideDrawerId)) {
+        finalUuid = overrideDrawerId;
+      }
+
+      // 2. Check if storeVerifyResult already contains the valid UUID
+      if (!finalUuid && isUUID(storeVerifyResult?.drawer_id)) {
+        finalUuid = storeVerifyResult.drawer_id;
+      }
+
+      // 3. Fallback: Search in storeDrawers list
+      if (!finalUuid) {
+        let matchingDrawer = storeDrawers.find(d =>
           (d.barcode?.toUpperCase() === drawerCode) ||
           (d.code?.toUpperCase() === drawerCode) ||
           (d.id === drawerCode) ||
           (d.drawer_id === drawerCode)
         );
-        drawerId = matchingDrawer ? (matchingDrawer.drawer_id || matchingDrawer.id) : drawerCode;
+
+        // If not found in the initial 500 local drawers, ask the backend directly!
+        if (!matchingDrawer && drawerCode.startsWith('DRW-')) {
+          const seqMatch = drawerCode.match(/DRW-(\d+)/i);
+          if (seqMatch) {
+            const seqNum = parseInt(seqMatch[1], 10);
+            try {
+              const fetchRes = await apiListDrawers(token, { seq_from: seqNum, seq_to: seqNum, limit: 1 });
+              if (fetchRes?.items && fetchRes.items.length > 0) {
+                matchingDrawer = fetchRes.items[0];
+                // Note: backend apiListDrawers returns drawer_id natively in the items array
+              }
+            } catch (e) {
+              console.error("Failed to query specific drawer from backend", e);
+            }
+          }
+        }
+
+        if (matchingDrawer && isUUID(matchingDrawer.drawer_id)) {
+          finalUuid = matchingDrawer.drawer_id;
+        }
       }
 
-      const res = await apiReceiveDrawer(token, drawerId, transition);
+      if (!finalUuid) {
+        setStoreApiLoading(false);
+        setErrorMsg("System could not resolve the true UUID for this Drawer. Please refresh the page or try scanning again.");
+        return;
+      }
+
+      const res = await apiReceiveDrawer(token, finalUuid, transition);
 
       setStoreReceiveStatus(transition.toLowerCase());
       setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
@@ -657,7 +711,12 @@ export default function ProductionLogEntry() {
       try {
         const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
         const rosterData = await response.json();
-        const workerRoster = Array.isArray(rosterData) ? rosterData.find(r => String(r.employee_id) === String(targetWorker.id)) : null;
+        const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+        const workerRoster = rosterArray.find(r => 
+          String(r.employee_id) === String(targetWorker.id) || 
+          (r.employee_barcode && String(r.employee_barcode).toLowerCase() === query.toLowerCase()) ||
+          (r.barcode && String(r.barcode).toLowerCase() === query.toLowerCase())
+        ) || null;
 
         if (!workerRoster || workerRoster.check_out_at) {
           setBarcodeNotCheckedInModal({
@@ -819,15 +878,21 @@ export default function ProductionLogEntry() {
         screen_context: 'PIPELINE',
         actor: { employee_barcode: barcodeWorker.employee_barcode || barcodeWorker.id },
         targets: { piece_barcodes: barcodeBatchPieces.map(p => p.code) },
-        operation_stage: barcodeStage,
+        operation_stage: barcodeStage.toUpperCase().replace(' ', '_'),
         work_date: date
       });
 
-      setBarcodeSuccessModal({
-        stage: barcodeStage,
-        count: barcodeBatchPieces.length,
-        pieces: barcodeBatchPieces
-      });
+      if (result && (result.logged || result.sequence_blocked || result.skill_blocked || result.merge_blocked)) {
+        result.stage = barcodeStage;
+        setBucketResult(result);
+        setShowBucketModal(true);
+      } else {
+        setBarcodeSuccessModal({
+          stage: barcodeStage,
+          count: barcodeBatchPieces.length,
+          pieces: barcodeBatchPieces
+        });
+      }
 
       setBarcodeBatchPieces([]);
     } catch (err) {
@@ -1055,7 +1120,8 @@ export default function ProductionLogEntry() {
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setWarningWorkerName(currentWorker?.name || 'Unknown');
         setShowCheckInWarning(true);
@@ -1112,7 +1178,8 @@ export default function ProductionLogEntry() {
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setWarningWorkerName(currentWorker?.name || 'Unknown');
         setShowCheckInWarning(true);
@@ -1164,7 +1231,8 @@ export default function ProductionLogEntry() {
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setShowPrintModal(false);
         setCuttingPieces([]);
@@ -1270,7 +1338,8 @@ export default function ProductionLogEntry() {
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const workerRoster = rosterData.find(r => String(r.employee_id) === String(workerId));
+      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setShowChecklistModal(false);
         setWarningWorkerName(currentWorker?.name || 'Unknown');
@@ -1381,6 +1450,29 @@ export default function ProductionLogEntry() {
   const storeLeather = storeDrawers.filter(d => d.type === 'Leather').length;
   const storeLining = storeDrawers.filter(d => d.type === 'Lining').length;
   const storeBoth = storeDrawers.filter(d => d.type === 'Both').length;
+
+  const filteredStoreDrawers = useMemo(() => {
+    return storeDrawers
+      .filter(d => {
+        if (!storeDrawerSearch.trim()) return true;
+        const q = storeDrawerSearch.trim().toLowerCase();
+        return (
+          (d.id && d.id.toLowerCase().includes(q)) ||
+          (d.code && d.code.toLowerCase().includes(q)) ||
+          (d.client && d.client.toLowerCase().includes(q)) ||
+          (d.style && d.style.toLowerCase().includes(q))
+        );
+      })
+      .filter(d => {
+        if (storeFilterType === 'All') return true;
+        if (storeFilterType === 'Free') return d.status === 'Free';
+        return d.type === storeFilterType;
+      });
+  }, [storeDrawers, storeDrawerSearch, storeFilterType]);
+
+  useEffect(() => {
+    setStoreVisibleCount(50);
+  }, [storeDrawerSearch, storeFilterType]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-0 space-y-8 animate-fade-in pb-12">
@@ -1523,18 +1615,20 @@ export default function ProductionLogEntry() {
           <Barcode className="w-4 h-4" />
           Barcode Gun Scanner
         </button>
-        <button
-          type="button"
-          onClick={() => setActiveDoor('store')}
-          className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
-          style={{
-            borderColor: activeDoor === 'store' ? '#c8834a' : 'transparent',
-            color: activeDoor === 'store' ? '#c8834a' : '#9a7a5a',
-          }}
-        >
-          <Store className="w-4 h-4" />
-          🏬 Store Manager Hub
-        </button>
+        {isFullAccess && (
+          <button
+            type="button"
+            onClick={() => setActiveDoor('store')}
+            className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
+            style={{
+              borderColor: activeDoor === 'store' ? '#c8834a' : 'transparent',
+              color: activeDoor === 'store' ? '#c8834a' : '#9a7a5a',
+            }}
+          >
+            <Store className="w-4 h-4" />
+            🏬 Store Manager Hub
+          </button>
+        )}
       </div>
 
       {/* LOGGING FORM CARD */}
@@ -1714,18 +1808,21 @@ export default function ProductionLogEntry() {
                 </div>
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                  {['Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'].map((stage) => {
+                  {manualStages.map((stage) => {
                     const isSelected = barcodeStage === stage;
                     return (
                       <button
                         key={stage}
                         type="button"
                         onClick={() => setBarcodeStage(stage)}
-                        className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm ${isSelected
+                        className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm relative ${isSelected
                           ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
                           : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
-                          }`}
+                          } ${!isFullAccess && !allowedOperations.includes(stage) ? 'opacity-50 grayscale' : ''}`}
                       >
+                        {!isFullAccess && allowedOperations.includes(stage) && (
+                          <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
+                        )}
                         {stage}
                       </button>
                     );
@@ -2167,11 +2264,14 @@ export default function ProductionLogEntry() {
                           setSelectedStage(stage);
                           setPieceSeqs('');
                         }}
-                        className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border ${isSelected
+                        className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border relative ${isSelected
                           ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]'
                           : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
-                          }`}
+                          } ${!isFullAccess && !allowedOperations.includes(stage) ? 'opacity-50 grayscale' : ''}`}
                       >
+                        {!isFullAccess && allowedOperations.includes(stage) && (
+                          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
+                        )}
                         {stage}
                       </button>
                     );
@@ -3100,10 +3200,17 @@ export default function ProductionLogEntry() {
                     <AlertTriangle className="w-4 h-4 text-red-500" />
                     Sequence Blocked ({bucketResult.sequence_blocked.length})
                   </div>
-                  <ul className="text-xs text-red-700 font-semibold space-y-1 list-disc pl-5">
-                    {bucketResult.sequence_blocked.map((msg, i) => (
-                      <li key={i}>{typeof msg === 'string' ? msg : JSON.stringify(msg)}</li>
-                    ))}
+                  <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
+                    {bucketResult.sequence_blocked.map((msg, i) => {
+                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
+                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
+                      return (
+                        <li key={i}>
+                          <span>{pieceStr}</span>
+                          {reasonObj && <div className="text-[10px] text-red-500 font-medium mt-0.5">{reasonObj.reason}</div>}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -3115,10 +3222,17 @@ export default function ProductionLogEntry() {
                     <Lock className="w-4 h-4 text-red-500" />
                     Skill / Designation Blocked ({bucketResult.skill_blocked.length})
                   </div>
-                  <ul className="text-xs text-red-700 font-semibold space-y-1 list-disc pl-5">
-                    {bucketResult.skill_blocked.map((msg, i) => (
-                      <li key={i}>{typeof msg === 'string' ? msg : JSON.stringify(msg)}</li>
-                    ))}
+                  <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
+                    {bucketResult.skill_blocked.map((msg, i) => {
+                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
+                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
+                      return (
+                        <li key={i}>
+                          <span>{pieceStr}</span>
+                          {reasonObj && <div className="text-[10px] text-red-500 font-medium mt-0.5">{reasonObj.reason}</div>}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -3130,10 +3244,17 @@ export default function ProductionLogEntry() {
                     <AlertTriangle className="w-4 h-4 text-orange-500" />
                     Merge Gate Blocked ({bucketResult.merge_blocked.length})
                   </div>
-                  <ul className="text-xs text-orange-700 font-semibold space-y-1 list-disc pl-5">
-                    {bucketResult.merge_blocked.map((msg, i) => (
-                      <li key={i}>{typeof msg === 'string' ? msg : JSON.stringify(msg)}</li>
-                    ))}
+                  <ul className="text-xs text-orange-700 font-semibold space-y-1.5 list-disc pl-5">
+                    {bucketResult.merge_blocked.map((msg, i) => {
+                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
+                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
+                      return (
+                        <li key={i}>
+                          <span>{pieceStr}</span>
+                          {reasonObj && <div className="text-[10px] text-orange-600 font-medium mt-0.5">{reasonObj.reason}</div>}
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               )}
@@ -3397,29 +3518,15 @@ export default function ProductionLogEntry() {
                   </div>
                 </div>
                 <div className="divide-y divide-slate-100">
-                  {storeDrawers
-                    .filter(d => {
-                      if (!storeDrawerSearch.trim()) return true;
-                      const q = storeDrawerSearch.trim().toLowerCase();
-                      return (
-                        (d.id && d.id.toLowerCase().includes(q)) ||
-                        (d.code && d.code.toLowerCase().includes(q)) ||
-                        (d.client && d.client.toLowerCase().includes(q)) ||
-                        (d.style && d.style.toLowerCase().includes(q))
-                      );
-                    })
-                    .filter(d => {
-                      if (storeFilterType === 'All') return true;
-                      if (storeFilterType === 'Free') return d.status === 'Free';
-                      return d.type === storeFilterType;
-                    })
+                  {filteredStoreDrawers
+                    .slice(0, storeVisibleCount)
                     .map(drawer => {
                       const isScannedDrawer = storeDrawerInput.trim().toUpperCase() === drawer.id.toUpperCase();
-                      const isExpanded = expandedDrawer === drawer.id || isScannedDrawer;
+                      const isExpanded = expandedDrawer === drawer.id;
                       return (
                         <div key={drawer.id} className={`transition-colors hover:bg-slate-50 ${isScannedDrawer ? 'ring-2 ring-[#c8834a] ring-inset bg-amber-50/30' : ''}`}>
                           <div
-                            onClick={() => setExpandedDrawer(isExpanded && expandedDrawer === drawer.id ? null : drawer.id)}
+                            onClick={() => setExpandedDrawer(isExpanded ? null : drawer.id)}
                             className="px-5 py-4 flex items-center justify-between cursor-pointer"
                           >
                             <div className="flex items-center gap-4">
@@ -3427,18 +3534,22 @@ export default function ProductionLogEntry() {
                                 {drawer.id.replace('DRW-', '')}
                               </div>
                               <div>
-                                <div className="font-black text-slate-800">{drawer.id} <span className="text-slate-400 font-medium text-xs ml-2">({drawer.type})</span></div>
+                                <div className="font-black text-slate-800">{drawer.id}</div>
                                 <div className="text-xs font-bold text-slate-500 mt-0.5">
                                   {drawer.client !== '-' ? `${drawer.client} / ${drawer.style}` : 'Empty Drawer'}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-4">
-                              {drawer.pieces > 0 && (
-                                <span className="bg-amber-100 text-amber-800 px-2 py-1 rounded-md text-[10px] font-black">
-                                  {drawer.pieces} Pieces
-                                </span>
-                              )}
+                              <span className={`px-2.5 py-1 rounded-md text-[10px] font-black tracking-wide uppercase border ${
+                                drawer.type === 'Empty' ? 'bg-slate-200 text-slate-600 border-slate-300' :
+                                drawer.type === 'Both' ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' :
+                                drawer.type === 'Leather' ? 'bg-amber-600 text-white border-amber-700 shadow-sm' :
+                                drawer.type === 'Lining' ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' :
+                                'bg-[#c8834a] text-white border-[#b06f36] shadow-sm'
+                              }`}>
+                                {drawer.type}
+                              </span>
                               {isExpanded ? <ChevronDown className="w-5 h-5 text-slate-400" /> : <ChevronRight className="w-5 h-5 text-slate-400" />}
                               {isScannedDrawer && (
                                 <span className="bg-[#c8834a] text-white text-[9px] font-black px-2 py-0.5 rounded-full uppercase">Scanned</span>
@@ -3454,7 +3565,7 @@ export default function ProductionLogEntry() {
                                   <h4 className="font-black text-sm text-slate-700">Drawer Contents</h4>
                                   <span className="text-xs font-bold text-slate-500">Status: <span className="text-emerald-600">{drawer.status}</span></span>
                                 </div>
-                                {drawer.pieces > 0 ? (
+                                {drawer.type !== 'Empty' ? (
                                   <div className="space-y-4">
                                     <div className="grid grid-cols-2 gap-4">
                                       <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
@@ -3493,7 +3604,7 @@ export default function ProductionLogEntry() {
                                         <button
                                           onClick={() => {
                                             setStoreDrawerInput(drawer.id);
-                                            handleStoreTransition('RECEIVED', drawer.id);
+                                            handleStoreTransition('RECEIVED', drawer.drawer_id || drawer.id);
                                           }}
                                           disabled={storeApiLoading}
                                           className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-200 text-xs font-black rounded-lg transition-all disabled:opacity-50 cursor-pointer"
@@ -3505,7 +3616,7 @@ export default function ProductionLogEntry() {
                                         <button
                                           onClick={() => {
                                             setStoreDrawerInput(drawer.id);
-                                            handleStoreTransition('SENDED', drawer.id);
+                                            handleStoreTransition('SENDED', drawer.drawer_id || drawer.id);
                                           }}
                                           disabled={storeApiLoading}
                                           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg shadow-sm transition-all disabled:opacity-50 cursor-pointer"
@@ -3527,6 +3638,16 @@ export default function ProductionLogEntry() {
                         </div>
                       );
                     })}
+                  {filteredStoreDrawers.length > storeVisibleCount && (
+                    <div ref={lastDrawerElementRef} className="p-4 flex justify-center">
+                      <button
+                        onClick={() => setStoreVisibleCount(v => v + 50)}
+                        className="px-6 py-2 bg-[#f4ece3] hover:bg-[#e8decb] text-[#c8834a] font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                      >
+                        Load More Drawers ({filteredStoreDrawers.length - storeVisibleCount} remaining)
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
