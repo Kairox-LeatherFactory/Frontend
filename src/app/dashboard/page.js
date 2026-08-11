@@ -73,7 +73,9 @@ function StatCard({ title, value, sub, icon: Icon, accent = '#c8834a', danger = 
   );
 }
 
-/* ── Order Row ─────────────────────────────────────────────────────── */
+/* ── Order Row ────
+
+─────────────────────────────────────────────────── */
 function OrderRow({ order }) {
   const orderId = order?.order_number || order?.id || 'N/A';
   const clientName = order?.client_name || order?.client || 'Client';

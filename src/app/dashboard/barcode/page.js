@@ -295,7 +295,7 @@ function EmployeeTicketCard({ barcode, cardRef, width }) {
         <TicketPerforation />
       </div>
       <div className="px-7 pb-8 flex flex-col items-center">
-        <BarcodeCanvas code={barcode.pieceCode} height={70} moduleWidth={2} />
+        <BarcodeCanvas code={barcode.pieceCode} height={90} moduleWidth={3} />
       </div>
     </div>
   );

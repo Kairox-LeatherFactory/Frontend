@@ -1427,7 +1427,7 @@ function EmployeesListView({ workers = [] }) {
       <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
-            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Employees Directory (Mocked)
+            <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Employees Directory
           </h3>
           <div className="relative w-full sm:w-64">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1468,29 +1468,34 @@ function EmployeesListView({ workers = [] }) {
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// VIEW F — ATTENDANCE HISTORY (MOCKED)
-// ═══════════════════════════════════════════════════════════════════════════════
-function AttendanceHistoryView() {
-  const [history, setHistory] = useState([]);
 
-  // Generate dummy data on mount
+// ═══════════════════════════════════════════════════════════════════════════════
+function AttendanceHistoryView({ token }) {
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch live today's roster from API
   useEffect(() => {
-    const d = new Date();
-    const today = d.toISOString().split('T')[0];
-    const dummyData = [
-      { id: 1, employee_id: 'EMP-001', employee_name: 'John Doe', check_in_at: `${today}T08:50:00Z`, check_out_at: `${today}T18:05:00Z`, status: 'Present', source: 'proxy' },
-      { id: 2, employee_id: 'EMP-002', employee_name: 'Jane Smith', check_in_at: `${today}T09:15:00Z`, check_out_at: null, status: 'Late', source: 'self' },
-      { id: 3, employee_id: 'EMP-003', employee_name: 'Mike Johnson', check_in_at: `${today}T08:55:00Z`, check_out_at: `${today}T17:30:00Z`, status: 'Short', source: 'proxy' },
-    ];
-    setHistory(dummyData);
-  }, []);
+    let isMounted = true;
+    setLoading(true);
+    apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token)
+      .then((data) => {
+        if (!isMounted) return;
+        setHistory(Array.isArray(data) ? data : []);
+      })
+      .catch((err) => console.error('Failed to fetch attendance history', err))
+      .finally(() => {
+        if (isMounted) setLoading(false);
+      });
+      
+    return () => { isMounted = false; };
+  }, [token]);
 
   return (
     <div className="space-y-6">
       <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2 mb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
-          <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster (Mocked)
+          <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster {loading && <span className="text-xs text-slate-400 animate-pulse">(Updating...)</span>}
         </h3>
 
         <div className="overflow-x-auto">
@@ -1556,30 +1561,12 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
-    if (isSecurity) {
-      // MOCK DATA FOR SECURITY WORKSPACE
-      setWorkers([
-        { id: 1, name: 'John Doe', employee_barcode: 'EMP-001', phone: '9876543210', designation: 'cutting_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 2, name: 'Jane Smith', employee_barcode: 'EMP-002', phone: '9876543211', designation: 'stitching_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 3, name: 'Mike Johnson', employee_barcode: 'EMP-003', phone: '9876543212', designation: 'helper', wage_type: 'piece_rate', is_active: false },
-        { id: 12, name: 'Test User', employee_barcode: 'EMP-000012', phone: '1234567890', designation: 'operator', wage_type: 'piece_rate', is_active: true },
-        { id: 4, name: 'Arun Kumar', employee_barcode: 'EMP-004', phone: '9876543214', designation: 'supervisor', wage_type: 'piece_rate', is_active: true },
-        { id: 5, name: 'Priya Raj', employee_barcode: 'EMP-005', phone: '9876543215', designation: 'packing_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 6, name: 'Mani Kandan', employee_barcode: 'EMP-006', phone: '9876543216', designation: 'ironing_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 7, name: 'Karthik', employee_barcode: 'EMP-007', phone: '9876543217', designation: 'stitching_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 8, name: 'Selvi', employee_barcode: 'EMP-008', phone: '9876543218', designation: 'helper', wage_type: 'piece_rate', is_active: true },
-        { id: 9, name: 'Ramesh', employee_barcode: 'EMP-009', phone: '9876543219', designation: 'cutting_staff', wage_type: 'piece_rate', is_active: true },
-        { id: 10, name: 'Gowtham', employee_barcode: 'EMP-010', phone: '9876543220', designation: 'skiving_operator', wage_type: 'piece_rate', is_active: true },
-      ]);
-      return;
-    }
-
     if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
       apiFetch('/api/v1/employees', {}, token)
         .then(setWorkers)
         .catch(() => { });
     }
-  }, [activeTab, token, workerRefreshKey, isSecurity]);
+  }, [activeTab, token, workerRefreshKey]);
 
   return (
     <div className="space-y-6">
@@ -1611,7 +1598,7 @@ export default function AttendancePage() {
 
           {activeTab === 'employees' && isSecurity && <EmployeesListView workers={workers} />}
 
-          {activeTab === 'history' && isSecurity && <AttendanceHistoryView />}
+          {activeTab === 'history' && isSecurity && <AttendanceHistoryView token={token} />}
 
           {activeTab === 'proxy' && (
             (isSupervisor || isSecurity)

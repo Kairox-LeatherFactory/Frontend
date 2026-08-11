@@ -3503,7 +3503,7 @@ export default function ProductionLogEntry() {
                                         <button
                                           onClick={() => {
                                             setStoreDrawerInput(drawer.id);
-                                            handleStoreTransition('RECEIVED', drawer.id);
+                                            handleStoreTransition('RECEIVED', drawer.drawer_id || drawer.id);
                                           }}
                                           disabled={storeApiLoading}
                                           className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-200 text-xs font-black rounded-lg transition-all disabled:opacity-50 cursor-pointer"
@@ -3515,7 +3515,7 @@ export default function ProductionLogEntry() {
                                         <button
                                           onClick={() => {
                                             setStoreDrawerInput(drawer.id);
-                                            handleStoreTransition('SENDED', drawer.id);
+                                            handleStoreTransition('SENDED', drawer.drawer_id || drawer.id);
                                           }}
                                           disabled={storeApiLoading}
                                           className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg shadow-sm transition-all disabled:opacity-50 cursor-pointer"
