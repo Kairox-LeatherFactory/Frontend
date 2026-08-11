@@ -24,9 +24,9 @@ export const ROLE_OPERATIONS = {
   managing_director: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish', 'Final Inspection', 'Package Export'],
   direct_manager: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish', 'Final Inspection', 'Package Export'],
   supervisor: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish', 'Final Inspection', 'Package Export'],
-  cutting_manager: ['Cutting', 'Fusing'],
+  cutting_manager: ['Cutting'],
   lining_manager: ['Lining'],
-  stitching_manager: ['Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'],
+  stitching_manager: ['Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'],
   employee: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'],
   store_scan: [],
   hr: [], // HR does not directly log floor ops
