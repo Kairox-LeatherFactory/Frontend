@@ -446,22 +446,41 @@ export default function ProductionLogEntry() {
     setStoreApiLoading(true);
     setErrorMsg('');
     try {
-      const drawerCode = storeVerifyResult?.drawer_code || storeVerifyResult?.drawer_id || storeDrawerInput.trim().toUpperCase();
-      let drawerId = overrideDrawerId;
+      const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
+      let finalUuid = null;
+
+      // 1. Check if override is a valid UUID
+      if (isUUID(overrideDrawerId)) {
+        finalUuid = overrideDrawerId;
+      }
       
-      // If the provided ID is missing, or is a DRW string instead of a UUID, look up the true UUID from the drawers list
-      if (!drawerId || !drawerId.includes('-') || drawerId.startsWith('DRW')) {
+      // 2. Check if storeVerifyResult already contains the valid UUID
+      if (!finalUuid && isUUID(storeVerifyResult?.drawer_id)) {
+        finalUuid = storeVerifyResult.drawer_id;
+      }
+      
+      // 3. Fallback: Search in storeDrawers list
+      if (!finalUuid) {
+        const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
         const matchingDrawer = storeDrawers.find(d => 
           (d.barcode?.toUpperCase() === drawerCode) || 
           (d.code?.toUpperCase() === drawerCode) || 
           (d.id === drawerCode) || 
           (d.drawer_id === drawerCode)
         );
-        // Fallback to drawerCode if not found, though this should rarely happen if the drawer list is loaded
-        drawerId = matchingDrawer ? matchingDrawer.drawer_id : drawerCode;
+        
+        if (matchingDrawer && isUUID(matchingDrawer.drawer_id)) {
+          finalUuid = matchingDrawer.drawer_id;
+        }
       }
 
-      const res = await apiReceiveDrawer(token, drawerId, transition);
+      if (!finalUuid) {
+        setStoreApiLoading(false);
+        setErrorMsg("System could not resolve the true UUID for this Drawer. Please refresh the page or try scanning again.");
+        return;
+      }
+
+      const res = await apiReceiveDrawer(token, finalUuid, transition);
 
       setStoreReceiveStatus(transition.toLowerCase());
       setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
