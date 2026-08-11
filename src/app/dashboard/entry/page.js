@@ -446,18 +446,19 @@ export default function ProductionLogEntry() {
     setStoreApiLoading(true);
     setErrorMsg('');
     try {
-      const drawerCode = storeVerifyResult?.drawer_code || storeDrawerInput.trim().toUpperCase();
+      const drawerCode = storeVerifyResult?.drawer_code || storeVerifyResult?.drawer_id || storeDrawerInput.trim().toUpperCase();
       let drawerId = overrideDrawerId;
       
-      if (!drawerId) {
-        // The API requires a UUID, so we must resolve the DRW-xxx code to its UUID
+      // If the provided ID is missing, or is a DRW string instead of a UUID, look up the true UUID from the drawers list
+      if (!drawerId || !drawerId.includes('-') || drawerId.startsWith('DRW')) {
         const matchingDrawer = storeDrawers.find(d => 
           (d.barcode?.toUpperCase() === drawerCode) || 
           (d.code?.toUpperCase() === drawerCode) || 
           (d.id === drawerCode) || 
           (d.drawer_id === drawerCode)
         );
-        drawerId = storeVerifyResult?.drawer_id || (matchingDrawer ? (matchingDrawer.drawer_id || matchingDrawer.id) : drawerCode);
+        // Fallback to drawerCode if not found, though this should rarely happen if the drawer list is loaded
+        drawerId = matchingDrawer ? matchingDrawer.drawer_id : drawerCode;
       }
 
       const res = await apiReceiveDrawer(token, drawerId, transition);
