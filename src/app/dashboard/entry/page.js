@@ -362,6 +362,18 @@ export default function ProductionLogEntry() {
   const [storeDrawerSearch, setStoreDrawerSearch] = useState('');
   const [expandedDrawer, setExpandedDrawer] = useState(null);
   const [storeLoading, setStoreLoading] = useState(false);
+  const [storeVisibleCount, setStoreVisibleCount] = useState(50);
+
+  const observerRef = useRef();
+  const lastDrawerElementRef = useCallback(node => {
+    if (observerRef.current) observerRef.current.disconnect();
+    observerRef.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        setStoreVisibleCount(prev => prev + 50);
+      }
+    }, { rootMargin: '400px' });
+    if (node) observerRef.current.observe(node);
+  }, []);
 
   const fetchLiveDrawers = useCallback(async () => {
     if (!token) return;
@@ -1431,6 +1443,29 @@ export default function ProductionLogEntry() {
   const storeLeather = storeDrawers.filter(d => d.type === 'Leather').length;
   const storeLining = storeDrawers.filter(d => d.type === 'Lining').length;
   const storeBoth = storeDrawers.filter(d => d.type === 'Both').length;
+
+  const filteredStoreDrawers = useMemo(() => {
+    return storeDrawers
+      .filter(d => {
+        if (!storeDrawerSearch.trim()) return true;
+        const q = storeDrawerSearch.trim().toLowerCase();
+        return (
+          (d.id && d.id.toLowerCase().includes(q)) ||
+          (d.code && d.code.toLowerCase().includes(q)) ||
+          (d.client && d.client.toLowerCase().includes(q)) ||
+          (d.style && d.style.toLowerCase().includes(q))
+        );
+      })
+      .filter(d => {
+        if (storeFilterType === 'All') return true;
+        if (storeFilterType === 'Free') return d.status === 'Free';
+        return d.type === storeFilterType;
+      });
+  }, [storeDrawers, storeDrawerSearch, storeFilterType]);
+
+  useEffect(() => {
+    setStoreVisibleCount(50);
+  }, [storeDrawerSearch, storeFilterType]);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-0 space-y-8 animate-fade-in pb-12">
@@ -3453,22 +3488,8 @@ export default function ProductionLogEntry() {
                   </div>
                 </div>
                 <div className="divide-y divide-slate-100">
-                  {storeDrawers
-                    .filter(d => {
-                      if (!storeDrawerSearch.trim()) return true;
-                      const q = storeDrawerSearch.trim().toLowerCase();
-                      return (
-                        (d.id && d.id.toLowerCase().includes(q)) ||
-                        (d.code && d.code.toLowerCase().includes(q)) ||
-                        (d.client && d.client.toLowerCase().includes(q)) ||
-                        (d.style && d.style.toLowerCase().includes(q))
-                      );
-                    })
-                    .filter(d => {
-                      if (storeFilterType === 'All') return true;
-                      if (storeFilterType === 'Free') return d.status === 'Free';
-                      return d.type === storeFilterType;
-                    })
+                  {filteredStoreDrawers
+                    .slice(0, storeVisibleCount)
                     .map(drawer => {
                       const isScannedDrawer = storeDrawerInput.trim().toUpperCase() === drawer.id.toUpperCase();
                       const isExpanded = expandedDrawer === drawer.id;
@@ -3583,6 +3604,16 @@ export default function ProductionLogEntry() {
                         </div>
                       );
                     })}
+                  {filteredStoreDrawers.length > storeVisibleCount && (
+                    <div ref={lastDrawerElementRef} className="p-4 flex justify-center">
+                      <button
+                        onClick={() => setStoreVisibleCount(v => v + 50)}
+                        className="px-6 py-2 bg-[#f4ece3] hover:bg-[#e8decb] text-[#c8834a] font-bold text-xs rounded-lg transition-colors cursor-pointer"
+                      >
+                        Load More Drawers ({filteredStoreDrawers.length - storeVisibleCount} remaining)
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
