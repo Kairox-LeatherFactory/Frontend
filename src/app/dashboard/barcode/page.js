@@ -2095,8 +2095,6 @@ export default function BarcodeManagementPage() {
  } finally {
  if (!cancelled) setDrawerLoading(false);
  }
- };
- loadDrawers();
  }, 100);
  return () => { cancelled = true; clearTimeout(timer); };
  }, [category, token, drawerReloadKey, drawerStateFilter, drawerSeqFrom, drawerSeqTo, hasMounted]);
@@ -2119,8 +2117,6 @@ export default function BarcodeManagementPage() {
  } finally {
  if (!cancelled) setEmployeesLoading(false);
  }
- };
- loadRoster();
  }, 100);
  return () => { cancelled = true; clearTimeout(timer); };
  }, [category, token, employeesReloadKey, hasMounted]);

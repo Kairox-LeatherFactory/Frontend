@@ -1565,7 +1565,7 @@ function AttendanceHistoryView({ token }) {
  return (
  <div className="space-y-6">
  <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
- <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2 mb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1), color: '#2d1f0e' }}>
+ <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2 mb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
  <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster {loading && <span className="text-xs text-slate-400 animate-pulse">(Updating...)</span>}
  </h3>
 
