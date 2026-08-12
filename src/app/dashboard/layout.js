@@ -117,6 +117,14 @@ export default function DashboardLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const mainRef = useRef(null);
 
+  // Prevent heavy pages from dropping paints on mobile by splitting layout paint from content paint
+  const [isNavigating, setIsNavigating] = useState(false);
+  useEffect(() => {
+    setIsNavigating(true);
+    const t = setTimeout(() => setIsNavigating(false), 150);
+    return () => clearTimeout(t);
+  }, [pathname]);
+
   // Session gate
   useEffect(() => {
     if (!user) {
@@ -436,7 +444,13 @@ export default function DashboardLayout({ children }) {
 
         {/* ─── PAGE ROUTER CONTENT ─── */}
         <main ref={mainRef} className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto relative" style={{ background: '#faf6f0', transform: 'translateZ(0)' }}>
-          {children}
+          {isNavigating ? (
+            <div className="flex h-full items-center justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8834a]"></div>
+            </div>
+          ) : (
+            children
+          )}
         </main>
       </div>
     </div>
