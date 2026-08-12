@@ -390,7 +390,7 @@ export default function DashboardLayout({ children }) {
         <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto" style={{ background: '#faf6f0' }}>
           <motion.div
             key={pathname}
-            initial={{ opacity: 0, y: 10 }}
+            initial={false}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
           >

@@ -648,7 +648,7 @@ function StyleGenerationGrid({
           <p className="font-bold" style={{ color: BRAND.textMuted }}>No barcodes match this filter.</p>
         </div>
       ) : (
-        <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }} variants={staggerContainer} initial="hidden" animate="show">
+        <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))' }} variants={staggerContainer} initial={false} animate="show">
           {filteredRows.map((r) => {
             const checked = selectedCodes.has(r.code);
             return (
@@ -760,7 +760,7 @@ function StyleHistoryTable({ rows, historyLoading, historyError, page, setPage, 
                 ))}
               </tr>
             </thead>
-            <motion.tbody variants={staggerContainer} initial="hidden" animate="show">
+            <motion.tbody variants={staggerContainer} initial={false} animate="show">
               {rows.map((r) => (
                 <motion.tr key={r.code} variants={fadeUpItem} className="hover:bg-[#fdf6ee]">
                   <td className="px-3 py-2.5 font-mono font-bold whitespace-nowrap" style={{ color: '#5a3518', borderBottom: '1px solid #f0e8d7' }}>{r.code}</td>
@@ -1091,7 +1091,7 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
           </div>
 
           <AnimatePresence mode="wait">
-            <motion.div key={activeTab} variants={tabFade} initial="hidden" animate="show" exit="exit">
+            <motion.div key={activeTab} variants={tabFade} initial={false} animate="show" exit="exit">
               {activeTab === 'generation' && (
                 <StyleGenerationGrid
                   rows={rows} historyLoading={historyLoading} historyError={historyError}
@@ -1257,7 +1257,7 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
             <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Check employees above and click &quot;Generate Selected&quot;.</p>
           </div>
         ) : (
-          <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }} variants={staggerContainer} initial="hidden" animate="show">
+          <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }} variants={staggerContainer} initial={false} animate="show">
             {generatedBarcodes.map((b) => (
               <motion.div
                 key={b.pieceCode}
@@ -1559,7 +1559,7 @@ function DrawerGenerationTab({
             <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Select drawers above and click &quot;Generate Selected&quot;.</p>
           </div>
         ) : (
-          <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }} variants={staggerContainer} initial="hidden" animate="show">
+          <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }} variants={staggerContainer} initial={false} animate="show">
             {drawerGenerated.map((b) => (
               <motion.div
                 key={b.pieceCode}
@@ -1873,7 +1873,7 @@ function HistoryTab({ batchHistoryStore, filters, setFilter, resetFilters, optio
                                 ))}
                               </tr>
                             </thead>
-                            <motion.tbody variants={staggerContainer} initial="hidden" animate="show">
+                            <motion.tbody variants={staggerContainer} initial={false} animate="show">
                               {og.batches.map((b) => (
                                 <motion.tr key={b.batchNo} variants={fadeUpItem} className="hover:bg-[#fdf6ee]">
                                   <td className="px-3 py-2.5 font-mono font-bold" style={{ color: '#5a3518', borderBottom: '1px solid #f0e8d7' }}>{b.batchNo}</td>
@@ -2436,7 +2436,7 @@ export default function BarcodeManagementPage() {
   const isBucketSheet = category === 'bucket';
 
   return (
-    <motion.div className="space-y-6" variants={staggerContainer} initial="hidden" animate="show">
+    <motion.div className="space-y-6" variants={staggerContainer} initial={false} animate="show">
       <style jsx global>{`
         .btn-warm-primary {
           display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -2587,7 +2587,7 @@ export default function BarcodeManagementPage() {
 
       {category !== 'style' && (
         <AnimatePresence mode="wait">
-          <motion.div key={`${category}-${activeTab}`} variants={tabFade} initial="hidden" animate="show" exit="exit">
+          <motion.div key={`${category}-${activeTab}`} variants={tabFade} initial={false} animate="show" exit="exit">
             {activeTab === 'generation' && category === 'employee' && (
               <EmployeeGenerationTab
                 employees={employeeDirectory}
