@@ -637,7 +637,7 @@ export default function DashboardLayout({ children }) {
             ================================================ */}
 
         <main
-          className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto relative"
+          className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto relative transform-gpu"
           style={{
             background: '#faf6f0',
           }}
