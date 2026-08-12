@@ -93,7 +93,7 @@ const NAV_ICONS = {
 
 // Routes forced through a full page navigation instead of Next's client-side
 // transition — see the comment at their nav link render for why.
-const HARD_NAV_HREFS = new Set(['/dashboard/attendance', '/dashboard/barcode']);
+const HARD_NAV_HREFS = new Set(['/dashboard/attendance', '/dashboard/barcode', '/dashboard/entry', '/dashboard/analytics']);
 
 const navStagger = {
   hidden: {},
@@ -363,7 +363,7 @@ export default function DashboardLayout({ children }) {
       )}
 
       {/* ─── MAIN CONTENT CONTAINER ─── */}
-      <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
+      <div className="flex-1 flex flex-col min-w-0">
 
         {/* ─── TOP BAR HEADER ─── */}
         <motion.header
@@ -435,7 +435,7 @@ export default function DashboardLayout({ children }) {
         </AnimatePresence>
 
         {/* ─── PAGE ROUTER CONTENT ─── */}
-        <main ref={mainRef} className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto relative" style={{ background: '#faf6f0' }}>
+        <main ref={mainRef} className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto relative" style={{ background: '#faf6f0', transform: 'translateZ(0)' }}>
           {children}
         </main>
       </div>
