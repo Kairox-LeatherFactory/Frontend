@@ -18,24 +18,25 @@ import { createPortal } from 'react-dom';
 const CameraScanner = ({ onScan, onClose }) => {
   useEffect(() => {
     let scanner;
-    import('html5-qrcode').then(({ Html5QrcodeScanner }) => {
-      scanner = new Html5QrcodeScanner("reader", { 
-        qrbox: { width: 300, height: 150 }, 
-        fps: 10,
-        aspectRatio: 1.0,
-      }, false);
-      scanner.render(
+    import('html5-qrcode').then(({ Html5Qrcode }) => {
+      scanner = new Html5Qrcode("reader");
+      scanner.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
         (text) => {
-          scanner.clear();
-          onScan(text);
+          scanner.stop().then(() => {
+            onScan(text);
+          }).catch(() => {
+            onScan(text);
+          });
         },
         (err) => {}
-      );
+      ).catch(err => console.error("Camera start error:", err));
     }).catch(err => console.error("Error loading html5-qrcode:", err));
 
     return () => {
-      if (scanner) {
-        scanner.clear().catch(e => console.warn(e));
+      if (scanner && scanner.isScanning) {
+        scanner.stop().catch(e => console.warn(e));
       }
     };
   }, [onScan]);
@@ -1690,6 +1691,8 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+
 
 
 
