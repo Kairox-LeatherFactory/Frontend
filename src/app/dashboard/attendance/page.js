@@ -30,7 +30,7 @@ const CameraScanner = ({ onScan, onClose }) => {
             onScan(text);
           });
         },
-        (err) => {}
+        (err) => { }
       ).catch(err => console.error("Camera start error:", err));
     }).catch(err => console.error("Error loading html5-qrcode:", err));
 
@@ -447,114 +447,114 @@ function MyAttendanceView({ token }) {
 
       {/* Personal History */}
       {!isFloorManager && (
-      <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-          <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
-            <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Attendance History
-          </h3>
-          <div className="flex flex-wrap items-center gap-2">
-            <input type="date" value={startDate}
-              onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
-              className="px-3 py-2 text-xs font-bold rounded-xl cursor-pointer flex-1 min-w-[130px] focus:outline-none transition-all" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
-            <span className="font-bold text-xs" style={{ color: '#9a7a5a' }}>to</span>
-            <input type="date" value={endDate}
-              onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
-              className="px-3 py-2 text-xs font-bold rounded-xl cursor-pointer flex-1 min-w-[130px] focus:outline-none transition-all" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
+        <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
+            <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+              <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Attendance History
+            </h3>
+            <div className="flex flex-wrap items-center gap-2">
+              <input type="date" value={startDate}
+                onChange={(e) => { setStartDate(e.target.value); setPage(1); }}
+                className="px-3 py-2 text-xs font-bold rounded-xl cursor-pointer flex-1 min-w-[130px] focus:outline-none transition-all" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
+              <span className="font-bold text-xs" style={{ color: '#9a7a5a' }}>to</span>
+              <input type="date" value={endDate}
+                onChange={(e) => { setEndDate(e.target.value); setPage(1); }}
+                className="px-3 py-2 text-xs font-bold rounded-xl cursor-pointer flex-1 min-w-[130px] focus:outline-none transition-all" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
+            </div>
           </div>
-        </div>
 
-        {histLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
-          </div>
-        ) : history.length === 0 ? (
-          <div className="text-center py-12" style={{ color: '#9a7a5a' }}>
-            <CalendarDays className="w-10 h-10 mx-auto mb-2 opacity-50" />
-            <p className="font-semibold text-sm">No attendance records found for this period.</p>
-          </div>
-        ) : (
-          <>
-            {/* Desktop table — hidden on mobile */}
-            <div className="hidden sm:block overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }}>
-              <table className="w-full text-left text-xs font-semibold">
-                <thead>
-                  <tr className="font-bold uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', color: '#9a7a5a' }}>
-                    <th className="p-3">Date</th>
-                    <th className="p-3">Check In</th>
-                    <th className="p-3">Check Out</th>
-                    <th className="p-3">Distance</th>
-                    <th className="p-3">Source</th>
-                    <th className="p-3">Flags</th>
-                  </tr>
-                </thead>
-                <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
-                  {paginated.map((row) => (
-                    <motion.tr key={row.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
-                      <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</td>
-                      <td className="p-3">{fmtTime(row.check_in_at)}</td>
-                      <td className="p-3">
-                        {row.check_out_at
-                          ? fmtTime(row.check_out_at)
-                          : <span className="font-black" style={{ color: '#38a169' }}>Active</span>}
-                      </td>
-                      <td className="p-3" style={{ color: '#9a7a5a' }}>{fmtDist(row.distance_m)}</td>
-                      <td className="p-3"><Badge label={row.source} type={row.source} /></td>
-                      <td className="p-3">
+          {histLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
+            </div>
+          ) : history.length === 0 ? (
+            <div className="text-center py-12" style={{ color: '#9a7a5a' }}>
+              <CalendarDays className="w-10 h-10 mx-auto mb-2 opacity-50" />
+              <p className="font-semibold text-sm">No attendance records found for this period.</p>
+            </div>
+          ) : (
+            <>
+              {/* Desktop table — hidden on mobile */}
+              <div className="hidden sm:block overflow-x-auto rounded-xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }}>
+                <table className="w-full text-left text-xs font-semibold">
+                  <thead>
+                    <tr className="font-bold uppercase tracking-wider" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.15)', color: '#9a7a5a' }}>
+                      <th className="p-3">Date</th>
+                      <th className="p-3">Check In</th>
+                      <th className="p-3">Check Out</th>
+                      <th className="p-3">Distance</th>
+                      <th className="p-3">Source</th>
+                      <th className="p-3">Flags</th>
+                    </tr>
+                  </thead>
+                  <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
+                    {paginated.map((row) => (
+                      <motion.tr key={row.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
+                        <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</td>
+                        <td className="p-3">{fmtTime(row.check_in_at)}</td>
+                        <td className="p-3">
+                          {row.check_out_at
+                            ? fmtTime(row.check_out_at)
+                            : <span className="font-black" style={{ color: '#38a169' }}>Active</span>}
+                        </td>
+                        <td className="p-3" style={{ color: '#9a7a5a' }}>{fmtDist(row.distance_m)}</td>
+                        <td className="p-3"><Badge label={row.source} type={row.source} /></td>
+                        <td className="p-3">
+                          <div className="flex flex-wrap gap-1">
+                            {row.is_late && <Badge label="Late" type="late" />}
+                            {row.is_short && <Badge label="Short" type="short" />}
+                            {row.is_overtime && <Badge label="OT" type="overtime" />}
+                            {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
+                          </div>
+                        </td>
+                      </motion.tr>
+                    ))}
+                  </motion.tbody>
+                </table>
+              </div>
+
+              {/* Mobile cards — shown only on mobile */}
+              <motion.div variants={staggerContainer} initial="hidden" animate="show" className="sm:hidden space-y-3">
+                {paginated.map((row) => (
+                  <motion.div key={row.id} variants={fadeUpItem} className="rounded-xl p-4 space-y-3" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.1)' }}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-sm" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</span>
+                      <Badge label={row.source} type={row.source} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Check In</p>
+                        <p className="font-black" style={{ color: '#2d1f0e' }}>{fmtTime(row.check_in_at)}</p>
+                      </div>
+                      <div>
+                        <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Check Out</p>
+                        <p className="font-black" style={{ color: '#2d1f0e' }}>
+                          {row.check_out_at
+                            ? fmtTime(row.check_out_at)
+                            : <span style={{ color: '#38a169' }}>Active</span>}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Distance</p>
+                        <p className="font-semibold" style={{ color: '#a86022' }}>{fmtDist(row.distance_m)}</p>
+                      </div>
+                      <div>
+                        <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Flags</p>
                         <div className="flex flex-wrap gap-1">
                           {row.is_late && <Badge label="Late" type="late" />}
                           {row.is_short && <Badge label="Short" type="short" />}
                           {row.is_overtime && <Badge label="OT" type="overtime" />}
                           {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
                         </div>
-                      </td>
-                    </motion.tr>
-                  ))}
-                </motion.tbody>
-              </table>
-            </div>
-
-            {/* Mobile cards — shown only on mobile */}
-            <motion.div variants={staggerContainer} initial="hidden" animate="show" className="sm:hidden space-y-3">
-              {paginated.map((row) => (
-                <motion.div key={row.id} variants={fadeUpItem} className="rounded-xl p-4 space-y-3" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.1)' }}>
-                  <div className="flex items-center justify-between">
-                    <span className="font-black text-sm" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</span>
-                    <Badge label={row.source} type={row.source} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Check In</p>
-                      <p className="font-black" style={{ color: '#2d1f0e' }}>{fmtTime(row.check_in_at)}</p>
-                    </div>
-                    <div>
-                      <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Check Out</p>
-                      <p className="font-black" style={{ color: '#2d1f0e' }}>
-                        {row.check_out_at
-                          ? fmtTime(row.check_out_at)
-                          : <span style={{ color: '#38a169' }}>Active</span>}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Distance</p>
-                      <p className="font-semibold" style={{ color: '#a86022' }}>{fmtDist(row.distance_m)}</p>
-                    </div>
-                    <div>
-                      <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Flags</p>
-                      <div className="flex flex-wrap gap-1">
-                        {row.is_late && <Badge label="Late" type="late" />}
-                        {row.is_short && <Badge label="Short" type="short" />}
-                        {row.is_overtime && <Badge label="OT" type="overtime" />}
-                        {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
                       </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
-            </motion.div>
-            <Paginator page={page} totalPages={totalPages} setPage={setPage} total={history.length} perPage={PER_PAGE} />
-          </>
-        )}
-      </SpotlightCard>
+                  </motion.div>
+                ))}
+              </motion.div>
+              <Paginator page={page} totalPages={totalPages} setPage={setPage} total={history.length} perPage={PER_PAGE} />
+            </>
+          )}
+        </SpotlightCard>
       )}
     </motion.div>
   );
@@ -882,23 +882,23 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
                 className="w-full h-12 pl-12 pr-28 bg-transparent text-white placeholder-[#e2d5c3]/50 font-mono font-bold text-sm focus:outline-none transition-all"
               />
               <div className="absolute right-1.5 flex gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setShowCamera(true)}
-                    className="sm:hidden px-3 py-2 rounded-xl text-[#c8834a] bg-white/10 hover:bg-white/20 transition-all flex items-center justify-center cursor-pointer"
-                  >
-                    <Camera className="w-4 h-4" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleScanAttendance()}
-                    disabled={isResolvingScan || !scanInput.trim()}
-                    className="px-4 py-2 rounded-xl text-xs font-black text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
-                  >
-                    {isResolvingScan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-4 h-4" />}
-                    <span className="hidden sm:inline">Scan</span>
-                  </button>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCamera(true)}
+                  className="sm:hidden px-3 py-2 rounded-xl text-[#c8834a] bg-white/10 hover:bg-white/20 transition-all flex items-center justify-center cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleScanAttendance()}
+                  disabled={isResolvingScan || !scanInput.trim()}
+                  className="px-4 py-2 rounded-xl text-xs font-black text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                >
+                  {isResolvingScan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-4 h-4" />}
+                  <span className="hidden sm:inline">Scan</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1607,6 +1607,11 @@ function AttendanceHistoryView({ token }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function AttendancePage() {
   const { user, token } = useAuth();
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const isManager = user === 'direct_manager' || user === 'managing_director' || user === 'hr';
   const isSupervisor = isManager;
@@ -1644,6 +1649,8 @@ export default function AttendancePage() {
         .catch(() => { });
     }
   }, [activeTab, token, workerRefreshKey]);
+
+  if (!isMounted) return null;
 
   return (
     <div className="space-y-6">
