@@ -355,7 +355,7 @@ function MyAttendanceView({ token }) {
   const busy = actionLoading || gps.loading;
 
   return (
-    <motion.div variants={staggerContainer} initial={false} animate="show" className="space-y-6">
+    <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
       <div>
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>My Attendance</h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Track your shift status and review personal attendance history.</p>
@@ -487,7 +487,7 @@ function MyAttendanceView({ token }) {
                       <th className="p-3">Flags</th>
                     </tr>
                   </thead>
-                  <motion.tbody variants={rowStagger} initial={false} animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
+                  <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
                     {paginated.map((row) => (
                       <motion.tr key={row.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                         <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</td>
@@ -514,7 +514,7 @@ function MyAttendanceView({ token }) {
               </div>
 
               {/* Mobile cards — shown only on mobile */}
-              <motion.div variants={staggerContainer} initial={false} animate="show" className="sm:hidden space-y-3">
+              <motion.div variants={staggerContainer} initial="hidden" animate="show" className="sm:hidden space-y-3">
                 {paginated.map((row) => (
                   <motion.div key={row.id} variants={fadeUpItem} className="rounded-xl p-4 space-y-3" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.1)' }}>
                     <div className="flex items-center justify-between">
@@ -824,7 +824,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
   };
 
   return (
-    <motion.div variants={staggerContainer} initial={false} animate="show" className="space-y-6">
+    <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Floor Command</h1>
@@ -947,7 +947,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
                   <th className="p-3">Type</th>
                 </tr>
               </thead>
-              <motion.tbody variants={rowStagger} initial={false} animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
+              <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
                 {filtered.map((w) => {
                   const isSelected = selected.has(w.id);
                   const isPieceRate = w.wage_type === 'piece_rate';
@@ -1270,7 +1270,7 @@ function OperationsHRView({ token }) {
   const totalPages = Math.ceil(filteredRoster.length / PER_PAGE);
 
   return (
-    <motion.div variants={staggerContainer} initial={false} animate="show" className="space-y-6">
+    <motion.div variants={staggerContainer} initial="hidden" animate="show" className="space-y-6">
       <div>
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Operations &amp; HR</h1>
         <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Live roster audit and shift policy configuration.</p>
@@ -1348,7 +1348,7 @@ function OperationsHRView({ token }) {
                     <th className="p-3">Flags</th>
                   </tr>
                 </thead>
-                <motion.tbody variants={rowStagger} initial={false} animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
+                <motion.tbody variants={rowStagger} initial="hidden" animate="show" className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
                   {paginated.map((row) => (
                     <motion.tr key={row.id} variants={fadeUpItem} className="hover:bg-[#fcfaf8] transition-colors">
                       <td className="p-3 font-mono text-[10px] font-black" style={{ color: '#9a7a5a' }}>
