@@ -387,10 +387,8 @@ export default function DashboardLayout({ children }) {
         </AnimatePresence>
 
         {/* ─── PAGE ROUTER CONTENT ─── */}
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto" style={{ background: '#faf6f0' }}>
-          <div key={pathname} className="animate-in fade-in duration-500">
-            {children}
-          </div>
+        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto relative" style={{ background: '#faf6f0', transform: 'translateZ(0)' }}>
+          {children}
         </main>
       </div>
     </div>
