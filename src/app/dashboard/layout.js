@@ -660,9 +660,13 @@ export default function DashboardLayout({ children }) {
             ================================================ */}
 
         <main
-          className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto relative"
+          className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto relative transition-opacity duration-200"
           style={{
             background: '#faf6f0',
+            isolation: 'isolate',
+            transform: 'translateZ(0)',
+            WebkitTransform: 'translateZ(0)',
+            willChange: 'transform',
           }}
         >
           {children}
