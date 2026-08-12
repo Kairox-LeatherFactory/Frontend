@@ -388,17 +388,14 @@ export default function DashboardLayout({ children }) {
 
         {/* ─── PAGE ROUTER CONTENT ─── */}
         <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto" style={{ background: '#faf6f0' }}>
-          <AnimatePresence mode="wait">
-            <motion.div
+          <motion.div
               key={pathname}
-              initial={{ opacity: 0, y: 14 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
             >
               {children}
             </motion.div>
-          </AnimatePresence>
         </main>
       </div>
     </div>
