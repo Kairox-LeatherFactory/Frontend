@@ -369,7 +369,13 @@ export default function DashboardLayout({ children }) {
   // Main layout
   // --------------------------------------------------
 
-  const sidebarContent = (
+  // Rendered independently for desktop and mobile — the desktop <aside> stays
+  // mounted (just CSS-hidden below the `md` breakpoint) while the mobile
+  // <motion.aside> mounts on top of it whenever the menu is open, so on a
+  // narrow viewport both copies can be in the DOM at once. Each needs its own
+  // `layoutId` namespace (see below) or Framer Motion's shared-layout
+  // animation gets two simultaneously-mounted elements claiming the same id.
+  const renderSidebar = (idPrefix) => (
     <>
       {/* Sidebar Brand */}
       <div className="h-20 flex items-center justify-between px-6 border-b" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
@@ -400,7 +406,7 @@ export default function DashboardLayout({ children }) {
               <Link href={link.href} onClick={() => setMobileMenuOpen(false)} className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full`}>
                 <NavPendingBar />
                 {isActive && (
-                  <motion.span layoutId="activeNavPill" className="absolute inset-0 rounded-[10px] overflow-hidden" style={{ background: 'linear-gradient(135deg, #a8703f 0%, #8a5a2e 45%, #6b4423 100%)', boxShadow: 'inset 0 0 0 1px rgba(255,232,204,0.14), inset 0 2px 4px rgba(0,0,0,0.35), 0 3px 10px rgba(0,0,0,0.25)' }} transition={{ type: 'spring', stiffness: 460, damping: 28, mass: 0.9 }}>
+                  <motion.span layoutId={`activeNavPill-${idPrefix}`} className="absolute inset-0 rounded-[10px] overflow-hidden" style={{ background: 'linear-gradient(135deg, #a8703f 0%, #8a5a2e 45%, #6b4423 100%)', boxShadow: 'inset 0 0 0 1px rgba(255,232,204,0.14), inset 0 2px 4px rgba(0,0,0,0.35), 0 3px 10px rgba(0,0,0,0.25)' }} transition={{ type: 'spring', stiffness: 460, damping: 28, mass: 0.9 }}>
                     <span className="absolute inset-0 opacity-70" style={{ backgroundImage: `url("${LEATHER_GRAIN_SVG}")`, backgroundSize: '80px 80px', mixBlendMode: 'overlay' }} />
                     <span className="absolute inset-[3px] rounded-[7px] pointer-events-none" style={{ border: '1.5px dashed rgba(255,238,214,0.45)' }} />
                     <motion.span className="absolute inset-y-0 w-8 pointer-events-none" style={{ background: 'linear-gradient(115deg, transparent, rgba(255,255,255,0.35), transparent)' }} initial={{ left: '-20%' }} animate={{ left: '120%' }} transition={{ duration: 0.7, delay: 0.12, ease: 'easeInOut' }} />
@@ -427,6 +433,9 @@ export default function DashboardLayout({ children }) {
     </>
   );
 
+  const desktopSidebar = renderSidebar('desktop');
+  const mobileSidebar = renderSidebar('mobile');
+
   return (
     <div
       className="min-h-screen flex flex-col md:flex-row"
@@ -438,7 +447,7 @@ export default function DashboardLayout({ children }) {
           DESKTOP SIDEBAR
           ================================================ */}
       <aside className="hidden md:flex flex-col static inset-auto z-auto w-72 shadow-2xl" style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
-        {sidebarContent}
+        {desktopSidebar}
       </aside>
 
       {/* ================================================
@@ -458,7 +467,7 @@ export default function DashboardLayout({ children }) {
               className="md:hidden fixed inset-y-0 left-0 z-50 w-72 flex flex-col shadow-2xl"
               style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}
             >
-              {sidebarContent}
+              {mobileSidebar}
             </motion.aside>
           </>
         )}
