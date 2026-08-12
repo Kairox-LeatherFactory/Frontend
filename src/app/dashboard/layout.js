@@ -91,6 +91,10 @@ const NAV_ICONS = {
   '/dashboard/procurement/po': ShoppingCart,
 };
 
+// Routes forced through a full page navigation instead of Next's client-side
+// transition — see the comment at their nav link render for why.
+const HARD_NAV_HREFS = new Set(['/dashboard/attendance', '/dashboard/barcode']);
+
 const navStagger = {
   hidden: {},
   show: { transition: { staggerChildren: 0.045, delayChildren: 0.1 } },
@@ -271,6 +275,14 @@ export default function DashboardLayout({ children }) {
           {navLinks.map((link) => {
             const isActive = pathname === link.href || (link.href !== '/dashboard' && pathname.startsWith(link.href + '/'));
             const IconComp = NAV_ICONS[link.href] || LayoutDashboard;
+            // Attendance and Barcode Management are the heaviest pages in the
+            // app (GPS setup, portal-based alerts, live fetches all firing on
+            // mount). On mobile, Next's client-side transition into them was
+            // reliably getting starved and never committing until an
+            // unrelated interaction (reopening this menu) forced React to
+            // flush it — every render-layer nudge fix. A full page navigation
+            // for just these two sidesteps that scheduling issue entirely.
+            const NavTag = HARD_NAV_HREFS.has(link.href) ? 'a' : Link;
             return (
               <motion.div key={link.href} variants={navItemAnim}>
                 {link.divider && (
@@ -278,7 +290,7 @@ export default function DashboardLayout({ children }) {
                     <div className="h-px" style={{ background: 'rgba(200,131,74,0.15)' }} />
                   </div>
                 )}
-                <Link
+                <NavTag
                   href={link.href}
                   className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full`}
                 >
@@ -325,7 +337,7 @@ export default function DashboardLayout({ children }) {
                       {pendingPoCount}
                     </span>
                   )}
-                </Link>
+                </NavTag>
               </motion.div>
             );
           })}
