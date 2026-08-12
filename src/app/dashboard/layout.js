@@ -125,19 +125,33 @@ export default function DashboardLayout({ children }) {
   }, [pathname]);
 
   // Some mobile browsers (notably Android Chrome / iOS Safari) leave the
-  // content pane blank after a client-side route change into a heavy page —
-  // the DOM updates but the compositor never repaints it, until an unrelated
-  // reflow (opening the menu, rotating, a manual refresh) nudges it. Forcing
-  // a synchronous reflow right after navigation works around that.
+  // content pane painted-but-not-composited after a client-side route change
+  // into a heavy page — the DOM is correct (confirmed: reopening the mobile
+  // sidebar reveals it immediately), the GPU just never redraws that layer
+  // until something else forces a full-viewport recomposite. A plain layout
+  // reflow isn't enough for that class of bug, so nudge both layout (display)
+  // and compositing (transform) — once right away, and again after the
+  // sidebar's own close transition (300ms) has had time to finish, in case
+  // that transition is what leaves the compositor mid-update.
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
-    const raf = requestAnimationFrame(() => {
+    const nudge = () => {
       el.style.display = 'none';
       void el.offsetHeight;
       el.style.display = '';
-    });
-    return () => cancelAnimationFrame(raf);
+      el.style.transform = 'translateZ(0)';
+      void el.offsetHeight;
+      el.style.transform = '';
+    };
+    const raf = requestAnimationFrame(nudge);
+    const t1 = setTimeout(nudge, 120);
+    const t2 = setTimeout(nudge, 400);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
   }, [pathname]);
 
   const roleInfo = ROLES[user] || { label: 'Viewer', color: 'bg-slate-100 text-slate-700' };
@@ -319,20 +333,17 @@ export default function DashboardLayout({ children }) {
         </div>
       </aside>
 
-      {/* Overlay for mobile menu */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            key="mobile-overlay"
-            onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 z-40 bg-black/40 md:hidden"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          />
-        )}
-      </AnimatePresence>
+      {/* Overlay for mobile menu — deliberately not animated: an exit fade
+          here used to run its own rAF-driven animation at the exact moment
+          the just-navigated-to page (Attendance/Barcode) mounts its heavy
+          content, and on mobile that contention was leaving the content
+          painted but not composited to the screen until an unrelated repaint. */}
+      {mobileMenuOpen && (
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+        />
+      )}
 
       {/* ─── MAIN CONTENT CONTAINER ─── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-x-hidden">
