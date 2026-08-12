@@ -898,15 +898,31 @@ export default function ProductionLogEntry() {
     setBarcodeDcmConfirmed(false);
     setErrorMsg('');
 
-    try {
-      // A scanned piece barcode (e.g. HAN123-CARNABY-PINE_GREEN-S-003) is
-      // longer than its SKU code, so the match has to check whether the
-      // scanned value CONTAINS the SKU code — not the other way around.
-      let matched = fetchedSkus.find(s =>
-        s.code.toLowerCase() === val ||
-        String(s.order_number || '').toLowerCase() === val ||
-        val.includes(s.code.toLowerCase())
+    const isMatch = (s, target) => {
+      if (!s || !target) return false;
+      const c = (s.code || s.sku_code || '').toLowerCase();
+      const st = (s.style_name || '').toLowerCase();
+      const ord = String(s.order_number || '').toLowerCase();
+      const label = (s.label || '').toLowerCase();
+
+      const cleanTarget = target.replace(/[-_ ]/g, '');
+      const cleanC = c.replace(/[-_ ]/g, '');
+      const cleanSt = st.replace(/[-_ ]/g, '');
+
+      return (
+        c === target ||
+        st === target ||
+        ord === target ||
+        label === target ||
+        (c && target.includes(c)) ||
+        (st && target.includes(st)) ||
+        (cleanC && cleanTarget.includes(cleanC)) ||
+        (cleanSt && cleanTarget.includes(cleanSt))
       );
+    };
+
+    try {
+      let matched = fetchedSkus.find(s => isMatch(s, val));
 
       // If SKUs not loaded yet, try a fresh fetch from backend
       if (!matched && fetchedSkus.length === 0 && val.length > 0) {
@@ -916,11 +932,7 @@ export default function ProductionLogEntry() {
           const freshItems = freshRes?.items || freshRes?.skus || (Array.isArray(freshRes) ? freshRes : []);
           if (freshItems.length > 0) {
             setFetchedSkus(freshItems);
-            matched = freshItems.find(s =>
-              s.code.toLowerCase() === val ||
-              String(s.order_number || '').toLowerCase() === val ||
-              val.includes(s.code.toLowerCase())
-            );
+            matched = freshItems.find(s => isMatch(s, val));
           }
         } catch (fetchErr) {
           console.warn('[SKU Verify] direct fetch also failed:', fetchErr);
@@ -1742,23 +1754,24 @@ export default function ProductionLogEntry() {
           title={cameraScanTarget === 'worker' ? "Scan Worker Barcode" : cameraScanTarget === 'sku' ? "Scan SKU Barcode" : "Scan Store Drawer / Piece"}
           onClose={() => setCameraScanTarget(null)}
           onScan={(scannedCode) => {
+            const cleanCode = String(scannedCode || '').replace(/[\r\n]+/g, '').trim();
+            if (!cleanCode) return;
+
             if (cameraScanTarget === 'worker') {
-              setBarcodeWorkerInput(scannedCode);
-              handleVerifyBarcodeWorker(scannedCode);
+              setBarcodeWorkerInput(cleanCode);
+              setTimeout(() => handleVerifyBarcodeWorker(cleanCode), 50);
             } else if (cameraScanTarget === 'sku') {
-              setBarcodeSkuInput(scannedCode);
-              handleVerifySkuBarcode(scannedCode);
+              setBarcodeSkuInput(cleanCode);
+              setTimeout(() => handleVerifySkuBarcode(cleanCode), 50);
             } else if (cameraScanTarget === 'store') {
-              const val = scannedCode.trim();
-              if (!val) return;
-              if (val.toUpperCase().startsWith('DRW-') || val.toUpperCase().startsWith('DRAWER')) {
-                const drawerCode = val.toUpperCase();
-                setStoreDrawerInput(drawerCode);
-                setStoreDrawerSearch(drawerCode);
+              const val = cleanCode.toUpperCase();
+              if (val.startsWith('DRW-') || val.startsWith('DRAWER')) {
+                setStoreDrawerInput(val);
+                setStoreDrawerSearch(val);
               } else {
-                setStorePieceInput(val);
+                setStorePieceInput(cleanCode);
               }
-              setStoreCurrentScan(scannedCode);
+              setStoreCurrentScan(cleanCode);
             }
           }}
         />
