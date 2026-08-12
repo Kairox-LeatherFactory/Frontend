@@ -7,13 +7,58 @@ import {
   Lock, RefreshCw, CheckSquare, Square, X,
   Timer, CalendarDays, Shield, Zap, Filter,
   UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff,
-  Barcode, QrCode, Check
+  Barcode, QrCode, Check, Camera
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, fadeUpItem, tabFade, rowStagger } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
+
+const CameraScanner = ({ onScan, onClose }) => {
+  useEffect(() => {
+    let scanner;
+    import('html5-qrcode').then(({ Html5QrcodeScanner }) => {
+      scanner = new Html5QrcodeScanner("reader", { 
+        qrbox: { width: 300, height: 150 }, 
+        fps: 10,
+        aspectRatio: 1.0,
+      }, false);
+      scanner.render(
+        (text) => {
+          scanner.clear();
+          onScan(text);
+        },
+        (err) => {}
+      );
+    }).catch(err => console.error("Error loading html5-qrcode:", err));
+
+    return () => {
+      if (scanner) {
+        scanner.clear().catch(e => console.warn(e));
+      }
+    };
+  }, [onScan]);
+
+  return (
+    <div className="bg-white p-4 rounded-3xl shadow-2xl relative w-full border border-slate-200">
+      <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-100">
+        <h3 className="font-extrabold text-slate-800 flex items-center gap-2">
+          <Camera className="w-5 h-5 text-[#c8834a]" /> Scan ID Card
+        </h3>
+        <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors">
+          <X className="w-5 h-5 text-slate-400" />
+        </button>
+      </div>
+      <div id="reader" className="w-full rounded-2xl overflow-hidden border-2 border-[#c8834a]/30"></div>
+      <div className="mt-4 text-center">
+        <button onClick={onClose} className="text-sm font-bold text-slate-500 hover:text-slate-800">
+          Cancel Scanning
+        </button>
+      </div>
+    </div>
+  );
+};
 
 // ─── API BASE ────────────────────────────────────────────────────────────────
 const API = '/api/v1/attendance';
@@ -532,6 +577,8 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
   const [addLoading, setAddLoading] = useState(false);
   const [isOther, setIsOther] = useState(false);
 
+  const [showCamera, setShowCamera] = useState(false);
+
   // Prevent duplicate submissions in current session
   const [checkedInIds, setCheckedInIds] = useState(new Set());
   const [checkedOutIds, setCheckedOutIds] = useState(new Set());
@@ -655,7 +702,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
           const inIds = rosterData.map(r => String(r.employee_id));
 
           // 2. If their record has check_out_at, they have already checked out (disable Check-Out)
-          const outIds = rosterData.filter(r => r.check_out_at).map(r => String(r.employee_id));
+          const outIds = rosterData.filter(r => r.check_out_at).map(r => String(r.check_out_at ? r.employee_id : null)).filter(id => id !== null);
 
           setCheckedInIds(prev => new Set([...prev, ...inIds]));
           setCheckedOutIds(prev => new Set([...prev, ...outIds]));
@@ -833,18 +880,24 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
                 }}
                 className="w-full h-12 pl-12 pr-28 bg-transparent text-white placeholder-[#e2d5c3]/50 font-mono font-bold text-sm focus:outline-none transition-all"
               />
-              <button
-                type="button"
-                onClick={() => handleScanAttendance()}
-                disabled={isResolvingScan || !scanInput.trim()}
-                className="absolute right-1.5 px-4 py-2 rounded-xl text-xs font-black text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
-              >
-                {isResolvingScan ? (
-                  <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Scanning</>
-                ) : (
-                  <><Check className="w-3.5 h-3.5" /> Scan</>
-                )}
-              </button>
+              <div className="absolute right-1.5 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setShowCamera(true)}
+                    className="sm:hidden px-3 py-2 rounded-xl text-[#c8834a] bg-white/10 hover:bg-white/20 transition-all flex items-center justify-center cursor-pointer"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleScanAttendance()}
+                    disabled={isResolvingScan || !scanInput.trim()}
+                    className="px-4 py-2 rounded-xl text-xs font-black text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
+                  >
+                    {isResolvingScan ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-4 h-4" />}
+                    <span className="hidden sm:inline">Scan</span>
+                  </button>
+                </div>
             </div>
           </div>
         </div>
@@ -1622,5 +1675,10 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+
+
+
+
 
 
