@@ -1676,8 +1676,7 @@ export default function AttendancePage() {
         })}
       </div>
 
-      <AnimatePresence mode="wait">
-        <motion.div key={activeTab} variants={tabFade} initial={false} animate="show" exit="exit">
+      <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
           {activeTab === 'me' && !isSecurity && <MyAttendanceView token={token} />}
 
           {activeTab === 'employees' && isSecurity && <EmployeesListView workers={workers} />}
@@ -1699,8 +1698,7 @@ export default function AttendancePage() {
                 title="Direct Manager Authorization Required"
                 description="Operations & HR is restricted to Direct Managers only." />
           )}
-        </motion.div>
-      </AnimatePresence>
+      </div>
     </div>
   );
 }
