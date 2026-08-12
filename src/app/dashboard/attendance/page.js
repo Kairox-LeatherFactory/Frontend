@@ -1677,7 +1677,7 @@ export default function AttendancePage() {
       </div>
 
       <AnimatePresence mode="wait">
-        <motion.div key={activeTab} variants={tabFade} initial="hidden" animate="show" exit="exit">
+        <motion.div key={activeTab} variants={tabFade} initial={false} animate="show" exit="exit">
           {activeTab === 'me' && !isSecurity && <MyAttendanceView token={token} />}
 
           {activeTab === 'employees' && isSecurity && <EmployeesListView workers={workers} />}
