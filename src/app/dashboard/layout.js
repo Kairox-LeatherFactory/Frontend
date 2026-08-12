@@ -177,7 +177,7 @@ export default function DashboardLayout({ children }) {
         { name: 'PO Tracker', href: '/dashboard/procurement/po' },
         // ──────────────────────
         { name: 'Admin & Users', href: '/dashboard/admin', divider: true },
-       // { name: 'Security Settings', href: '/dashboard/settings' },
+        // { name: 'Security Settings', href: '/dashboard/settings' },
       ];
 
       if (user === 'security') {
@@ -189,7 +189,7 @@ export default function DashboardLayout({ children }) {
     [user]
   );
 
- if (!user) {
+  if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#050505]">
         <div className="text-center text-[#c8834a]">
@@ -389,13 +389,13 @@ export default function DashboardLayout({ children }) {
         {/* ─── PAGE ROUTER CONTENT ─── */}
         <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto" style={{ background: '#faf6f0' }}>
           <motion.div
-              key={pathname}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-            >
-              {children}
-            </motion.div>
+            key={pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+          >
+            {children}
+          </motion.div>
         </main>
       </div>
     </div>
