@@ -35,8 +35,8 @@ export const ROLE_OPERATIONS = {
 };
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState("admin"); // null = logged out
-  const [token, setToken] = useState("mock_token"); // JWT access token from backend
+  const [user, setUser] = useState(null); // null = logged out
+  const [token, setToken] = useState(null); // JWT access token from backend
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load persisted auth state on client-side mount
