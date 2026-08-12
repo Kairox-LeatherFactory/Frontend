@@ -111,6 +111,7 @@ export default function DashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const mainRef = useRef(null);
 
   // Session gate
   useEffect(() => {
@@ -121,6 +122,22 @@ export default function DashboardLayout({ children }) {
 
   useEffect(() => {
     setMobileMenuOpen(false);
+  }, [pathname]);
+
+  // Some mobile browsers (notably Android Chrome / iOS Safari) leave the
+  // content pane blank after a client-side route change into a heavy page —
+  // the DOM updates but the compositor never repaints it, until an unrelated
+  // reflow (opening the menu, rotating, a manual refresh) nudges it. Forcing
+  // a synchronous reflow right after navigation works around that.
+  useEffect(() => {
+    const el = mainRef.current;
+    if (!el) return;
+    const raf = requestAnimationFrame(() => {
+      el.style.display = 'none';
+      void el.offsetHeight;
+      el.style.display = '';
+    });
+    return () => cancelAnimationFrame(raf);
   }, [pathname]);
 
   const roleInfo = ROLES[user] || { label: 'Viewer', color: 'bg-slate-100 text-slate-700' };
@@ -390,7 +407,7 @@ export default function DashboardLayout({ children }) {
         </AnimatePresence>
 
         {/* ─── PAGE ROUTER CONTENT ─── */}
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto relative" style={{ background: '#faf6f0', transform: 'translateZ(0)' }}>
+        <main ref={mainRef} className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto relative" style={{ background: '#faf6f0' }}>
           {children}
         </main>
       </div>
