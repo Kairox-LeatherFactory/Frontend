@@ -195,6 +195,22 @@ export default function DashboardLayout({ children }) {
   }, [user, router]);
 
   // --------------------------------------------------
+  // Temporary Mobile DevTools (Eruda) for live mobile debugging
+  // --------------------------------------------------
+
+  useEffect(() => {
+    if (typeof window !== 'undefined' && !window.__eruda_injected) {
+      window.__eruda_injected = true;
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/eruda';
+      script.onload = () => {
+        if (window.eruda) window.eruda.init();
+      };
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  // --------------------------------------------------
   // Close mobile menu whenever route changes
   // --------------------------------------------------
 
