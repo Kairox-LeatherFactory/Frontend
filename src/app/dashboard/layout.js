@@ -451,27 +451,23 @@ export default function DashboardLayout({ children }) {
       </aside>
 
       {/* ================================================
-          MOBILE SIDEBAR (Animated Unmount)
+          MOBILE SIDEBAR (Instant Unmount)
           ================================================ */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setMobileMenuOpen(false)}
-              className="fixed inset-0 z-40 bg-black/40 md:hidden"
-              aria-hidden="true"
-            />
-            <motion.aside
-              initial={{ x: '-100%' }} animate={{ x: 0 }} exit={{ x: '-100%' }} transition={{ type: 'spring', bounce: 0, duration: 0.3 }}
-              className="md:hidden fixed inset-y-0 left-0 z-50 w-72 flex flex-col shadow-2xl"
-              style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}
-            >
-              {mobileSidebar}
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+      {mobileMenuOpen && (
+        <>
+          <div
+            onClick={() => setMobileMenuOpen(false)}
+            className="fixed inset-0 z-40 bg-black/40 md:hidden"
+            aria-hidden="true"
+          />
+          <aside
+            className="md:hidden fixed inset-y-0 left-0 z-50 w-72 flex flex-col shadow-2xl"
+            style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}
+          >
+            {mobileSidebar}
+          </aside>
+        </>
+      )}
 
       {/* ================================================
           MAIN CONTENT
