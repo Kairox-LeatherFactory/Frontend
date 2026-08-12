@@ -1632,6 +1632,12 @@ export default function AttendancePage() {
   };
 
   useEffect(() => {
+    if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
+      setActiveTab(tabs[0].key);
+    }
+  }, [tabs, activeTab]);
+
+  useEffect(() => {
     if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
       apiFetch('/api/v1/employees', {}, token)
         .then(setWorkers)
