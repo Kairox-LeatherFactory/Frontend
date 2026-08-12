@@ -1607,11 +1607,6 @@ function AttendanceHistoryView({ token }) {
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function AttendancePage() {
   const { user, token } = useAuth();
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
 
   const isManager = user === 'direct_manager' || user === 'managing_director' || user === 'hr';
   const isSupervisor = isManager;
@@ -1649,8 +1644,6 @@ export default function AttendancePage() {
         .catch(() => { });
     }
   }, [activeTab, token, workerRefreshKey]);
-
-  if (!isMounted) return null;
 
   return (
     <div className="space-y-6">
