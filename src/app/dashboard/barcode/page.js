@@ -2422,9 +2422,9 @@ export default function BarcodeManagementPage() {
 
  const detailBarcode = detailCode ? activeGenerated.find((b) => b.pieceCode === detailCode) : null;
 
- // The bucket category prints bare 100×70mm labels, not ID cards — that
- // switches the printed page layout, the export page width and the modal card.
-  if (!hasMounted) {
+ const isBucketSheet = category === 'bucket';
+
+ if (!hasMounted) {
     return (
       <div className="w-full min-h-screen overflow-y-auto z-0 flex items-center justify-center bg-[#faf6f0]">
         <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
