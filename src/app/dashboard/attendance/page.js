@@ -1631,13 +1631,20 @@ export default function AttendancePage() {
  ].filter((t) => t.show);
  }, [isSecurity, isMD, isSupervisor, isManager]);
 
- const [activeTab, setActiveTab] = useState(tabs[0]?.key);
+ const defaultTab = useMemo(() => tabs[0]?.key || (isSecurity ? 'employees' : 'me'), [tabs, isSecurity]);
+ const [activeTab, setActiveTab] = useState(defaultTab);
  const [workers, setWorkers] = useState([]);
  const [workerRefreshKey, setWorkerRefreshKey] = useState(0);
 
  const refreshWorkers = () => {
  setWorkerRefreshKey(k => k + 1);
  };
+
+ useEffect(() => {
+ if (defaultTab && !activeTab) {
+ setActiveTab(defaultTab);
+ }
+ }, [defaultTab, activeTab]);
 
  useEffect(() => {
  if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
@@ -1659,7 +1666,7 @@ export default function AttendancePage() {
 
  if (!hasMounted) {
  return (
- <div className="w-full min-h-screen overflow-y-auto z-0 flex items-center justify-center bg-[#faf6f0]">
+ <div className="w-full py-20 flex items-center justify-center bg-[#faf6f0]">
  <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8834a] mb-2" />
  <span className="text-xs font-bold tracking-widest uppercase">Loading Attendance...</span>
@@ -1669,7 +1676,7 @@ export default function AttendancePage() {
  }
 
  return (
- <div className="w-full min-h-screen overflow-y-auto z-0 space-y-6">
+ <div className="w-full space-y-6 pb-12">
  <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
  {tabs.map(({ key, label, icon: Icon }) => {
  const isActive = activeTab === key;

@@ -168,7 +168,7 @@ function NavPendingBar() {
   const { pending } = useLinkStatus();
   if (!pending) return null;
   return (
-    <div className="fixed top-0 left-0 right-0 z-[100000] h-1 overflow-hidden pointer-events-none">
+    <div className="fixed top-0 left-0 right-0 z-50 h-1 overflow-hidden pointer-events-none">
       <div className="h-full w-full" style={{ background: 'linear-gradient(90deg, #c8834a, #e8a06a)' }} />
     </div>
   );
@@ -676,14 +676,8 @@ export default function DashboardLayout({ children }) {
             ================================================ */}
 
         <main
-          className="flex-1 p-6 md:p-8 max-w-7xl w-full min-h-screen overflow-y-auto z-0 mx-auto relative transition-opacity duration-200"
-          style={{
-            background: '#faf6f0',
-            isolation: 'isolate',
-            transform: 'translateZ(0)',
-            WebkitTransform: 'translateZ(0)',
-            willChange: 'transform',
-          }}
+          className="flex-1 p-4 md:p-8 max-w-7xl w-full min-h-screen overflow-y-auto z-0 mx-auto relative"
+          style={{ background: '#faf6f0' }}
         >
           {children}
         </main>

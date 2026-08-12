@@ -2425,18 +2425,18 @@ export default function BarcodeManagementPage() {
  const isBucketSheet = category === 'bucket';
 
  if (!hasMounted) {
-    return (
-      <div className="w-full min-h-screen overflow-y-auto z-0 flex items-center justify-center bg-[#faf6f0]">
-        <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8834a] mb-2" />
-          <span className="text-xs font-bold tracking-widest uppercase">Loading Barcode Management...</span>
-        </div>
-      </div>
-    );
-  }
+ return (
+ <div className="w-full py-20 flex items-center justify-center bg-[#faf6f0]">
+ <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
+ <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8834a] mb-2" />
+ <span className="text-xs font-bold tracking-widest uppercase">Loading Barcode Management...</span>
+ </div>
+ </div>
+ );
+ }
 
-  return (
-  <div className="w-full min-h-screen overflow-y-auto z-0 space-y-6" >
+ return (
+ <div className="w-full space-y-6 pb-12" >
  <style jsx global>{`
  .btn-warm-primary {
  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
