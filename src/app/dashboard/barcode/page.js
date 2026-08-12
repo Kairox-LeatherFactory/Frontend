@@ -1099,8 +1099,7 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  <button onClick={resetFilters} className="btn-warm-secondary !min-h-0 !py-2.5"><RotateCcw className="w-4 h-4" /> Reset</button>
  </div>
 
- <AnimatePresence mode="wait">
- <motion.div key={activeTab} >
+ <div key={activeTab} >
  {activeTab === 'generation' && (
  <StyleGenerationGrid
  rows={rows} historyLoading={historyLoading} historyError={historyError}
@@ -1124,8 +1123,7 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  onOpenDetail={openDetail} onPrintSingle={handlePrintSingleCode} onExportCSV={handleExportCSV}
  />
  )}
- </motion.div>
- </AnimatePresence>
+ </div>
  </>
  )}
 
@@ -1692,12 +1690,7 @@ function PrintTab({
  <button onClick={() => onPrintGroupDirect(og.items)} className="btn-warm-primary !min-h-0 !py-2 !px-3 text-xs"><Printer className="w-3.5 h-3.5" /> Print All</button>
  </div>
  </div>
- <AnimatePresence >
- {expanded && (
- <motion.div
- initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
- transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: 'hidden' }}
- >
+ {expanded && (<div style={{ overflow: "hidden" }}>
  <div className="p-4 flex flex-col gap-3" style={{ background: BRAND.bg, borderTop: '1px solid rgba(200,131,74,0.15)' }}>
  {og.styles.map((g) => {
  const sSelectedCount = g.items.filter((i) => selectedPrintBarcodes.has(i.pieceCode)).length;
@@ -1722,12 +1715,7 @@ function PrintTab({
  <button onClick={() => onPrintGroupDirect(g.items)} className="btn-warm-primary !min-h-0 !py-1.5 !px-2.5 text-xs"><Printer className="w-3.5 h-3.5" /> Print All</button>
  </div>
  </div>
- <AnimatePresence >
- {sExpanded && (
- <motion.div
- initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
- transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: 'hidden' }}
- >
+ {sExpanded && (<div style={{ overflow: "hidden" }}>
  <div className="p-3 grid gap-3" style={{ background: '#fff', borderTop: '1px solid rgba(200,131,74,0.15)', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
  {g.items.map((b) => {
  const checked = selectedPrintBarcodes.has(b.pieceCode);
@@ -1749,16 +1737,12 @@ function PrintTab({
  );
  })}
  </div>
- </motion.div>
- )}
- </AnimatePresence>
+ </div>)}
  </div>
  );
  })}
  </div>
- </motion.div>
- )}
- </AnimatePresence>
+ </div>)}
  </div>
  );
  })}
@@ -1867,12 +1851,7 @@ function HistoryTab({ batchHistoryStore, filters, setFilter, resetFilters, optio
  </button>
  </div>
  </div>
- <AnimatePresence >
- {expanded && (
- <motion.div
- initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
- transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }} style={{ overflow: 'hidden' }}
- >
+ {expanded && (<div style={{ overflow: "hidden" }}>
  <div className="overflow-x-auto">
  <table className="w-full text-sm">
  <thead>
@@ -1903,9 +1882,7 @@ function HistoryTab({ batchHistoryStore, filters, setFilter, resetFilters, optio
  </motion.tbody>
  </table>
  </div>
- </motion.div>
- )}
- </AnimatePresence>
+ </div>)}
  </div>
  );
  })}
@@ -2596,8 +2573,7 @@ export default function BarcodeManagementPage() {
  )}
 
  {category !== 'style' && (
- <AnimatePresence mode="wait">
- <motion.div key={`${category}-${activeTab}`} >
+ <div key={`${category}-${activeTab}`} >
  {activeTab === 'generation' && category === 'employee' && (
  <EmployeeGenerationTab
  employees={employeeDirectory}
@@ -2673,8 +2649,7 @@ export default function BarcodeManagementPage() {
  labels={activeLabels}
  />
  )}
- </motion.div>
- </AnimatePresence>
+ </div>
  )}
 
  <DetailModal barcode={detailBarcode} onClose={() => setDetailCode(null)} onPrint={handlePrintSingle} labels={activeLabels} category={category} />

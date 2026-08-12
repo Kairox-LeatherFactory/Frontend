@@ -194,9 +194,7 @@ function AlertBanner({ type, message, onClose }) {
  <X className="w-4 h-4" />
  </button>
  )}
- </motion.div>
- )}
- </AnimatePresence>,
+ </div>)},
  document.body
  );
 }
