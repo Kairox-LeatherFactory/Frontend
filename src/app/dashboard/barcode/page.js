@@ -1978,6 +1978,12 @@ function PrintPreviewModal({ open, codes, onClose, onConfirm }) {
 
 // ─── PAGE ROOT ──────────────────────────────────────────────────────────────────
 export default function BarcodeManagementPage() {
+ const [hasMounted, setHasMounted] = useState(false);
+
+ useEffect(() => {
+ setHasMounted(true);
+ }, []);
+
  const { user, token } = useAuth();
  const operatorLabel = user ? user.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN';
 
@@ -2059,9 +2065,9 @@ export default function BarcodeManagementPage() {
  // limit 500 on purpose: the endpoint's own default is 500 and a 200-drawer
  // pool has to come back in ONE page for "print all" to mean all of them.
  useEffect(() => {
- if (category !== 'bucket' || !token) return;
+ if (!hasMounted || category !== 'bucket' || !token) return;
  let cancelled = false;
- const loadDrawers = async () => {
+ const timer = setTimeout(async () => {
  setDrawerLoading(true);
  setDrawerError(null);
  try {
@@ -2091,14 +2097,15 @@ export default function BarcodeManagementPage() {
  }
  };
  loadDrawers();
- return () => { cancelled = true; };
- }, [category, token, drawerReloadKey, drawerStateFilter, drawerSeqFrom, drawerSeqTo]);
+ }, 100);
+ return () => { cancelled = true; clearTimeout(timer); };
+ }, [category, token, drawerReloadKey, drawerStateFilter, drawerSeqFrom, drawerSeqTo, hasMounted]);
 
  // ─── Employee roster fetch: GET /api/v1/employees (active roster only) ───
  useEffect(() => {
- if (category !== 'employee' || !token) return;
+ if (!hasMounted || category !== 'employee' || !token) return;
  let cancelled = false;
- const loadRoster = async () => {
+ const timer = setTimeout(async () => {
  setEmployeesLoading(true);
  setEmployeesError(null);
  try {
@@ -2114,8 +2121,9 @@ export default function BarcodeManagementPage() {
  }
  };
  loadRoster();
- return () => { cancelled = true; };
- }, [category, token, employeesReloadKey]);
+ }, 100);
+ return () => { cancelled = true; clearTimeout(timer); };
+ }, [category, token, employeesReloadKey, hasMounted]);
 
  // ─── Print-side-effect: render the hidden sheet then trigger the browser print dialog ───
  useEffect(() => {
@@ -2420,10 +2428,19 @@ export default function BarcodeManagementPage() {
 
  // The bucket category prints bare 100×70mm labels, not ID cards — that
  // switches the printed page layout, the export page width and the modal card.
- const isBucketSheet = category === 'bucket';
+  if (!hasMounted) {
+    return (
+      <div className="w-full min-h-screen overflow-y-auto z-0 flex items-center justify-center bg-[#faf6f0]">
+        <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8834a] mb-2" />
+          <span className="text-xs font-bold tracking-widest uppercase">Loading Barcode Management...</span>
+        </div>
+      </div>
+    );
+  }
 
- return (
- <motion.div className="space-y-6" >
+  return (
+  <div className="w-full min-h-screen overflow-y-auto z-0 space-y-6" >
  <style jsx global>{`
  .btn-warm-primary {
  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
@@ -2715,6 +2732,6 @@ export default function BarcodeManagementPage() {
  </div>
  </div>
  )}
- </motion.div>
+ </div>
  );
 }

@@ -1565,7 +1565,7 @@ function AttendanceHistoryView({ token }) {
  return (
  <div className="space-y-6">
  <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
- <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2 mb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
+ <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2 mb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1), color: '#2d1f0e' }}>
  <CalendarDays className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster {loading && <span className="text-xs text-slate-400 animate-pulse">(Updating...)</span>}
  </h3>
 
@@ -1606,6 +1606,12 @@ function AttendanceHistoryView({ token }) {
 // ROOT EXPORT — Attendance Module Router
 // ═══════════════════════════════════════════════════════════════════════════════
 export default function AttendancePage() {
+ const [hasMounted, setHasMounted] = useState(false);
+
+ useEffect(() => {
+ setHasMounted(true);
+ }, []);
+
  const { user, token } = useAuth();
 
  const isManager = user === 'direct_manager' || user === 'managing_director' || user === 'hr';
@@ -1640,15 +1646,30 @@ export default function AttendancePage() {
  }, [tabs, activeTab]);
 
  useEffect(() => {
+ if (!hasMounted) return;
+ const timer = setTimeout(() => {
  if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
  apiFetch('/api/v1/employees', {}, token)
  .then(setWorkers)
  .catch(() => { });
  }
- }, [activeTab, token, workerRefreshKey]);
+ }, 100);
+ return () => clearTimeout(timer);
+ }, [activeTab, token, workerRefreshKey, hasMounted]);
+
+ if (!hasMounted) {
+ return (
+ <div className="w-full min-h-screen overflow-y-auto z-0 flex items-center justify-center bg-[#faf6f0]">
+ <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
+ <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8834a] mb-2" />
+ <span className="text-xs font-bold tracking-widest uppercase">Loading Attendance...</span>
+ </div>
+ </div>
+ );
+ }
 
  return (
- <div className="space-y-6">
+ <div className="w-full min-h-screen overflow-y-auto z-0 space-y-6">
  <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
  {tabs.map(({ key, label, icon: Icon }) => {
  const isActive = activeTab === key;
