@@ -124,15 +124,14 @@ export default function DashboardLayout({ children }) {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  // Some mobile browsers (notably Android Chrome / iOS Safari) leave the
-  // content pane painted-but-not-composited after a client-side route change
-  // into a heavy page — the DOM is correct (confirmed: reopening the mobile
-  // sidebar reveals it immediately), the GPU just never redraws that layer
-  // until something else forces a full-viewport recomposite. A plain layout
-  // reflow isn't enough for that class of bug, so nudge both layout (display)
-  // and compositing (transform) — once right away, and again after the
-  // sidebar's own close transition (300ms) has had time to finish, in case
-  // that transition is what leaves the compositor mid-update.
+  // Some mobile browsers leave a client-side-navigated page painted-but-not-
+  // composited until the next touch event — confirmed by reopening the
+  // mobile sidebar reliably revealing content that's already sitting
+  // correctly in the DOM. Heavy pages (Attendance/Barcode ship jsbarcode,
+  // html2canvas, jspdf) can take well over a naive fixed delay to actually
+  // land their content on a mobile connection, so instead of guessing a
+  // timeout, watch the pane itself and nudge a repaint right after its DOM
+  // actually changes, however long that took.
   useEffect(() => {
     const el = mainRef.current;
     if (!el) return;
@@ -144,13 +143,19 @@ export default function DashboardLayout({ children }) {
       void el.offsetHeight;
       el.style.transform = '';
     };
+
+    let settleTimer = null;
+    const observer = new MutationObserver(() => {
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(nudge, 60);
+    });
+    observer.observe(el, { childList: true, subtree: true, attributes: true });
+
     const raf = requestAnimationFrame(nudge);
-    const t1 = setTimeout(nudge, 120);
-    const t2 = setTimeout(nudge, 400);
     return () => {
       cancelAnimationFrame(raf);
-      clearTimeout(t1);
-      clearTimeout(t2);
+      clearTimeout(settleTimer);
+      observer.disconnect();
     };
   }, [pathname]);
 
