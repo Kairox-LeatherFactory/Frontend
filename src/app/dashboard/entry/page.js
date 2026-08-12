@@ -291,6 +291,147 @@ function DynamicDataViewer({ data }) {
     </div>
   );
 }
+
+function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) {
+  const [cameraError, setCameraError] = useState(null);
+
+  useEffect(() => {
+    let scanner;
+    let isStopped = false;
+
+    import('html5-qrcode').then(({ Html5Qrcode, Html5QrcodeSupportedFormats }) => {
+      if (isStopped) return;
+
+      const formatsToSupport = [
+        Html5QrcodeSupportedFormats.CODE_128,
+        Html5QrcodeSupportedFormats.CODE_39,
+        Html5QrcodeSupportedFormats.EAN_13,
+        Html5QrcodeSupportedFormats.EAN_8,
+        Html5QrcodeSupportedFormats.UPC_A,
+        Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.QR_CODE,
+      ];
+
+      scanner = new Html5Qrcode("entry-camera-reader", {
+        formatsToSupport,
+        verbose: false,
+      });
+
+      const config = {
+        fps: 20,
+        qrbox: (viewfinderWidth, viewfinderHeight) => ({
+          width: Math.min(320, Math.floor(viewfinderWidth * 0.85)),
+          height: Math.min(180, Math.floor(viewfinderHeight * 0.45))
+        }),
+        aspectRatio: 1.777778,
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true
+        }
+      };
+
+      const startScanner = (cameraConfig) => {
+        return scanner.start(
+          cameraConfig,
+          config,
+          (text) => {
+            if (scanner && scanner.isScanning) {
+              scanner.stop().then(() => {
+                onScan(text);
+                onClose();
+              }).catch(() => {
+                onScan(text);
+                onClose();
+              });
+            } else {
+              onScan(text);
+              onClose();
+            }
+          },
+          (err) => { }
+        );
+      };
+
+      startScanner({ facingMode: "environment" }).catch(() => {
+        startScanner({ facingMode: "user" }).catch((err) => {
+          console.warn("Camera start warning:", err);
+          const msg = String(err?.message || err || '');
+          if (msg.includes('NotAllowedError') || msg.includes('Permission denied')) {
+            setCameraError("Camera permission denied. Please click the lock icon 🔒 in browser address bar to allow camera access.");
+          } else {
+            setCameraError("Unable to start camera on this device. Please type barcode manually.");
+          }
+        });
+      });
+    }).catch(err => {
+      console.warn("Error loading html5-qrcode:", err);
+      setCameraError("Camera scanner module failed to load.");
+    });
+
+    return () => {
+      isStopped = true;
+      if (scanner && scanner.isScanning) {
+        scanner.stop().catch(e => console.warn(e));
+      }
+    };
+  }, [onScan, onClose]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/85 backdrop-blur-md p-4 animate-fade-in">
+      <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 text-center relative shadow-2xl border-2 border-[#c8834a]">
+        <div className="flex items-center justify-between border-b pb-3 border-slate-100">
+          <h3 className="font-extrabold text-sm text-[#2d1f0e] flex items-center gap-2">
+            <Camera className="w-4 h-4 text-[#c8834a]" /> {title}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {cameraError ? (
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-3 animate-fade-in text-left">
+            <div className="flex items-center gap-2 text-rose-700 font-extrabold text-xs uppercase tracking-wider">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              Camera Permission Blocked
+            </div>
+            <p className="text-xs font-semibold text-rose-900 leading-relaxed">
+              {cameraError}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setCameraError(null);
+                window.location.reload();
+              }}
+              className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm"
+            >
+              Retry Camera Permission
+            </button>
+          </div>
+        ) : (
+          <div id="entry-camera-reader" className="w-full h-64 rounded-2xl overflow-hidden border-2 border-[#c8834a]/30 bg-black shadow-inner" />
+        )}
+
+        <p className="text-xs text-slate-500 font-bold">
+          Point camera at Barcode / QR Code
+        </p>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-3 bg-slate-100 text-slate-700 font-black text-xs rounded-xl hover:bg-slate-200 cursor-pointer"
+        >
+          Close Scanner
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
   const { workers, addScanEvent, operations } = useData();
@@ -345,6 +486,9 @@ export default function ProductionLogEntry() {
   // Analytics Modal State
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState({ loading: false, detail: null, error: null });
+
+  // Mobile Camera Barcode Scanner State
+  const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'sku' | 'worker'
 
   // Mode Switcher Tabs: 'manual' (default) vs 'barcode' vs 'store'
   const [activeDoor, setActiveDoor] = useState('manual');
@@ -1592,6 +1736,34 @@ export default function ProductionLogEntry() {
         document.body
       )}
 
+      {/* MOBILE CAMERA BARCODE SCANNER MODAL */}
+      {cameraScanTarget && (
+        <CameraScannerModal
+          title={cameraScanTarget === 'worker' ? "Scan Worker Barcode" : cameraScanTarget === 'sku' ? "Scan SKU Barcode" : "Scan Store Drawer / Piece"}
+          onClose={() => setCameraScanTarget(null)}
+          onScan={(scannedCode) => {
+            if (cameraScanTarget === 'worker') {
+              setBarcodeWorkerInput(scannedCode);
+              handleVerifyBarcodeWorker(scannedCode);
+            } else if (cameraScanTarget === 'sku') {
+              setBarcodeSkuInput(scannedCode);
+              handleVerifySkuBarcode(scannedCode);
+            } else if (cameraScanTarget === 'store') {
+              const val = scannedCode.trim();
+              if (!val) return;
+              if (val.toUpperCase().startsWith('DRW-') || val.toUpperCase().startsWith('DRAWER')) {
+                const drawerCode = val.toUpperCase();
+                setStoreDrawerInput(drawerCode);
+                setStoreDrawerSearch(drawerCode);
+              } else {
+                setStorePieceInput(val);
+              }
+              setStoreCurrentScan(scannedCode);
+            }
+          }}
+        />
+      )}
+
       {/* TOP TAB BAR (MATCHING ATTENDANCE PAGE STYLE) */}
       <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
         <button
@@ -1698,9 +1870,17 @@ export default function ProductionLogEntry() {
                             handleVerifyBarcodeWorker();
                           }
                         }}
-                        className="w-full h-14 pl-12 pr-4 bg-white/10 text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border-2 border-[#c8834a]/40 rounded-2xl focus:outline-none focus:border-[#f5d4a4] transition-all"
+                        className="w-full h-14 pl-12 pr-12 bg-white/10 text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border-2 border-[#c8834a]/40 rounded-2xl focus:outline-none focus:border-[#f5d4a4] transition-all"
                         autoFocus
                       />
+                      <button
+                        type="button"
+                        onClick={() => setCameraScanTarget('worker')}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/50 hover:bg-[#c8834a]/50 active:scale-95 transition-all cursor-pointer z-10"
+                        title="Scan Worker Barcode with Camera"
+                      >
+                        <Camera className="w-5 h-5" />
+                      </button>
                     </div>
                     <button
                       type="button"
@@ -1796,9 +1976,14 @@ export default function ProductionLogEntry() {
             )}
 
             {/* STEP 2: SELECT PRODUCTION OPERATION STAGE */}
-            {barcodeWorker && (
-              <div className="space-y-6 p-6 rounded-3xl bg-[#fcfaf8] shadow-sm border border-[#c8834a]/20 animate-fade-in">
-                <div className="flex items-center gap-3 pb-3 border-b border-[#c8834a]/15">
+            <div className={`space-y-6 p-6 rounded-3xl bg-[#fcfaf8] shadow-sm border border-[#c8834a]/20 transition-all duration-300 relative ${!barcodeWorker ? 'opacity-50 pointer-events-none select-none filter blur-[0.5px]' : 'animate-fade-in'}`}>
+              {!barcodeWorker && (
+                <div className="p-3.5 bg-amber-100/90 border border-amber-300/80 rounded-2xl text-amber-900 text-xs font-bold flex items-center justify-center gap-2 shadow-sm mb-4">
+                  <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>Scan &amp; Verify Employee Barcode in Step 1 to Unlock Remaining Production Stage Cards</span>
+                </div>
+              )}
+              <div className="flex items-center gap-3 pb-3 border-b border-[#c8834a]/15">
                   <div className="w-8 h-8 rounded-xl bg-[#c8834a]/15 flex items-center justify-center text-[#c8834a] font-black text-xs">
                     2
                   </div>
@@ -1859,10 +2044,19 @@ export default function ProductionLogEntry() {
                                 handleVerifySkuBarcode(barcodeSkuInput);
                               }
                             }}
-                            className="input-field w-full h-14 pl-12 pr-4 bg-white font-mono font-bold text-base text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
+                            style={{ paddingLeft: '3.25rem', paddingRight: '3rem' }}
+                            className="w-full h-14 bg-white font-mono font-bold text-base text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
                             autoFocus
                             disabled={barcodeSkuVerifying}
                           />
+                          <button
+                            type="button"
+                            onClick={() => setCameraScanTarget('sku')}
+                            className="absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-amber-50 text-[#c8834a] border border-[#c8834a]/30 hover:bg-amber-100 active:scale-95 transition-all cursor-pointer z-10"
+                            title="Scan SKU Barcode with Camera"
+                          >
+                            <Camera className="w-5 h-5" />
+                          </button>
                         </div>
                         <button
                           type="button"
@@ -2111,7 +2305,6 @@ export default function ProductionLogEntry() {
                 )}
 
               </div>
-            )}
 
             {/* GOLDEN SUCCESS POPUP MODAL */}
             {barcodeSuccessModal && createPortal(
@@ -3298,7 +3491,7 @@ export default function ProductionLogEntry() {
       {activeDoor === 'store' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {/* Header & Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
               <div className="text-xs text-slate-500 font-bold mb-1">Total Drawers</div>
               <div className="text-2xl font-black text-slate-800">{storeTotal}</div>
@@ -3391,7 +3584,12 @@ export default function ProductionLogEntry() {
                       autoFocus
                       className="w-full h-16 pl-12 pr-12 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all"
                     />
-                    <button className="absolute right-3 text-slate-400 hover:text-[#c8834a] p-2 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => setCameraScanTarget('store')}
+                      className="absolute right-3 text-[#c8834a] bg-amber-50 border border-[#c8834a]/30 hover:bg-amber-100 p-2 rounded-xl transition-all active:scale-95 cursor-pointer z-10"
+                      title="Scan Drawer/Piece with Camera"
+                    >
                       <Camera className="w-5 h-5" />
                     </button>
                   </div>

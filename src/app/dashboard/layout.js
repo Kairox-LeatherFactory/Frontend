@@ -193,27 +193,6 @@ export default function DashboardLayout({ children }) {
       router.replace('/');
     }
   }, [user, router]);
-
-  // --------------------------------------------------
-  // Temporary Mobile DevTools (Eruda) for live mobile debugging
-  // --------------------------------------------------
-
-  useEffect(() => {
-    if (typeof window !== 'undefined' && !window.__eruda_injected) {
-      window.__eruda_injected = true;
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/eruda';
-      script.onload = () => {
-        if (window.eruda) window.eruda.init();
-      };
-      document.body.appendChild(script);
-    }
-  }, []);
-
-  // --------------------------------------------------
-  // Close mobile menu whenever route changes
-  // --------------------------------------------------
-
   useEffect(() => {
     setMobileMenuOpen(false);
   }, [pathname]);
@@ -681,29 +660,6 @@ export default function DashboardLayout({ children }) {
         >
           {children}
         </main>
-
-        {/* Floating Mobile Console Debugger Trigger */}
-        <button
-          type="button"
-          onClick={() => {
-            if (window.eruda) {
-              window.eruda.show();
-            } else {
-              const script = document.createElement('script');
-              script.src = 'https://cdn.jsdelivr.net/npm/eruda';
-              script.onload = () => {
-                if (window.eruda) {
-                  window.eruda.init();
-                  window.eruda.show();
-                }
-              };
-              document.body.appendChild(script);
-            }
-          }}
-          className="fixed bottom-4 right-4 z-[999999] px-4 py-2.5 bg-black/90 text-amber-400 border border-amber-500/60 rounded-full text-xs font-black shadow-2xl flex items-center gap-2 cursor-pointer active:scale-95"
-        >
-          🐞 Open Console
-        </button>
       </div>
     </div>
   );
