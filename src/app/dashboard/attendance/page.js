@@ -7,50 +7,13 @@ import {
   Lock, RefreshCw, CheckSquare, Square, X,
   Timer, CalendarDays, Shield, Zap, Filter,
   UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff,
-  Barcode, QrCode, Check, Camera
+  Barcode, QrCode, Check
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { motion, AnimatePresence } from 'framer-motion';
 import { staggerContainer, fadeUpItem, tabFade, rowStagger } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
-
-const CameraScanner = ({ onScan, onClose }) => {
-  useEffect(() => {
-    let scanner;
-    import('html5-qrcode').then(({ Html5QrcodeScanner }) => {
-      scanner = new Html5QrcodeScanner("reader", { 
-        qrbox: { width: 300, height: 150 }, 
-        fps: 10,
-        aspectRatio: 1.0,
-      }, false);
-      scanner.render(
-        (text) => {
-          scanner.clear();
-          onScan(text);
-        },
-        (err) => {}
-      );
-    }).catch(err => console.error("Error loading html5-qrcode:", err));
-
-    return () => {
-      if (scanner) {
-        scanner.clear().catch(e => console.warn(e));
-      }
-    };
-  }, [onScan]);
-
-  return (
-    <div className="relative bg-white rounded-3xl p-6 shadow-2xl w-[90vw] max-w-md mx-auto">
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="font-black text-slate-800 text-lg">Scan ID Card</h3>
-        <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 text-slate-500 transition-colors"><X className="w-5 h-5"/></button>
-      </div>
-      <div id="reader" className="w-full rounded-xl overflow-hidden border-2 border-slate-100" style={{ minHeight: '300px' }}></div>
-      <p className="text-xs text-center text-slate-400 mt-4 font-bold">Center the barcode in the frame</p>
-    </div>
-  );
-};
 
 // ─── API BASE ────────────────────────────────────────────────────────────────
 const API = '/api/v1/attendance';
@@ -573,7 +536,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
   // Automatic Barcode Gun Scanner State & Sound Feedback
   const [scanInput, setScanInput] = useState('');
   const [isResolvingScan, setIsResolvingScan] = useState(false);
-  const [showCamera, setShowCamera] = useState(false);
   const scanInputRef = useRef(null);
 
   const playBeep = (freq = 880, type = 'sine') => {
@@ -871,15 +833,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
               />
               <button
                 type="button"
-                onClick={() => {
-                  setShowCamera(true);
-                }}
-                className="absolute z-10 right-24 px-3 py-2 rounded-xl text-xs font-black text-[#f5d4a4] hover:bg-white/10 transition-all cursor-pointer flex items-center gap-1.5"
-              >
-                <Camera className="w-4 h-4" />
-              </button>
-              <button
-                type="button"
                 onClick={() => handleScanAttendance()}
                 disabled={isResolvingScan || !scanInput.trim()}
                 className="absolute right-1.5 px-4 py-2 rounded-xl text-xs font-black text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center gap-1.5"
@@ -1147,21 +1100,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
           </>
         )}
       </AnimatedModal>
-
-      {/* Camera Scanner Modal */}
-      {showCamera && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="w-full max-w-md transform transition-all">
-            <CameraScanner
-              onClose={() => setShowCamera(false)}
-              onScan={(code) => {
-                setScanInput(code);
-                handleScanAttendance(code);
-              }}
-            />
-          </div>
-        </div>
-      )}
 
     </motion.div>
   );
@@ -1688,3 +1626,4 @@ export default function AttendancePage() {
     </div>
   );
 }
+
