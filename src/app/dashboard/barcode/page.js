@@ -7,9 +7,6 @@ import {
   RotateCcw, FileDown, ChevronRight, ChevronLeft, Users, Box, FileImage, FileText,
   Loader2, ScanLine, PackageSearch,
 } from 'lucide-react';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
-import JsBarcode from 'jsbarcode';
 import AnimatedModal from '@/components/AnimatedModal';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -124,6 +121,7 @@ function stampPngDpi(buffer, dpi = BARCODE_SPEC.dpi) {
 // scale 2 gave ~192 DPI, which is soft once printed. Capturing at dpi/96
 // (4.167x for 400 DPI) means the exported card is genuinely 400 DPI.
 async function captureNodeToCanvas(node, { dpi = BARCODE_SPEC.dpi } = {}) {
+  const { default: html2canvas } = await import('html2canvas');
   const canvas = await html2canvas(node, {
     backgroundColor: '#ffffff',
     scale: dpi / CSS_DPI,
@@ -190,6 +188,7 @@ async function saveCanvasAsPdf(canvas, filename, dpi) {
   const wIn = canvas.width / density;
   const hIn = canvas.height / density;
   const orientation = wIn >= hIn ? 'landscape' : 'portrait';
+  const { default: jsPDF } = await import('jspdf');
   const pdf = new jsPDF({ orientation, unit: 'in', format: [wIn, hIn] });
   pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, wIn, hIn);
   await saveBlob(pdf.output('blob'), `${filename}.pdf`, { description: 'PDF Document', accept: { 'application/pdf': ['.pdf'] } });
@@ -392,17 +391,19 @@ function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true, 
 
   useEffect(() => {
     if (ref.current && code) {
-      try {
-        JsBarcode(ref.current, code, {
-          format: 'CODE128',
-          width: moduleWidth,
-          height: height,
-          displayValue: showText,
-          margin,
-        });
-      } catch (err) {
-        console.error(err);
-      }
+      import('jsbarcode').then(({ default: JsBarcode }) => {
+        try {
+          JsBarcode(ref.current, code, {
+            format: 'CODE128',
+            width: moduleWidth,
+            height: height,
+            displayValue: showText,
+            margin,
+          });
+        } catch (err) {
+          console.error(err);
+        }
+      });
     }
   }, [code, height, moduleWidth, showText]);
   return <canvas ref={ref} style={{ maxWidth: '100%', height: 'auto', display: 'block', width: displayWidth ? `${displayWidth}px` : undefined }} />;
@@ -410,7 +411,15 @@ function BarcodeCanvas({ code, height = 45, moduleWidth = 1.2, showText = true, 
 
 // ─── TOASTS ────────────────────────────────────────────────────────────────────
 function ToastStack({ toasts }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const colors = { success: '#16a34a', error: '#dc2626', info: '#2563eb' };
+
+  if (!mounted) return null;
+
   return createPortal(
     <div className="fixed top-5 right-5 z-[999] flex flex-col gap-2 pointer-events-none w-[300px]">
       <AnimatePresence>
@@ -2340,6 +2349,7 @@ export default function BarcodeManagementPage() {
       if (!container) return;
 
       if (format === 'pdf') {
+        const { default: jsPDF } = await import('jspdf');
         const pages = container.querySelectorAll('.export-page');
         const pdf = new jsPDF({ unit: 'px', format: 'a4' });
         const pageW = pdf.internal.pageSize.getWidth();
