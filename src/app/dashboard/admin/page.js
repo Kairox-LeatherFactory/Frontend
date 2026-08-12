@@ -137,8 +137,7 @@ export default function AdminDashboard() {
     phone: '',
     designation: '',
     wage_type: '',
-    daily_rate: '',
-    password: ''
+    daily_rate: ''
   });
   const [isOther, setIsOther] = useState(false)
   const [isSubmittingWorker, setIsSubmittingWorker] = useState(false);
@@ -215,14 +214,14 @@ export default function AdminDashboard() {
   // Handle Add Worker Submission (Strictly Pure Network Action — NO GPS Triggers)
   const handleCreateWorker = async (e) => {
     e.preventDefault();
-    const { name, phone, designation, wage_type, daily_rate, password } = workerForm;
+    const { name, phone, designation, wage_type, daily_rate } = workerForm;
 
     if (!name.trim() || !designation.trim()) {
       showToast('worker', 'error', 'Name and designation are required.');
       return;
     }
-    if (wage_type === 'monthly' && (!phone.trim() || !password.trim())) {
-      showToast('worker', 'error', 'Phone number and password are required for monthly employees.');
+    if (wage_type === 'monthly' && !phone.trim()) {
+      showToast('worker', 'error', 'Phone number is required for monthly employees.');
       return;
     }
     if (phone.trim() && phone.trim().length !== 10) {
@@ -237,7 +236,6 @@ export default function AdminDashboard() {
         designation: designation.trim(),
         wage_type: wage_type,
         phone: phone.trim() || null,
-        password: wage_type === 'monthly' ? password : null,
         daily_rate: daily_rate ? parseFloat(daily_rate) : null,
       };
 
@@ -256,7 +254,7 @@ export default function AdminDashboard() {
       }
 
       showToast('worker', 'success', `Worker "${name}" successfully registered onto the system roster.`);
-      setWorkerForm({ name: '', phone: '', designation: '', wage_type: '', daily_rate: '', password: '' });
+      setWorkerForm({ name: '', phone: '', designation: '', wage_type: '', daily_rate: '' });
       await refreshUsers();
     } catch (err) {
       showToast('worker', 'error', err.message || 'Onboarding registration failed.');
@@ -451,7 +449,7 @@ export default function AdminDashboard() {
               <Field label="Wage Type">
                 <select className={inputCls}
                   value={workerForm.wage_type}
-                  onChange={e => setWorkerForm({ ...workerForm, wage_type: e.target.value, password: '' })}>
+                  onChange={e => setWorkerForm({ ...workerForm, wage_type: e.target.value })}>
                   <option value="" disabled>-- Select Wage Type --</option>
                   <option value="piece_rate">Piece Rate / Daily Wage</option>
                   <option value="monthly">Monthly Salary</option>
@@ -466,12 +464,6 @@ export default function AdminDashboard() {
                       placeholder="10-digit mobile number"
                       maxLength={10}
                       onChange={e => setWorkerForm({ ...workerForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} required />
-                  </Field>
-                  <Field label="Set Password *">
-                    <input type="password" className={inputCls}
-                      value={workerForm.password}
-                      placeholder="Min. 6 characters"
-                      onChange={e => setWorkerForm({ ...workerForm, password: e.target.value })} required minLength="6" />
                   </Field>
                 </>
               ) : (

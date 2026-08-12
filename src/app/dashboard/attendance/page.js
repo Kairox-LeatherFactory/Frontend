@@ -199,6 +199,7 @@ function MyAttendanceView({ token }) {
   const gps = useGps();
   const { user } = useAuth();
   const isManagingDirector = user === 'managing_director';
+  const isFloorManager = user === 'stitching_manager' || user === 'cutting_manager' || user === 'lining_manager';
 
   const [status, setStatus] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -399,6 +400,7 @@ function MyAttendanceView({ token }) {
       )}
 
       {/* Personal History */}
+      {!isFloorManager && (
       <SpotlightCard variants={fadeUpItem} className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
           <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
@@ -507,6 +509,7 @@ function MyAttendanceView({ token }) {
           </>
         )}
       </SpotlightCard>
+      )}
     </motion.div>
   );
 }
@@ -677,8 +680,8 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
       showAlert('warning', 'Name and designation are required.');
       return;
     }
-    if (wage_type === 'monthly' && (!phone.trim() || !password.trim())) {
-      showAlert('warning', 'Phone number and password are required for monthly employees.');
+    if (wage_type === 'monthly' && !phone.trim()) {
+      showAlert('warning', 'Phone number is required for monthly employees.');
       return;
     }
     if (phone.trim() && phone.trim().length !== 10) {
@@ -694,7 +697,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
         designation: designation.trim(),
         wage_type: wage_type,
         phone: phone.trim() || null,
-        password: wage_type === 'monthly' ? password : null,
         daily_rate: daily_rate ? parseFloat(daily_rate) : null,
       };
 
@@ -705,7 +707,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
 
       showAlert('success', `Worker "${name}" onboarded to floor roster.`);
       setAddModal(false);
-      setAddForm({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '', password: '' });
+      setAddForm({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '' });
       setIsOther(false);
       if (onWorkerAdded)
         onWorkerAdded();
@@ -1062,12 +1064,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
                         onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
                         className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text" />
                     </div>
-                    <div>
-                      <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Set Password *</label>
-                      <input type="password" value={addForm.password} placeholder="Min. 6 characters"
-                        onChange={(e) => setAddForm((f) => ({ ...f, password: e.target.value }))}
-                        className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text" />
-                    </div>
                   </>
                 ) : (
                   <>
@@ -1100,6 +1096,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
           </>
         )}
       </AnimatedModal>
+
     </motion.div>
   );
 }
@@ -1542,8 +1539,8 @@ function AttendanceHistoryView({ token }) {
 export default function AttendancePage() {
   const { user, token } = useAuth();
 
-  const isManager = user === 'direct_manager' || user === 'managing_director';
-  const isSupervisor = user === 'cutting_manager' || user === 'stitching_manager' || isManager;
+  const isManager = user === 'direct_manager' || user === 'managing_director' || user === 'hr';
+  const isSupervisor = isManager;
   const isSecurity = user === 'security';
   const isMD = user === 'managing_director';
 
@@ -1625,3 +1622,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+
