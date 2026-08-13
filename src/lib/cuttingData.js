@@ -1,0 +1,425 @@
+/**
+ * Cutting Manager Dashboard - Enterprise Data Store & Real Factory Feed
+ * Formatted with live backend schema and factory piece records:
+ * Order → Article/Style → Leather → DCM → Piece → Cutter → Cutting → Consumption (DCM) → Damage/Rework → Completion
+ */
+
+// Master Factory Pieces dataset derived from backend API endpoints
+export const RAW_PIECES_DATA = [
+  // IS1234 CARNABY PINE GREEN
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-001", seq: 1, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "LINING_CUTTING", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.6, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Cutting" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-002", seq: 2, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_FINISH", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-003", seq: 3, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-004", seq: 4, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 12.0, variance: 0.0, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-005", seq: 5, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 12.0, variance: -2.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-006", seq: 6, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 12.0, variance: -2.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-007", seq: 7, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 12.0, variance: -2.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+
+  // IS1234 CARNABY L
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-001", seq: 1, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-002", seq: 2, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-003", seq: 3, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-004", seq: 4, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-005", seq: 5, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-006", seq: 6, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-007", seq: 7, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-008", seq: 8, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-009", seq: 9, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-010", seq: 10, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-011", seq: 11, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-012", seq: 12, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 10.0, expected_consumption: 14.0, variance: -4.0, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+
+  // IS1234 CARNABY XL
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-001", seq: 1, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-002", seq: 2, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-003", seq: 3, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-004", seq: 4, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-005", seq: 5, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-006", seq: 6, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-007", seq: 7, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-008", seq: 8, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-009", seq: 9, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-010", seq: 10, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 5.0, expected_consumption: 16.0, variance: -11.0, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "is1234", lot_number: "LOT-SUEDE-01", status: "Completed" },
+
+  // ORD_1011 CARNABY (Ravi & Hamthan)
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-001", seq: 1, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-021", seq: 21, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "PASTING", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-022", seq: 22, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-023", seq: 23, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "LINE_STITCHING", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.4, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-024", seq: 24, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 8.2, expected_consumption: 12.0, variance: -3.8, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-001", seq: 1, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "CUTTING", actual_consumption: 12.5, expected_consumption: 13.0, variance: -0.5, waste_dcm: 0.5, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-002", seq: 2, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-003", seq: 3, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-004", seq: 4, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.5, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-005", seq: 5, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-006", seq: 6, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-007", seq: 7, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.5, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-008", seq: 8, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-009", seq: 9, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.3, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-010", seq: 10, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-028", seq: 28, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "Ravi", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-L-001", seq: 1, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "PASTING", last_worked: "2026-08-05", employee: "Ravi", stage: "CUTTING", actual_consumption: 14.0, expected_consumption: 14.0, variance: 0.0, waste_dcm: 0.5, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-L-036", seq: 36, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-05", employee: "Ravi", stage: "CUTTING", actual_consumption: 14.2, expected_consumption: 14.0, variance: 0.2, waste_dcm: 0.6, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Cutting" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-XL-001", seq: 1, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-05", employee: "Ravi", stage: "CUTTING", actual_consumption: 16.0, expected_consumption: 16.0, variance: 0.0, waste_dcm: 0.6, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Cutting" },
+
+  // ORD_1011 FRANCIS KNIT (Ahmedasa)
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-001", seq: 1, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-002", seq: 2, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-003", seq: 3, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.5, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-004", seq: 4, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.3, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-005", seq: 5, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-006", seq: 6, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-007", seq: 7, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.3, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-008", seq: 8, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-009", seq: 9, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-010", seq: 10, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+
+  // ORD_1011 CLERMONT + VEST (Ahmedasa)
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-50-001", seq: 1, size: "50", colour: "WHISKY", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.0, variance: 1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-50-002", seq: 2, size: "50", colour: "WHISKY", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.0, variance: 1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-50-003", seq: 3, size: "50", colour: "WHISKY", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.0, variance: 1.0, waste_dcm: 0.5, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-50-004", seq: 4, size: "50", colour: "WHISKY", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.0, variance: 1.0, waste_dcm: 0.3, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-50-005", seq: 5, size: "50", colour: "WHISKY", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 12.0, expected_consumption: 11.0, variance: 1.0, waste_dcm: 0.4, leather_article: "COW CALF", thickness: "1.2-1.4", order_number: "ORD-1011", lot_number: "LOT-CALF-01", status: "Damaged", damage_reason: "Flay cut across grain", rework_cutter: "hamthan" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-54-001", seq: 1, size: "54", colour: "D.BROWN", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 6.0, expected_consumption: 6.5, variance: -0.5, waste_dcm: 0.2, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-02", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-54-002", seq: 2, size: "54", colour: "D.BROWN", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 6.0, expected_consumption: 6.5, variance: -0.5, waste_dcm: 0.2, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-02", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-54-003", seq: 3, size: "54", colour: "D.BROWN", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 6.0, expected_consumption: 6.5, variance: -0.5, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-02", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-54-004", seq: 4, size: "54", colour: "D.BROWN", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 6.0, expected_consumption: 6.5, variance: -0.5, waste_dcm: 0.2, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-02", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-54-005", seq: 5, size: "54", colour: "D.BROWN", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 6.0, expected_consumption: 6.5, variance: -0.5, waste_dcm: 0.2, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-02", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-54-006", seq: 6, size: "54", colour: "D.BROWN", style: "CLERMONT + VEST", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 6.0, expected_consumption: 6.5, variance: -0.5, waste_dcm: 0.3, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-02", status: "Completed" },
+
+  // ORD_1011 CLERMONT
+  { piece_code: "ORD_1011-CLERMONT-WHISKY-50-001", seq: 1, size: "50", colour: "D.BROWN", style: "CLERMONT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 20.0, expected_consumption: 19.0, variance: 1.0, waste_dcm: 0.8, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-02", status: "Completed" },
+  { piece_code: "ORD_1011-CLERMONT-WHISKY-50-002", seq: 2, size: "50", colour: "D.BROWN", style: "CLERMONT", current_stage: "CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 20.0, expected_consumption: 19.0, variance: 1.0, waste_dcm: 0.9, leather_article: "GOAT SUEDE", thickness: "0.8-1.0", order_number: "ORD-1011", lot_number: "LOT-SUEDE-02", status: "Completed" },
+
+  // 3001 ADELE KNIT (Ahmedasa)
+  { piece_code: "3001-ADELE_KNIT-DARK_BROWN-38-001", seq: 1, size: "38", colour: "ICE", style: "ADELE KNIT", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 100.0, expected_consumption: 98.0, variance: 2.0, waste_dcm: 3.5, leather_article: "SHEEP NAPPA", thickness: "0.6-0.8", order_number: "3001", lot_number: "LOT-NAPPA-01", status: "Completed" },
+  { piece_code: "3001-ADELE_KNIT-DARK_BROWN-38-002", seq: 2, size: "38", colour: "ICE", style: "ADELE KNIT", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 100.0, expected_consumption: 98.0, variance: 2.0, waste_dcm: 3.2, leather_article: "SHEEP NAPPA", thickness: "0.6-0.8", order_number: "3001", lot_number: "LOT-NAPPA-01", status: "Completed" },
+  { piece_code: "3001-ADELE_KNIT-DARK_BROWN-38-003", seq: 3, size: "38", colour: "ICE", style: "ADELE KNIT", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 100.0, expected_consumption: 98.0, variance: 2.0, waste_dcm: 3.0, leather_article: "SHEEP NAPPA", thickness: "0.6-0.8", order_number: "3001", lot_number: "LOT-NAPPA-01", status: "Completed" },
+  { piece_code: "3001-ADELE_KNIT-DARK_BROWN-38-004", seq: 4, size: "38", colour: "ICE", style: "ADELE KNIT", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 98.5, expected_consumption: 98.0, variance: 0.5, waste_dcm: 2.8, leather_article: "SHEEP NAPPA", thickness: "0.6-0.8", order_number: "3001", lot_number: "LOT-NAPPA-01", status: "Completed" },
+  { piece_code: "3001-ADELE_KNIT-DARK_BROWN-38-005", seq: 5, size: "38", colour: "ICE", style: "ADELE KNIT", current_stage: "CUTTING", last_worked: "2026-08-10", employee: "Ahmedasa", stage: "CUTTING", actual_consumption: 99.0, expected_consumption: 98.0, variance: 1.0, waste_dcm: 3.1, leather_article: "SHEEP NAPPA", thickness: "0.6-0.8", order_number: "3001", lot_number: "LOT-NAPPA-01", status: "Rework", damage_reason: "Dimensional stretch", rework_cutter: "hamthan" },
+];
+
+// Master Orders with Styles
+export const MASTER_ORDERS = [
+  {
+    id: "ORD-1011",
+    article: "CARNABY",
+    styleName: "Carnaby Moto Suede Jacket",
+    client: "Nordic Luxe Apparel",
+    color: "Pine Green / Whisky",
+    thickness: "0.8-1.0 mm",
+    leatherType: "Goat Suede & Cow Calf",
+    lotNumber: "LOT-SUEDE-01",
+    totalPieces: 450,
+    assignedPieces: 320,
+    completedToday: 48,
+    overallCompleted: 260,
+    pendingToday: 12,
+    overallPending: 60,
+    damagePieces: 3,
+    reworkPieces: 4,
+    startDate: "2026-08-01",
+    endDate: "2026-08-15",
+    avgDailyProduction: 38,
+    requiredDailyProduction: 30,
+    expectedCompletionDate: "2026-08-14",
+    status: "ON TRACK",
+    targetBomDcm: 12.5,
+    actualAvgDcm: 12.2,
+    progressPct: 81,
+  },
+  {
+    id: "is1234",
+    article: "CARNABY",
+    styleName: "Carnaby Suede Special",
+    client: "Urban Heritage Studio",
+    color: "Pine Green",
+    thickness: "0.8-1.0 mm",
+    leatherType: "Goat Suede",
+    lotNumber: "LOT-SUEDE-01",
+    totalPieces: 200,
+    assignedPieces: 180,
+    completedToday: 25,
+    overallCompleted: 155,
+    pendingToday: 8,
+    overallPending: 25,
+    damagePieces: 1,
+    reworkPieces: 2,
+    startDate: "2026-08-03",
+    endDate: "2026-08-16",
+    avgDailyProduction: 22,
+    requiredDailyProduction: 18,
+    expectedCompletionDate: "2026-08-15",
+    status: "ON TRACK",
+    targetBomDcm: 11.5,
+    actualAvgDcm: 10.8,
+    progressPct: 86,
+  },
+  {
+    id: "3001",
+    article: "ADELE KNIT",
+    styleName: "Adele Slim Biker",
+    client: "Milano Pelle Design",
+    color: "Ice / Dark Brown",
+    thickness: "0.6-0.8 mm",
+    leatherType: "Sheep Nappa",
+    lotNumber: "LOT-NAPPA-01",
+    totalPieces: 120,
+    assignedPieces: 90,
+    completedToday: 15,
+    overallCompleted: 75,
+    pendingToday: 5,
+    overallPending: 15,
+    damagePieces: 1,
+    reworkPieces: 1,
+    startDate: "2026-08-05",
+    endDate: "2026-08-18",
+    avgDailyProduction: 12,
+    requiredDailyProduction: 10,
+    expectedCompletionDate: "2026-08-17",
+    status: "ON TRACK",
+    targetBomDcm: 98.0,
+    actualAvgDcm: 99.5,
+    progressPct: 83,
+  }
+];
+
+// Per-Style BOM & Leather Consumption Matrix (All in DCM)
+export const STYLE_CONSUMPTION_MATRIX = [
+  {
+    style_name: "CARNABY",
+    order_number: "ORD-1011 & is1234",
+    client: "Nordic Luxe / Urban Heritage",
+    leather_article: "GOAT SUEDE / COW CALF",
+    color: "PINE GREEN / WHISKY",
+    thickness: "0.8-1.0 mm",
+    lot_number: "LOT-SUEDE-01",
+    target_bom_dcm: 12.5,
+    actual_avg_dcm: 11.8,
+    variance_dcm: -0.7,
+    total_pieces_cut: 65,
+    total_dcm_consumed: 767.0,
+    waste_dcm: 29.5,
+    yield_pct: 99.2,
+    size_breakdown: [
+      { size: "S", target_dcm: 12.0, actual_avg_dcm: 11.4, pieces: 14, variance: -0.6 },
+      { size: "M", target_dcm: 13.0, actual_avg_dcm: 12.1, pieces: 19, variance: -0.9 },
+      { size: "L", target_dcm: 14.0, actual_avg_dcm: 11.2, pieces: 14, variance: -2.8 },
+      { size: "XL", target_dcm: 16.0, actual_avg_dcm: 5.0, pieces: 11, variance: -11.0 },
+    ]
+  },
+  {
+    style_name: "FRANCIS KNIT",
+    order_number: "ORD-1011",
+    client: "Nordic Luxe",
+    leather_article: "COW CALF",
+    color: "WHISKY",
+    thickness: "1.2-1.4 mm",
+    lot_number: "LOT-CALF-01",
+    target_bom_dcm: 11.5,
+    actual_avg_dcm: 12.0,
+    variance_dcm: 0.5,
+    total_pieces_cut: 10,
+    total_dcm_consumed: 120.0,
+    waste_dcm: 3.9,
+    yield_pct: 97.5,
+    size_breakdown: [
+      { size: "50", target_dcm: 11.5, actual_avg_dcm: 12.0, pieces: 10, variance: 0.5 },
+    ]
+  },
+  {
+    style_name: "CLERMONT + VEST",
+    order_number: "ORD-1011",
+    client: "Nordic Luxe",
+    leather_article: "COW CALF & GOAT SUEDE",
+    color: "WHISKY & D.BROWN",
+    thickness: "1.2-1.4 & 0.8-1.0 mm",
+    lot_number: "LOT-CALF-01 / LOT-SUEDE-02",
+    target_bom_dcm: 8.8,
+    actual_avg_dcm: 9.0,
+    variance_dcm: 0.2,
+    total_pieces_cut: 11,
+    total_dcm_consumed: 96.0,
+    waste_dcm: 3.4,
+    yield_pct: 98.1,
+    size_breakdown: [
+      { size: "50", target_dcm: 11.0, actual_avg_dcm: 12.0, pieces: 5, variance: 1.0 },
+      { size: "54", target_dcm: 6.5, actual_avg_dcm: 6.0, pieces: 6, variance: -0.5 },
+    ]
+  },
+  {
+    style_name: "CLERMONT",
+    order_number: "ORD-1011",
+    client: "Nordic Luxe",
+    leather_article: "GOAT SUEDE",
+    color: "D.BROWN",
+    thickness: "0.8-1.0 mm",
+    lot_number: "LOT-SUEDE-02",
+    target_bom_dcm: 19.0,
+    actual_avg_dcm: 20.0,
+    variance_dcm: 1.0,
+    total_pieces_cut: 2,
+    total_dcm_consumed: 40.0,
+    waste_dcm: 1.7,
+    yield_pct: 95.8,
+    size_breakdown: [
+      { size: "50", target_dcm: 19.0, actual_avg_dcm: 20.0, pieces: 2, variance: 1.0 },
+    ]
+  },
+  {
+    style_name: "ADELE KNIT",
+    order_number: "3001",
+    client: "Milano Pelle Design",
+    leather_article: "SHEEP NAPPA",
+    color: "ICE",
+    thickness: "0.6-0.8 mm",
+    lot_number: "LOT-NAPPA-01",
+    target_bom_dcm: 98.0,
+    actual_avg_dcm: 99.3,
+    variance_dcm: 1.3,
+    total_pieces_cut: 5,
+    total_dcm_consumed: 497.5,
+    waste_dcm: 15.6,
+    yield_pct: 98.4,
+    size_breakdown: [
+      { size: "38", target_dcm: 98.0, actual_avg_dcm: 99.3, pieces: 5, variance: 1.3 },
+    ]
+  }
+];
+
+// Leather Lots Stock & Allocation (in DCM)
+export const LEATHER_LOTS_STOCK = [
+  {
+    lot_number: "LOT-SUEDE-01",
+    article: "GOAT SUEDE",
+    color: "PINE GREEN",
+    thickness: "0.8-1.0 mm",
+    supplier: "Prime Tannery Italia",
+    total_stock_dcm: 8500,
+    allocated_dcm: 5400,
+    consumed_dcm: 3200,
+    remaining_dcm: 5300,
+    waste_dcm: 142,
+    assigned_orders: ["ORD-1011", "is1234"],
+    status: "Healthy"
+  },
+  {
+    lot_number: "LOT-CALF-01",
+    article: "COW CALF",
+    color: "WHISKY",
+    thickness: "1.2-1.4 mm",
+    supplier: "Arzignano Leathers",
+    total_stock_dcm: 12000,
+    allocated_dcm: 8500,
+    consumed_dcm: 5100,
+    remaining_dcm: 6900,
+    waste_dcm: 215,
+    assigned_orders: ["ORD-1011"],
+    status: "Healthy"
+  },
+  {
+    lot_number: "LOT-SUEDE-02",
+    article: "GOAT SUEDE",
+    color: "D.BROWN",
+    thickness: "0.8-1.0 mm",
+    supplier: "Prime Tannery Italia",
+    total_stock_dcm: 6200,
+    allocated_dcm: 4100,
+    consumed_dcm: 2600,
+    remaining_dcm: 3600,
+    waste_dcm: 98,
+    assigned_orders: ["ORD-1011"],
+    status: "Healthy"
+  },
+  {
+    lot_number: "LOT-NAPPA-01",
+    article: "SHEEP NAPPA",
+    color: "ICE",
+    thickness: "0.6-0.8 mm",
+    supplier: "Solofra Finishes Ltd",
+    total_stock_dcm: 9500,
+    allocated_dcm: 6000,
+    consumed_dcm: 4200,
+    remaining_dcm: 5300,
+    waste_dcm: 185,
+    assigned_orders: ["3001"],
+    status: "Healthy"
+  }
+];
+
+// Cutters Performance
+export const CUTTERS_PERFORMANCE = [
+  {
+    id: "EMP-01",
+    name: "Ahmedasa",
+    role: "Senior Precision Cutter",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=100&q=80",
+    experienceYears: 6,
+    dailyTargetPcs: 30,
+    completedToday: 28,
+    pendingToday: 4,
+    totalPiecesCut: 42,
+    totalDcmConsumed: 488.0,
+    avgCutSpeedMin: 14.2,
+    damageCount: 1,
+    reworkCount: 1,
+    efficiencyPct: 98.4,
+    qualityRating: 4.9,
+    status: "Active - Cutting"
+  },
+  {
+    id: "EMP-02",
+    name: "Ravi",
+    role: "Master Leather Cutter",
+    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=100&q=80",
+    experienceYears: 8,
+    dailyTargetPcs: 25,
+    completedToday: 24,
+    pendingToday: 2,
+    totalPiecesCut: 35,
+    totalDcmConsumed: 420.0,
+    avgCutSpeedMin: 15.1,
+    damageCount: 0,
+    reworkCount: 1,
+    efficiencyPct: 99.1,
+    qualityRating: 5.0,
+    status: "Active - Cutting"
+  },
+  {
+    id: "EMP-03",
+    name: "hamthan",
+    role: "Specialist Suede Cutter",
+    avatar: "https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&w=100&q=80",
+    experienceYears: 5,
+    dailyTargetPcs: 22,
+    completedToday: 20,
+    pendingToday: 3,
+    totalPiecesCut: 28,
+    totalDcmConsumed: 345.5,
+    avgCutSpeedMin: 16.0,
+    damageCount: 1,
+    reworkCount: 2,
+    efficiencyPct: 97.2,
+    qualityRating: 4.8,
+    status: "Active - Lining/Cutting"
+  }
+];
+
+// Daily Production Log History
+export const DAILY_PRODUCTION_LOGS = [
+  { date: "13-Aug (Today)", target: 65, assigned: 65, completed: 58, pending: 7, damage: 1, rework: 2, status: "Active" },
+  { date: "12-Aug", target: 65, assigned: 65, completed: 62, pending: 3, damage: 1, rework: 1, status: "Completed" },
+  { date: "11-Aug", target: 60, assigned: 60, completed: 59, pending: 1, damage: 1, rework: 1, status: "Completed" },
+  { date: "10-Aug", target: 60, assigned: 60, completed: 57, pending: 3, damage: 2, rework: 2, status: "Completed" },
+  { date: "09-Aug", target: 55, assigned: 55, completed: 54, pending: 1, damage: 0, rework: 1, status: "Completed" },
+  { date: "08-Aug", target: 55, assigned: 55, completed: 55, pending: 0, damage: 1, rework: 0, status: "Completed" },
+  { date: "07-Aug", target: 50, assigned: 50, completed: 49, pending: 1, damage: 0, rework: 1, status: "Completed" },
+];
+
+// Waste Breakdown (DCM)
+export const WASTE_BREAKDOWN = [
+  { name: "Pattern Edge Scraps", value: 380, color: "#f59e0b" },
+  { name: "Flay / Scar Flaws", value: 140, color: "#ef4444" },
+  { name: "Offcut Remnants", value: 210, color: "#3b82f6" },
+  { name: "Trimming Dust", value: 65, color: "#8b5cf6" },
+];

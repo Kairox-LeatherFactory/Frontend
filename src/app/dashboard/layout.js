@@ -1,6 +1,6 @@
 'use client';
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useEffect, useRef, useState, useMemo, Suspense } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
@@ -28,10 +28,114 @@ import {
   ScissorsLineDashed,
   Waypoints,
   Shirt,
+  Boxes,
+  ChevronDown,
 } from 'lucide-react';
 
 // Raw hide → cut pattern pieces → stitched seam → finished jacket
 const JACKET_BUILD_STAGES = [Layers, ScissorsLineDashed, Waypoints, Shirt];
+
+// Sub-branches for Cutting Floor (DCM)
+const CUTTING_SUB_BRANCHES = [
+  { name: "Today's Priority", tabId: 'tab-today', icon: '📌' },
+  { name: 'Per-Style Leather (DCM)', tabId: 'tab-styles', icon: '👗' },
+  { name: 'Leather Stock & Lots (DCM)', tabId: 'tab-inventory', icon: '🧵' },
+  { name: 'Cutter Performance', tabId: 'tab-cutters', icon: '✂️' },
+  { name: 'Piece-Level Master Tracker', tabId: 'tab-pieces', icon: '🏷️' },
+  { name: 'Damage & Rework Station', tabId: 'tab-damage', icon: '⚠️' },
+  { name: 'Loss & Waste Analytics', tabId: 'tab-analytics', icon: '📉' },
+  { name: 'Traceability Flow', tabId: 'tab-flow', icon: '🔄' },
+];
+
+// Sub-branches for Lining Floor
+const LINING_SUB_BRANCHES = [
+  { name: "Today's Priority", tabId: 'tab-today', icon: '📌' },
+  { name: 'Lining Material Stock', tabId: 'tab-inventory', icon: '🧵' },
+  { name: 'Per-Style Lining', tabId: 'tab-styles', icon: '👗' },
+  { name: 'Operator Performance', tabId: 'tab-employees', icon: '👷' },
+  { name: 'Piece-Level Tracker', tabId: 'tab-pieces', icon: '🏷️' },
+  { name: 'Damage & Rework', tabId: 'tab-damage', icon: '⚠️' },
+  { name: 'Upcoming Production', tabId: 'tab-upcoming', icon: '⏳' },
+  { name: 'Loss & Waste Analytics', tabId: 'tab-analytics', icon: '📉' },
+  { name: 'Traceability Flow', tabId: 'tab-flow', icon: '🔄' },
+];
+
+// Sub-branches for Stitching Floor
+const STITCHING_SUB_BRANCHES = [
+  { name: "Today's Priority", tabId: 'tab-today', icon: '📌' },
+  { name: 'Stage-Wise & Bottlenecks', tabId: 'tab-stages', icon: '🪡' },
+  { name: 'Store Handoff & Drawers', tabId: 'tab-store', icon: '🏬' },
+  { name: 'Per-Style Progress', tabId: 'tab-styles', icon: '👗' },
+  { name: 'Employee by Stage', tabId: 'tab-employees', icon: '👷' },
+  { name: 'Piece Tracker', tabId: 'tab-pieces', icon: '🏷️' },
+  { name: 'Damage & Rework', tabId: 'tab-damage', icon: '⚠️' },
+  { name: 'Stage Analytics', tabId: 'tab-analytics', icon: '📉' },
+  { name: 'Traceability Flow', tabId: 'tab-flow', icon: '🔄' },
+];
+
+// Sub-branches for Store Floor
+const STORE_SUB_BRANCHES = [
+  { name: "Today's Priority", tabId: 'tab-today', icon: '📌' },
+  { name: 'Drawer Master', tabId: 'tab-drawers', icon: '🗄️' },
+  { name: 'Styles in Store', tabId: 'tab-styles', icon: '📦' },
+  { name: 'Leather & Lining', tabId: 'tab-materials', icon: '🧵' },
+  { name: 'Hold Management', tabId: 'tab-holds', icon: '🛑' },
+  { name: 'Empty Drawers', tabId: 'tab-empty', icon: '♻️' },
+  { name: 'Cutter Traceability', tabId: 'tab-employees', icon: '👷' },
+  { name: 'Store Analytics', tabId: 'tab-analytics', icon: '📉' },
+  { name: 'Traceability Flow', tabId: 'tab-flow', icon: '🔄' },
+];
+
+/* Tree Sub-Branch Links with branch connector line and active dot glow */
+function SubBranchLinks({ link, setMobileMenuOpen }) {
+  const searchParams = useSearchParams();
+  const currentTab = searchParams.get('tab') || 'tab-today';
+
+  return (
+    <div className="overflow-hidden pl-5 pr-1 pt-1.5 pb-2.5 space-y-1 relative">
+      {/* Main Vertical Tree Trunk Line */}
+      <div
+        className="absolute left-[18px] top-1 bottom-3 w-[1.5px] rounded-full"
+        style={{
+          background: 'linear-gradient(180deg, rgba(200,131,74,0.65) 0%, rgba(200,131,74,0.3) 70%, rgba(200,131,74,0.1) 100%)',
+        }}
+      />
+
+      {link.subItems.map((sub) => {
+        const isSubActive = currentTab === sub.tabId;
+        return (
+          <Link
+            key={sub.tabId}
+            href={`${link.href}?tab=${sub.tabId}`}
+            onClick={() => setMobileMenuOpen(false)}
+            className={`group/sub flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11.5px] transition-all duration-200 relative cursor-pointer ${
+              isSubActive
+                ? 'font-bold text-white bg-gradient-to-r from-[rgba(200,131,74,0.35)] to-[rgba(200,131,74,0.1)] border border-[rgba(200,131,74,0.45)] shadow-sm translate-x-1'
+                : 'font-medium text-amber-100/70 hover:text-white hover:bg-white/10 hover:translate-x-1'
+            }`}
+          >
+            {/* Horizontal Branch Connector Line */}
+            <span
+              className={`absolute -left-[14px] top-1/2 -translate-y-1/2 w-3.5 h-[1.5px] transition-all duration-200 ${
+                isSubActive ? 'bg-[#e89554]' : 'bg-[rgba(200,131,74,0.35)] group-hover/sub:bg-[rgba(200,131,74,0.75)]'
+              }`}
+            />
+            {/* Node Dot */}
+            <span
+              className={`w-1.5 h-1.5 rounded-full shrink-0 transition-all duration-200 ${
+                isSubActive
+                  ? 'bg-[#e89554] ring-2 ring-[rgba(200,131,74,0.6)] scale-125'
+                  : 'bg-[rgba(200,131,74,0.4)] group-hover/sub:bg-[rgba(200,131,74,0.85)]'
+              }`}
+            />
+            <span className="text-xs shrink-0">{sub.icon}</span>
+            <span className="truncate tracking-wide">{sub.name}</span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
 
 /* Plays the leather→jacket build sequence in a nav icon's slot each time it becomes the active page */
 function AnimatedNavIcon({ isActive, Icon, className }) {
@@ -71,10 +175,13 @@ function AnimatedNavIcon({ isActive, Icon, className }) {
 }
 
 const NAV_ICONS = {
-  '/dashboard': LayoutDashboard,
+  '/dashboard': ScissorsLineDashed,
+  '/dashboard/cutting': ScissorsLineDashed,
+  '/dashboard/lining': Shirt,
+  '/dashboard/stitching': Waypoints,
+  '/dashboard/store': Boxes,
   '/dashboard/analytics': BarChart3,
   '/dashboard/entry': ClipboardPen,
-  '/dashboard/store': Layers,
   '/dashboard/progress': BarChart3,
   '/dashboard/orders': TreePine,
   '/dashboard/wages': Wallet,
@@ -111,6 +218,10 @@ export default function DashboardLayout({ children }) {
   const router = useRouter();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [expandedBranches, setExpandedBranches] = useState({
+    '/dashboard': true,
+    '/dashboard/cutting': true,
+  });
 
   // Session gate
   useEffect(() => {
@@ -158,8 +269,67 @@ export default function DashboardLayout({ children }) {
   // reference stays stable and avoids re-rendering nav items unnecessarily
   const navLinks = useMemo(
     () => {
+      let topDashboards = [];
+
+      if (user === 'store_scan') {
+        topDashboards = [
+          {
+            name: 'Store Floor Dashboard',
+            href: '/dashboard',
+            subItems: STORE_SUB_BRANCHES,
+          },
+        ];
+      } else if (user === 'stitching_manager') {
+        topDashboards = [
+          {
+            name: 'Stitching Floor Dashboard',
+            href: '/dashboard',
+            subItems: STITCHING_SUB_BRANCHES,
+          },
+        ];
+      } else if (user === 'lining_manager') {
+        topDashboards = [
+          {
+            name: 'Lining Floor Dashboard',
+            href: '/dashboard',
+            subItems: LINING_SUB_BRANCHES,
+          },
+        ];
+      } else if (user === 'cutting_manager') {
+        topDashboards = [
+          {
+            name: 'Cutting Floor Dashboard',
+            href: '/dashboard',
+            subItems: CUTTING_SUB_BRANCHES,
+          },
+        ];
+      } else {
+        topDashboards = [
+          {
+            name: 'Cutting Floor Dashboard',
+            href: '/dashboard',
+            subItems: CUTTING_SUB_BRANCHES,
+          },
+          {
+            name: 'Lining Floor Dashboard',
+            href: '/dashboard/lining',
+            subItems: LINING_SUB_BRANCHES,
+          },
+          {
+            name: 'Stitching Floor Dashboard',
+            href: '/dashboard/stitching',
+            subItems: STITCHING_SUB_BRANCHES,
+          },
+          {
+            name: 'Store Floor Dashboard',
+            href: '/dashboard/store',
+            subItems: STORE_SUB_BRANCHES,
+          },
+        ];
+      }
+
       const links = [
-        { name: 'Dashboard Home', href: '/dashboard' },
+        ...topDashboards,
         { name: 'Analytics & Alerts', href: '/dashboard/analytics' },
         { name: 'Production Logger', href: '/dashboard/entry' },
         { name: 'Stage-Spread Progress', href: '/dashboard/progress' },
@@ -189,7 +359,26 @@ export default function DashboardLayout({ children }) {
     [user]
   );
 
- if (!user) {
+  const toggleBranch = (href, e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setExpandedBranches((prev) => ({
+      ...prev,
+      [href]: !prev[href],
+    }));
+  };
+
+  const handleBranchParentClick = (link) => {
+    if (link.subItems) {
+      // Toggle branch expansion on click
+      setExpandedBranches((prev) => ({
+        ...prev,
+        [link.href]: !prev[link.href],
+      }));
+    }
+  };
+
+  if (!user) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#050505]">
         <div className="text-center text-[#c8834a]">
@@ -231,6 +420,9 @@ export default function DashboardLayout({ children }) {
           {navLinks.map((link) => {
             const isActive = pathname === link.href || (link.href !== '/dashboard' && pathname.startsWith(link.href + '/'));
             const IconComp = NAV_ICONS[link.href] || LayoutDashboard;
+            const hasSubItems = Boolean(link.subItems && link.subItems.length > 0);
+            const isBranchExpanded = Boolean(expandedBranches[link.href]);
+
             return (
               <motion.div key={link.href} variants={navItemAnim}>
                 {link.divider && (
@@ -238,55 +430,96 @@ export default function DashboardLayout({ children }) {
                     <div className="h-px" style={{ background: 'rgba(200,131,74,0.15)' }} />
                   </div>
                 )}
-                <Link
-                  href={link.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full`}
-                >
-                  {isActive && (
-                    <motion.span
-                      layoutId="activeNavPill"
-                      className="absolute inset-0 rounded-[10px] overflow-hidden"
-                      style={{
-                        background: 'linear-gradient(135deg, #a8703f 0%, #8a5a2e 45%, #6b4423 100%)',
-                        boxShadow: 'inset 0 0 0 1px rgba(255,232,204,0.14), inset 0 2px 4px rgba(0,0,0,0.35), 0 3px 10px rgba(0,0,0,0.25)',
-                      }}
-                      transition={{ type: 'spring', stiffness: 460, damping: 28, mass: 0.9 }}
-                    >
-                      {/* leather grain */}
-                      <span
-                        className="absolute inset-0 opacity-70"
-                        style={{ backgroundImage: `url("${LEATHER_GRAIN_SVG}")`, backgroundSize: '80px 80px', mixBlendMode: 'overlay' }}
-                      />
-                      {/* saddle-stitched seam */}
-                      <span
-                        className="absolute inset-[3px] rounded-[7px] pointer-events-none"
-                        style={{ border: '1.5px dashed rgba(255,238,214,0.45)' }}
-                      />
-                      {/* sheen that sweeps across as the patch settles into its new stage */}
+                <div className="relative">
+                  <Link
+                    href={link.href}
+                    onClick={() => {
+                      handleBranchParentClick(link);
+                      if (!hasSubItems) setMobileMenuOpen(false);
+                    }}
+                    className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full cursor-pointer`}
+                  >
+                    {isActive && (
                       <motion.span
-                        className="absolute inset-y-0 w-8 pointer-events-none"
-                        style={{ background: 'linear-gradient(115deg, transparent, rgba(255,255,255,0.35), transparent)' }}
-                        initial={{ left: '-20%' }}
-                        animate={{ left: '120%' }}
-                        transition={{ duration: 0.7, delay: 0.12, ease: 'easeInOut' }}
+                        layoutId="activeNavPill"
+                        className="absolute inset-0 rounded-[10px] overflow-hidden"
+                        style={{
+                          background: 'linear-gradient(135deg, #a8703f 0%, #8a5a2e 45%, #6b4423 100%)',
+                          boxShadow: 'inset 0 0 0 1px rgba(255,232,204,0.14), inset 0 2px 4px rgba(0,0,0,0.35), 0 3px 10px rgba(0,0,0,0.25)',
+                        }}
+                        transition={{ type: 'spring', stiffness: 460, damping: 28, mass: 0.9 }}
+                      >
+                        {/* leather grain */}
+                        <span
+                          className="absolute inset-0 opacity-70"
+                          style={{ backgroundImage: `url("${LEATHER_GRAIN_SVG}")`, backgroundSize: '80px 80px', mixBlendMode: 'overlay' }}
+                        />
+                        {/* saddle-stitched seam */}
+                        <span
+                          className="absolute inset-[3px] rounded-[7px] pointer-events-none"
+                          style={{ border: '1.5px dashed rgba(255,238,214,0.45)' }}
+                        />
+                        {/* sheen that sweeps across as the patch settles into its new stage */}
+                        <motion.span
+                          className="absolute inset-y-0 w-8 pointer-events-none"
+                          style={{ background: 'linear-gradient(115deg, transparent, rgba(255,255,255,0.35), transparent)' }}
+                          initial={{ left: '-20%' }}
+                          animate={{ left: '120%' }}
+                          transition={{ duration: 0.7, delay: 0.12, ease: 'easeInOut' }}
+                        />
+                      </motion.span>
+                    )}
+                    <div className="relative z-10 flex items-center gap-3">
+                      <AnimatedNavIcon
+                        isActive={isActive}
+                        Icon={IconComp}
+                        className="w-[18px] h-[18px] transition-transform duration-200 group-hover:-rotate-6 group-hover:scale-110"
                       />
-                    </motion.span>
+                      <span className="font-semibold text-xs tracking-wide">{link.name}</span>
+                    </div>
+
+                    {/* Right side accessories */}
+                    <div className="relative z-10 flex items-center gap-1.5">
+                      {link.name === 'New Intake' && (user === 'cutting_manager' || user === 'direct_manager') && pendingPoCount > 0 && (
+                        <span className="bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+                          {pendingPoCount}
+                        </span>
+                      )}
+
+                      {hasSubItems && (
+                        <button
+                          type="button"
+                          onClick={(e) => toggleBranch(link.href, e)}
+                          className="p-1 rounded-md text-amber-200/60 hover:text-amber-200 hover:bg-black/20 transition-all"
+                        >
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 transition-transform duration-300 ${
+                              isBranchExpanded ? 'rotate-180 text-amber-400' : 'rotate-0'
+                            }`}
+                          />
+                        </button>
+                      )}
+                    </div>
+                  </Link>
+
+                  {/* Expandable Sub-Branches Accordion */}
+                  {hasSubItems && (
+                    <AnimatePresence initial={false}>
+                      {isBranchExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+                        >
+                          <Suspense fallback={<div className="pl-6 py-2 text-[10px] text-amber-200/50">Loading branches...</div>}>
+                            <SubBranchLinks link={link} setMobileMenuOpen={setMobileMenuOpen} />
+                          </Suspense>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   )}
-                  <div className="relative z-10 flex items-center gap-3">
-                    <AnimatedNavIcon
-                      isActive={isActive}
-                      Icon={IconComp}
-                      className="w-[18px] h-[18px] transition-transform duration-200 group-hover:-rotate-6 group-hover:scale-110"
-                    />
-                    <span>{link.name}</span>
-                  </div>
-                  {link.name === 'New Intake' && (user === 'cutting_manager' || user === 'direct_manager') && pendingPoCount > 0 && (
-                    <span className="relative z-10 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
-                      {pendingPoCount}
-                    </span>
-                  )}
-                </Link>
+                </div>
               </motion.div>
             );
           })}
@@ -329,8 +562,28 @@ export default function DashboardLayout({ children }) {
               <Menu className="w-6 h-6" />
             </button>
             <div className="hidden sm:block">
-              <h2 className="text-xl font-bold" style={{ color: '#3d2b1a' }}>Shop Floor Command</h2>
-              <p className="text-xs" style={{ color: '#9a8a7a' }}>Production, wages, and compliance tracking</p>
+              <h2 className="text-xl font-bold" style={{ color: '#3d2b1a' }}>
+                {pathname === '/dashboard/store' || (pathname === '/dashboard' && user === 'store_scan')
+                  ? 'Store Floor Operations'
+                  : pathname === '/dashboard/stitching' || (pathname === '/dashboard' && user === 'stitching_manager')
+                  ? 'Stitching Floor Operations'
+                  : pathname === '/dashboard/lining' || (pathname === '/dashboard' && user === 'lining_manager')
+                  ? 'Lining Floor Operations'
+                  : pathname === '/dashboard' || pathname === '/dashboard/cutting'
+                  ? 'Cutting Floor Operations (DCM)'
+                  : 'Shop Floor Command'}
+              </h2>
+              <p className="text-xs" style={{ color: '#9a8a7a' }}>
+                {pathname === '/dashboard/store' || (pathname === '/dashboard' && user === 'store_scan')
+                  ? 'Drawer Movement, Intermediate Storage & Material Pairing Hub'
+                  : pathname === '/dashboard/stitching' || (pathname === '/dashboard' && user === 'stitching_manager')
+                  ? 'Pasting → Fusing → Line Stitching → Shell Stitching → Final Finish'
+                  : pathname === '/dashboard/lining' || (pathname === '/dashboard' && user === 'lining_manager')
+                  ? 'Lining Material Allocation, Piece Traceability & Consumption Tracking'
+                  : pathname === '/dashboard' || pathname === '/dashboard/cutting'
+                  ? 'Piece & Style Level Leather Traceability & DCM Analytics'
+                  : 'Production, wages, and compliance tracking'}
+              </p>
             </div>
           </div>
 
@@ -386,8 +639,8 @@ export default function DashboardLayout({ children }) {
           )}
         </AnimatePresence>
 
-        {/* ─── PAGE ROUTER CONTENT ─── */}
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto overflow-y-auto" style={{ background: '#faf6f0' }}>
+        {/* ─── PAGE ROUTER CONTENT (Full Dashboard Space) ─── */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-7 w-full min-w-0 overflow-y-auto" style={{ background: '#f6f8fb' }}>
           <AnimatePresence mode="wait">
             <motion.div
               key={pathname}
@@ -395,6 +648,7 @@ export default function DashboardLayout({ children }) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="w-full"
             >
               {children}
             </motion.div>

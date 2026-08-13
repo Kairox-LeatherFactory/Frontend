@@ -7,7 +7,7 @@ import {
   Lock, RefreshCw, CheckSquare, Square, X,
   Timer, CalendarDays, Shield, Zap, Filter,
   UserPlus, AlertCircle, Loader2, Building2, Activity, WifiOff,
-  Barcode, QrCode, Check
+  Barcode, QrCode, Check, Camera
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
