@@ -48,6 +48,12 @@ import {
   Cell,
   CartesianGrid,
 } from 'recharts';
+import { useAuth } from '@/context/AuthContext';
+import {
+  apiGetLiningDashboard,
+  apiGetLiningEmployeeDetail,
+  apiGetLiningConsumption,
+} from '@/lib/api';
 import {
   LINING_PRODUCTION_KPIS,
   LINING_MATERIAL_KPIS,
@@ -79,20 +85,32 @@ function CustomTooltip({ active, payload, label, unit = 'MTRS / DCM' }) {
 
 function LiningDashboardContent() {
   const searchParams = useSearchParams();
+  const { token } = useAuth();
 
   // State
   const [activeTab, setActiveTab] = useState('tab-today');
   const [piecesList, setPiecesList] = useState(RAW_LINING_PIECES_DATA);
   const [activeOrder, setActiveOrder] = useState(CURRENT_LINING_ORDER);
+  const [stylesList, setStylesList] = useState(LINING_STYLES_SUMMARY);
   const [selectedStyleDetail, setSelectedStyleDetail] = useState(LINING_STYLES_SUMMARY[0]);
+  const [employeesList, setEmployeesList] = useState(LINING_EMPLOYEES);
+  const [lotsList, setLotsList] = useState(LINING_LOTS_STOCK);
+  const [productionLogs, setProductionLogs] = useState(LINING_DAILY_PRODUCTION_LOGS);
+  const [upcomingList, setUpcomingList] = useState(UPCOMING_LINING_PRODUCTION);
+  const [wasteData, setWasteData] = useState(LINING_WASTE_BREAKDOWN);
 
-  // Sync tab from URL query params (from sidebar tree sub-branches)
-  useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
-  }, [searchParams]);
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
+
+  // Universal Filters
+  const [filterDate, setFilterDate] = useState('all');
+  const [filterOrder, setFilterOrder] = useState('all');
+  const [filterStyle, setFilterStyle] = useState('all');
+  const [filterLiningType, setFilterLiningType] = useState('all');
+  const [filterEmployee, setFilterEmployee] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterSize, setFilterSize] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Modals state
   const [selectedPieceModal, setSelectedPieceModal] = useState(null);
@@ -105,15 +123,87 @@ function LiningDashboardContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Universal Filters
-  const [filterDate, setFilterDate] = useState('all');
-  const [filterOrder, setFilterOrder] = useState('all');
-  const [filterStyle, setFilterStyle] = useState('all');
-  const [filterLiningType, setFilterLiningType] = useState('all');
-  const [filterEmployee, setFilterEmployee] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterSize, setFilterSize] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Sync tab from URL query params (from sidebar tree sub-branches)
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
+  // LIVE BACKEND CALL: /api/v1/dashboard/lining
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchLiningDashboard() {
+      if (!token) return;
+      try {
+        setLoading(true);
+        setApiError(null);
+        const params = {};
+        if (filterOrder && filterOrder !== 'all') {
+          params.order_id = filterOrder;
+        }
+        const data = await apiGetLiningDashboard(token, params);
+        if (isMounted && data) {
+          if (data.pieces && Array.isArray(data.pieces)) setPiecesList(data.pieces);
+          if (data.order) setActiveOrder(data.order);
+          if (data.styles && Array.isArray(data.styles)) {
+            setStylesList(data.styles);
+            if (data.styles.length > 0) setSelectedStyleDetail(data.styles[0]);
+          }
+          if (data.employees && Array.isArray(data.employees)) setEmployeesList(data.employees);
+          if (data.lots && Array.isArray(data.lots)) setLotsList(data.lots);
+          if (data.daily_logs && Array.isArray(data.daily_logs)) setProductionLogs(data.daily_logs);
+          if (data.upcoming && Array.isArray(data.upcoming)) setUpcomingList(data.upcoming);
+          if (data.waste_breakdown && Array.isArray(data.waste_breakdown)) setWasteData(data.waste_breakdown);
+        }
+      } catch (err) {
+        console.warn('Backend API /api/v1/dashboard/lining notice:', err.message);
+        if (isMounted) setApiError(err.message);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    fetchLiningDashboard();
+    return () => { isMounted = false; };
+  }, [token, filterOrder]);
+
+  // LIVE BACKEND CALL: /api/v1/dashboard/lining/consumption
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchLiningConsumption() {
+      if (!token) return;
+      if (activeTab !== 'tab-analytics' && activeTab !== 'tab-styles') return;
+      try {
+        const params = {};
+        if (filterOrder && filterOrder !== 'all') params.order_id = filterOrder;
+        if (filterEmployee && filterEmployee !== 'all') params.employee_id = filterEmployee;
+        const data = await apiGetLiningConsumption(token, params);
+        if (isMounted && data) {
+          if (data.daily_logs) setProductionLogs(data.daily_logs);
+          if (data.waste_breakdown) setWasteData(data.waste_breakdown);
+        }
+      } catch (err) {
+        console.warn('Backend API /api/v1/dashboard/lining/consumption notice:', err.message);
+      }
+    }
+    fetchLiningConsumption();
+    return () => { isMounted = false; };
+  }, [token, activeTab, filterOrder, filterEmployee]);
+
+  // Handler to inspect employee and call /api/v1/dashboard/lining/employees/{employee_id}
+  const handleOpenEmployeeModal = async (emp) => {
+    setSelectedEmployeeModal(emp);
+    if (!token || !emp?.employee_id) return;
+    try {
+      const detail = await apiGetLiningEmployeeDetail(token, emp.employee_id);
+      if (detail) {
+        setSelectedEmployeeModal((prev) => ({ ...prev, ...detail }));
+      }
+    } catch (err) {
+      console.warn(`Backend API /api/v1/dashboard/lining/employees/${emp.employee_id} notice:`, err.message);
+    }
+  };
 
   // Toast trigger helper
   const triggerToast = (msg) => {
@@ -945,7 +1035,7 @@ function LiningDashboardContent() {
             {LINING_EMPLOYEES.map((emp, idx) => (
               <div
                 key={idx}
-                onClick={() => setSelectedEmployeeModal(emp)}
+                onClick={() => handleOpenEmployeeModal(emp)}
                 className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
               >
                 <div>
@@ -987,7 +1077,7 @@ function LiningDashboardContent() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedEmployeeModal(emp);
+                    handleOpenEmployeeModal(emp);
                   }}
                   className="w-full mt-2 py-2 rounded-xl bg-slate-100 hover:bg-[#1e293b] hover:text-white text-slate-800 text-xs font-bold transition-all"
                 >

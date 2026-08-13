@@ -49,6 +49,13 @@ import {
   Cell,
   CartesianGrid,
 } from 'recharts';
+import { useAuth } from '@/context/AuthContext';
+import {
+  apiGetStoreDashboard,
+  apiGetStoreDrawerDetail,
+  apiGetStoreDrawerMovement,
+  apiGetStoreTraceability,
+} from '@/lib/api';
 import {
   STORE_KPIS,
   STORE_CURRENT_STYLES,
@@ -76,20 +83,26 @@ function CustomTooltip({ active, payload, label, unit = 'drawers' }) {
 
 function StoreDashboardContent() {
   const searchParams = useSearchParams();
+  const { token } = useAuth();
 
   // State
   const [activeTab, setActiveTab] = useState('tab-today');
   const [drawersList, setDrawersList] = useState(STORE_DRAWERS_LIST);
+  const [stylesList, setStylesList] = useState(STORE_CURRENT_STYLES);
   const [heldList, setHeldList] = useState(STORE_HELD_DRAWERS);
   const [emptyList, setEmptyList] = useState(STORE_EMPTY_DRAWERS);
+  const [dailyLogs, setDailyLogs] = useState(STORE_DAILY_LOGS);
 
-  // Sync tab from URL query params (from sidebar tree sub-branches)
-  useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
-  }, [searchParams]);
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
+
+  // Universal Filters
+  const [filterDate, setFilterDate] = useState('all');
+  const [filterStyle, setFilterStyle] = useState('all');
+  const [filterOrder, setFilterOrder] = useState('all');
+  const [filterMaterial, setFilterMaterial] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Modals state
   const [selectedDrawerModal, setSelectedDrawerModal] = useState(null);
@@ -100,13 +113,65 @@ function StoreDashboardContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Universal Filters
-  const [filterDate, setFilterDate] = useState('all');
-  const [filterStyle, setFilterStyle] = useState('all');
-  const [filterOrder, setFilterOrder] = useState('all');
-  const [filterMaterial, setFilterMaterial] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Sync tab from URL query params (from sidebar tree sub-branches)
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
+  // LIVE BACKEND CALL: /api/v1/dashboard/store
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchStoreDashboard() {
+      if (!token) return;
+      try {
+        setLoading(true);
+        setApiError(null);
+        const params = {};
+        if (filterStyle && filterStyle !== 'all') params.style_id = filterStyle;
+        if (filterStatus && filterStatus !== 'all') params.state = filterStatus;
+        if (filterMaterial && filterMaterial !== 'all') params.material_type = filterMaterial;
+        
+        const data = await apiGetStoreDashboard(token, params);
+        if (isMounted && data) {
+          if (data.drawers && Array.isArray(data.drawers)) setDrawersList(data.drawers);
+          if (data.current_styles && Array.isArray(data.current_styles)) setStylesList(data.current_styles);
+          if (data.held && Array.isArray(data.held)) setHeldList(data.held);
+          if (data.empty && Array.isArray(data.empty)) setEmptyList(data.empty);
+          if (data.daily_logs && Array.isArray(data.daily_logs)) setDailyLogs(data.daily_logs);
+        }
+      } catch (err) {
+        console.warn('Backend API /api/v1/dashboard/store notice:', err.message);
+        if (isMounted) setApiError(err.message);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    fetchStoreDashboard();
+    return () => { isMounted = false; };
+  }, [token, filterStyle, filterStatus, filterMaterial]);
+
+  // Handler to inspect drawer and call /api/v1/dashboard/store/drawers/{drawer_id} & movement
+  const handleOpenDrawerModal = async (drawer) => {
+    setSelectedDrawerModal(drawer);
+    if (!token || !drawer?.drawer_id) return;
+    try {
+      const [detail, movement] = await Promise.allSettled([
+        apiGetStoreDrawerDetail(token, drawer.drawer_id),
+        apiGetStoreDrawerMovement(token, drawer.drawer_id),
+      ]);
+      if (detail.status === 'fulfilled' && detail.value) {
+        setSelectedDrawerModal((prev) => ({ ...prev, ...detail.value }));
+      }
+      if (movement.status === 'fulfilled' && movement.value) {
+        setSelectedDrawerModal((prev) => ({ ...prev, movement_history: movement.value }));
+      }
+    } catch (err) {
+      console.warn(`Backend API /api/v1/dashboard/store/drawers/${drawer.drawer_id} notice:`, err.message);
+    }
+  };
 
   // Toast trigger helper
   const triggerToast = (msg) => {
@@ -766,7 +831,7 @@ function StoreDashboardContent() {
                   {paginatedDrawers.map((d, idx) => (
                     <tr
                       key={idx}
-                      onClick={() => setSelectedDrawerModal(d)}
+                      onClick={() => handleOpenDrawerModal(d)}
                       className="hover:bg-slate-50 cursor-pointer transition-all"
                     >
                       <td className="py-3.5 px-4 font-mono font-bold text-cyan-800">{d.drawer_code}</td>
@@ -813,7 +878,7 @@ function StoreDashboardContent() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedDrawerModal(d);
+                            handleOpenDrawerModal(d);
                           }}
                           className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-[#0891b2] hover:text-white text-slate-700 text-[11px] font-bold transition-all"
                         >

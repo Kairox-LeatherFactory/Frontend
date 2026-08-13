@@ -46,6 +46,12 @@ import {
   Cell,
   CartesianGrid,
 } from 'recharts';
+import { useAuth } from '@/context/AuthContext';
+import {
+  apiGetCuttingDashboard,
+  apiGetCuttingEmployeeDetail,
+  apiGetCuttingConsumption,
+} from '@/lib/api';
 import {
   RAW_PIECES_DATA,
   MASTER_ORDERS,
@@ -74,31 +80,22 @@ function CustomTooltip({ active, payload, label, unit = 'DCM' }) {
 
 function DashboardInner() {
   const searchParams = useSearchParams();
+  const { token } = useAuth();
 
   // State
   const [activeTab, setActiveTab] = useState('tab-today');
   const [piecesList, setPiecesList] = useState(RAW_PIECES_DATA);
+  const [ordersList, setOrdersList] = useState(MASTER_ORDERS);
   const [activeOrder, setActiveOrder] = useState(MASTER_ORDERS[0]);
+  const [stylesList, setStylesList] = useState(STYLE_CONSUMPTION_MATRIX);
   const [selectedStyleDetail, setSelectedStyleDetail] = useState(STYLE_CONSUMPTION_MATRIX[0]);
+  const [cuttersList, setCuttersList] = useState(CUTTERS_PERFORMANCE);
+  const [lotsList, setLotsList] = useState(LEATHER_LOTS_STOCK);
+  const [consumptionLogs, setConsumptionLogs] = useState(DAILY_PRODUCTION_LOGS);
+  const [wasteData, setWasteData] = useState(WASTE_BREAKDOWN);
 
-  // Sync tab from URL query params (when clicked from sidebar sub-branch)
-  useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
-  }, [searchParams]);
-  
-  // Modals state
-  const [selectedPieceModal, setSelectedPieceModal] = useState(null);
-  const [selectedCutterModal, setSelectedCutterModal] = useState(null);
-  const [selectedLotModal, setSelectedLotModal] = useState(null);
-  const [showLogDefectModal, setShowLogDefectModal] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
-
-  // Pagination for piece tracker
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
 
   // Universal Filters
   const [filterDate, setFilterDate] = useState('all');
@@ -111,6 +108,102 @@ function DashboardInner() {
   const [filterStatus, setFilterStatus] = useState('all');
   const [filterSize, setFilterSize] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Modals state
+  const [selectedPieceModal, setSelectedPieceModal] = useState(null);
+  const [selectedCutterModal, setSelectedCutterModal] = useState(null);
+  const [selectedLotModal, setSelectedLotModal] = useState(null);
+  const [showLogDefectModal, setShowLogDefectModal] = useState(false);
+  const [toastMessage, setToastMessage] = useState(null);
+
+  // Pagination for piece tracker
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
+  // Sync tab from URL query params (when clicked from sidebar sub-branch)
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
+  // LIVE BACKEND CALL: /api/v1/dashboard/cutting
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchCuttingDashboard() {
+      if (!token) return;
+      try {
+        setLoading(true);
+        setApiError(null);
+        const params = {};
+        if (filterOrder && filterOrder !== 'all') {
+          params.order_id = filterOrder;
+        }
+        const data = await apiGetCuttingDashboard(token, params);
+        if (isMounted && data) {
+          if (data.pieces && Array.isArray(data.pieces)) setPiecesList(data.pieces);
+          if (data.orders && Array.isArray(data.orders)) {
+            setOrdersList(data.orders);
+            if (data.orders.length > 0) setActiveOrder(data.orders[0]);
+          }
+          if (data.styles && Array.isArray(data.styles)) {
+            setStylesList(data.styles);
+            if (data.styles.length > 0) setSelectedStyleDetail(data.styles[0]);
+          }
+          if (data.cutters && Array.isArray(data.cutters)) setCuttersList(data.cutters);
+          if (data.employees && Array.isArray(data.employees)) setCuttersList(data.employees);
+          if (data.lots && Array.isArray(data.lots)) setLotsList(data.lots);
+          if (data.daily_logs && Array.isArray(data.daily_logs)) setConsumptionLogs(data.daily_logs);
+          if (data.waste_breakdown && Array.isArray(data.waste_breakdown)) setWasteData(data.waste_breakdown);
+        }
+      } catch (err) {
+        console.warn('Backend API /api/v1/dashboard/cutting notice:', err.message);
+        if (isMounted) setApiError(err.message);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    fetchCuttingDashboard();
+    return () => { isMounted = false; };
+  }, [token, filterOrder]);
+
+  // LIVE BACKEND CALL: /api/v1/dashboard/cutting/consumption
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchCuttingConsumption() {
+      if (!token) return;
+      if (activeTab !== 'tab-analytics' && activeTab !== 'tab-styles') return;
+      try {
+        const params = {};
+        if (filterOrder && filterOrder !== 'all') params.order_id = filterOrder;
+        if (filterCutter && filterCutter !== 'all') params.employee_id = filterCutter;
+        const data = await apiGetCuttingConsumption(token, params);
+        if (isMounted && data) {
+          if (data.daily_logs) setConsumptionLogs(data.daily_logs);
+          if (data.waste_breakdown) setWasteData(data.waste_breakdown);
+        }
+      } catch (err) {
+        console.warn('Backend API /api/v1/dashboard/cutting/consumption notice:', err.message);
+      }
+    }
+    fetchCuttingConsumption();
+    return () => { isMounted = false; };
+  }, [token, activeTab, filterOrder, filterCutter]);
+
+  // Handler to inspect cutter and call /api/v1/dashboard/cutting/employees/{employee_id}
+  const handleOpenCutterModal = async (cutter) => {
+    setSelectedCutterModal(cutter);
+    if (!token || !cutter?.employee_id) return;
+    try {
+      const detail = await apiGetCuttingEmployeeDetail(token, cutter.employee_id);
+      if (detail) {
+        setSelectedCutterModal((prev) => ({ ...prev, ...detail }));
+      }
+    } catch (err) {
+      console.warn(`Backend API /api/v1/dashboard/cutting/employees/${cutter.employee_id} notice:`, err.message);
+    }
+  };
 
   // Toast trigger helper
   const triggerToast = (msg) => {
@@ -1039,7 +1132,7 @@ function DashboardInner() {
             {CUTTERS_PERFORMANCE.map((cutter, idx) => (
               <div
                 key={idx}
-                onClick={() => setSelectedCutterModal(cutter)}
+                onClick={() => handleOpenCutterModal(cutter)}
                 className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
               >
                 <div>
@@ -1081,7 +1174,7 @@ function DashboardInner() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedCutterModal(cutter);
+                    handleOpenCutterModal(cutter);
                   }}
                   className="w-full mt-2 py-2 rounded-xl bg-slate-100 hover:bg-[#1e293b] hover:text-white text-slate-800 text-xs font-bold transition-all"
                 >

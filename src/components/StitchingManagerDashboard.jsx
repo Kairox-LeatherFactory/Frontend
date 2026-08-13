@@ -49,6 +49,12 @@ import {
   Cell,
   CartesianGrid,
 } from 'recharts';
+import { useAuth } from '@/context/AuthContext';
+import {
+  apiGetStitchingDashboard,
+  apiGetStitchingEmployeeDetail,
+  apiGetStitchingPieceDetail,
+} from '@/lib/api';
 import {
   STITCHING_KPIS,
   STITCHING_STAGES_DATA,
@@ -79,20 +85,32 @@ function CustomTooltip({ active, payload, label, unit = 'pcs' }) {
 
 function StitchingDashboardContent() {
   const searchParams = useSearchParams();
+  const { token } = useAuth();
 
   // State
   const [activeTab, setActiveTab] = useState('tab-today');
   const [piecesList, setPiecesList] = useState(RAW_STITCHING_PIECES_DATA);
   const [activeStyle, setActiveStyle] = useState(CURRENT_STITCHING_STYLE);
+  const [stylesList, setStylesList] = useState(STITCHING_STYLES_SUMMARY);
+  const [stagesList, setStagesList] = useState(STITCHING_STAGES_DATA);
   const [selectedStageDetail, setSelectedStageDetail] = useState(STITCHING_STAGES_DATA[0]);
+  const [employeesList, setEmployeesList] = useState(STITCHING_EMPLOYEES);
+  const [storeHandoff, setStoreHandoff] = useState(STORE_HANDOFF_METRICS);
+  const [dailyLogs, setDailyLogs] = useState(STITCHING_DAILY_LOGS);
+  const [defectsList, setDefectsList] = useState(STITCHING_DEFECTS_LOG);
 
-  // Sync tab from URL query params (from sidebar tree sub-branches)
-  useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
-  }, [searchParams]);
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState(null);
+
+  // Universal Filters
+  const [filterDate, setFilterDate] = useState('all');
+  const [filterOrder, setFilterOrder] = useState('all');
+  const [filterStyle, setFilterStyle] = useState('all');
+  const [filterStage, setFilterStage] = useState('all');
+  const [filterEmployee, setFilterEmployee] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterSize, setFilterSize] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Modals state
   const [selectedPieceModal, setSelectedPieceModal] = useState(null);
@@ -104,15 +122,75 @@ function StitchingDashboardContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Universal Filters
-  const [filterDate, setFilterDate] = useState('all');
-  const [filterOrder, setFilterOrder] = useState('all');
-  const [filterStyle, setFilterStyle] = useState('all');
-  const [filterStage, setFilterStage] = useState('all');
-  const [filterEmployee, setFilterEmployee] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [filterSize, setFilterSize] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Sync tab from URL query params (from sidebar tree sub-branches)
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
+
+  // LIVE BACKEND CALL: /api/v1/dashboard/stitching
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchStitchingDashboard() {
+      if (!token) return;
+      try {
+        setLoading(true);
+        setApiError(null);
+        const params = {};
+        if (filterOrder && filterOrder !== 'all') {
+          params.order_id = filterOrder;
+        }
+        const data = await apiGetStitchingDashboard(token, params);
+        if (isMounted && data) {
+          if (data.pieces && Array.isArray(data.pieces)) setPiecesList(data.pieces);
+          if (data.current_style) setActiveStyle(data.current_style);
+          if (data.styles && Array.isArray(data.styles)) setStylesList(data.styles);
+          if (data.stages && Array.isArray(data.stages)) setStagesList(data.stages);
+          if (data.employees && Array.isArray(data.employees)) setEmployeesList(data.employees);
+          if (data.store_handoff) setStoreHandoff(data.store_handoff);
+          if (data.daily_logs && Array.isArray(data.daily_logs)) setDailyLogs(data.daily_logs);
+          if (data.defects && Array.isArray(data.defects)) setDefectsList(data.defects);
+        }
+      } catch (err) {
+        console.warn('Backend API /api/v1/dashboard/stitching notice:', err.message);
+        if (isMounted) setApiError(err.message);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    fetchStitchingDashboard();
+    return () => { isMounted = false; };
+  }, [token, filterOrder]);
+
+  // Handler to inspect employee and call /api/v1/dashboard/stitching/employees/{employee_id}
+  const handleOpenEmployeeModal = async (emp) => {
+    setSelectedEmployeeModal(emp);
+    if (!token || !emp?.employee_id) return;
+    try {
+      const detail = await apiGetStitchingEmployeeDetail(token, emp.employee_id);
+      if (detail) {
+        setSelectedEmployeeModal((prev) => ({ ...prev, ...detail }));
+      }
+    } catch (err) {
+      console.warn(`Backend API /api/v1/dashboard/stitching/employees/${emp.employee_id} notice:`, err.message);
+    }
+  };
+
+  // Handler to inspect piece and call /api/v1/dashboard/stitching/pieces/{piece_code}
+  const handleOpenPieceModal = async (piece) => {
+    setSelectedPieceModal(piece);
+    if (!token || !piece?.piece_code) return;
+    try {
+      const detail = await apiGetStitchingPieceDetail(token, piece.piece_code);
+      if (detail) {
+        setSelectedPieceModal((prev) => ({ ...prev, ...detail }));
+      }
+    } catch (err) {
+      console.warn(`Backend API /api/v1/dashboard/stitching/pieces/${piece.piece_code} notice:`, err.message);
+    }
+  };
 
   // Toast trigger helper
   const triggerToast = (msg) => {
@@ -971,7 +1049,7 @@ function StitchingDashboardContent() {
             {STITCHING_EMPLOYEES.map((emp, idx) => (
               <div
                 key={idx}
-                onClick={() => setSelectedEmployeeModal(emp)}
+                onClick={() => handleOpenEmployeeModal(emp)}
                 className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
               >
                 <div>
@@ -1013,7 +1091,7 @@ function StitchingDashboardContent() {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    setSelectedEmployeeModal(emp);
+                    handleOpenEmployeeModal(emp);
                   }}
                   className="w-full mt-2 py-2 rounded-xl bg-slate-100 hover:bg-[#1e293b] hover:text-white text-slate-800 text-xs font-bold transition-all"
                 >
@@ -1077,7 +1155,7 @@ function StitchingDashboardContent() {
                   {paginatedPieces.map((p, idx) => (
                     <tr
                       key={idx}
-                      onClick={() => setSelectedPieceModal(p)}
+                      onClick={() => handleOpenPieceModal(p)}
                       className="hover:bg-slate-50 cursor-pointer transition-all"
                     >
                       <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{p.piece_code}</td>
@@ -1106,7 +1184,7 @@ function StitchingDashboardContent() {
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedPieceModal(p);
+                            handleOpenPieceModal(p);
                           }}
                           className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-[#4f46e5] hover:text-white text-slate-700 text-[11px] font-bold transition-all"
                         >
