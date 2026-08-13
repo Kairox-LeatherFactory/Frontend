@@ -2493,32 +2493,73 @@ export default function ProductionLogEntry() {
                         />
                       </div>
 
-                      {/* Piece Grid */}
+                      {/* Piece Grid — Click any badge to toggle scanned status */}
                       <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                        {cuttingGeneratedPieces.map((p) => (
-                          <div
+                        {cuttingGeneratedPieces.map((p, idx) => (
+                          <button
                             key={p.code}
-                            className={`p-2 rounded-lg text-center text-[10px] font-black border transition-all ${
+                            type="button"
+                            onClick={() => {
+                              const updated = cuttingGeneratedPieces.map((item, i) =>
+                                i === idx ? { ...item, scanned: !item.scanned } : item
+                              );
+                              setCuttingGeneratedPieces(updated);
+                              setCuttingPiecesDone(updated.every(item => item.scanned));
+                            }}
+                            className={`p-2 rounded-lg text-center text-[10px] font-black border transition-all cursor-pointer hover:scale-105 active:scale-95 ${
                               p.scanned
-                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
-                                : 'bg-slate-800 border-slate-700 text-slate-400'
+                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400 shadow-sm'
+                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-amber-500/50'
                             }`}
+                            title={`Click to mark #${p.serial_str} ${p.scanned ? 'unscanned' : 'scanned'}`}
                           >
                             <div className="text-xs">{p.scanned ? '✓' : '○'}</div>
                             <div>#{p.serial_str}</div>
-                          </div>
+                          </button>
                         ))}
                       </div>
 
-                      {/* Scan Input for individual piece */}
-                      {!cuttingPiecesDone && (
-                        <div className="flex gap-2">
+                      {/* 100% Completion Action Banner */}
+                      {cuttingPiecesDone ? (
+                        <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950 to-slate-900 border border-emerald-500/50 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in">
+                          <div className="flex items-center gap-2.5">
+                            <span className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500 flex items-center justify-center text-emerald-400 font-black text-sm">✓</span>
+                            <div>
+                              <div className="text-xs font-black text-emerald-400 uppercase tracking-wider">Cutting 100% Completed!</div>
+                              <div className="text-[10px] text-slate-300 font-semibold mt-0.5">All {cuttingGeneratedPieces.length} traveler piece barcodes verified &amp; ready for production line.</div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setBarcodeStage('Pasting');
+                                setCuttingGeneratedPieces([]);
+                                setCuttingPiecesDone(false);
+                              }}
+                              className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white font-black text-xs rounded-xl shadow-lg hover:shadow-xl transition-all cursor-pointer whitespace-nowrap"
+                            >
+                              Proceed to Pasting Stage ➔
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => { setCuttingGeneratedPieces([]); setCuttingPiecesDone(false); }}
+                              className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        /* Scan Input & Mark All Controls */
+                        <div className="flex flex-col sm:flex-row gap-2">
                           <input
                             type="text"
-                            placeholder="Scan individual piece barcode (e.g. KL_1001-ADELE-001)..."
-                            className="flex-1 h-12 px-4 bg-slate-800 border border-slate-600 focus:border-[#c8834a] rounded-xl text-white font-mono text-sm outline-none"
+                            placeholder="Scan piece barcode (e.g. 001, 002, or KL_1001-ADELE-001)..."
+                            className="flex-1 h-12 px-4 bg-slate-800 border border-slate-600 focus:border-[#c8834a] rounded-xl text-white font-mono text-sm outline-none shadow-inner"
                             onKeyDown={(e) => {
                               if (e.key === 'Enter') {
+                                e.preventDefault();
                                 const scannedCode = e.target.value.trim().toUpperCase();
                                 if (!scannedCode) return;
                                 const matchIdx = cuttingGeneratedPieces.findIndex(
@@ -2541,14 +2582,28 @@ export default function ProductionLogEntry() {
                                 }
                               }
                             }}
+                            autoFocus
                           />
-                          {cuttingPiecesDone ? null : (
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const allDone = cuttingGeneratedPieces.map(p => ({ ...p, scanned: true }));
+                                setCuttingGeneratedPieces(allDone);
+                                setCuttingPiecesDone(true);
+                              }}
+                              className="h-12 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl transition-colors cursor-pointer whitespace-nowrap shadow-md"
+                            >
+                              Mark All 100%
+                            </button>
                             <button
                               type="button"
                               onClick={() => { setCuttingGeneratedPieces([]); setCuttingPiecesDone(false); }}
-                              className="h-12 px-4 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold text-xs rounded-xl transition-colors"
-                            >Reset</button>
-                          )}
+                              className="h-12 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                            >
+                              Reset
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
