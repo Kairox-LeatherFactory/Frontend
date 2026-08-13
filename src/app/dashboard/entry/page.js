@@ -304,7 +304,11 @@ function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) {
 
       scanner = new Html5Qrcode("entry-camera-reader");
 
-      const config = {
+      // Printed CODE128 SKU tags are thin, dense barcodes — without an explicit
+      // resolution request the browser can hand back a low-res stream that
+      // looks fine to the eye but is too blurry for the decoder to ever
+      // resolve the bars, so the camera runs but nothing is ever detected.
+      const buildConfig = (facingMode) => ({
         fps: 20,
         qrbox: (viewfinderWidth, viewfinderHeight) => ({
           width: Math.min(320, Math.floor(viewfinderWidth * 0.9)),
@@ -321,13 +325,18 @@ function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) {
           Html5QrcodeSupportedFormats.ITF,
           Html5QrcodeSupportedFormats.QR_CODE,
           Html5QrcodeSupportedFormats.DATA_MATRIX,
-        ]
-      };
+        ],
+        videoConstraints: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+      });
 
-      const startScanner = (cameraConfig) => {
+      const startScanner = (facingMode) => {
         return scanner.start(
-          cameraConfig,
-          config,
+          { facingMode },
+          buildConfig(facingMode),
           (text) => {
             if (scanner && scanner.isScanning) {
               scanner.stop().then(() => {
@@ -346,8 +355,8 @@ function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) {
         );
       };
 
-      startScanner({ facingMode: "environment" }).catch(() => {
-        startScanner({ facingMode: "user" }).catch((err) => {
+      startScanner("environment").catch(() => {
+        startScanner("user").catch((err) => {
           console.warn("Camera start warning:", err);
           const msg = String(err?.message || err || '');
           if (msg.includes('NotAllowedError') || msg.includes('Permission denied')) {
