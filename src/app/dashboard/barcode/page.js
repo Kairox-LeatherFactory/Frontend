@@ -203,13 +203,28 @@ async function savePdfBlob(pdf, filename) {
 // Style/Bucket categories only — Employee uses the monochrome EmployeeTicketCard below.
 function IdCard({ barcode, labels, cardRef, width }) {
  const fields = buildCardFields(barcode, labels);
+ // Bug #19: Generate compact unique barcode ID: BC-XXXXX using piece code hash
+ const compactId = barcode.pieceCode
+   ? `BC-${String(Math.abs(barcode.pieceCode.split('').reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0))).slice(-5).padStart(5, '0')}`
+   : barcode.pieceCode;
  return (
- <div ref={cardRef} className="p-6 text-center" style={{ background: '#ffffff', ...(width ? { width } : null) }}>
- <div className="p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
- <BarcodeCanvas code={barcode.pieceCode} displayWidth={260} />
- </div>
- <div className="font-mono font-bold mb-4" style={{ color: '#5a3518' }}>{barcode.pieceCode}</div>
- <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-left text-sm p-4 rounded-lg" style={{ background: BRAND.bg }}>
+ <div ref={cardRef} className="p-5 text-center" style={{ background: '#ffffff', ...(width ? { width } : null) }}>
+   {/* Bug #19: Compact barcode renders short compactId, but full spec is displayed below */}
+   <div className="p-3 rounded-lg mb-3 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
+     <BarcodeCanvas code={compactId} displayWidth={260} />
+   </div>
+   <div className="font-mono font-black text-sm mb-1" style={{ color: '#5a3518' }}>{compactId}</div>
+   {/* Full readable spec breakdown below barcode */}
+   <div className="flex flex-wrap justify-center gap-1.5 mb-3">
+     {barcode.orderId && <span className="text-[9px] bg-rose-50 text-rose-700 border border-rose-200 font-black px-2 py-0.5 rounded-full">#{barcode.orderId}</span>}
+     {barcode.client && <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 font-black px-2 py-0.5 rounded-full">{barcode.client}</span>}
+     {barcode.style && <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 font-black px-2 py-0.5 rounded-full">{barcode.style}</span>}
+     {barcode.color && <span className="text-[9px] bg-slate-50 text-slate-700 border border-slate-200 font-black px-2 py-0.5 rounded-full">{barcode.color}</span>}
+     {barcode.size && <span className="text-[9px] bg-purple-50 text-purple-700 border border-purple-200 font-black px-2 py-0.5 rounded-full">Sz: {barcode.size}</span>}
+     {barcode.serialStr && <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-black px-2 py-0.5 rounded-full">#{barcode.serialStr}</span>}
+   </div>
+   <div className="text-[8px] text-slate-400 font-mono truncate mb-3">{barcode.pieceCode}</div>
+ <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-left text-sm p-3 rounded-lg" style={{ background: BRAND.bg }}>
  {fields.map(([label, value]) => (
  <div key={label} className="flex flex-col gap-0.5">
  <span className="text-[0.68rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{label}</span>

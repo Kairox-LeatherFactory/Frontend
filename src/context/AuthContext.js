@@ -16,6 +16,7 @@ export const ROLES = {
   employee: { label: 'Employee', color: 'bg-emerald-100 text-emerald-800' },
   client: { label: 'Client', color: 'bg-teal-100 text-teal-800' },
   viewer: { label: 'Auditor / Viewer', color: 'bg-slate-100 text-slate-700' },
+  store_manager: { label: 'Store Manager', color: 'bg-cyan-100 text-cyan-800' }, // Bug #16: Dedicated Store Manager
   store_scan: { label: 'Store Manager / Scanner', color: 'bg-cyan-100 text-cyan-800' },
 };
 
@@ -28,8 +29,9 @@ export const ROLE_OPERATIONS = {
   lining_manager: ['Lining'],
   stitching_manager: ['Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'],
   employee: ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish'],
-  store_scan: [],
-  hr: [], // HR does not directly log floor ops
+  store_manager: ['Store', 'Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching'], // Bug #16: Store Hub & floor operations
+  store_scan: ['Store', 'Cutting', 'Lining', 'Fusing', 'Pasting', 'Line Stitching'],
+  hr: [],
   client: [],
   viewer: [],
 };
