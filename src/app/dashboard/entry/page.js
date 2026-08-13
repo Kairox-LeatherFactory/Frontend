@@ -302,33 +302,26 @@ function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) {
     import('html5-qrcode').then(({ Html5Qrcode, Html5QrcodeSupportedFormats }) => {
       if (isStopped) return;
 
-      const formatsToSupport = [
-        Html5QrcodeSupportedFormats.CODE_128,
-        Html5QrcodeSupportedFormats.CODE_39,
-        Html5QrcodeSupportedFormats.EAN_13,
-        Html5QrcodeSupportedFormats.EAN_8,
-        Html5QrcodeSupportedFormats.UPC_A,
-        Html5QrcodeSupportedFormats.UPC_E,
-        Html5QrcodeSupportedFormats.CODABAR,
-        Html5QrcodeSupportedFormats.ITF,
-        Html5QrcodeSupportedFormats.QR_CODE,
-        Html5QrcodeSupportedFormats.DATA_MATRIX,
-      ];
-
-      scanner = new Html5Qrcode("entry-camera-reader", {
-        formatsToSupport,
-        verbose: false,
-      });
+      scanner = new Html5Qrcode("entry-camera-reader");
 
       const config = {
-        fps: 30,
+        fps: 20,
         qrbox: (viewfinderWidth, viewfinderHeight) => ({
-          width: Math.floor(viewfinderWidth * 0.95),
-          height: Math.floor(viewfinderHeight * 0.75)
+          width: Math.min(320, Math.floor(viewfinderWidth * 0.9)),
+          height: Math.min(180, Math.floor(viewfinderHeight * 0.5))
         }),
-        experimentalFeatures: {
-          useBarCodeDetectorIfSupported: false
-        }
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODABAR,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+        ]
       };
 
       const startScanner = (cameraConfig) => {
