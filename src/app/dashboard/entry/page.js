@@ -16,9 +16,11 @@ import {
   apiProductionLogTwoDoor,
   apiStoreDrawerScan,
   apiReceiveDrawer,
+  apiSendDrawers,
   apiListDrawers,
+  apiGetDrawer,
   apiGetMaterialLots,
-  apiGetPieceDetail,
+  apiGetPieceState,   // THE SCAN-AND-VERIFY CALL — GET /production/piece-state
 } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Store, Layers, PackageCheck, ChevronRight, Camera, Send, RefreshCw } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
@@ -508,13 +510,16 @@ export default function ProductionLogEntry() {
   const [expandedDrawer, setExpandedDrawer] = useState(null);
   const [storeLoading, setStoreLoading] = useState(false);
 
+  // Find-drawer-by-piece-code — resolves a piece to its assigned drawer and
+  // highlights/expands that row in the Drawers list below.
+  const [pieceLookupInput, setPieceLookupInput] = useState('');
+  const [pieceLookupLoading, setPieceLookupLoading] = useState(false);
+
   // Bug #13 & #14: Multi-drawer selection for batch assignment
   const [selectedDrawers, setSelectedDrawers] = useState(new Set());
   const [batchSendTarget, setBatchSendTarget] = useState(''); // 'LINING' | 'STITCHING'
   const [batchSending, setBatchSending] = useState(false);
 
-  // Bug #15: Drawer log queue — items stay logged until explicit Send
-  const [drawerLogQueue, setDrawerLogQueue] = useState([]); // [{ drawerId, pieceCode, loggedAt }]
   const [storeVisibleCount, setStoreVisibleCount] = useState(50);
 
   const observerRef = useRef();
@@ -554,7 +559,12 @@ export default function ProductionLogEntry() {
           size: d.size || '38',
           display_label: d.display_label || d.label || d.stage_label || 'Store Inventory',
           current_stage: d.current_stage || d.stage || 'Store Hub',
-          drawer_code: d.code || d.drawer_code || `DRW-${String(d.seq || 1).padStart(4, '0')}`
+          drawer_code: d.code || d.drawer_code || `DRW-${String(d.seq || 1).padStart(4, '0')}`,
+          // Bug #13: Hold Leather / Hold Lining breakdown — the API returns
+          // these as real booleans (what's physically inside right now).
+          leather_in: !!d.leather_in,
+          lining_in: !!d.lining_in,
+          can_send: d.can_send,
         }));
         setStoreDrawers(mapped);
       }
@@ -583,6 +593,98 @@ export default function ProductionLogEntry() {
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
 
   // --- Store Hub Backend-Driven Flow ---
+  // Resolves a scanned/typed drawer code (or UUID) to its real UUID, so a GET
+  // on /drawers/{drawer_id} can inspect it before any POST is considered.
+  const resolveDrawerUuid = async (input) => {
+    const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
+    if (isUUID(input)) return input.toLowerCase();
+    const code = String(input || '').trim().toUpperCase();
+    if (!code) return null;
+
+    let matchingDrawer = storeDrawers.find(d =>
+      (d.barcode?.toUpperCase() === code) ||
+      (d.code?.toUpperCase() === code) ||
+      (d.id === code) ||
+      (d.drawer_id === code)
+    );
+
+    if (!matchingDrawer && code.startsWith('DRW-')) {
+      const seqMatch = code.match(/DRW-(\d+)/i);
+      if (seqMatch) {
+        const seqNum = parseInt(seqMatch[1], 10);
+        try {
+          const fetchRes = await apiListDrawers(token, { seq_from: seqNum, seq_to: seqNum, limit: 1 });
+          if (fetchRes?.items?.length > 0) matchingDrawer = fetchRes.items[0];
+        } catch {
+          // Backend lookup failed — fall through, caller handles a null return.
+        }
+      }
+    }
+
+    return (matchingDrawer && isUUID(matchingDrawer.drawer_id)) ? matchingDrawer.drawer_id : null;
+  };
+
+  // Resolves a piece code to its assigned drawer (via the universal
+  // GET /barcode/resolve front door) and highlights/expands that row in the
+  // Drawers list below — so the operator doesn't have to guess/trial-and-error
+  // which drawer a scanned piece belongs to.
+  const handleFindDrawerForPiece = async (valOverride) => {
+    const val = (typeof valOverride === 'string' ? valOverride : pieceLookupInput).trim();
+    if (!val || pieceLookupLoading) return;
+    setPieceLookupLoading(true);
+    setErrorMsg('');
+    try {
+      const res = await apiBarcodeResolve(token, val);
+      // For a resolved PIECE, the drawer is nested as piece.drawer.code (an
+      // object), not a flat piece.drawer_code string — that mismatch was why
+      // this always reported "no drawer assigned" even when one existed.
+      const drawerCode = res?.type === 'DRAWER'
+        ? res.code
+        : (res?.piece?.drawer?.code || res?.drawer?.drawer_code || null);
+      if (!drawerCode) {
+        setErrorMsg(`No drawer is assigned to '${val}' yet.`);
+        return;
+      }
+
+      // The default Drawers list is capped (500) — fetch this one directly
+      // if it isn't already in the loaded page, so it has something to render.
+      let target = storeDrawers.find(d => d.id.toUpperCase() === drawerCode.toUpperCase());
+      if (!target) {
+        const seqMatch = drawerCode.match(/DRW-(\d+)/i);
+        if (seqMatch) {
+          try {
+            const fetchRes = await apiListDrawers(token, { seq_from: parseInt(seqMatch[1], 10), seq_to: parseInt(seqMatch[1], 10), limit: 1 });
+            const item = fetchRes?.items?.[0];
+            if (item) {
+              target = {
+                id: item.code || item.barcode || drawerCode,
+                drawer_id: item.drawer_id || item.id,
+                holding: item.holding || 'EMPTY',
+                status: item.state || 'Free',
+                style: item.code || '-',
+                drawer_code: item.code || drawerCode,
+              };
+              setStoreDrawers(prev => prev.some(d => d.id === target.id) ? prev : [target, ...prev]);
+            }
+          } catch {
+            // Direct fetch failed — the search/highlight below still runs on
+            // whatever's already loaded, just without a forced-in row.
+          }
+        }
+      }
+
+      setStoreDrawerSearch(drawerCode);
+      setStoreDrawerInput(drawerCode.toUpperCase());
+      if (target) setExpandedDrawer(target.id);
+      setSuccessMsg(`📦 '${val}' is assigned to drawer ${drawerCode}.`);
+    } catch (err) {
+      setErrorMsg(err.message || `'${val}' was not found.`);
+    } finally {
+      setPieceLookupLoading(false);
+    }
+  };
+
+  // API Flow: Inspect (GET) -> Conditional Execution (POST only if unprocessed)
   const handleStoreVerify = async (pieceOverride) => {
     setStoreApiLoading(true);
     setErrorMsg('');
@@ -592,6 +694,52 @@ export default function ProductionLogEntry() {
       const drawerVal = storeDrawerInput.trim().toUpperCase();
       const pieceVal = (typeof pieceOverride === 'string' ? pieceOverride : storePieceInput).trim();
 
+      // Step 1: Inspect via GET first — never blindly POST a store-scan
+      // without knowing the drawer's real current state.
+      const drawerUuid = await resolveDrawerUuid(drawerVal);
+      if (drawerUuid) {
+        try {
+          const drawerDetail = await apiGetDrawer(token, drawerUuid);
+
+          // A drawer code can be REUSED across cycles — DRW-1374 may already
+          // hold a fully-sent OLDER piece while the operator is scanning a
+          // brand-new piece into it now. Only treat this as "already
+          // processed" if the piece we're about to scan is the SAME piece
+          // the drawer already holds; otherwise it's a legitimate fresh scan
+          // and must fall through to the real POST below.
+          const occupantCode = String(drawerDetail?.piece?.code || '').toUpperCase();
+          const scanningSamePiece = !pieceVal || !occupantCode || occupantCode === pieceVal.toUpperCase();
+
+          const alreadyProcessed = scanningSamePiece && (
+            drawerDetail?.sent === true ||
+            drawerDetail?.complete === true ||
+            ['sended', 'received'].includes(String(drawerDetail?.state || '').toLowerCase())
+          );
+
+          if (alreadyProcessed) {
+            // Step 2 (already processed): show its status directly, do NOT
+            // POST store-scan, and halt smoothly — no error thrown.
+            setStoreVerifyResult({
+              drawer_id: drawerDetail.drawer_id,
+              drawer_code: drawerDetail.code,
+              piece_code: drawerDetail.piece?.code,
+              state: drawerDetail.state,
+              holding: drawerDetail.holding,
+              sent_to: drawerDetail.sent_to,
+            });
+            setStoreReceiveStatus(drawerDetail.sent || drawerDetail.state === 'sended' ? 'sended' : 'received');
+            setSuccessMsg(
+              `ℹ️ Drawer Status: ${drawerDetail.state || 'unknown'} | Holding: ${drawerDetail.holding || 'EMPTY'} | Sent to: ${drawerDetail.sent_to || '—'}`
+            );
+            return;
+          }
+        } catch {
+          // GET failed (e.g. drawer genuinely not found yet) — fall through
+          // to the normal scan-and-create flow below rather than blocking.
+        }
+      }
+
+      // Step 2 (fresh/unprocessed): proceed with the real store-scan POST.
       const payload = {};
 
       if (barcodeWorker) {
@@ -623,11 +771,11 @@ export default function ProductionLogEntry() {
       setSuccessMsg(`Scan logged successfully! (${res.state || 'OK'})`);
       fetchLiveDrawers();
     } catch (err) {
-      if (err.message.includes('409')) {
-        setErrorMsg('409 CONFLICT: Piece does not belong to this drawer, or drawer already processed!');
-      } else {
-        setErrorMsg(err.message || 'Verification Failed');
-      }
+      // Show the backend's real reason (e.g. "piece is not merged to drawer
+      // X — scan the drawer the upload assigned to this piece") instead of a
+      // generic conflict message — err.status is now set by apiStoreDrawerScan.
+      const isConflict = err.status === 409;
+      setErrorMsg(isConflict ? `⚠️ ${err.message}` : (err.message || 'Verification Failed'));
     } finally {
       setStoreApiLoading(false);
     }
@@ -772,7 +920,27 @@ export default function ProductionLogEntry() {
         }, 1500);
       }
     } catch (err) {
-      if (err.message.includes('409')) {
+      const isConflict = err.status === 409 || err.message.includes('409');
+      if (isConflict && transition === 'SENDED') {
+        // The drawer is ALREADY sent server-side (just not by this click) — that
+        // still satisfies the Store gate. Record it locally so Line Stitching
+        // unlocks instead of staying stuck just because this specific request
+        // was a no-op conflict rather than a fresh transition.
+        const skuFromResult = storeVerifyResult?.style || storeVerifyResult?.sku_code || skuCode;
+        if (skuFromResult) {
+          setStoreSendedSkus(prev => Array.from(new Set([...prev, skuFromResult])));
+          recordStageCompletion('Pasting', skuFromResult);
+          recordStageCompletion('Fusing', skuFromResult);
+          recordStageCompletion('Store', skuFromResult);
+        }
+        if (storePieceInput) {
+          recordStageCompletion('Pasting', storePieceInput);
+          recordStageCompletion('Fusing', storePieceInput);
+          recordStageCompletion('Store', storePieceInput);
+        }
+        setStoreReceiveStatus('sended');
+        setSuccessMsg(`ℹ️ Drawer was already sent — marked as complete, Line Stitching is now unlocked.`);
+      } else if (isConflict) {
         setErrorMsg('409 CONFLICT: Drawer already in this state or cannot be transitioned!');
       } else {
         setErrorMsg(err.message || 'Transition Failed');
@@ -827,9 +995,15 @@ export default function ProductionLogEntry() {
   const [barcodeDcmConfirmed, setBarcodeDcmConfirmed] = useState(false);
   const [sessionCutSkus, setSessionCutSkus] = useState([]); // Track duplicate cuts in session
 
-  // Bug #8: Track generated pieces for individual scanning progress
-  const [cuttingGeneratedPieces, setCuttingGeneratedPieces] = useState([]); // { code, serial_str, scanned: bool }
-  const [cuttingPiecesDone, setCuttingPiecesDone] = useState(false); // true when all pieces scanned
+  // Bug #8: Individual Quantity Scanning — every piece must be scanned one at
+  // a time and accumulated into a real batch (each scan verified live via
+  // piece-state), then submitted together in one POST. Once a style's full
+  // quantity is submitted, the backend reports it closed and it can't be
+  // scanned into again.
+  const [cuttingBatchPieces, setCuttingBatchPieces] = useState([]); // [{ code, seq, serial_str, article, style_name, color, size, order_number }]
+  const [cuttingPieceInput, setCuttingPieceInput] = useState('');
+  const [cuttingPieceResolving, setCuttingPieceResolving] = useState(false);
+  const [closedCuttingSkus, setClosedCuttingSkus] = useState([]); // sku_code[] fully cut, closed for further scanning
 
   // Bug #4 + #6 + #12: piece-detail resolution state for the pipeline scanner
   const [barcodePieceResolving, setBarcodePieceResolving] = useState(false);
@@ -859,12 +1033,16 @@ export default function ProductionLogEntry() {
   // Bug #6: Production Stage Sequence Validation Engine (Strict Document Flow)
   const [completedStagesMap, setCompletedStagesMap] = useState({});
 
+  // Confirmed against the live backend's piece-state gate/reason text: real order
+  // is Cutting -> Fusing -> Pasting (not Pasting -> Fusing as the written spec
+  // says) — the backend is the source of truth here since it's what actually
+  // accepts or rejects a log, not the doc.
   const PREREQUISITE_MAP = {
     'Cutting': [],
     'Lining': [], // Independent parallel stream
-    'Pasting': ['Cutting'],
-    'Fusing': ['Pasting'], // Requires Pasting to be completed first!
-    'Line Stitching': ['Fusing', 'Store'], // Requires Fusing completed AND Store Transfer release
+    'Fusing': ['Cutting'],
+    'Pasting': ['Fusing'], // Requires Fusing to be completed first!
+    'Line Stitching': ['Pasting', 'Store'], // Requires Pasting completed AND Store Transfer release
     'Shell Stitching': ['Line Stitching'],
     'Final Finish': ['Shell Stitching'],
     'Final Inspection': ['Final Finish'],
@@ -875,7 +1053,7 @@ export default function ProductionLogEntry() {
   // API's SCREAMING_SNAKE_CASE stage identifiers, used to auto-detect a
   // scanned piece's correct stage and read its backend-verified sequence state.
   const UI_TO_API_STAGE = {
-    'Cutting': 'CUTTING',
+    'Cutting': 'LEATHER_CUTTING',
     'Lining': 'LINING_CUTTING',
     'Pasting': 'PASTING',
     'Fusing': 'FUSING',
@@ -889,38 +1067,10 @@ export default function ProductionLogEntry() {
     Object.entries(UI_TO_API_STAGE).map(([ui, api]) => [api, ui])
   );
 
-  // Helper — checks if all prerequisites for a stage are already completed
-  // Used to compute disabled state for stage buttons (applies to ALL roles including DM/MD)
-  const isStageReady = (stage) => {
-    const prereqs = PREREQUISITE_MAP[stage] || [];
-    if (prereqs.length === 0) return true;
-
-    // Direct check: all prereqs satisfied by at least one entry in completedStagesMap
-    for (const stages of Object.values(completedStagesMap)) {
-      if (prereqs.every(p => stages.has(p))) return true;
-    }
-
-    // Specific fallback gates per stage
-    if (stage === 'Pasting') {
-      return sessionCutSkus.length > 0 || Object.values(completedStagesMap).some(s => s.has('Cutting'));
-    }
-
-    if (stage === 'Fusing') {
-      return Object.values(completedStagesMap).some(s => s.has('Pasting'));
-    }
-
-    if (stage === 'Line Stitching') {
-      const hasFusing = Object.values(completedStagesMap).some(s => s.has('Fusing'));
-      const hasStoreSend = storeSendedSkus.length > 0 || Object.values(completedStagesMap).some(s => s.has('Store'));
-      return hasFusing && hasStoreSend;
-    }
-
-    // Fallback for remaining pipeline stages
-    return prereqs.every(prereq =>
-      Object.values(completedStagesMap).some(s => s.has(prereq))
-    );
-  };
-
+  // Stage-button tabs are gated by ROLE only (see button click handlers below).
+  // validateStageSequence remains as an OFFLINE FALLBACK sequence check, used
+  // only inside handleBarcodePieceScan when the live GET /production/piece-state
+  // call itself fails — the real, session-independent sequence gate.
   const validateStageSequence = (targetStage, pieceOrSkuKey) => {
     if (!targetStage || targetStage === 'Cutting' || targetStage === 'Lining') return { valid: true };
     const requiredPrereqs = PREREQUISITE_MAP[targetStage] || [];
@@ -929,36 +1079,27 @@ export default function ProductionLogEntry() {
     const rawKey = String(pieceOrSkuKey || '').toUpperCase().trim();
     if (!rawKey) return { valid: true };
 
-    // 1. Direct match check against completedStagesMap
+    // 1. Exact key match check against completedStagesMap
     const completedSet = completedStagesMap[rawKey] || new Set();
-    if (requiredPrereqs.some(prereq => completedSet.has(prereq))) return { valid: true };
+    if (requiredPrereqs.every(prereq => completedSet.has(prereq))) return { valid: true };
 
-    // 2. Check sessionCutSkus and storeSendedSkus arrays
+    // 2. Check if parent SKU was cut in session (unlocks Pasting for pieces of that cut SKU)
     const hasCutInSession = sessionCutSkus.some(sku => {
       const uSku = String(sku).toUpperCase();
-      return rawKey.includes(uSku) || uSku.includes(rawKey);
+      return rawKey === uSku || rawKey.includes(uSku);
     });
 
     const hasStoreSended = storeSendedSkus.some(sku => {
       const uSku = String(sku).toUpperCase();
-      return rawKey.includes(uSku) || uSku.includes(rawKey);
+      return rawKey === uSku || rawKey.includes(uSku);
     });
 
-    if (hasCutInSession || hasStoreSended) return { valid: true };
-
-    // 3. Smart partial match against completedStagesMap
-    const parts = rawKey.split(/[-_]/).filter(p => p.length >= 2);
-    for (const [k, stages] of Object.entries(completedStagesMap)) {
-      if (requiredPrereqs.some(prereq => stages.has(prereq)) || stages.has('Cutting') || stages.has('Pasting')) {
-        if (rawKey.includes(k) || k.includes(rawKey) || parts.some(p => k.includes(p))) {
-          return { valid: true };
-        }
-      }
-    }
+    if (requiredPrereqs.includes('Cutting') && hasCutInSession) return { valid: true };
+    if (requiredPrereqs.includes('Store') && hasStoreSended) return { valid: true };
 
     return {
       valid: false,
-      error: `⚠️ Production Sequence Blocked: '${targetStage}' requires previous stage to be completed first!`
+      error: `⚠️ Production Sequence Blocked: Piece '${rawKey}' has not completed '${requiredPrereqs.join(' & ')}' stage yet!`
     };
   };
 
@@ -972,15 +1113,6 @@ export default function ProductionLogEntry() {
       const set1 = next[rawKey] ? new Set(next[rawKey]) : new Set();
       set1.add(stage);
       next[rawKey] = set1;
-
-      // Extract sub-parts (e.g. ADELE-38 from KL_1001-ADELE-38-001)
-      const parts = rawKey.split(/[-_]/).filter(p => p.length >= 2);
-      parts.forEach(p => {
-        const setP = next[p] ? new Set(next[p]) : new Set();
-        setP.add(stage);
-        next[p] = setP;
-      });
-
       return next;
     });
   };
@@ -1020,41 +1152,69 @@ export default function ProductionLogEntry() {
     });
   };
 
-  // Bug #14: Batch send selected drawers to Lining or Stitching
+  // Bug #14: Batch send selected drawers to Lining or Stitching.
+  // POST /api/v1/drawers/send — the ONLY write here. It accepts PARTIALLY:
+  // some drawers may come back not_ready/not_found while others succeed in
+  // `sent`, so this must render both buckets, not treat the call as all-or-nothing.
   const handleBatchSendDrawers = async (target) => {
     if (selectedDrawers.size === 0) return;
     setBatchSending(true);
     try {
-      const drawerIds = Array.from(selectedDrawers);
-      // Mark each selected drawer's SKUs as completed in completedStagesMap
-      drawerIds.forEach(drawerId => {
-        const drawer = storeDrawers.find(d => d.id === drawerId);
-        if (drawer?.style) {
-          if (target === 'STITCHING') {
-            recordStageCompletion('Pasting', drawer.style);
-            recordStageCompletion('Fusing', drawer.style);
-            recordStageCompletion('Store', drawer.style);
-            setStoreSendedSkus(prev => [...prev, drawer.style]);
-          } else if (target === 'LINING') {
-            recordStageCompletion('Store', drawer.style);
-          }
+      // selectedDrawers holds the mapped `.id` (drawer code, e.g. "DRW-0001"),
+      // not the real UUID — resolve each to its `drawer_id` for the API call.
+      const drawerIds = Array.from(selectedDrawers)
+        .map(id => storeDrawers.find(d => d.id === id)?.drawer_id)
+        .filter(Boolean);
+
+      if (drawerIds.length === 0) {
+        setErrorMsg('Could not resolve drawer IDs for the selected drawers. Try refreshing the list.');
+        return;
+      }
+
+      const result = await apiSendDrawers(token, { drawer_ids: drawerIds, destination: target });
+
+      // Record local stage completion only for drawers the backend actually
+      // confirms as sent — using the real piece_code from the response, not
+      // the drawer's own code (which isn't a piece/SKU identity).
+      const sentList = Array.isArray(result?.sent) ? result.sent : [];
+      sentList.forEach(item => {
+        const key = item.piece_code || item.drawer_code;
+        if (!key) return;
+        if (target === 'STITCHING') {
+          recordStageCompletion('Pasting', key);
+          recordStageCompletion('Fusing', key);
+          recordStageCompletion('Store', key);
+          setStoreSendedSkus(prev => Array.from(new Set([...prev, key])));
+        } else if (target === 'LINING') {
+          recordStageCompletion('Store', key);
         }
       });
+
+      const notReady = Array.isArray(result?.not_ready) ? result.not_ready : [];
+      const notFound = Array.isArray(result?.not_found) ? result.not_found : [];
+
       setSelectedDrawers(new Set());
-      setSuccessMsg(`✅ ${drawerIds.length} drawers sent to ${target === 'STITCHING' ? 'Line Stitching' : 'Lining'} successfully!`);
+
+      if (notReady.length > 0 || notFound.length > 0) {
+        const reasonSample = notReady[0]?.reason ? ` (${notReady[0].reason})` : '';
+        setErrorMsg(
+          `⚠️ ${result?.count_sent ?? sentList.length}/${result?.requested ?? drawerIds.length} drawers sent.` +
+          `${notReady.length ? ` ${notReady.length} not ready${reasonSample}.` : ''}` +
+          `${notFound.length ? ` ${notFound.length} not found.` : ''}`
+        );
+      }
+      if (sentList.length > 0) {
+        setSuccessMsg(result?.message || `✅ ${sentList.length} drawer(s) sent to ${target === 'STITCHING' ? 'Line Stitching' : 'Lining'} successfully!`);
+      } else if (notReady.length === 0 && notFound.length === 0) {
+        setErrorMsg('No drawers were sent.');
+      }
+
       await fetchLiveDrawers();
     } catch (err) {
       setErrorMsg('Batch send failed: ' + (err.message || 'Unknown error'));
     } finally {
       setBatchSending(false);
     }
-  };
-
-  // Bug #15: Log piece into drawer queue (stays until explicit Send)
-  const handleLogToDrawerQueue = (drawerId, pieceCode) => {
-    const logEntry = { drawerId, pieceCode, loggedAt: new Date().toISOString() };
-    setDrawerLogQueue(prev => [...prev, logEntry]);
-    setSuccessMsg(`📦 Piece ${pieceCode} logged into Drawer ${drawerId}. Send when ready.`);
   };
 
   // Resolution handler for universal scan input
@@ -1183,6 +1343,11 @@ export default function ProductionLogEntry() {
       setBarcodeWorker(targetWorker);
       setBarcodeWorkerInput('');
       setSuccessMsg(`✅ Worker ${targetWorker.name} verified & checked-in!`);
+
+      // FIX 2: Auto-switch barcodeStage to first allowed operation if current stage is restricted for this role (e.g. stitching_manager)
+      if (!isFullAccess && allowedOperations.length > 0 && !allowedOperations.includes(barcodeStage)) {
+        setBarcodeStage(allowedOperations[0]);
+      }
     } catch (err) {
       setErrorMsg(`Worker verification failed: ${err.message}`);
     } finally {
@@ -1190,10 +1355,16 @@ export default function ProductionLogEntry() {
     }
   };
 
-  // Dedicated SKU Verification (Checks if already cut)
+  // API Flow: Verify (GET) -> Local UI Update -> Submit (POST)
+  // Dedicated Piece Verification for Cutting/Lining. This is a VERIFY-ONLY call —
+  // it NEVER writes to the database. It calls GET /production/piece-state (the
+  // server-authoritative scan-and-verify call) for the ONE scanned piece and uses
+  // the response to update the UI locally: which stage this piece is really due at,
+  // its drawer, and whether it's blocked. The server names the stage — the UI must
+  // never guess it or fabricate piece/SKU data when a lookup fails.
   const handleVerifySkuBarcode = async (valToVerify) => {
     const rawVal = typeof valToVerify === 'string' ? valToVerify : barcodeSkuInput;
-    const val = (rawVal || '').trim().toLowerCase();
+    const val = (rawVal || '').trim();
     if (!val) return;
 
     setBarcodeSkuVerifying(true);
@@ -1201,69 +1372,111 @@ export default function ProductionLogEntry() {
     setBarcodeDcmConfirmed(false);
     setErrorMsg('');
 
-    const isMatch = (s, target) => {
-      if (!s || !target) return false;
-      const c = (s.code || s.sku_code || '').toLowerCase();
-      const st = (s.style_name || '').toLowerCase();
-      const ord = String(s.order_number || '').toLowerCase();
-      const label = (s.label || '').toLowerCase();
-
-      const cleanTarget = target.replace(/[-_ ]/g, '');
-      const cleanC = c.replace(/[-_ ]/g, '');
-      const cleanSt = st.replace(/[-_ ]/g, '');
-
-      return (
-        c === target ||
-        st === target ||
-        ord === target ||
-        label === target ||
-        (c && target.includes(c)) ||
-        (st && target.includes(st)) ||
-        (cleanC && cleanTarget.includes(cleanC)) ||
-        (cleanSt && cleanTarget.includes(cleanSt))
-      );
-    };
-
     try {
-      let matched = fetchedSkus.find(s => isMatch(s, val));
+      // GET /production/piece-state — verification/viewing ONLY, no logging here.
+      const pieceState = await apiGetPieceState(token, {
+        code: val,
+        employee_barcode: barcodeWorker?.employee_barcode || barcodeWorker?.barcode || barcodeWorker?.id,
+      });
 
-      // 1. Try a fresh fetch from backend if not found locally
-      if (!matched && val.length > 0) {
-        try {
-          const freshRes = await apiGetSkus(token);
-          const freshItems = freshRes?.items || freshRes?.skus || (Array.isArray(freshRes) ? freshRes : []);
-          if (freshItems.length > 0) {
-            setFetchedSkus(freshItems);
-            matched = freshItems.find(s => isMatch(s, val));
-          }
-        } catch (fetchErr) {
-          console.warn('[SKU Verify] direct fetch failed:', fetchErr);
+      const piece = pieceState?.piece;
+      if (!piece || !piece.code) {
+        throw new Error(`Piece '${val}' not found. Please scan a valid piece barcode.`);
+      }
+
+      // Local Validation: Check if this piece has already been leather-cut in
+      // this session. Scoped to the Cutting stage only — sessionCutSkus
+      // tracks LEATHER_CUTTING completions specifically (it's also what
+      // unlocks Fusing locally), so it must never block a legitimate Lining
+      // scan of the same piece. The authoritative per-stage check still runs
+      // below via stageEntry regardless.
+      if (barcodeStage === 'Cutting' && sessionCutSkus.includes(piece.code)) {
+        throw new Error(`Piece ${piece.code} has already been cut! It cannot be scanned again in Cutting.`);
+      }
+
+      // Bug #8: once a style's full required quantity has been submitted, the
+      // backend reports it closed (sku_progress.closed) — block re-scanning
+      // any more of its pieces here rather than silently re-adding them.
+      if (piece.sku_code && closedCuttingSkus.includes(piece.sku_code)) {
+        throw new Error(`Style ${piece.sku_code} is closed — all required quantities have already been cut.`);
+      }
+
+      // The server names the stage — auto-switch the UI to match (never chosen
+      // by hand). But NEVER auto-switch into a stage this role can't work —
+      // that silently dumped a Cutting Manager into the Lining tab (which
+      // Cutting Manager has no permission for and has no DCM form anyway),
+      // producing a confusing secondary "Role Restricted" error later instead
+      // of a clear message right here.
+      const mappedStage = pieceState?.next_stage ? (API_TO_UI_STAGE[pieceState.next_stage] || null) : null;
+      if (mappedStage && manualStages.includes(mappedStage) && mappedStage !== barcodeStage) {
+        const roleCanWorkMappedStage = isFullAccess || allowedOperations.includes(mappedStage);
+        if (!roleCanWorkMappedStage) {
+          throw new Error(`This piece's next stage is '${mappedStage}', which isn't assigned to your role. Please have the appropriate manager scan this piece.`);
         }
+        setBarcodeStage(mappedStage);
+        setSuccessMsg(`🔄 Auto-detected stage: ${mappedStage}`);
+      }
+      const targetStage = mappedStage || barcodeStage;
+
+      // Enforce the pipeline gate using stages[] before letting the operator proceed.
+      const stageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[targetStage]);
+      if (stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
+        throw new Error(
+          stageEntry.reason ||
+          (stageEntry.state === 'not_applicable'
+            ? `'${targetStage}' does not apply to this piece.`
+            : `Production sequence blocked: '${targetStage}' isn't ready yet.`)
+        );
+      }
+      // A "consumption" blocker is EXPECTED for a cut stage (LEATHER_CUTTING /
+      // LINING_CUTTING) — it just means material data hasn't been entered yet,
+      // which is exactly what this screen collects next via Submit. ready_to_log
+      // is legitimately false at verify time for every cut; that is not an error.
+      // Only OTHER gates (employee, attendance, role, sequence, merge, completed)
+      // are real stops.
+      const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption');
+      if (pieceState?.ready_to_log === false && realBlockers.length > 0) {
+        throw new Error(realBlockers[0].reason || 'Scan blocked by server');
       }
 
-      // 2. Smart Resolution Fallback: Generate valid SKU object for any scanned string
-      if (!matched && val.length >= 2) {
-        const uppercaseVal = (valToVerify || barcodeSkuInput).trim().toUpperCase();
-        matched = {
-          sku_id: uppercaseVal,
-          code: uppercaseVal,
-          style_name: uppercaseVal,
-          order_number: '1001'
-        };
-      }
+      // Skill mismatch is a WARNING per the API docs, never a hard block.
+      const skillWarning = (pieceState?.actor?.skill_ok === false && pieceState.actor?.skill_note)
+        ? ` ⚠️ ${pieceState.actor.skill_note}`
+        : '';
 
-      if (!matched) {
-        throw new Error(`Style/SKU '${val}' not found. Please enter a valid SKU barcode.`);
-      }
-
-      // Local Validation: Check if this SKU has already been cut in this session
-      if (sessionCutSkus.includes(matched.code)) {
-        throw new Error(`Style ${matched.code} has already been cut! It cannot be scanned again in Cutting.`);
-      }
-
-      setBarcodeSelectedSku(matched);
-      setBarcodeSkuInput(matched.code);
-      setSuccessMsg(`✅ SKU ${matched.code} verified!`);
+      // Local UI update only — this piece's real identity + current/next stage.
+      setBarcodeSelectedSku({
+        piece_id: piece.piece_id,
+        code: piece.code,
+        short_code: piece.short_code,
+        style_name: piece.style_name,
+        order_number: piece.order_number,
+        size: piece.size,
+        serial: piece.serial,
+        color_code: piece.colour,
+        article: piece.article,
+        sku_id: piece.sku_id,
+        sku_code: piece.sku_code,
+        current_stage: pieceState?.current_stage,
+        current_stage_label: pieceState?.current_stage_label,
+        next_stage: pieceState?.next_stage,
+        next_stage_label: targetStage,
+        drawer: piece.drawer || pieceState?.drawer || null,
+      });
+      setBarcodeSkuInput(piece.code);
+      // Bug #8: Verify SKU starts a FRESH batch with this piece as #1 —
+      // remaining pieces of this style get scanned individually into it below.
+      setCuttingBatchPieces([{
+        code: piece.code,
+        seq: piece.seq,
+        serial_str: piece.serial,
+        article: piece.article,
+        style_name: piece.style_name,
+        color: piece.colour,
+        size: piece.size,
+        order_number: piece.order_number,
+      }]);
+      setSuccessMsg(`✅ Piece ${piece.code} verified — next stage: ${targetStage}${skillWarning}`);
     } catch (err) {
       setErrorMsg(err.message);
       setBarcodeSkuInput('');
@@ -1272,73 +1485,160 @@ export default function ProductionLogEntry() {
     }
   };
 
-  // Dedicated Barcode Cutting Submit Handler
+  // Bug #8: Individual Quantity Scanning — after Verify SKU establishes the
+  // style/DCM/Article/Colour context, every REMAINING piece of that style
+  // must be scanned one at a time and added to the batch. Same GET-verify
+  // pattern as everywhere else — never a local guess.
+  const handleCuttingPieceScan = async (codeToScan) => {
+    const code = (codeToScan || cuttingPieceInput).trim();
+    if (!code || cuttingPieceResolving || !barcodeSelectedSku) return;
+
+    if (cuttingBatchPieces.some(p => p.code === code)) {
+      setCuttingPieceInput('');
+      return;
+    }
+
+    setCuttingPieceResolving(true);
+    setErrorMsg('');
+    try {
+      const pieceState = await apiGetPieceState(token, {
+        code,
+        employee_barcode: barcodeWorker?.employee_barcode || barcodeWorker?.barcode || barcodeWorker?.id,
+      });
+
+      const piece = pieceState?.piece;
+      if (!piece || !piece.code) {
+        throw new Error(`Piece '${code}' not found. Please scan a valid piece barcode.`);
+      }
+
+      // Must belong to the SAME style as the batch in progress — mixing
+      // styles into one submit would misapply this batch's shared
+      // Article/Colour/DCM consumption to the wrong pieces.
+      if (barcodeSelectedSku.sku_code && piece.sku_code && piece.sku_code !== barcodeSelectedSku.sku_code) {
+        throw new Error(`This piece belongs to a different style (${piece.sku_code}). Submit the current batch first, or scan a piece from ${barcodeSelectedSku.sku_code}.`);
+      }
+
+      // Same sequence gate as every other scan — must actually be due for
+      // this Cutting/Lining stage right now.
+      const stageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[barcodeStage]);
+      if (stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
+        throw new Error(
+          stageEntry.reason ||
+          (stageEntry.state === 'not_applicable'
+            ? `'${barcodeStage}' does not apply to this piece.`
+            : `Production sequence blocked: '${barcodeStage}' isn't ready yet.`)
+        );
+      }
+      const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption');
+      if (pieceState?.ready_to_log === false && realBlockers.length > 0) {
+        throw new Error(realBlockers[0].reason || 'Scan blocked by server');
+      }
+
+      setCuttingBatchPieces(prev => prev.some(p => p.code === piece.code) ? prev : [...prev, {
+        code: piece.code,
+        seq: piece.seq,
+        serial_str: piece.serial,
+        article: piece.article,
+        style_name: piece.style_name,
+        color: piece.colour,
+        size: piece.size,
+        order_number: piece.order_number,
+      }]);
+      setCuttingPieceInput('');
+      setSuccessMsg(`✅ Added piece ${piece.code} (${cuttingBatchPieces.length + 1} scanned)`);
+    } catch (err) {
+      setErrorMsg(err.message);
+      setCuttingPieceInput('');
+    } finally {
+      setCuttingPieceResolving(false);
+    }
+  };
+
+  // API Flow: Verify (GET) -> Local UI Update -> Submit (POST)
+  // Dedicated Barcode Cutting/Lining Submit Handler. THE ONLY WRITE for this door —
+  // logs the exact piece that handleVerifySkuBarcode already confirmed via piece-state.
+  // Never re-derives or re-guesses the target piece; it targets barcodeSelectedSku.code.
   const handleBarcodeCuttingSubmit = async () => {
     if (!barcodeWorker) return setErrorMsg("Please scan and verify Worker ID first!");
-    if (!barcodeSelectedSku) return setErrorMsg("Please enter/select a Garment SKU!");
-    const parsedCount = parseInt(barcodeDcm, 10);
-    if (!barcodeDcm || isNaN(parsedCount) || parsedCount <= 0) return setErrorMsg("Please enter a valid Cut Piece / DCM Count");
+    if (!barcodeSelectedSku) return setErrorMsg("Please verify a piece barcode first!");
+    if (cuttingBatchPieces.length === 0) return setErrorMsg("Please scan at least one piece!");
+    const parsedDcm = parseFloat(barcodeDcm);
+    if (!barcodeDcm || isNaN(parsedDcm) || parsedDcm <= 0) return setErrorMsg("Please enter a valid Cut Area (DCM) value");
+    if (!lotArticle) return setErrorMsg("Please select the Article!");
+    if (!lotColor) return setErrorMsg("Please select the Color!");
 
     setBarcodeSubmitting(true);
     try {
-      const realSkuId = barcodeSelectedSku.sku_id || barcodeSelectedSku.id;
-      const result = await apiProductionCutting(token, {
-        sku_id: realSkuId,
-        employee_id: barcodeWorker.id,
+      const isLining = barcodeStage === 'Lining';
+      const consumption = { dcm: parsedDcm };
+      const lotId = lotResults.length === 1 ? lotResults[0].lot_id : null;
+      if (isLining) consumption.lining_lot_id = lotId;
+      else consumption.leather_lot_id = lotId;
+
+      const pieceCodes = cuttingBatchPieces.map(p => p.code);
+
+      // POST /production/log — the ONLY write on the floor. Bug #8: submits
+      // the WHOLE scanned batch (every individually-verified piece) in one call.
+      const result = await apiProductionLogTwoDoor(token, {
+        screen_context: isLining ? 'LINING_CUT' : 'LEATHER_CUT',
+        actor: { employee_barcode: barcodeWorker.employee_barcode || barcodeWorker.barcode || barcodeWorker.id },
+        targets: { piece_barcodes: pieceCodes },
         work_date: date,
-        count: parsedCount,
-        dcm: parsedCount,
-        stage: barcodeStage, // 'Cutting' or 'Lining'
-        lot_id: lotResults.length === 1 ? lotResults[0].lot_id : null
+        consumption,
       });
 
-      const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => {
-        const serialStr = String(i + 1).padStart(3, '0');
-        return {
-          id: `KL-${barcodeSelectedSku.code || 'SKU'}-${serialStr}`,
-          seq: i + 1,
-          serial_str: serialStr,
-          code: `KL_${barcodeSelectedSku.order_number || '1001'}-${barcodeSelectedSku.code || 'SKU'}-${serialStr}`,
-          order_number: barcodeSelectedSku.order_number || '1001',
-          article: lotArticle || 'LEATHER',
-          style_name: barcodeSelectedSku.style_name || barcodeSelectedSku.code,
-          color: lotColor || barcodeSelectedSku.color_code || 'BLACK',
-          size: barcodeSelectedSku.size || 'STD',
-          dcm: 1
-        };
-      });
+      const loggedPieces = cuttingBatchPieces.map(p => ({
+        id: p.code,
+        seq: p.seq || 1,
+        code: p.code,
+        serial_str: p.serial_str,
+        order_number: p.order_number || barcodeSelectedSku.order_number || '',
+        article: lotArticle || p.article || '',
+        style_name: p.style_name || barcodeSelectedSku.style_name || barcodeSelectedSku.code,
+        color: lotColor || p.color || '',
+        size: p.size || barcodeSelectedSku.size || '',
+        dcm: parsedDcm,
+      }));
 
       setBarcodeSuccessModal({
-        stage: 'Cutting',
-        count: result.count || parsedCount,
-        skuCode: barcodeSelectedSku.label || barcodeSelectedSku.code,
-        orderNumber: barcodeSelectedSku.order_number || '1001',
-        article: lotArticle || 'LEATHER',
+        stage: barcodeStage,
+        count: result?.count_logged ?? pieceCodes.length,
+        skuCode: barcodeSelectedSku.style_name || barcodeSelectedSku.code,
+        orderNumber: barcodeSelectedSku.order_number || '',
+        article: lotArticle || barcodeSelectedSku.article || '',
         style: barcodeSelectedSku.style_name || barcodeSelectedSku.code,
-        color: lotColor || 'BLACK',
-        size: barcodeSelectedSku.size || 'STD',
+        color: lotColor || '',
+        size: barcodeSelectedSku.size || '',
         thickness: lotThickness || 'N/A',
-        pieces: generatedPreviewPieces
+        pieces: loggedPieces
       });
 
-      setSessionCutSkus(prev => [...prev, barcodeSelectedSku.code]);
-      recordStageCompletion('Cutting', barcodeSelectedSku.code);
-      generatedPreviewPieces.forEach(p => recordStageCompletion('Cutting', p.code));
+      // sessionCutSkus specifically tracks LEATHER_CUTTING completions (it's
+      // what unlocks Fusing locally) — only record it for actual Cutting
+      // submits, not Lining, so a Lining submit never blocks a real re-cut.
+      if (!isLining) setSessionCutSkus(prev => [...prev, ...pieceCodes]);
+      pieceCodes.forEach(code => recordStageCompletion(barcodeStage, code));
 
-      // Bug #8: Store generated pieces for individual scanning progress tracker
-      setCuttingGeneratedPieces(generatedPreviewPieces.map(p => ({ ...p, scanned: false })));
-      setCuttingPiecesDone(false);
+      // Bug #8: once the backend confirms this style's full required
+      // quantity has been submitted, close it — no more scanning into it.
+      if (result?.sku_progress?.closed && barcodeSelectedSku.sku_code) {
+        setClosedCuttingSkus(prev => Array.from(new Set([...prev, barcodeSelectedSku.sku_code])));
+      }
 
       setBarcodeDcm('');
       setBarcodeSkuInput('');
       setBarcodeSelectedSku(null);
       setBarcodeDcmConfirmed(false);
+      setCuttingBatchPieces([]);
+      setLotArticle('');
+      setLotColor('');
+      setLotThickness('');
     } catch (err) {
       const msg = typeof err?.message === 'string'
         ? err.message
         : (typeof err === 'string' ? err : JSON.stringify(err));
-      console.error('[Cutting Submit Error]', err);
-      setErrorMsg(`Cutting failed: ${msg}`);
+      console.error(`[${barcodeStage} Submit Error]`, err);
+      setErrorMsg(`${barcodeStage} failed: ${msg}`);
     } finally {
       setBarcodeSubmitting(false);
     }
@@ -1365,30 +1665,79 @@ export default function ProductionLogEntry() {
     try {
       let targetStage = barcodeStage;
       let drawerInfo = null;
+      let pieceMeta = null;
 
-      // Bug #4 + #6 + #12: resolve the scanned piece to auto-detect the stage
-      // it's actually due for next, validate against the backend's own view
-      // of completed/next/not_applicable stages, and surface its drawer.
+      // Bug #4 + #6 + #12: call GET /production/piece-state — THE server-authoritative
+      // scan-and-verify call. It returns the piece's next stage, drawer, whether the
+      // worker can log it right now (ready_to_log), and per-item blockers[].
+      // Per API docs: NEVER choose a stage on the client side — let next_stage drive it.
       try {
-        const detail = await apiGetPieceDetail(token, { piece_code: code });
-        const piece = detail?.piece || {};
-        drawerInfo = piece.drawer || (piece.drawer_code ? { code: piece.drawer_code } : null);
+        const pieceState = await apiGetPieceState(token, {
+          code,
+          employee_barcode: barcodeWorker?.employee_barcode || barcodeWorker?.barcode || barcodeWorker?.id,
+        });
 
-        const mappedStage = detail?.next_stage ? (API_TO_UI_STAGE[detail.next_stage] || null) : null;
+        // Pull drawer info from the response (piece.drawer or top-level drawer)
+        const piece = pieceState?.piece || {};
+        drawerInfo = piece.drawer || pieceState?.drawer || (piece.drawer_code ? { code: piece.drawer_code } : null);
+        // Bug #7 (Line Stitching etc.): capture the piece's real identity so
+        // the success modal shows Serial/Article/Style/Color/Size instead of
+        // "undefined" — barcodeBatchPieces previously only stored the code.
+        pieceMeta = {
+          seq: piece.seq,
+          serial_str: piece.serial,
+          article: piece.article,
+          style_name: piece.style_name,
+          color: piece.colour,
+          size: piece.size,
+          order_number: piece.order_number,
+        };
+
+        // Auto-detect & switch to the server-determined next stage (Bug #4).
+        // Never auto-switch into a stage this role isn't permitted to work —
+        // surface a clear message instead of silently jumping tabs and then
+        // failing a secondary role check.
+        const mappedStage = pieceState?.next_stage ? (API_TO_UI_STAGE[pieceState.next_stage] || null) : null;
         if (mappedStage && manualStages.includes(mappedStage)) {
+          const roleCanWorkMappedStage = isFullAccess || allowedOperations.includes(mappedStage);
+          if (!roleCanWorkMappedStage) {
+            setErrorMsg(`⚠️ This piece's next stage is '${mappedStage}', which isn't assigned to your role.`);
+            setBarcodePieceInput('');
+            return;
+          }
           targetStage = mappedStage;
           if (mappedStage !== barcodeStage) {
             setBarcodeStage(mappedStage);
             setSuccessMsg(`🔄 Auto-detected stage: ${mappedStage}`);
           }
+
+          // Cutting/Lining have their own dedicated consumption screen (DCM/
+          // Article/Colour), not the generic pipeline batch list this handler
+          // feeds. A piece scanned here that turns out to be due for either
+          // must be routed to that screen's basket instead of silently
+          // landing in barcodeBatchPieces, which that UI never renders.
+          if (mappedStage === 'Cutting' || mappedStage === 'Lining') {
+            setBarcodePieceInput('');
+            await handleVerifySkuBarcode(code);
+            return;
+          }
         }
 
-        const stageEntry = (detail?.stages || []).find(s => s.stage === UI_TO_API_STAGE[targetStage]);
+        // If the server says NOT ready_to_log, surface the first blocker reason verbatim
+        if (pieceState?.ready_to_log === false && Array.isArray(pieceState?.blockers) && pieceState.blockers.length > 0) {
+          const firstBlocker = pieceState.blockers[0];
+          setErrorMsg(`⚠️ ${firstBlocker.reason || 'Scan blocked by server'}`);
+          setBarcodePieceInput('');
+          return;
+        }
+
+        // Use stages[] from piece-state to enforce the pipeline gate (Bug #6)
+        const stageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[targetStage]);
         if (stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
           setErrorMsg(
             stageEntry.state === 'not_applicable'
               ? `⚠️ '${targetStage}' does not apply to this piece${stageEntry.reason ? ` (${stageEntry.reason})` : ''}.`
-              : `⚠️ Production Sequence Blocked: '${targetStage}' isn't ready yet for this piece.`
+              : `⚠️ Production Sequence Blocked: '${targetStage}' isn't ready yet.${stageEntry.reason ? ` ${stageEntry.reason}` : ''}`
           );
           setBarcodePieceInput('');
           return;
@@ -1405,7 +1754,7 @@ export default function ProductionLogEntry() {
       }
 
       setScannedPieceDrawerInfo(drawerInfo);
-      setBarcodeBatchPieces(prev => prev.some(p => p.code === code) ? prev : [...prev, { code, scanned_at: new Date().toLocaleTimeString() }]);
+      setBarcodeBatchPieces(prev => prev.some(p => p.code === code) ? prev : [...prev, { code, scanned_at: new Date().toLocaleTimeString(), ...pieceMeta }]);
       setBarcodePieceInput('');
       setTimeout(() => pieceInputRef.current?.focus(), 100);
     } finally {
@@ -1432,17 +1781,35 @@ export default function ProductionLogEntry() {
         work_date: date
       });
 
-      if (result && (result.logged || result.sequence_blocked || result.skill_blocked || result.merge_blocked)) {
+      // Batch writes accept partially — some pieces logged, others blocked.
+      // Always record local stage completion for whichever pieces the backend
+      // actually confirmed (logged or rework), independent of whether the rest
+      // need the bucket modal. `result.logged` is always present per the API
+      // contract (even as []), so checking its mere presence here would always
+      // take this branch and skip recordStageCompletion entirely — check length instead.
+      const loggedCodes = Array.isArray(result?.logged) ? result.logged : [];
+      const reworkCodes = Array.isArray(result?.rework) ? result.rework : [];
+      [...loggedCodes, ...reworkCodes].forEach(code => recordStageCompletion(barcodeStage, code));
+
+      const hasBlockedItems =
+        (result?.sequence_blocked?.length > 0) ||
+        (result?.skill_blocked?.length > 0) ||
+        (result?.merge_blocked?.length > 0) ||
+        (result?.role_blocked?.length > 0) ||
+        (Array.isArray(result?.blocked) && result.blocked.length > 0);
+
+      if (hasBlockedItems) {
         result.stage = barcodeStage;
         setBucketResult(result);
         setShowBucketModal(true);
-      } else {
-        barcodeBatchPieces.forEach(p => recordStageCompletion(barcodeStage, p.code));
+      } else if (loggedCodes.length > 0 || reworkCodes.length > 0) {
         setBarcodeSuccessModal({
           stage: barcodeStage,
-          count: barcodeBatchPieces.length,
+          count: result.count_logged ?? (loggedCodes.length + reworkCodes.length),
           pieces: barcodeBatchPieces
         });
+      } else {
+        setErrorMsg(result?.message || 'No pieces were logged.');
       }
 
       setBarcodeBatchPieces([]);
@@ -1929,6 +2296,16 @@ export default function ProductionLogEntry() {
         await addScanEvent({ operation_id: opRecord.id, employee_id: workerId, work_date: date, sku_id: skuObj.sku_id, piece_seqs: selectedPieces });
       }
 
+      // Record local stage completion for whichever pieces were actually submitted —
+      // this is what isStageReady()/PREREQUISITE_MAP reads to unlock the next stage
+      // button. Manual door was missing this entirely, so completions here never
+      // propagated to the sequence gate (parity fix with the barcode door).
+      const submittedCodes = scannedBarcodes.length > 0
+        ? scannedBarcodes
+        : selectedPieces.map(seq => `${skuObj?.code || skuCode}-${seq}`);
+      submittedCodes.forEach(code => recordStageCompletion(selectedStage, code));
+      if (skuObj?.code) recordStageCompletion(selectedStage, skuObj.code);
+
       setSuccessMsg("Success!");
       setLastSubmittedPieceSeqs([...selectedPieces]);
       setSubmittedStageMap(prev => ({
@@ -2406,53 +2783,56 @@ export default function ProductionLogEntry() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                 {manualStages.map((stage) => {
                   const isSelected = barcodeStage === stage;
-                  // FIX 1: Sequence lock — blocked when prerequisites not met (applies to ALL roles including DM/MD)
-                  const seqLocked = !isStageReady(stage);
-                  // FIX 2: Role boundary — blocked when role is restricted from this stage
-                  const roleLocked = !isFullAccess && !allowedOperations.includes(stage);
-                  const isDisabled = seqLocked || roleLocked;
+                  const isRoleAllowed = isFullAccess || allowedOperations.includes(stage);
+                  const roleLocked = !isRoleAllowed;
+                  // Tab access is gated by ROLE only. Sequence completion is
+                  // inherently per-piece (many pieces sit at many different
+                  // stages at once), and completedStagesMap is only ever this
+                  // browser session's memory — a different login (e.g. a
+                  // Stitching Manager working pieces someone else already cut
+                  // in an earlier session) would see every stage permanently
+                  // locked with no way in. The real sequence gate already
+                  // runs correctly and session-independently at scan time via
+                  // GET /production/piece-state — that's the source of truth,
+                  // not this button.
+                  const isDisabled = roleLocked;
+
                   return (
                     <button
                       key={stage}
                       type="button"
                       disabled={isDisabled}
                       onClick={() => {
-                        if (seqLocked) {
-                          if (stage === 'Line Stitching') {
-                            setErrorMsg("⚠️ Please complete Store Transfer & Send to Stitching before logging Line Stitching!");
-                          } else {
-                            const prereqs = PREREQUISITE_MAP[stage] || [];
-                            setErrorMsg(`⚠️ Sequence Blocked: Complete '${prereqs.join(' & ')}' stage first before attempting ${stage}!`);
-                          }
-                          return;
-                        }
                         if (roleLocked) {
                           setErrorMsg(`⚠️ Role Restricted: Your role cannot log the '${stage}' stage.`);
                           return;
                         }
                         setBarcodeStage(stage);
                       }}
-                      className={`p-3.5 rounded-2xl text-xs font-black transition-all text-center border shadow-sm relative
-                        ${isDisabled
-                          ? 'opacity-40 grayscale bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed pointer-events-auto'
+                      className={`p-3.5 rounded-2xl text-xs transition-all text-center border shadow-sm relative ${
+                        isDisabled
+                          ? 'opacity-35 grayscale bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
                           : isSelected
-                            ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-pointer'
-                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50 cursor-pointer'
-                        }`}
-                      title={seqLocked ? `🔒 Requires: ${(PREREQUISITE_MAP[stage] || []).join(', ')} completed first` : roleLocked ? '🔒 Not permitted for your role' : stage}
+                            ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-pointer font-black'
+                            : 'bg-white text-slate-800 border-slate-200 hover:border-[#c8834a] hover:bg-amber-50/50 cursor-pointer font-bold'
+                      }`}
+                      title={roleLocked ? '🔒 Not permitted for your role' : stage}
                     >
                       {!isFullAccess && allowedOperations.includes(stage) && (
                         <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
                       )}
-                      {isDisabled && <span className="mr-0.5 text-[9px]">🔒</span>}
+                      {roleLocked && <span className="mr-0.5 text-[9px]">🔒</span>}
                       {stage}
                     </button>
                   );
                 })}
               </div>
 
-              {/* STEP 3A: CUTTING STAGE FLOW */}
-              {barcodeStage === 'Cutting' ? (
+              {/* STEP 3A: CUTTING/LINING STAGE FLOW — Bug #10: same dedicated
+                  consumption screen (Verify SKU -> DCM/Article/Colour/Thickness
+                  -> batch-scan pieces -> submit) shared by both, since both are
+                  cut stages requiring material consumption data. */}
+              {(barcodeStage === 'Cutting' || barcodeStage === 'Lining') ? (
                 <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
 
                   {/* SKU BARCODE GUN INPUT */}
@@ -2506,18 +2886,36 @@ export default function ProductionLogEntry() {
                       </button>
                     </div>
 
-                    {/* Verified SKU Preview Badge */}
+                    {/* Verified SKU Preview Badge — Bug #7: full breakdown
+                        (Order/Style/Article/Colour/Size/Serial), not just the
+                        raw code string with the serial buried inside it. */}
                     {barcodeSelectedSku && (
-                      <div className="p-3 rounded-xl bg-amber-50/80 border border-[#c8834a]/30 flex items-center justify-between animate-fade-in text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                          <span className="font-extrabold text-[#2d1f0e]">
-                            Order #{barcodeSelectedSku.order_number || 'N/A'} · {barcodeSelectedSku.style_name || barcodeSelectedSku.code}
+                      <div className="p-3 rounded-xl bg-amber-50/80 border border-[#c8834a]/30 space-y-2 animate-fade-in text-xs">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="font-extrabold text-[#2d1f0e]">
+                              Order #{barcodeSelectedSku.order_number || 'N/A'} · {barcodeSelectedSku.style_name || barcodeSelectedSku.code}
+                            </span>
+                          </div>
+                          <span className="font-mono text-[11px] font-bold text-[#c8834a]">
+                            {barcodeSelectedSku.code}
                           </span>
                         </div>
-                        <span className="font-mono text-[11px] font-bold text-[#c8834a]">
-                          {barcodeSelectedSku.code}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1.5 border-t border-[#c8834a]/15 text-[11px] font-bold text-[#4a3a2a]">
+                          {barcodeSelectedSku.article && (
+                            <span>Article: <span className="text-[#2d1f0e]">{barcodeSelectedSku.article}</span></span>
+                          )}
+                          {barcodeSelectedSku.color_code && (
+                            <span>Color: <span className="text-[#2d1f0e]">{barcodeSelectedSku.color_code}</span></span>
+                          )}
+                          {barcodeSelectedSku.size && (
+                            <span>Size: <span className="text-[#2d1f0e]">{barcodeSelectedSku.size}</span></span>
+                          )}
+                          {barcodeSelectedSku.serial && (
+                            <span>Serial/Qty: <span className="text-[#2d1f0e]">{barcodeSelectedSku.serial}</span></span>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2621,6 +3019,60 @@ export default function ProductionLogEntry() {
                         </div>
                       </div>
 
+                      {/* Bug #8: Individual Quantity Scanning — every remaining
+                          piece of this style must be scanned one at a time;
+                          each scan is verified live via piece-state before
+                          being added to the batch that Submit sends together. */}
+                      <div className="space-y-3 pt-2 border-t border-[#c8834a]/15">
+                        <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
+                          <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan Piece Barcodes ({cuttingBatchPieces.length} scanned) *
+                        </label>
+                        <div className="flex gap-3">
+                          <div className="relative flex-1">
+                            {!cuttingPieceInput && (
+                              <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
+                            )}
+                            <input
+                              type="text"
+                              placeholder="Scan next piece barcode..."
+                              value={cuttingPieceInput}
+                              onChange={(e) => setCuttingPieceInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  handleCuttingPieceScan(cuttingPieceInput);
+                                }
+                              }}
+                              style={{ paddingLeft: cuttingPieceInput ? '1rem' : '3.25rem' }}
+                              disabled={cuttingPieceResolving}
+                              className="w-full h-12 bg-[#faf6f0] font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] rounded-xl outline-none disabled:opacity-50"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCuttingPieceScan(cuttingPieceInput)}
+                            disabled={cuttingPieceResolving || !cuttingPieceInput.trim()}
+                            className="h-12 px-5 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
+                          >
+                            {cuttingPieceResolving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                            Add Piece
+                          </button>
+                        </div>
+
+                        {cuttingBatchPieces.length > 0 && (
+                          <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                            {cuttingBatchPieces.map((p) => (
+                              <div key={p.code} className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
+                                <span className="font-mono font-bold text-xs text-[#2d1f0e]">{p.code}</span>
+                                <span className="text-[10px] bg-emerald-100 text-emerald-700 font-extrabold uppercase px-1.5 py-0.5 rounded-md">
+                                  #{p.serial_str || (p.seq != null ? String(p.seq).padStart(3, '0') : '—')}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
                       {/* Lot Status Indicator — Bug #9: Thickness is optional, so this must not wait on it */}
                       {lotArticle && lotColor && (
                         <div className={`p-4 rounded-xl border flex items-center justify-between ${lotResults.length === 1 && lotResults[0].covers_required !== false ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
@@ -2645,163 +3097,13 @@ export default function ProductionLogEntry() {
                       <button
                         type="button"
                         onClick={handleBarcodeCuttingSubmit}
-                        disabled={barcodeSubmitting || lotResults.length !== 1 || lotResults[0].covers_required === false}
+                        disabled={barcodeSubmitting || cuttingBatchPieces.length === 0 || !lotArticle || !lotColor || lotResults.length !== 1 || lotResults[0].covers_required === false}
                         className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
                         style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
                       >
                         {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
-                        Log Cutting Event &amp; Mint Traveler Card Barcodes
+                        Log {barcodeStage} Event &amp; Mint Traveler Card Barcodes
                       </button>
-                    </div>
-                  )}
-
-                  {/* Bug #8: Individual Piece Scanning Progress Tracker */}
-                  {cuttingGeneratedPieces.length > 0 && (
-                    <div className="p-5 rounded-2xl bg-slate-900 border border-[#c8834a]/30 space-y-4 animate-fade-in">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-black text-white flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                            Piece-by-Piece Scan Progress
-                          </h4>
-                          <p className="text-[10px] text-slate-400 font-bold mt-0.5">
-                            {cuttingGeneratedPieces.filter(p => p.scanned).length} of {cuttingGeneratedPieces.length} pieces scanned
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-2xl font-black text-[#c8834a]">
-                            {Math.round((cuttingGeneratedPieces.filter(p => p.scanned).length / cuttingGeneratedPieces.length) * 100)}%
-                          </div>
-                          {cuttingPiecesDone && (
-                            <span className="text-[10px] bg-emerald-500 text-white font-black px-2 py-0.5 rounded-full">COMPLETE ✓</span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Progress Bar */}
-                      <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
-                        <div
-                          className="h-full rounded-full transition-all duration-500"
-                          style={{
-                            width: `${(cuttingGeneratedPieces.filter(p => p.scanned).length / cuttingGeneratedPieces.length) * 100}%`,
-                            background: cuttingPiecesDone ? '#10b981' : 'linear-gradient(90deg, #c8834a, #e8a06a)'
-                          }}
-                        />
-                      </div>
-
-                      {/* Piece Grid — Click any badge to toggle scanned status */}
-                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-40 overflow-y-auto pr-1">
-                        {cuttingGeneratedPieces.map((p, idx) => (
-                          <button
-                            key={p.code}
-                            type="button"
-                            onClick={() => {
-                              const updated = cuttingGeneratedPieces.map((item, i) =>
-                                i === idx ? { ...item, scanned: !item.scanned } : item
-                              );
-                              setCuttingGeneratedPieces(updated);
-                              setCuttingPiecesDone(updated.every(item => item.scanned));
-                            }}
-                            className={`p-2 rounded-lg text-center text-[10px] font-black border transition-all cursor-pointer hover:scale-105 active:scale-95 ${
-                              p.scanned
-                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400 shadow-sm'
-                                : 'bg-slate-800 border-slate-700 text-slate-400 hover:border-amber-500/50'
-                            }`}
-                            title={`Click to mark #${p.serial_str} ${p.scanned ? 'unscanned' : 'scanned'}`}
-                          >
-                            <div className="text-xs">{p.scanned ? '✓' : '○'}</div>
-                            <div>#{p.serial_str}</div>
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* 100% Completion Action Banner */}
-                      {cuttingPiecesDone ? (
-                        <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-950 to-slate-900 border border-emerald-500/50 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in">
-                          <div className="flex items-center gap-2.5">
-                            <span className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500 flex items-center justify-center text-emerald-400 font-black text-sm">✓</span>
-                            <div>
-                              <div className="text-xs font-black text-emerald-400 uppercase tracking-wider">Cutting 100% Completed!</div>
-                              <div className="text-[10px] text-slate-300 font-semibold mt-0.5">All {cuttingGeneratedPieces.length} traveler piece barcodes verified &amp; ready for production line.</div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2 w-full sm:w-auto">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setBarcodeStage('Pasting');
-                                setCuttingGeneratedPieces([]);
-                                setCuttingPiecesDone(false);
-                              }}
-                              className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white font-black text-xs rounded-xl shadow-lg hover:shadow-xl transition-all cursor-pointer whitespace-nowrap"
-                            >
-                              Proceed to Pasting Stage ➔
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setCuttingGeneratedPieces([]); setCuttingPiecesDone(false); }}
-                              className="px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
-                            >
-                              Dismiss
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        /* Scan Input & Mark All Controls */
-                        <div className="flex flex-col sm:flex-row gap-2">
-                          <input
-                            type="text"
-                            placeholder="Scan piece barcode (e.g. 001, 002, or KL_1001-ADELE-001)..."
-                            className="flex-1 h-12 px-4 bg-slate-800 border border-slate-600 focus:border-[#c8834a] rounded-xl text-white font-mono text-sm outline-none shadow-inner"
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                const scannedCode = e.target.value.trim().toUpperCase();
-                                if (!scannedCode) return;
-                                const matchIdx = cuttingGeneratedPieces.findIndex(
-                                  p => !p.scanned && (
-                                    p.code.toUpperCase() === scannedCode ||
-                                    p.serial_str === scannedCode ||
-                                    scannedCode.endsWith(p.serial_str)
-                                  )
-                                );
-                                if (matchIdx >= 0) {
-                                  const updated = cuttingGeneratedPieces.map((p, i) =>
-                                    i === matchIdx ? { ...p, scanned: true } : p
-                                  );
-                                  setCuttingGeneratedPieces(updated);
-                                  if (updated.every(p => p.scanned)) setCuttingPiecesDone(true);
-                                  e.target.value = '';
-                                } else {
-                                  e.target.style.borderColor = '#ef4444';
-                                  setTimeout(() => { e.target.style.borderColor = ''; }, 1000);
-                                }
-                              }
-                            }}
-                            autoFocus
-                          />
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const allDone = cuttingGeneratedPieces.map(p => ({ ...p, scanned: true }));
-                                setCuttingGeneratedPieces(allDone);
-                                setCuttingPiecesDone(true);
-                              }}
-                              className="h-12 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs rounded-xl transition-colors cursor-pointer whitespace-nowrap shadow-md"
-                            >
-                              Mark All 100%
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setCuttingGeneratedPieces([]); setCuttingPiecesDone(false); }}
-                              className="h-12 px-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-colors cursor-pointer"
-                            >
-                              Reset
-                            </button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
 
@@ -3065,26 +3367,46 @@ export default function ProductionLogEntry() {
                   <Scissors className="w-4 h-4" style={{ color: '#c8834a' }} /> Operation Stage *
                 </label>
 
-                {/* 7 Operation Stage Banners */}
+                {/* 7 Operation Stage Banners — same Sequential Stage Dependency State
+                    Machine as the Barcode Gun door (parity: isStageReady/PREREQUISITE_MAP) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {manualStages.map((stage) => {
                     const isSelected = selectedStage === stage;
+                    const isRoleAllowed = isFullAccess || allowedOperations.includes(stage);
+                    const roleLocked = !isRoleAllowed;
+                    // Tab access is gated by ROLE only — see matching comment
+                    // in the Barcode Gun door's stage buttons. Sequence
+                    // completion is per-piece and session-independent
+                    // enforcement already happens correctly at scan time via
+                    // GET /production/piece-state.
+                    const isDisabled = roleLocked;
+
                     return (
                       <button
                         key={stage}
                         type="button"
+                        disabled={isDisabled}
                         onClick={() => {
+                          if (roleLocked) {
+                            setErrorMsg(`⚠️ Role Restricted: Your role cannot log the '${stage}' stage.`);
+                            return;
+                          }
                           setSelectedStage(stage);
                           setPieceSeqs('');
                         }}
-                        className={`p-2.5 rounded-xl text-xs font-black transition-all cursor-pointer text-center border relative ${isSelected
-                          ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02]'
-                          : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50'
-                          } ${!isFullAccess && !allowedOperations.includes(stage) ? 'opacity-50 grayscale' : ''}`}
+                        className={`p-2.5 rounded-xl text-xs font-black transition-all text-center border relative ${
+                          isDisabled
+                            ? 'opacity-40 grayscale bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                            : isSelected
+                              ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02] cursor-pointer'
+                              : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50 cursor-pointer'
+                        }`}
+                        title={roleLocked ? '🔒 Not permitted for your role' : stage}
                       >
                         {!isFullAccess && allowedOperations.includes(stage) && (
                           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
                         )}
+                        {roleLocked && <span className="mr-0.5 text-[9px]">🔒</span>}
                         {stage}
                       </button>
                     );
@@ -4110,6 +4432,113 @@ export default function ProductionLogEntry() {
       {/* TAB 3: STORE MANAGER HUB */}
       {activeDoor === 'store' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+          {/* FIX 1: WORKER BARCODE SCAN & ATTENDANCE GATE (STORE HUB INTEGRATION) */}
+          <div className="p-6 rounded-3xl shadow-lg relative overflow-hidden space-y-5" style={{ background: 'linear-gradient(135deg, #1c1207, #2d1f0e)', border: '1px solid rgba(200,131,74,0.3)' }}>
+            <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#c8834a]/20 pb-4 relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center text-[#f5d4a4] font-black text-sm shadow-inner">
+                  1
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    Store Worker Verification
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#c8834a]/30 text-[#f5d4a4]">
+                      Mandatory First
+                    </span>
+                  </h3>
+                  <p className="text-xs text-[#e2d5c3]/80">Scan Worker ID Badge / Card (e.g. EMP-000123) to unlock Store Hub scanning</p>
+                </div>
+              </div>
+
+              {barcodeWorker && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBarcodeWorker(null);
+                    setBarcodeWorkerInput('');
+                  }}
+                  className="text-xs font-black text-amber-200/80 hover:text-white px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition-all cursor-pointer"
+                >
+                  Change Worker
+                </button>
+              )}
+            </div>
+
+            {!barcodeWorker ? (
+              <div className="space-y-4 relative z-10">
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="relative flex-1">
+                    {!barcodeWorkerInput && (
+                      <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
+                    )}
+                    <input
+                      type="text"
+                      placeholder="Scan or type Worker ID (e.g. EMP-000123)..."
+                      value={barcodeWorkerInput}
+                      onChange={(e) => setBarcodeWorkerInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleVerifyBarcodeWorker();
+                        }
+                      }}
+                      style={{ paddingLeft: barcodeWorkerInput ? '1rem' : '3.25rem', paddingRight: '3rem' }}
+                      className="w-full h-14 bg-white/10 text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border-2 border-[#c8834a]/40 rounded-2xl focus:outline-none focus:border-[#f5d4a4] transition-all"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleVerifyBarcodeWorker()}
+                    disabled={barcodeWorkerChecking || !barcodeWorkerInput.trim()}
+                    className="h-14 px-6 rounded-2xl font-black text-sm text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                  >
+                    {barcodeWorkerChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    Verify Worker ID
+                  </button>
+                </div>
+
+                {/* Quick Select Worker Dropdown Fallback — same as Barcode Scanner page */}
+                <div className="pt-2 flex items-center gap-2 text-xs text-[#e2d5c3]/70">
+                  <span>Or select active worker:</span>
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) handleVerifyBarcodeWorker(e.target.value);
+                    }}
+                    className="bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
+                  >
+                    <option value="" className="bg-[#1c1207] text-white">-- Choose Worker --</option>
+                    {workers.map(w => (
+                      <option key={w.id} value={w.id} className="bg-[#1c1207] text-white">
+                        {w.name} ({w.designation || 'Worker'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="p-4 rounded-2xl bg-[#c8834a]/15 border border-[#c8834a]/40 flex items-center justify-between relative z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 font-bold">
+                    ✓
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-black text-white text-sm">{barcodeWorker.name}</h4>
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        Verified Operator
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#f5d4a4] font-medium mt-0.5">
+                      ID: <strong className="font-mono">{barcodeWorker.employee_barcode || barcodeWorker.id}</strong> · {barcodeWorker.designation || 'Store Craftsman'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           {/* Header & Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
@@ -4216,10 +4645,16 @@ export default function ProductionLogEntry() {
                     {!storeCurrentScan && (
                       <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 pointer-events-none transition-opacity duration-200" />
                     )}
+                    {!barcodeWorker && (
+                      <div className="p-3 bg-amber-100/90 border border-amber-300/80 rounded-xl text-amber-900 text-xs font-bold flex items-center justify-center gap-2 shadow-sm mb-2">
+                        <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+                        <span>Scan &amp; Verify Worker ID in Step 1 Banner above to Unlock Store Scanner</span>
+                      </div>
+                    )}
                     <input
                       ref={storeInputRef}
                       type="text"
-                      placeholder={!storeDrawerInput ? "Scan Drawer ID first..." : "Scan Piece Barcode..."}
+                      placeholder={!barcodeWorker ? "Scan Worker ID in Step 1 Banner above..." : (!storeDrawerInput ? "Scan Drawer ID first..." : "Scan Piece Barcode...")}
                       value={storeCurrentScan}
                       onChange={(e) => setStoreCurrentScan(e.target.value)}
                       onKeyDown={(e) => {
@@ -4228,7 +4663,7 @@ export default function ProductionLogEntry() {
                           handleStoreScanInput(storeCurrentScan.trim());
                         }
                       }}
-                      disabled={storeScanResolving}
+                      disabled={!barcodeWorker || storeScanResolving}
                       style={{ paddingLeft: storeCurrentScan ? '1rem' : '3.25rem', paddingRight: '3rem' }}
                       className="w-full h-16 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all disabled:opacity-50"
                     />
@@ -4343,27 +4778,44 @@ export default function ProductionLogEntry() {
                   <h3 className="font-black text-slate-800 flex items-center gap-2">
                     <Layers className="w-5 h-5 text-[#c8834a]" />
                     Drawers
+                    {storeDrawerSearch && (
+                      <button
+                        type="button"
+                        onClick={() => { setStoreDrawerSearch(''); setStoreDrawerInput(''); }}
+                        className="ml-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-full bg-[#c8834a]/15 text-[#8a5a2a] hover:bg-[#c8834a]/25 cursor-pointer"
+                        title="Clear filter"
+                      >
+                        Filtered: {storeDrawerSearch} <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </h3>
 
                   <div className="flex flex-wrap items-center gap-3">
-                    {/* Search Drawer Input */}
-                    <div className="relative flex-1 min-w-[180px]">
-                      <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    {/* Search by Drawer or Piece Code */}
+                    <div className="relative flex-1 min-w-[220px]">
+                      <PackageCheck className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#c8834a]" />
                       <input
                         type="text"
-                        value={storeDrawerSearch}
-                        onChange={(e) => setStoreDrawerSearch(e.target.value)}
-                        placeholder="Search Drawer (e.g. DRW-0001)..."
-                        className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a] shadow-sm"
+                        value={pieceLookupInput}
+                        onChange={(e) => setPieceLookupInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleFindDrawerForPiece();
+                          }
+                        }}
+                        placeholder="Search by Drawer or Piece Code..."
+                        disabled={pieceLookupLoading}
+                        className="w-full pl-9 pr-16 py-2.5 bg-amber-50/50 border border-[#c8834a]/30 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a] shadow-sm disabled:opacity-60"
                       />
-                      {storeDrawerSearch && (
-                        <button
-                          onClick={() => setStoreDrawerSearch('')}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => handleFindDrawerForPiece()}
+                        disabled={pieceLookupLoading || !pieceLookupInput.trim()}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-md bg-[#c8834a] text-white text-[10px] font-black disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed flex items-center gap-1"
+                      >
+                        {pieceLookupLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Find'}
+                      </button>
                     </div>
 
                     {/* Type/Status Filter */}
@@ -4424,31 +4876,6 @@ export default function ProductionLogEntry() {
                       >
                         Cancel
                       </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Bug #15: Drawer Log Queue panel */}
-                {drawerLogQueue.length > 0 && (
-                  <div className="mx-4 my-3 p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5">
-                        📦 Drawer Log Queue ({drawerLogQueue.length} items — pending send)
-                      </h4>
-                      <button
-                        type="button"
-                        onClick={() => setDrawerLogQueue([])}
-                        className="text-xs text-red-500 font-bold hover:underline"
-                      >Clear Queue</button>
-                    </div>
-                    <div className="max-h-32 overflow-y-auto space-y-1">
-                      {drawerLogQueue.map((entry, i) => (
-                        <div key={i} className="flex items-center justify-between text-xs font-mono px-3 py-1.5 bg-white rounded-lg border border-amber-100">
-                          <span className="font-bold text-slate-700">{entry.drawerId}</span>
-                          <span className="text-slate-500">{entry.pieceCode}</span>
-                          <span className="text-[9px] text-amber-600 font-bold">{new Date(entry.loggedAt).toLocaleTimeString()}</span>
-                        </div>
-                      ))}
                     </div>
                   </div>
                 )}
@@ -4556,36 +4983,33 @@ export default function ProductionLogEntry() {
                                         <div className="text-xs font-black text-emerald-800 mt-0.5">{drawer.holding}</div>
                                       </div>
                                     </div>
-                                    {/* Action Buttons for this Drawer */}
+                                    {/* Bug #13: Hold Leather / Hold Lining breakdown — replaces
+                                        the removed per-drawer Receive/Send buttons. To send,
+                                        check this drawer's box above and use the "Send to
+                                        Lining / Stitching" batch action at the top of the list. */}
                                     <div className="pt-3 border-t border-slate-100 space-y-2">
-                                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-2">Actions</div>
-                                      <div className="flex flex-wrap gap-2">
-
-                                        {/* Receive */}
-                                        <button
-                                          onClick={() => {
-                                            setStoreDrawerInput(drawer.id);
-                                            handleStoreTransition('RECEIVED', drawer.drawer_id || drawer.id);
-                                          }}
-                                          disabled={storeApiLoading}
-                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-800 border border-blue-200 text-xs font-black rounded-lg transition-all disabled:opacity-50 cursor-pointer"
-                                        >
-                                          <PackageCheck className="w-3.5 h-3.5" />
-                                          Receive
-                                        </button>
-                                        {/* Send to Shell Stitch */}
-                                        <button
-                                          onClick={() => {
-                                            setStoreDrawerInput(drawer.id);
-                                            handleStoreTransition('SENDED', drawer.drawer_id || drawer.id);
-                                          }}
-                                          disabled={storeApiLoading}
-                                          className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-lg shadow-sm transition-all disabled:opacity-50 cursor-pointer"
-                                        >
-                                          <PackageCheck className="w-3.5 h-3.5" />
-                                          {storeApiLoading && storeDrawerInput === drawer.id ? 'Processing...' : 'Send to Shell Stitch'}
-                                        </button>
+                                      <div className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-2">Hold Status</div>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div className={`p-3 rounded-xl border flex items-center gap-2 ${drawer.leather_in ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}`}>
+                                          {drawer.leather_in ? <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" /> : <XCircle className="w-4 h-4 text-slate-300 shrink-0" />}
+                                          <div>
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Hold Leather</div>
+                                            <div className={`text-xs font-black ${drawer.leather_in ? 'text-emerald-700' : 'text-slate-400'}`}>{drawer.leather_in ? 'In Drawer' : 'Not Yet'}</div>
+                                          </div>
+                                        </div>
+                                        <div className={`p-3 rounded-xl border flex items-center gap-2 ${drawer.lining_in ? 'bg-blue-50 border-blue-200' : 'bg-slate-50 border-slate-200'}`}>
+                                          {drawer.lining_in ? <CheckCircle2 className="w-4 h-4 text-blue-600 shrink-0" /> : <XCircle className="w-4 h-4 text-slate-300 shrink-0" />}
+                                          <div>
+                                            <div className="text-[10px] font-black uppercase tracking-wider text-slate-500">Hold Lining</div>
+                                            <div className={`text-xs font-black ${drawer.lining_in ? 'text-blue-700' : 'text-slate-400'}`}>{drawer.lining_in ? 'In Drawer' : 'Not Yet'}</div>
+                                          </div>
+                                        </div>
                                       </div>
+                                      <p className="text-[10px] text-slate-400 font-bold pt-1">
+                                        {drawer.can_send
+                                          ? '✓ Ready to send — check the box above and use "Send to Lining / Stitching" at the top of the list.'
+                                          : 'Not ready to send yet — waiting on more parts or a prior stage.'}
+                                      </p>
                                     </div>
                                   </div>
                                 ) : (
