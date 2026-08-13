@@ -309,7 +309,10 @@ function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) {
         Html5QrcodeSupportedFormats.EAN_8,
         Html5QrcodeSupportedFormats.UPC_A,
         Html5QrcodeSupportedFormats.UPC_E,
+        Html5QrcodeSupportedFormats.CODABAR,
+        Html5QrcodeSupportedFormats.ITF,
         Html5QrcodeSupportedFormats.QR_CODE,
+        Html5QrcodeSupportedFormats.DATA_MATRIX,
       ];
 
       scanner = new Html5Qrcode("entry-camera-reader", {
@@ -318,14 +321,13 @@ function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) {
       });
 
       const config = {
-        fps: 20,
+        fps: 30,
         qrbox: (viewfinderWidth, viewfinderHeight) => ({
-          width: Math.min(320, Math.floor(viewfinderWidth * 0.85)),
-          height: Math.min(180, Math.floor(viewfinderHeight * 0.45))
+          width: Math.floor(viewfinderWidth * 0.95),
+          height: Math.floor(viewfinderHeight * 0.75)
         }),
-        aspectRatio: 1.777778,
         experimentalFeatures: {
-          useBarCodeDetectorIfSupported: true
+          useBarCodeDetectorIfSupported: false
         }
       };
 
