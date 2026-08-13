@@ -860,17 +860,17 @@ function LiningDashboardContent() {
                   📦
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                  {kpis?.assigned_pieces ?? displayOrder.assignedPieces} Active
+                  {displayOrder.assignedPieces} Active
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Lining Required Pieces</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{kpis?.overall_pieces ?? displayOrder.totalRequired}</span>
+                <span className="text-2xl font-black text-slate-900">{displayOrder.totalRequired}</span>
                 <span className="text-xs font-semibold text-slate-400">/ total order</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Completed: <strong className="text-emerald-600">{kpis?.overall_completed ?? displayOrder.completedPieces}</strong></span>
-                <span>Pending: <strong className="text-amber-600">{kpis?.overall_pending ?? displayOrder.pendingPieces}</strong></span>
+                <span>Completed: <strong className="text-emerald-600">{displayOrder.completedPieces}</strong></span>
+                <span>Pending: <strong className="text-amber-600">{displayOrder.pendingPieces}</strong></span>
               </div>
             </div>
 
@@ -938,10 +938,10 @@ function LiningDashboardContent() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Damage & Rework Status</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-rose-600">{kpis?.damage_pieces ?? displayOrder.damagePieces} Defects</span>
+                <span className="text-2xl font-black text-rose-600">{displayOrder.damagePieces} Defects</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Rework Queue: <strong className="text-purple-600">{kpis?.rework_pieces ?? displayOrder.reworkPieces} pcs</strong></span>
+                <span>Rework Queue: <strong className="text-purple-600">{displayOrder.reworkPieces} pcs</strong></span>
                 <span>Waste Loss: <strong className="text-rose-600">{piecesList.reduce((acc, p) => acc + (p.waste_dcm || 0), 0).toFixed(1)} DCM</strong></span>
               </div>
             </div>

@@ -178,6 +178,24 @@ function DashboardInner() {
     return Array.from(set).filter(Boolean);
   }, [piecesList, consumptionLogs]);
 
+  const availableStatuses = useMemo(() => {
+    const set = new Set();
+    piecesList.forEach((p) => { if (p.status) set.add(p.status); });
+    return Array.from(set).filter(Boolean);
+  }, [piecesList]);
+
+  const availableSizes = useMemo(() => {
+    const set = new Set();
+    piecesList.forEach((p) => { if (p.size) set.add(p.size); });
+    if (activeOrder && activeOrder.styles) {
+      activeOrder.styles.forEach(s => {
+        if (s.size) set.add(s.size);
+        if (s.skus) s.skus.forEach(sku => set.add(sku.size));
+      });
+    }
+    return Array.from(set).filter(Boolean).sort();
+  }, [piecesList, activeOrder]);
+
   // Display Order mapper with safe fallbacks
   const displayOrder = useMemo(() => {
     const isStyleFiltered = filterStyle !== 'all';
@@ -511,14 +529,17 @@ function DashboardInner() {
     triggerToast(`⚠️ Defect Logged for ${pieceCode} (${dcmLoss} DCM Loss) → Sent to Rework`);
   };
 
-  // Top KPIs computed
-  const totalPiecesTracked = piecesList.length;
-  const completedPiecesCount = piecesList.filter((p) => p.status === 'Completed').length;
-  const pendingPiecesCount = piecesList.filter((p) => p.status === 'Cutting' || p.status === 'Pending').length;
-  const damagePiecesCount = piecesList.filter((p) => p.status === 'Damaged' || p.status === 'Rework').length;
+  // Top KPIs computed (Responsive to Local Filters)
+  const isLocalFiltered = filterStyle !== 'all' || filterDate !== 'all' || filterLot !== 'all' || filterCutter !== 'all' || filterThickness !== 'all' || filterColor !== 'all' || filterStatus !== 'all' || filterSize !== 'all' || searchQuery !== '';
+
+  const totalPiecesTracked = isLocalFiltered ? filteredPieces.length : (kpis?.overall_pieces ?? displayOrder.totalPieces);
+  const completedPiecesCount = isLocalFiltered ? filteredPieces.filter((p) => p.status === 'Completed').length : (kpis?.overall_completed ?? displayOrder.completedPieces);
+  const pendingPiecesCount = isLocalFiltered ? filteredPieces.filter((p) => p.status !== 'Completed' && p.status !== 'Damaged' && p.status !== 'Rework').length : (kpis?.overall_pending ?? displayOrder.pendingPieces);
+  const damagePiecesCount = isLocalFiltered ? filteredPieces.filter((p) => p.status === 'Damaged').length : (kpis?.damage_pieces ?? displayOrder.damagePieces);
+  const reworkPiecesCount = isLocalFiltered ? filteredPieces.filter((p) => p.status === 'Rework').length : (kpis?.rework_pieces ?? displayOrder.reworkPieces);
   
-  const totalDcmConsumed = piecesList.reduce((acc, p) => acc + (p.actual_consumption || 0), 0).toFixed(1);
-  const totalDcmWaste = piecesList.reduce((acc, p) => acc + (p.waste_dcm || 0), 0).toFixed(1);
+  const totalDcmConsumed = isLocalFiltered ? filteredPieces.reduce((acc, p) => acc + (p.actual_consumption || 0), 0).toFixed(1) : (kpis?.total_dcm_consumed ?? piecesList.reduce((acc, p) => acc + (p.actual_consumption || 0), 0).toFixed(1));
+  const totalDcmWaste = isLocalFiltered ? filteredPieces.reduce((acc, p) => acc + (p.waste_dcm || 0), 0).toFixed(1) : (kpis?.total_waste_dcm ?? piecesList.reduce((acc, p) => acc + (p.waste_dcm || 0), 0).toFixed(1));
 
   return (
     <div className="w-full min-w-0 space-y-5">
@@ -711,10 +732,11 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">⚡ Status</option>
-              <option value="Completed">Completed</option>
-              <option value="Cutting">Cutting</option>
-              <option value="Damaged">Damaged</option>
-              <option value="Rework">Rework</option>
+              {availableStatuses.map((st) => (
+                <option key={st} value={st}>
+                  {st}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -726,13 +748,11 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">📏 Size</option>
-              <option value="S">Size S</option>
-              <option value="M">Size M</option>
-              <option value="L">Size L</option>
-              <option value="XL">Size XL</option>
-              <option value="38">Size 38</option>
-              <option value="50">Size 50</option>
-              <option value="54">Size 54</option>
+              {availableSizes.map((sz) => (
+                <option key={sz} value={sz}>
+                  Size {sz}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -897,12 +917,12 @@ function DashboardInner() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Total Pieces Tracked</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{kpis?.overall_pieces ?? displayOrder.totalPieces}</span>
+                <span className="text-2xl font-black text-slate-900">{totalPiecesTracked}</span>
                 <span className="text-xs font-semibold text-slate-400">/ across orders</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Completed: <strong className="text-emerald-600">{kpis?.overall_completed ?? displayOrder.completedPieces}</strong></span>
-                <span>Pending: <strong className="text-amber-600">{kpis?.overall_pending ?? displayOrder.pendingPieces}</strong></span>
+                <span>Completed: <strong className="text-emerald-600">{completedPiecesCount}</strong></span>
+                <span>Pending: <strong className="text-amber-600">{pendingPiecesCount}</strong></span>
               </div>
             </div>
 
@@ -921,12 +941,12 @@ function DashboardInner() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Avg Style Consumption (DCM)</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{kpis?.avg_dcm_per_piece ? `${kpis.avg_dcm_per_piece} DCM` : '12.1 DCM'}</span>
+                <span className="text-2xl font-black text-slate-900">{isLocalFiltered ? `${(totalDcmConsumed / (totalPiecesTracked || 1)).toFixed(1)} DCM` : (kpis?.avg_dcm_per_piece ? `${kpis.avg_dcm_per_piece} DCM` : '12.1 DCM')}</span>
                 <span className="text-xs font-semibold text-slate-400">/ piece avg</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
                 <span>BOM Target: <strong>{displayOrder.targetBomDcm || 12.5} DCM</strong></span>
-                <span>Total Consumed: <strong className="text-blue-600">{kpis?.total_dcm_consumed ? `${kpis.total_dcm_consumed} DCM` : `${totalDcmConsumed} DCM`}</strong></span>
+                <span>Total Consumed: <strong className="text-blue-600">{totalDcmConsumed} DCM</strong></span>
               </div>
             </div>
 
@@ -945,7 +965,7 @@ function DashboardInner() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Leather Consumed vs Stock (DCM)</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{kpis?.total_dcm_consumed ? `${kpis.total_dcm_consumed} DCM` : `${totalDcmConsumed} DCM`}</span>
+                <span className="text-2xl font-black text-slate-900">{totalDcmConsumed} DCM</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
                 <span>Total Stock: <strong>{lotsList.reduce((acc, l) => acc + (l.total_stock_dcm || 0), 0).toLocaleString()} DCM</strong></span>
@@ -971,8 +991,8 @@ function DashboardInner() {
                 <span className="text-2xl font-black text-amber-600">{totalDcmWaste} DCM</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Defects: <strong className="text-rose-600">{kpis?.damage_pieces ?? displayOrder.damagePieces} pcs</strong></span>
-                <span>Rework: <strong className="text-purple-600">{kpis?.rework_pieces ?? displayOrder.reworkPieces} pcs</strong></span>
+                <span>Defects: <strong className="text-rose-600">{damagePiecesCount} pcs</strong></span>
+                <span>Rework: <strong className="text-purple-600">{reworkPiecesCount} pcs</strong></span>
               </div>
             </div>
           </div>
