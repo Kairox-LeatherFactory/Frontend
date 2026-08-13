@@ -864,7 +864,7 @@ export default function ProductionLogEntry() {
     'Lining': [], // Independent parallel stream
     'Pasting': ['Cutting'],
     'Fusing': ['Pasting'], // Requires Pasting to be completed first!
-    'Line Stitching': ['Fusing', 'Pasting'],
+    'Line Stitching': ['Fusing', 'Store'], // Requires Fusing completed AND Store Transfer release
     'Shell Stitching': ['Line Stitching'],
     'Final Finish': ['Shell Stitching'],
     'Final Inspection': ['Final Finish'],
@@ -888,6 +888,38 @@ export default function ProductionLogEntry() {
   const API_TO_UI_STAGE = Object.fromEntries(
     Object.entries(UI_TO_API_STAGE).map(([ui, api]) => [api, ui])
   );
+
+  // Helper — checks if all prerequisites for a stage are already completed
+  // Used to compute disabled state for stage buttons (applies to ALL roles including DM/MD)
+  const isStageReady = (stage) => {
+    const prereqs = PREREQUISITE_MAP[stage] || [];
+    if (prereqs.length === 0) return true;
+
+    // Direct check: all prereqs satisfied by at least one entry in completedStagesMap
+    for (const stages of Object.values(completedStagesMap)) {
+      if (prereqs.every(p => stages.has(p))) return true;
+    }
+
+    // Specific fallback gates per stage
+    if (stage === 'Pasting') {
+      return sessionCutSkus.length > 0 || Object.values(completedStagesMap).some(s => s.has('Cutting'));
+    }
+
+    if (stage === 'Fusing') {
+      return Object.values(completedStagesMap).some(s => s.has('Pasting'));
+    }
+
+    if (stage === 'Line Stitching') {
+      const hasFusing = Object.values(completedStagesMap).some(s => s.has('Fusing'));
+      const hasStoreSend = storeSendedSkus.length > 0 || Object.values(completedStagesMap).some(s => s.has('Store'));
+      return hasFusing && hasStoreSend;
+    }
+
+    // Fallback for remaining pipeline stages
+    return prereqs.every(prereq =>
+      Object.values(completedStagesMap).some(s => s.has(prereq))
+    );
+  };
 
   const validateStageSequence = (targetStage, pieceOrSkuKey) => {
     if (!targetStage || targetStage === 'Cutting' || targetStage === 'Lining') return { valid: true };
@@ -1317,6 +1349,13 @@ export default function ProductionLogEntry() {
     const code = (codeToScan || barcodePieceInput).trim();
     if (!code || barcodePieceResolving) return;
 
+    // FIX 2: Hard role-boundary gate — checked before ANY scan work
+    if (!isFullAccess && !allowedOperations.includes(barcodeStage)) {
+      setErrorMsg(`⚠️ Role Restricted: Your role cannot scan for the '${barcodeStage}' stage.`);
+      setBarcodePieceInput('');
+      return;
+    }
+
     if (barcodeBatchPieces.some(p => p.code === code)) {
       setBarcodePieceInput('');
       return;
@@ -1377,6 +1416,12 @@ export default function ProductionLogEntry() {
   const handleBarcodeBatchSubmit = async () => {
     if (!barcodeWorker) return setErrorMsg("Please scan and verify Worker ID first!");
     if (barcodeBatchPieces.length === 0) return setErrorMsg("Please scan at least one piece barcode!");
+
+    // FIX 2: Secondary hard role-boundary gate — safety net before API call
+    if (!isFullAccess && !allowedOperations.includes(barcodeStage)) {
+      setErrorMsg(`⚠️ Role Restricted: Your role (${user.replace('_', ' ')}) is not permitted to submit logs for the '${barcodeStage}' stage.`);
+      return;
+    }
 
     setBarcodeSubmitting(true);
     try {
@@ -2361,19 +2406,45 @@ export default function ProductionLogEntry() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                 {manualStages.map((stage) => {
                   const isSelected = barcodeStage === stage;
+                  // FIX 1: Sequence lock — blocked when prerequisites not met (applies to ALL roles including DM/MD)
+                  const seqLocked = !isStageReady(stage);
+                  // FIX 2: Role boundary — blocked when role is restricted from this stage
+                  const roleLocked = !isFullAccess && !allowedOperations.includes(stage);
+                  const isDisabled = seqLocked || roleLocked;
                   return (
                     <button
                       key={stage}
                       type="button"
-                      onClick={() => setBarcodeStage(stage)}
-                      className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm relative ${isSelected
-                        ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
-                        : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
-                        } ${!isFullAccess && !allowedOperations.includes(stage) ? 'opacity-50 grayscale' : ''}`}
+                      disabled={isDisabled}
+                      onClick={() => {
+                        if (seqLocked) {
+                          if (stage === 'Line Stitching') {
+                            setErrorMsg("⚠️ Please complete Store Transfer & Send to Stitching before logging Line Stitching!");
+                          } else {
+                            const prereqs = PREREQUISITE_MAP[stage] || [];
+                            setErrorMsg(`⚠️ Sequence Blocked: Complete '${prereqs.join(' & ')}' stage first before attempting ${stage}!`);
+                          }
+                          return;
+                        }
+                        if (roleLocked) {
+                          setErrorMsg(`⚠️ Role Restricted: Your role cannot log the '${stage}' stage.`);
+                          return;
+                        }
+                        setBarcodeStage(stage);
+                      }}
+                      className={`p-3.5 rounded-2xl text-xs font-black transition-all text-center border shadow-sm relative
+                        ${isDisabled
+                          ? 'opacity-40 grayscale bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed pointer-events-auto'
+                          : isSelected
+                            ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-pointer'
+                            : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50 cursor-pointer'
+                        }`}
+                      title={seqLocked ? `🔒 Requires: ${(PREREQUISITE_MAP[stage] || []).join(', ')} completed first` : roleLocked ? '🔒 Not permitted for your role' : stage}
                     >
                       {!isFullAccess && allowedOperations.includes(stage) && (
                         <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
                       )}
+                      {isDisabled && <span className="mr-0.5 text-[9px]">🔒</span>}
                       {stage}
                     </button>
                   );
