@@ -828,7 +828,8 @@ export default function ProductionLogEntry() {
 
   // Dedicated Barcode Gun Scanner Handler: Verify Worker & Attendance Check
   const handleVerifyBarcodeWorker = async (inputCode) => {
-    const query = (inputCode || barcodeWorkerInput).trim();
+    const rawCode = typeof inputCode === 'string' ? inputCode : barcodeWorkerInput;
+    const query = (rawCode || '').trim();
     if (!query) return;
     setBarcodeWorkerChecking(true);
     setBarcodeNotCheckedInModal(null);
@@ -885,7 +886,8 @@ export default function ProductionLogEntry() {
 
   // Dedicated SKU Verification (Checks if already cut)
   const handleVerifySkuBarcode = async (valToVerify) => {
-    const val = (valToVerify || barcodeSkuInput).trim().toLowerCase();
+    const rawVal = typeof valToVerify === 'string' ? valToVerify : barcodeSkuInput;
+    const val = (rawVal || '').trim().toLowerCase();
     if (!val) return;
 
     setBarcodeSkuVerifying(true);
