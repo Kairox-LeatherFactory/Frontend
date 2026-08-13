@@ -80,6 +80,8 @@ function DashboardInner() {
   const [piecesList, setPiecesList] = useState([]);
   const [ordersList, setOrdersList] = useState(contextOrders || []);
   const [activeOrder, setActiveOrder] = useState(contextOrders?.[0] || null);
+  const [kpis, setKpis] = useState(null);
+  const [orderProgress, setOrderProgress] = useState([]);
   const [stylesList, setStylesList] = useState([]);
   const [selectedStyleDetail, setSelectedStyleDetail] = useState(null);
   const [cuttersList, setCuttersList] = useState([]);
@@ -134,7 +136,10 @@ function DashboardInner() {
     const map = new Map();
     stylesList.forEach((s) => {
       const name = s.name || s.style || s.style_name;
-      if (name) map.set(name, { id: s.id || name, name });
+      if (name) map.set(name, { id: s.id || s.style_id || name, name });
+    });
+    orderProgress.forEach((s) => {
+      if (s.style_name) map.set(s.style_name, { id: s.style_id || s.style_name, name: s.style_name });
     });
     piecesList.forEach((p) => {
       if (p.style && !map.has(p.style)) map.set(p.style, { id: p.style, name: p.style });
@@ -145,7 +150,7 @@ function DashboardInner() {
       });
     });
     return Array.from(map.values());
-  }, [stylesList, piecesList, ordersList]);
+  }, [stylesList, orderProgress, piecesList, ordersList]);
 
   const availableLots = useMemo(() => {
     const set = new Set();
@@ -175,53 +180,36 @@ function DashboardInner() {
 
   // Display Order mapper with safe fallbacks
   const displayOrder = useMemo(() => {
-    if (!activeOrder) {
-      return {
-        order_number: '—',
-        status: 'Active',
-        id: '—',
-        client: 'Client',
-        article: 'Leather Article',
-        styleName: 'Style',
-        targetBomDcm: 12.5,
-        color: 'Standard',
-        thickness: '0.8-1.0 mm',
-        totalPieces: piecesList.length || 0,
-        lotNumber: 'LOT-LEATHER',
-        expectedCompletionDate: '2026-08-20',
-        avgDailyProduction: 38,
-        requiredDailyProduction: 30,
-        progressPct: 65,
-        completedPieces: piecesList.filter((p) => p.status === 'Completed').length,
-        pendingPieces: piecesList.filter((p) => p.status !== 'Completed').length,
-        damagePieces: piecesList.filter((p) => p.status === 'Damaged').length,
-        reworkPieces: piecesList.filter((p) => p.status === 'Rework').length,
-      };
-    }
-    const firstStyle = activeOrder.styles?.[0] || {};
-    const totalQty = activeOrder.styles?.reduce((acc, s) => acc + (s.skus?.reduce((skuAcc, sku) => skuAcc + (sku.qty_ordered || 0), 0) || 0), 0) || activeOrder.totalPieces || piecesList.length || 0;
+    const isStyleFiltered = filterStyle !== 'all';
+    const firstProg = (isStyleFiltered ? orderProgress?.find(s => s.name === filterStyle || s.style_name === filterStyle) : orderProgress?.[0]) || orderProgress?.[0];
+    const totalQty = isStyleFiltered ? (firstProg?.total_ordered || firstProg?.pieces || 0) : (kpis?.overall_pieces || firstProg?.total_ordered || activeOrder?.totalPieces || piecesList.length || 0);
+    const completedCount = isStyleFiltered ? (firstProg?.completed_pieces || firstProg?.completed || 0) : (kpis?.overall_completed || firstProg?.completed || piecesList.filter((p) => p.status === 'Completed').length);
+    const pendingCount = isStyleFiltered ? Math.max(0, totalQty - completedCount) : (kpis?.overall_pending !== undefined ? kpis.overall_pending : Math.max(0, totalQty - completedCount));
+    const progressPercent = totalQty ? Math.min(100, Math.round((completedCount / totalQty) * 100)) : 0;
+
+    const firstStyle = isStyleFiltered ? (activeOrder?.styles?.find(s => s.name === filterStyle) || {}) : (activeOrder?.styles?.[0] || {});
     return {
-      order_number: activeOrder.order_number || activeOrder.id || '—',
-      status: activeOrder.status || 'In Production',
-      id: activeOrder.order_number || activeOrder.id || '—',
-      client: activeOrder.client || activeOrder.client_name || 'Nordic Luxe Apparel',
-      article: firstStyle.article || activeOrder.article || 'GOAT SUEDE',
-      styleName: firstStyle.name || activeOrder.styleName || 'CARNABY',
-      targetBomDcm: activeOrder.targetBomDcm || 12.5,
-      color: firstStyle.skus?.[0]?.color_name || activeOrder.color || 'PINE GREEN',
-      thickness: firstStyle.thickness || activeOrder.thickness || '0.8-1.0 mm',
-      totalPieces: totalQty || 450,
-      lotNumber: activeOrder.lotNumber || 'LOT-SUEDE-01',
-      expectedCompletionDate: activeOrder.delivery_deadline || activeOrder.expectedCompletionDate || '2026-08-14',
-      avgDailyProduction: activeOrder.avgDailyProduction || 38,
-      requiredDailyProduction: activeOrder.requiredDailyProduction || 30,
-      progressPct: activeOrder.progressPct || (totalQty ? Math.min(100, Math.round((piecesList.filter((p) => p.status === 'Completed').length / totalQty) * 100)) : 61),
-      completedPieces: activeOrder.completedPieces ?? piecesList.filter((p) => p.status === 'Completed').length ?? 48,
-      pendingPieces: activeOrder.pendingPieces ?? piecesList.filter((p) => p.status !== 'Completed').length ?? 12,
-      damagePieces: activeOrder.damagePieces ?? piecesList.filter((p) => p.status === 'Damaged').length ?? 3,
-      reworkPieces: activeOrder.reworkPieces ?? piecesList.filter((p) => p.status === 'Rework').length ?? 4,
+      order_number: firstProg?.order_number || activeOrder?.order_number || activeOrder?.id || '—',
+      status: activeOrder?.status || 'In Production',
+      id: firstProg?.order_number || activeOrder?.order_number || activeOrder?.id || '—',
+      client: activeOrder?.client || activeOrder?.client_name || '—',
+      article: firstProg?.article || firstStyle.article || activeOrder?.article || '—',
+      styleName: isStyleFiltered ? filterStyle : (firstProg?.style_name || firstStyle.name || activeOrder?.styleName || '—'),
+      targetBomDcm: activeOrder?.targetBomDcm || 12.5,
+      color: firstStyle.skus?.[0]?.color_name || firstStyle.color || activeOrder?.color || '—',
+      thickness: firstStyle.thickness || activeOrder?.thickness || '0.8-1.0 mm',
+      totalPieces: totalQty,
+      lotNumber: activeOrder?.lotNumber || '—',
+      expectedCompletionDate: firstProg?.delivery_deadline || firstProg?.target_date || activeOrder?.delivery_deadline || activeOrder?.expectedCompletionDate || '—',
+      avgDailyProduction: activeOrder?.avgDailyProduction || 38,
+      requiredDailyProduction: activeOrder?.requiredDailyProduction || 30,
+      progressPct: progressPercent,
+      completedPieces: completedCount,
+      pendingPieces: pendingCount,
+      damagePieces: isStyleFiltered ? piecesList.filter(p => (p.style === filterStyle || p.style_name === filterStyle) && p.status === 'Damaged').length : (kpis?.damage_pieces || piecesList.filter((p) => p.status === 'Damaged').length || 0),
+      reworkPieces: isStyleFiltered ? piecesList.filter(p => (p.style === filterStyle || p.style_name === filterStyle) && p.status === 'Rework').length : (kpis?.rework_pieces || piecesList.filter((p) => p.status === 'Rework').length || 0),
     };
-  }, [activeOrder, piecesList]);
+  }, [activeOrder, orderProgress, kpis, piecesList, filterStyle]);
 
   // LIVE BACKEND CALL: /api/v1/dashboard/cutting
   useEffect(() => {
@@ -237,20 +225,18 @@ function DashboardInner() {
         }
         const data = await apiGetCuttingDashboard(token, params);
         if (isMounted && data) {
-          if (data.pieces && Array.isArray(data.pieces)) setPiecesList(data.pieces);
+          setKpis(data.kpis || null);
+          setPiecesList(Array.isArray(data.pieces) ? data.pieces : []);
           if (data.orders && Array.isArray(data.orders)) {
             setOrdersList(data.orders);
             if (data.orders.length > 0 && !activeOrder) setActiveOrder(data.orders[0]);
           }
-          if (data.styles && Array.isArray(data.styles)) {
-            setStylesList(data.styles);
-            if (data.styles.length > 0) setSelectedStyleDetail(data.styles[0]);
-          }
-          if (data.cutters && Array.isArray(data.cutters)) setCuttersList(data.cutters);
-          if (data.employees && Array.isArray(data.employees)) setCuttersList(data.employees);
-          if (data.lots && Array.isArray(data.lots)) setLotsList(data.lots);
-          if (data.daily_logs && Array.isArray(data.daily_logs)) setConsumptionLogs(data.daily_logs);
-          if (data.waste_breakdown && Array.isArray(data.waste_breakdown)) setWasteData(data.waste_breakdown);
+          setOrderProgress(Array.isArray(data.order_progress) ? data.order_progress : []);
+          setStylesList(Array.isArray(data.styles) ? data.styles : (Array.isArray(data.order_progress) ? data.order_progress : []));
+          setCuttersList(Array.isArray(data.cutters) ? data.cutters : (Array.isArray(data.employees) ? data.employees : []));
+          setLotsList(Array.isArray(data.lots) ? data.lots : []);
+          setConsumptionLogs(Array.isArray(data.daily_production) ? data.daily_production : (Array.isArray(data.daily_logs) ? data.daily_logs : []));
+          setWasteData(Array.isArray(data.waste_breakdown) ? data.waste_breakdown : []);
         }
       } catch (err) {
         console.warn('Backend API /api/v1/dashboard/cutting notice:', err.message);
@@ -383,6 +369,34 @@ function DashboardInner() {
   }, [filteredPieces, currentPage, pageSize]);
 
   const totalPages = Math.ceil(filteredPieces.length / pageSize) || 1;
+
+  // Filtered lists for other tabs
+  const filteredStylesList = useMemo(() => {
+    return stylesList.filter((s) => {
+      if (filterStyle !== 'all') {
+        const sName = s.style_name || s.name || s.style;
+        if (sName !== filterStyle) return false;
+      }
+      return true;
+    });
+  }, [stylesList, filterStyle]);
+
+  const filteredCuttersList = useMemo(() => {
+    return cuttersList.filter((c) => {
+      if (filterCutter !== 'all' && c.name !== filterCutter) return false;
+      return true;
+    });
+  }, [cuttersList, filterCutter]);
+
+  const filteredConsumptionLogs = useMemo(() => {
+    return consumptionLogs.filter((l) => {
+      if (filterDate !== 'all') {
+        const lDate = l.work_date || l.date;
+        if (lDate !== filterDate) return false;
+      }
+      return true;
+    });
+  }, [consumptionLogs, filterDate]);
 
   // Real-time Simulation action
   const handleSimulateCut = () => {
@@ -878,17 +892,17 @@ function DashboardInner() {
                   📦
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                  &uarr; 14% vs yest
+                  {kpis?.completed_today !== undefined ? `${kpis.completed_today} cut today` : 'Active'}
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Total Pieces Tracked</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{totalPiecesTracked}</span>
-                <span className="text-xs font-semibold text-slate-400">/ 770 total batch</span>
+                <span className="text-2xl font-black text-slate-900">{kpis?.overall_pieces ?? displayOrder.totalPieces}</span>
+                <span className="text-xs font-semibold text-slate-400">/ across orders</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Completed: <strong className="text-emerald-600">{completedPiecesCount}</strong></span>
-                <span>Pending: <strong className="text-amber-600">{pendingPiecesCount}</strong></span>
+                <span>Completed: <strong className="text-emerald-600">{kpis?.overall_completed ?? displayOrder.completedPieces}</strong></span>
+                <span>Pending: <strong className="text-amber-600">{kpis?.overall_pending ?? displayOrder.pendingPieces}</strong></span>
               </div>
             </div>
 
@@ -902,17 +916,17 @@ function DashboardInner() {
                   👗
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                  Yield 98.8%
+                  Yield {kpis?.efficiency_pct ? `${kpis.efficiency_pct}%` : '98.8%'}
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Avg Style Consumption (DCM)</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">12.1 DCM</span>
+                <span className="text-2xl font-black text-slate-900">{kpis?.avg_dcm_per_piece ? `${kpis.avg_dcm_per_piece} DCM` : '12.1 DCM'}</span>
                 <span className="text-xs font-semibold text-slate-400">/ piece avg</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>BOM Target: <strong>12.5 DCM</strong></span>
-                <span>Variance: <strong className="text-emerald-600">-0.4 DCM</strong></span>
+                <span>BOM Target: <strong>{displayOrder.targetBomDcm || 12.5} DCM</strong></span>
+                <span>Total Consumed: <strong className="text-blue-600">{kpis?.total_dcm_consumed ? `${kpis.total_dcm_consumed} DCM` : `${totalDcmConsumed} DCM`}</strong></span>
               </div>
             </div>
 
@@ -931,11 +945,11 @@ function DashboardInner() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Leather Consumed vs Stock (DCM)</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{totalDcmConsumed} DCM</span>
+                <span className="text-2xl font-black text-slate-900">{kpis?.total_dcm_consumed ? `${kpis.total_dcm_consumed} DCM` : `${totalDcmConsumed} DCM`}</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Total Stock: <strong>36,200 DCM</strong></span>
-                <span>Remaining: <strong className="text-emerald-600">21,100 DCM</strong></span>
+                <span>Total Stock: <strong>{lotsList.reduce((acc, l) => acc + (l.total_stock_dcm || 0), 0).toLocaleString()} DCM</strong></span>
+                <span>Remaining: <strong className="text-emerald-600">{lotsList.reduce((acc, l) => acc + (l.remaining_dcm || 0), 0).toLocaleString()} DCM</strong></span>
               </div>
             </div>
 
@@ -949,7 +963,7 @@ function DashboardInner() {
                   📊
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                  Waste: 3.8%
+                  Waste: {kpis?.waste_pct ? `${kpis.waste_pct}%` : '3.8%'}
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Total Cutting Waste & Loss (DCM)</span>
@@ -957,8 +971,8 @@ function DashboardInner() {
                 <span className="text-2xl font-black text-amber-600">{totalDcmWaste} DCM</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Defects: <strong className="text-red-600">{damagePiecesCount} pcs</strong></span>
-                <span>Rework Queue: <strong className="text-purple-600">3 pcs</strong></span>
+                <span>Defects: <strong className="text-rose-600">{kpis?.damage_pieces ?? displayOrder.damagePieces} pcs</strong></span>
+                <span>Rework: <strong className="text-purple-600">{kpis?.rework_pieces ?? displayOrder.reworkPieces} pcs</strong></span>
               </div>
             </div>
           </div>
@@ -996,7 +1010,7 @@ function DashboardInner() {
                 <p className="text-xs text-slate-500 mb-3">Shift-wise production records</p>
                 
                 <div className="overflow-y-auto max-h-[250px] space-y-2 pr-1">
-                  {consumptionLogs.map((log, i) => (
+                  {filteredConsumptionLogs.map((log, i) => (
                     <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
                       <div>
                         <span className="font-bold text-slate-800">{log.work_date || log.date}</span>
@@ -1008,7 +1022,7 @@ function DashboardInner() {
                       </div>
                     </div>
                   ))}
-                  {consumptionLogs.length === 0 && (
+                  {filteredConsumptionLogs.length === 0 && (
                     <div className="text-center py-8 text-xs text-slate-400 font-medium">
                       No shift records logged yet.
                     </div>
@@ -1058,7 +1072,7 @@ function DashboardInner() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {stylesList.map((s, idx) => (
+                  {filteredStylesList.map((s, idx) => (
                     <tr
                       key={idx}
                       onClick={() => setSelectedStyleDetail(s)}
@@ -1095,7 +1109,7 @@ function DashboardInner() {
                       </td>
                     </tr>
                   ))}
-                  {stylesList.length === 0 && (
+                  {filteredStylesList.length === 0 && (
                     <tr>
                       <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">
                         No style matrices available for selected order.
@@ -1160,7 +1174,7 @@ function DashboardInner() {
             <p className="text-xs text-slate-500 mb-4">Variance comparison across jacket production models</p>
             <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stylesList}>
+                <BarChart data={filteredStylesList}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="style_name" tick={{ fontSize: 11, fill: '#64748b' }} />
                   <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -1261,7 +1275,7 @@ function DashboardInner() {
           className="w-full space-y-5"
         >
           <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5">
-            {cuttersList.map((cutter, idx) => (
+            {filteredCuttersList.map((cutter, idx) => (
               <div
                 key={idx}
                 onClick={() => handleOpenCutterModal(cutter)}

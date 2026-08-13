@@ -84,6 +84,8 @@ function StitchingDashboardContent() {
   const [ordersList, setOrdersList] = useState(contextOrders || []);
   const [activeOrder, setActiveOrder] = useState(contextOrders?.[0] || null);
   const [activeStyle, setActiveStyle] = useState(null);
+  const [kpis, setKpis] = useState(null);
+  const [orderProgress, setOrderProgress] = useState([]);
   const [stylesList, setStylesList] = useState([]);
   const [stagesList, setStagesList] = useState([]);
   const [selectedStageDetail, setSelectedStageDetail] = useState(null);
@@ -136,7 +138,10 @@ function StitchingDashboardContent() {
     const map = new Map();
     stylesList.forEach((s) => {
       const name = s.name || s.style || s.style_name;
-      if (name) map.set(name, { id: s.id || name, name });
+      if (name) map.set(name, { id: s.id || s.style_id || name, name });
+    });
+    orderProgress.forEach((s) => {
+      if (s.style_name) map.set(s.style_name, { id: s.style_id || s.style_name, name: s.style_name });
     });
     piecesList.forEach((p) => {
       if (p.style && !map.has(p.style)) map.set(p.style, { id: p.style, name: p.style });
@@ -147,7 +152,7 @@ function StitchingDashboardContent() {
       });
     });
     return Array.from(map.values());
-  }, [stylesList, piecesList, ordersList]);
+  }, [stylesList, orderProgress, piecesList, ordersList]);
 
   const availableStages = useMemo(() => {
     const set = new Set(['PASTING', 'FUSING', 'LINE_STITCHING', 'SHELL_STITCHING', 'FINAL_FINISH']);
@@ -177,43 +182,30 @@ function StitchingDashboardContent() {
 
   // Display Style / Order with safe defaults
   const displayStyle = useMemo(() => {
-    if (activeStyle) return activeStyle;
-    if (!activeOrder) {
-      return {
-        order_number: '—',
-        status: 'In Progress',
-        client: 'Client',
-        style_name: 'CARNABY',
-        article: 'GOAT SUEDE',
-        size: '50',
-        color: 'PINE GREEN',
-        total_pieces: piecesList.length || 0,
-        assigned_pieces: piecesList.length || 0,
-        target_date: '2026-08-18',
-        completed_pieces: piecesList.filter((p) => p.status === 'Completed').length,
-        pending_pieces: piecesList.filter((p) => p.status !== 'Completed').length,
-        progressPct: 58,
-      };
-    }
-    const firstStyle = activeOrder.styles?.[0] || {};
-    const totalQty = activeOrder.styles?.reduce((acc, s) => acc + (s.skus?.reduce((skuAcc, sku) => skuAcc + (sku.qty_ordered || 0), 0) || 0), 0) || activeOrder.totalPieces || piecesList.length || 0;
-    const completedCount = piecesList.filter((p) => p.status === 'Completed').length;
+    const firstProg = (activeStyle ? orderProgress?.find(s => s.name === activeStyle.name || s.style_name === activeStyle.name) : orderProgress?.[0]) || orderProgress?.[0];
+    const totalQty = activeStyle?.total_pieces || kpis?.overall_pieces || firstProg?.total_ordered || activeOrder?.totalPieces || piecesList.length || 0;
+    const assignedQty = activeStyle?.assigned_pieces || kpis?.assigned_pieces || totalQty;
+    const completedCount = activeStyle?.completed_pieces || kpis?.overall_completed || firstProg?.completed || piecesList.filter((p) => p.status === 'Completed').length;
+    const pendingCount = activeStyle?.pending_pieces !== undefined ? activeStyle.pending_pieces : (kpis?.overall_pending !== undefined ? kpis.overall_pending : Math.max(0, totalQty - completedCount));
+    const progressPercent = totalQty ? Math.min(100, Math.round((completedCount / totalQty) * 100)) : 0;
+
+    const firstStyle = activeOrder?.styles?.[0] || {};
     return {
-      order_number: activeOrder.order_number || activeOrder.id || '—',
-      status: activeOrder.status || 'In Progress',
-      client: activeOrder.client || activeOrder.client_name || 'Nordic Luxe Apparel',
-      style_name: firstStyle.name || activeOrder.styleName || 'CARNABY',
-      article: firstStyle.article || activeOrder.article || 'GOAT SUEDE',
-      size: firstStyle.skus?.[0]?.size || '50',
-      color: firstStyle.skus?.[0]?.color_name || activeOrder.color || 'PINE GREEN',
-      total_pieces: totalQty || 450,
-      assigned_pieces: totalQty || 450,
-      target_date: activeOrder.delivery_deadline || activeOrder.target_date || '2026-08-18',
+      order_number: activeStyle?.order_number || firstProg?.order_number || activeOrder?.order_number || activeOrder?.id || '—',
+      status: activeStyle?.status || activeOrder?.status || 'In Progress',
+      client: activeStyle?.client || activeOrder?.client || activeOrder?.client_name || '—',
+      style_name: activeStyle?.name || activeStyle?.style_name || firstProg?.style_name || firstStyle.name || activeOrder?.styleName || '—',
+      article: activeStyle?.article || firstProg?.article || firstStyle.article || activeOrder?.article || '—',
+      size: activeStyle?.size || firstStyle.skus?.[0]?.size || '—',
+      color: activeStyle?.color || firstStyle.skus?.[0]?.color_name || activeOrder?.color || '—',
+      total_pieces: totalQty,
+      assigned_pieces: assignedQty,
+      target_date: activeStyle?.target_date || activeStyle?.delivery_deadline || firstProg?.delivery_deadline || activeOrder?.delivery_deadline || activeOrder?.target_date || '—',
       completed_pieces: completedCount,
-      pending_pieces: Math.max(0, totalQty - completedCount),
-      progressPct: totalQty ? Math.min(100, Math.round((completedCount / totalQty) * 100)) : 58,
+      pending_pieces: pendingCount,
+      progressPct: progressPercent,
     };
-  }, [activeStyle, activeOrder, piecesList]);
+  }, [activeStyle, activeOrder, orderProgress, kpis, piecesList]);
 
   // LIVE BACKEND CALL: /api/v1/dashboard/stitching
   useEffect(() => {
@@ -229,20 +221,49 @@ function StitchingDashboardContent() {
         }
         const data = await apiGetStitchingDashboard(token, params);
         if (isMounted && data) {
-          if (data.pieces && Array.isArray(data.pieces)) setPiecesList(data.pieces);
+          setKpis(data.kpis || null);
+          setPiecesList(Array.isArray(data.pieces) ? data.pieces : []);
           if (data.orders && Array.isArray(data.orders)) {
             setOrdersList(data.orders);
             if (data.orders.length > 0 && !activeOrder) setActiveOrder(data.orders[0]);
           }
-          if (data.current_style) setActiveStyle(data.current_style);
-          if (data.styles && Array.isArray(data.styles)) setStylesList(data.styles);
-          if (data.stages && Array.isArray(data.stages)) {
-            setStagesList(data.stages);
-            if (data.stages.length > 0 && !selectedStageDetail) setSelectedStageDetail(data.stages[0]);
+          setActiveStyle(data.current_style || null);
+          setOrderProgress(Array.isArray(data.order_progress) ? data.order_progress : []);
+          setStylesList(Array.isArray(data.styles) ? data.styles : (Array.isArray(data.order_progress) ? data.order_progress : []));
+          setStagesList(Array.isArray(data.stages) ? data.stages : []);
+          setEmployeesList(Array.isArray(data.employees) ? data.employees : []);
+          setStoreHandoff(data.store_handoff || null);
+          setDefectsList(Array.isArray(data.defects) ? data.defects : []);
+          
+          // Process daily_production into stage-wise chart bars
+          if (data.daily_production && Array.isArray(data.daily_production)) {
+            const dailyMap = new Map();
+            data.daily_production.forEach((item) => {
+              const date = item.work_date;
+              if (!dailyMap.has(date)) {
+                dailyMap.set(date, {
+                  work_date: date,
+                  pasting: 0,
+                  fusing: 0,
+                  line_stitching: 0,
+                  shell_stitching: 0,
+                  final_finish: 0,
+                  completed: 0,
+                  events: 0,
+                });
+              }
+              const row = dailyMap.get(date);
+              const stageKey = (item.stage || '').toLowerCase();
+              if (row[stageKey] !== undefined) {
+                row[stageKey] += (item.completed || 0);
+              }
+              row.completed += (item.completed || 0);
+              row.events += (item.events || 0);
+            });
+            setDailyLogs(Array.from(dailyMap.values()));
+          } else if (data.daily_logs && Array.isArray(data.daily_logs)) {
+            setDailyLogs(data.daily_logs);
           }
-          if (data.employees && Array.isArray(data.employees)) setEmployeesList(data.employees);
-          if (data.store_handoff) setStoreHandoff(data.store_handoff);
-          if (data.daily_logs && Array.isArray(data.daily_logs)) setDailyLogs(data.daily_logs);
           if (data.defects && Array.isArray(data.defects)) setDefectsList(data.defects);
         }
       } catch (err) {
@@ -359,6 +380,44 @@ function StitchingDashboardContent() {
   }, [filteredPieces, currentPage, pageSize]);
 
   const totalPages = Math.ceil(filteredPieces.length / pageSize) || 1;
+
+  // Filtered lists for other tabs
+  const filteredStagesList = useMemo(() => {
+    return stagesList.filter((s) => {
+      if (filterStage !== 'all') {
+        const sName = s.stage || s.label;
+        if (sName !== filterStage) return false;
+      }
+      return true;
+    });
+  }, [stagesList, filterStage]);
+
+  const filteredStylesList = useMemo(() => {
+    return stylesList.filter((s) => {
+      if (filterStyle !== 'all') {
+        const sName = s.style_name || s.name || s.style;
+        if (sName !== filterStyle) return false;
+      }
+      return true;
+    });
+  }, [stylesList, filterStyle]);
+
+  const filteredEmployeesList = useMemo(() => {
+    return employeesList.filter((e) => {
+      if (filterEmployee !== 'all' && e.name !== filterEmployee) return false;
+      return true;
+    });
+  }, [employeesList, filterEmployee]);
+
+  const filteredProductionLogs = useMemo(() => {
+    return dailyLogs.filter((l) => {
+      if (filterDate !== 'all') {
+        const lDate = l.work_date || l.date;
+        if (lDate !== filterDate) return false;
+      }
+      return true;
+    });
+  }, [dailyLogs, filterDate]);
 
   // Real-time Simulation action
   const handleSimulateStitching = () => {
@@ -594,7 +653,16 @@ function StitchingDashboardContent() {
           <div>
             <select
               value={filterStyle}
-              onChange={(e) => setFilterStyle(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFilterStyle(val);
+                if (val !== 'all') {
+                  const found = availableStyles.find(s => s.name === val || s.id === val);
+                  if (found) setActiveStyle(found);
+                } else {
+                  setActiveStyle(null);
+                }
+              }}
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">👗 All Styles</option>
@@ -804,17 +872,17 @@ function StitchingDashboardContent() {
                   📦
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                  {displayStyle.assigned_pieces} Assigned
+                  {kpis?.assigned_pieces ?? displayStyle.assigned_pieces} Assigned
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Total Stitching Order Pieces</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{displayStyle.total_pieces}</span>
+                <span className="text-2xl font-black text-slate-900">{kpis?.overall_pieces ?? displayStyle.total_pieces}</span>
                 <span className="text-xs font-semibold text-slate-400">/ across styles</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Completed: <strong className="text-emerald-600">{displayStyle.completed_pieces}</strong></span>
-                <span>Pending: <strong className="text-amber-600">{displayStyle.pending_pieces}</strong></span>
+                <span>Completed: <strong className="text-emerald-600">{kpis?.overall_completed ?? displayStyle.completed_pieces}</strong> {kpis?.completed_today !== undefined && <span className="text-[10px] text-emerald-700">({kpis.completed_today} today)</span>}</span>
+                <span>Pending: <strong className="text-amber-600">{kpis?.overall_pending ?? displayStyle.pending_pieces}</strong> {kpis?.pending_today !== undefined && <span className="text-[10px] text-amber-700">({kpis.pending_today} today)</span>}</span>
               </div>
             </div>
 
@@ -858,10 +926,10 @@ function StitchingDashboardContent() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Store Handoff & Buffer</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{storeHandoff?.in_drawer || 0} in Drawer</span>
+                <span className="text-2xl font-black text-slate-900">{kpis?.in_store ?? storeHandoff?.in_drawer ?? 0} in Drawer</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Sent to Store: <strong>{storeHandoff?.sent_to_store || 0}</strong></span>
+                <span>Ready for Store: <strong className="text-blue-600">{kpis?.ready_for_store ?? storeHandoff?.ready_for_store ?? 0}</strong></span>
                 <span>Ready Stitching: <strong className="text-emerald-600">{storeHandoff?.ready_for_stitching || 0}</strong></span>
               </div>
             </div>
@@ -876,16 +944,16 @@ function StitchingDashboardContent() {
                   ⚠️
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                  Rework: {piecesList.filter((p) => p.status === 'Rework').length}
+                  Rework: {kpis?.rework_pieces ?? piecesList.filter((p) => p.status === 'Rework').length}
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Damage & Defect Tracking</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-rose-600">{piecesList.filter((p) => p.status === 'Damaged').length} Defects</span>
+                <span className="text-2xl font-black text-rose-600">{kpis?.damage_pieces ?? piecesList.filter((p) => p.status === 'Damaged').length} Defects</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Rework Queue: <strong className="text-purple-600">{piecesList.filter((p) => p.status === 'Rework').length} pcs</strong></span>
-                <span>Ready Inspection: <strong className="text-emerald-600">{piecesList.filter((p) => p.status === 'Completed').length}</strong></span>
+                <span>Rework Queue: <strong className="text-purple-600">{kpis?.rework_pieces ?? piecesList.filter((p) => p.status === 'Rework').length} pcs</strong></span>
+                <span>Ready Inspection: <strong className="text-emerald-600">{kpis?.ready_for_inspection ?? piecesList.filter((p) => p.status === 'Completed').length}</strong></span>
               </div>
             </div>
           </div>
@@ -937,7 +1005,7 @@ function StitchingDashboardContent() {
                       </div>
                     </div>
                   ))}
-                  {dailyLogs.length === 0 && (
+                  {filteredProductionLogs.length === 0 && (
                     <div className="text-center py-8 text-slate-400 font-medium text-xs">
                       No shift records logged yet.
                     </div>
@@ -981,7 +1049,7 @@ function StitchingDashboardContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {stagesList.map((st, idx) => (
+                  {filteredStagesList.map((st, idx) => (
                     <tr
                       key={idx}
                       onClick={() => setSelectedStageDetail(st)}
@@ -1007,7 +1075,7 @@ function StitchingDashboardContent() {
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
                             (st.pending_pieces || 0) > 20
-                              ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                              ? 'bg-rose-100 text-rose-800'
                               : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
@@ -1016,7 +1084,7 @@ function StitchingDashboardContent() {
                       </td>
                     </tr>
                   ))}
-                  {stagesList.length === 0 && (
+                  {filteredStagesList.length === 0 && (
                     <tr>
                       <td colSpan={8} className="text-center py-8 text-slate-400 font-medium">
                         No stage data available for selected order.
@@ -1034,7 +1102,7 @@ function StitchingDashboardContent() {
             <p className="text-xs text-slate-500 mb-4">Total received vs completed vs pending across stages</p>
             <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stagesList}>
+                <BarChart data={filteredStagesList}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
                   <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -1067,22 +1135,40 @@ function StitchingDashboardContent() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 my-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 my-4">
               <div className="p-5 rounded-2xl bg-blue-50 border border-blue-200">
                 <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Ready for Store</span>
-                <div className="text-3xl font-black text-blue-900 mt-1">{storeHandoff?.ready_for_store || 0} pcs</div>
+                <div className="text-3xl font-black text-blue-900 mt-1">{storeHandoff?.ready_for_store ?? kpis?.ready_for_store ?? 0} pcs</div>
                 <p className="text-xs text-blue-600 mt-2">Pasted & Fused pieces awaiting store drawer transfer</p>
               </div>
 
               <div className="p-5 rounded-2xl bg-indigo-50 border border-indigo-200">
-                <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Currently In Store Drawer</span>
-                <div className="text-3xl font-black text-indigo-900 mt-1">{storeHandoff?.in_drawer || 0} pcs</div>
-                <p className="text-xs text-indigo-600 mt-2">Pieces resting in intermediate storage drawers</p>
+                <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Sent to Store</span>
+                <div className="text-3xl font-black text-indigo-900 mt-1">{storeHandoff?.sent_to_store ?? 0} pcs</div>
+                <p className="text-xs text-indigo-600 mt-2">Pieces currently in transit to intermediate storage</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-cyan-50 border border-cyan-200">
+                <span className="text-xs font-bold text-cyan-700 uppercase tracking-wider">In Store</span>
+                <div className="text-3xl font-black text-cyan-900 mt-1">{storeHandoff?.in_store ?? kpis?.in_store ?? 0} pcs</div>
+                <p className="text-xs text-cyan-600 mt-2">Total pieces logged inside store area</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200">
+                <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">Currently in Drawer</span>
+                <div className="text-3xl font-black text-amber-900 mt-1">{storeHandoff?.in_drawer ?? 0} pcs</div>
+                <p className="text-xs text-amber-600 mt-2">Pieces stored inside physical drawers</p>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200">
+                <span className="text-xs font-bold text-rose-700 uppercase tracking-wider">Store Pending</span>
+                <div className="text-3xl font-black text-rose-900 mt-1">{storeHandoff?.store_pending ?? 0} pcs</div>
+                <p className="text-xs text-rose-600 mt-2">Pieces awaiting drawer sorting or QC hold</p>
               </div>
 
               <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200">
                 <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Dispatched to Stitching Line</span>
-                <div className="text-3xl font-black text-emerald-900 mt-1">{storeHandoff?.ready_for_stitching || 0} pcs</div>
+                <div className="text-3xl font-black text-emerald-900 mt-1">{storeHandoff?.ready_for_stitching ?? 0} pcs</div>
                 <p className="text-xs text-emerald-600 mt-2">Handed over to Line & Shell stitchers</p>
               </div>
             </div>
@@ -1103,7 +1189,7 @@ function StitchingDashboardContent() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Per-Style Stitching Progression & Stage Completion</h3>
-                <p className="text-xs text-slate-500">Order progress, completion percentage across 5 stages, and deadline monitoring</p>
+                <p className="text-xs text-slate-500">Order progress, minted pieces, completion percentage across styles, and deadline monitoring</p>
               </div>
             </div>
 
@@ -1111,45 +1197,59 @@ function StitchingDashboardContent() {
               <table className="w-full text-xs text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
+                    <th className="py-3 px-4">Order #</th>
                     <th className="py-3 px-4">Style Name</th>
                     <th className="py-3 px-4">Article</th>
                     <th className="py-3 px-4 text-right">Total Ordered</th>
-                    <th className="py-3 px-4 text-right">Pasting %</th>
-                    <th className="py-3 px-4 text-right">Fusing %</th>
-                    <th className="py-3 px-4 text-right">Line Stitch %</th>
-                    <th className="py-3 px-4 text-right">Shell Stitch %</th>
-                    <th className="py-3 px-4 text-right">Finish %</th>
+                    <th className="py-3 px-4 text-right">Minted</th>
+                    <th className="py-3 px-4 text-right">Completed</th>
+                    <th className="py-3 px-4 text-right">Pending</th>
+                    <th className="py-3 px-4 text-center">Completion %</th>
                     <th className="py-3 px-4">Target Date</th>
-                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Delay Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {stylesList.map((s, idx) => (
+                  {(filteredStylesList.length > 0 ? filteredStylesList : orderProgress).map((s, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-all">
+                      <td className="py-3.5 px-4 font-mono font-bold text-indigo-700">{s.order_number || activeOrder?.order_number || '—'}</td>
                       <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
                         <span>👗</span>
                         <span>{s.style_name || s.name}</span>
                       </td>
                       <td className="py-3.5 px-4">{s.article || 'Standard'}</td>
-                      <td className="py-3.5 px-4 text-right font-bold">{s.total_ordered || s.pieces || 0} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-blue-700">{s.pasting_pct || 0}%</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-amber-700">{s.fusing_pct || 0}%</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-purple-700">{s.line_stitch_pct || 0}%</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-pink-700">{s.shell_stitch_pct || 0}%</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-700">{s.final_finish_pct || 0}%</td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-700">{s.target_date || '—'}</td>
+                      <td className="py-3.5 px-4 text-right font-bold text-slate-900">{(s.total_ordered || s.pieces || 0).toLocaleString()} pcs</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-bold">{(s.minted || 0).toLocaleString()}</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{(s.completed || 0).toLocaleString()}</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-amber-700 font-bold">{(s.pending || 0).toLocaleString()}</td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-16 bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div
+                              className="bg-emerald-500 h-full rounded-full"
+                              style={{ width: `${s.completion_pct ?? 0}%` }}
+                            ></div>
+                          </div>
+                          <span className="font-mono font-bold text-[11px]">{s.completion_pct ?? 0}%</span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-700">{s.delivery_deadline || s.target_date || '—'}</td>
                       <td className="py-3.5 px-4 text-center">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            (s.status || 'ON TRACK') === 'ON TRACK' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                            s.delay_status === 'DELAYED'
+                              ? 'bg-rose-100 text-rose-800'
+                              : s.delay_status === 'NO_DEADLINE'
+                              ? 'bg-slate-100 text-slate-700'
+                              : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {s.status || 'ON TRACK'}
+                          {s.delay_status || 'ON TRACK'}
                         </span>
                       </td>
                     </tr>
                   ))}
-                  {stylesList.length === 0 && (
+                  {filteredStylesList.length === 0 && orderProgress.length === 0 && (
                     <tr>
                       <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">
                         No per-style progress metrics recorded.
@@ -1173,7 +1273,7 @@ function StitchingDashboardContent() {
           className="w-full space-y-5"
         >
           <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            {employeesList.map((emp, idx) => (
+            {filteredEmployeesList.map((emp, idx) => (
               <div
                 key={idx}
                 onClick={() => handleOpenEmployeeModal(emp)}
@@ -1182,16 +1282,23 @@ function StitchingDashboardContent() {
                 <div>
                   <div className="flex items-center gap-3 mb-4">
                     <img
-                      src={emp.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'}
+                      src={emp.photo || emp.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'}
                       alt={emp.name}
                       className="w-12 h-12 rounded-full object-cover border-2 border-[#4f46e5]"
                     />
                     <div>
                       <h4 className="text-sm font-extrabold text-slate-900">{emp.name}</h4>
-                      <p className="text-xs text-slate-500">{emp.designation || emp.role || 'Stitcher'}</p>
-                      <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-800">
-                        {emp.stage || 'Floor'}
-                      </span>
+                      <p className="text-xs text-slate-500">{emp.designation || emp.role || 'Tailor'}</p>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-800">
+                          {emp.stage || 'Floor'}
+                        </span>
+                        {emp.section && (
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-slate-100 text-slate-700">
+                            {emp.section}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -1199,18 +1306,24 @@ function StitchingDashboardContent() {
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Assigned Pieces</span>
                       <div className="text-base font-black text-slate-900">{emp.assigned_pieces || 0} pcs</div>
+                      {emp.assigned_today !== undefined && (
+                        <span className="text-[10px] text-blue-600 block mt-0.5">{emp.assigned_today} today</span>
+                      )}
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Completed</span>
                       <div className="text-base font-black text-emerald-700">{emp.completed_pieces || 0} pcs</div>
+                      {emp.completed_today !== undefined && (
+                        <span className="text-[10px] text-emerald-600 block mt-0.5">{emp.completed_today} today</span>
+                      )}
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
-                      <span className="text-[10px] text-slate-500">Achievement</span>
-                      <div className="text-base font-black text-indigo-700">{emp.achievement_pct || 95}%</div>
+                      <span className="text-[10px] text-slate-500">Defects</span>
+                      <div className="text-base font-black text-rose-600">{emp.damage_pieces || 0}</div>
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
-                      <span className="text-[10px] text-slate-500">Defects / Rework</span>
-                      <div className="text-base font-black text-rose-600">{emp.damage_pieces || 0} / {emp.rework_pieces || 0}</div>
+                      <span className="text-[10px] text-slate-500">Rework Today</span>
+                      <div className="text-base font-black text-amber-600">{emp.rework_today || 0}</div>
                     </div>
                   </div>
                 </div>
@@ -1222,11 +1335,11 @@ function StitchingDashboardContent() {
                   }}
                   className="w-full mt-2 py-2 rounded-xl bg-slate-100 hover:bg-[#1e293b] hover:text-white text-slate-800 text-xs font-bold transition-all"
                 >
-                  View Operator Drawer
+                  View Operator Logs
                 </button>
               </div>
             ))}
-            {employeesList.length === 0 && (
+            {filteredEmployeesList.length === 0 && (
               <div className="col-span-4 text-center py-12 bg-white rounded-2xl border border-slate-200 text-slate-400 font-medium">
                 No stitching employees registered.
               </div>
@@ -1440,7 +1553,7 @@ function StitchingDashboardContent() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={stagesList}
+                      data={filteredStagesList}
                       dataKey="completed_pieces"
                       nameKey="label"
                       cx="50%"
@@ -1468,7 +1581,7 @@ function StitchingDashboardContent() {
               <p className="text-xs text-slate-500 mb-4">Output and target comparison across floor specialists</p>
               <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={employeesList}>
+                  <BarChart data={filteredEmployeesList}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />

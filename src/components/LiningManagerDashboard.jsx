@@ -82,6 +82,8 @@ function LiningDashboardContent() {
   const [piecesList, setPiecesList] = useState([]);
   const [ordersList, setOrdersList] = useState(contextOrders || []);
   const [activeOrder, setActiveOrder] = useState(contextOrders?.[0] || null);
+  const [kpis, setKpis] = useState(null);
+  const [orderProgress, setOrderProgress] = useState([]);
   const [stylesList, setStylesList] = useState([]);
   const [selectedStyleDetail, setSelectedStyleDetail] = useState(null);
   const [employeesList, setEmployeesList] = useState([]);
@@ -135,7 +137,10 @@ function LiningDashboardContent() {
     const map = new Map();
     stylesList.forEach((s) => {
       const name = s.name || s.style || s.style_name;
-      if (name) map.set(name, { id: s.id || name, name });
+      if (name) map.set(name, { id: s.id || s.style_id || name, name });
+    });
+    orderProgress.forEach((s) => {
+      if (s.style_name) map.set(s.style_name, { id: s.style_id || s.style_name, name: s.style_name });
     });
     piecesList.forEach((p) => {
       if (p.style && !map.has(p.style)) map.set(p.style, { id: p.style, name: p.style });
@@ -146,7 +151,7 @@ function LiningDashboardContent() {
       });
     });
     return Array.from(map.values());
-  }, [stylesList, piecesList, ordersList]);
+  }, [stylesList, orderProgress, piecesList, ordersList]);
 
   const availableTypes = useMemo(() => {
     const set = new Set(['TAFFTA', 'COTTON', 'RIBS', 'CUPRO']);
@@ -176,53 +181,36 @@ function LiningDashboardContent() {
 
   // Display Order with safe defaults
   const displayOrder = useMemo(() => {
-    if (!activeOrder) {
-      return {
-        order_number: '—',
-        status: 'Active',
-        id: '—',
-        client: 'Client',
-        article: 'Article',
-        styleName: 'Style',
-        liningType: 'TAFFTA',
-        liningCode: 'LIN-001',
-        color: 'Standard',
-        totalRequired: piecesList.length || 0,
-        deliveryDeadline: '2026-08-20',
-        expectedCompletionDate: '2026-08-16',
-        assignedPieces: piecesList.length || 0,
-        dailyTarget: 40,
-        progressPct: 68,
-        completedPieces: piecesList.filter((p) => p.status === 'Completed').length,
-        pendingPieces: piecesList.filter((p) => p.status !== 'Completed').length,
-        damagePieces: piecesList.filter((p) => p.status === 'Damaged').length,
-        reworkPieces: piecesList.filter((p) => p.status === 'Rework').length,
-      };
-    }
-    const firstStyle = activeOrder.styles?.[0] || {};
-    const totalQty = activeOrder.styles?.reduce((acc, s) => acc + (s.skus?.reduce((skuAcc, sku) => skuAcc + (sku.qty_ordered || 0), 0) || 0), 0) || activeOrder.totalPieces || piecesList.length || 0;
+    const isStyleFiltered = filterStyle !== 'all';
+    const firstProg = (isStyleFiltered ? orderProgress?.find(s => s.name === filterStyle || s.style_name === filterStyle) : orderProgress?.[0]) || orderProgress?.[0];
+    const totalQty = isStyleFiltered ? (firstProg?.total_ordered || firstProg?.pieces || 0) : (kpis?.overall_pieces || firstProg?.total_ordered || activeOrder?.totalPieces || piecesList.length || 0);
+    const completedCount = isStyleFiltered ? (firstProg?.completed_pieces || firstProg?.completed || 0) : (kpis?.overall_completed || firstProg?.completed || piecesList.filter((p) => p.status === 'Completed').length);
+    const pendingCount = isStyleFiltered ? Math.max(0, totalQty - completedCount) : (kpis?.overall_pending !== undefined ? kpis.overall_pending : Math.max(0, totalQty - completedCount));
+    const progressPercent = totalQty ? Math.min(100, Math.round((completedCount / totalQty) * 100)) : 0;
+
+    const firstStyle = isStyleFiltered ? (activeOrder?.styles?.find(s => s.name === filterStyle) || {}) : (activeOrder?.styles?.[0] || {});
     return {
-      order_number: activeOrder.order_number || activeOrder.id || '—',
-      status: activeOrder.status || 'In Production',
-      id: activeOrder.order_number || activeOrder.id || '—',
-      client: activeOrder.client || activeOrder.client_name || 'Nordic Luxe Apparel',
-      article: firstStyle.article || activeOrder.article || 'GOAT SUEDE',
-      styleName: firstStyle.name || activeOrder.styleName || 'CARNABY',
-      liningType: activeOrder.liningType || 'TAFFTA',
-      liningCode: activeOrder.liningCode || 'LIN-TAFF-01',
-      color: firstStyle.skus?.[0]?.color_name || activeOrder.color || 'PINE GREEN',
-      totalRequired: totalQty || 450,
-      deliveryDeadline: activeOrder.delivery_deadline || activeOrder.deliveryDeadline || '2026-08-18',
-      expectedCompletionDate: activeOrder.expectedCompletionDate || '2026-08-16',
-      assignedPieces: activeOrder.assignedPieces || totalQty || 450,
-      dailyTarget: activeOrder.dailyTarget || 40,
-      progressPct: activeOrder.progressPct || (totalQty ? Math.min(100, Math.round((piecesList.filter((p) => p.status === 'Completed').length / totalQty) * 100)) : 68),
-      completedPieces: activeOrder.completedPieces ?? piecesList.filter((p) => p.status === 'Completed').length,
-      pendingPieces: activeOrder.pendingPieces ?? piecesList.filter((p) => p.status !== 'Completed').length,
-      damagePieces: activeOrder.damagePieces ?? piecesList.filter((p) => p.status === 'Damaged').length,
-      reworkPieces: activeOrder.reworkPieces ?? piecesList.filter((p) => p.status === 'Rework').length,
+      order_number: firstProg?.order_number || activeOrder?.order_number || activeOrder?.id || '—',
+      status: activeOrder?.status || 'In Production',
+      id: firstProg?.order_number || activeOrder?.order_number || activeOrder?.id || '—',
+      client: activeOrder?.client || activeOrder?.client_name || '—',
+      article: firstProg?.article || firstStyle.article || activeOrder?.article || '—',
+      styleName: isStyleFiltered ? filterStyle : (firstProg?.style_name || firstStyle.name || activeOrder?.styleName || '—'),
+      liningType: activeOrder?.liningType || '—',
+      liningCode: activeOrder?.liningCode || '—',
+      color: firstStyle.skus?.[0]?.color_name || firstStyle.color || activeOrder?.color || '—',
+      totalRequired: totalQty,
+      deliveryDeadline: firstProg?.delivery_deadline || firstProg?.target_date || activeOrder?.delivery_deadline || activeOrder?.deliveryDeadline || '—',
+      expectedCompletionDate: activeOrder?.expectedCompletionDate || '—',
+      assignedPieces: isStyleFiltered ? totalQty : (kpis?.assigned_pieces || totalQty),
+      dailyTarget: activeOrder?.dailyTarget || 0,
+      progressPct: progressPercent,
+      completedPieces: completedCount,
+      pendingPieces: pendingCount,
+      damagePieces: isStyleFiltered ? piecesList.filter(p => (p.style === filterStyle || p.style_name === filterStyle) && p.status === 'Damaged').length : (kpis?.damage_pieces || piecesList.filter((p) => p.status === 'Damaged').length || 0),
+      reworkPieces: isStyleFiltered ? piecesList.filter(p => (p.style === filterStyle || p.style_name === filterStyle) && p.status === 'Rework').length : (kpis?.rework_pieces || piecesList.filter((p) => p.status === 'Rework').length || 0),
     };
-  }, [activeOrder, piecesList]);
+  }, [activeOrder, orderProgress, kpis, piecesList, filterStyle]);
 
   // LIVE BACKEND CALL: /api/v1/dashboard/lining
   useEffect(() => {
@@ -238,22 +226,21 @@ function LiningDashboardContent() {
         }
         const data = await apiGetLiningDashboard(token, params);
         if (isMounted && data) {
-          if (data.pieces && Array.isArray(data.pieces)) setPiecesList(data.pieces);
+          setKpis(data.kpis || null);
+          setPiecesList(Array.isArray(data.pieces) ? data.pieces : []);
           if (data.orders && Array.isArray(data.orders)) {
             setOrdersList(data.orders);
             if (data.orders.length > 0 && !activeOrder) setActiveOrder(data.orders[0]);
           } else if (data.order) {
             setActiveOrder(data.order);
           }
-          if (data.styles && Array.isArray(data.styles)) {
-            setStylesList(data.styles);
-            if (data.styles.length > 0) setSelectedStyleDetail(data.styles[0]);
-          }
-          if (data.employees && Array.isArray(data.employees)) setEmployeesList(data.employees);
-          if (data.lots && Array.isArray(data.lots)) setLotsList(data.lots);
-          if (data.daily_logs && Array.isArray(data.daily_logs)) setProductionLogs(data.daily_logs);
-          if (data.upcoming && Array.isArray(data.upcoming)) setUpcomingList(data.upcoming);
-          if (data.waste_breakdown && Array.isArray(data.waste_breakdown)) setWasteData(data.waste_breakdown);
+          setOrderProgress(Array.isArray(data.order_progress) ? data.order_progress : []);
+          setStylesList(Array.isArray(data.styles) ? data.styles : (Array.isArray(data.order_progress) ? data.order_progress : []));
+          setEmployeesList(Array.isArray(data.employees) ? data.employees : []);
+          setLotsList(Array.isArray(data.lots) ? data.lots : (Array.isArray(data.rolls) ? data.rolls : []));
+          setUpcomingList(Array.isArray(data.upcoming) ? data.upcoming : []);
+          setProductionLogs(Array.isArray(data.daily_production) ? data.daily_production : (Array.isArray(data.daily_logs) ? data.daily_logs : []));
+          setWasteData(Array.isArray(data.waste_breakdown) ? data.waste_breakdown : []);
         }
       } catch (err) {
         console.warn('Backend API /api/v1/dashboard/lining notice:', err.message);
@@ -378,6 +365,34 @@ function LiningDashboardContent() {
   }, [filteredPieces, currentPage, pageSize]);
 
   const totalPages = Math.ceil(filteredPieces.length / pageSize) || 1;
+
+  // Filtered lists for other tabs
+  const filteredStylesList = useMemo(() => {
+    return stylesList.filter((s) => {
+      if (filterStyle !== 'all') {
+        const sName = s.style_name || s.name || s.style;
+        if (sName !== filterStyle) return false;
+      }
+      return true;
+    });
+  }, [stylesList, filterStyle]);
+
+  const filteredEmployeesList = useMemo(() => {
+    return employeesList.filter((e) => {
+      if (filterEmployee !== 'all' && e.name !== filterEmployee) return false;
+      return true;
+    });
+  }, [employeesList, filterEmployee]);
+
+  const filteredProductionLogs = useMemo(() => {
+    return productionLogs.filter((l) => {
+      if (filterDate !== 'all') {
+        const lDate = l.work_date || l.date;
+        if (lDate !== filterDate) return false;
+      }
+      return true;
+    });
+  }, [productionLogs, filterDate]);
 
   // Real-time Simulation action
   const handleSimulateLining = () => {
@@ -832,7 +847,7 @@ function LiningDashboardContent() {
             </div>
           </div>
 
-          {/* 4 TOP SUMMARY KPIS (MATERIAL & PRODUCTION) */}
+          {/* 4 TOP SUMMARY KPIS (DCM UNIT STRICT - Full Width Grid) */}
           <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             
             {/* KPI 1 */}
@@ -845,17 +860,17 @@ function LiningDashboardContent() {
                   📦
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                  {displayOrder.assignedPieces} Active
+                  {kpis?.assigned_pieces ?? displayOrder.assignedPieces} Active
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Lining Required Pieces</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{displayOrder.totalRequired}</span>
+                <span className="text-2xl font-black text-slate-900">{kpis?.overall_pieces ?? displayOrder.totalRequired}</span>
                 <span className="text-xs font-semibold text-slate-400">/ total order</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Completed: <strong className="text-emerald-600">{displayOrder.completedPieces}</strong></span>
-                <span>Pending: <strong className="text-amber-600">{displayOrder.pendingPieces}</strong></span>
+                <span>Completed: <strong className="text-emerald-600">{kpis?.overall_completed ?? displayOrder.completedPieces}</strong></span>
+                <span>Pending: <strong className="text-amber-600">{kpis?.overall_pending ?? displayOrder.pendingPieces}</strong></span>
               </div>
             </div>
 
@@ -874,11 +889,11 @@ function LiningDashboardContent() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Available Lining Stock</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{lotsList.reduce((acc, l) => acc + (l.total_stock_meters || l.available || 0), 0).toFixed(1)} MTRS</span>
+                <span className="text-2xl font-black text-slate-900">{lotsList.reduce((acc, l) => acc + (l.total_stock_dcm || l.total_stock_meters || l.available || 0), 0).toFixed(1)} DCM</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Used: <strong>{lotsList.reduce((acc, l) => acc + (l.used || 0), 0).toFixed(1)} MTRS</strong></span>
-                <span>Remaining: <strong className="text-emerald-600">{lotsList.reduce((acc, l) => acc + (l.remaining || 0), 0).toFixed(1)} MTRS</strong></span>
+                <span>Consumed: <strong>{kpis?.total_lining_consumed_dcm ? `${kpis.total_lining_consumed_dcm} DCM` : `${lotsList.reduce((acc, l) => acc + (l.consumed_dcm || l.used || 0), 0).toFixed(1)} DCM`}</strong></span>
+                <span>Remaining: <strong className="text-emerald-600">{lotsList.reduce((acc, l) => acc + (l.remaining_dcm || l.remaining || 0), 0).toFixed(1)} DCM</strong></span>
               </div>
             </div>
 
@@ -892,19 +907,19 @@ function LiningDashboardContent() {
                   👗
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                  Yield 98.4%
+                  Yield {kpis?.efficiency_pct ? `${kpis.efficiency_pct}%` : '98.4%'}
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Avg Lining Consumption</span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-2xl font-black text-slate-900">
-                  {piecesList.length ? (piecesList.reduce((acc, p) => acc + (p.actual_consumption || 0), 0) / piecesList.length).toFixed(1) : '11.8'} DCM
+                  {kpis?.avg_dcm_per_piece ? `${kpis.avg_dcm_per_piece} DCM` : (piecesList.length ? (piecesList.reduce((acc, p) => acc + (p.actual_consumption || 0), 0) / piecesList.length).toFixed(1) : '0.4 DCM')}
                 </span>
                 <span className="text-xs font-semibold text-slate-400">/ piece avg</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>BOM Target: <strong>12.0 DCM</strong></span>
-                <span>Variance: <strong className="text-emerald-600">-0.2 DCM</strong></span>
+                <span>BOM Target: <strong>0.4 DCM</strong></span>
+                <span>Variance: <strong className="text-emerald-600">0.0 DCM</strong></span>
               </div>
             </div>
 
@@ -918,15 +933,15 @@ function LiningDashboardContent() {
                   ⚠️
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                  Waste: 2.3%
+                  Waste: {kpis?.waste_pct ? `${kpis.waste_pct}%` : '2.3%'}
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Damage & Rework Status</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-rose-600">{displayOrder.damagePieces} Defects</span>
+                <span className="text-2xl font-black text-rose-600">{kpis?.damage_pieces ?? displayOrder.damagePieces} Defects</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Rework Queue: <strong className="text-purple-600">{displayOrder.reworkPieces} pcs</strong></span>
+                <span>Rework Queue: <strong className="text-purple-600">{kpis?.rework_pieces ?? displayOrder.reworkPieces} pcs</strong></span>
                 <span>Waste Loss: <strong className="text-rose-600">{piecesList.reduce((acc, p) => acc + (p.waste_dcm || 0), 0).toFixed(1)} DCM</strong></span>
               </div>
             </div>
@@ -965,7 +980,7 @@ function LiningDashboardContent() {
                 <p className="text-xs text-slate-500 mb-3">Shift-wise lining logs</p>
                 
                 <div className="overflow-y-auto max-h-[250px] space-y-2 pr-1">
-                  {productionLogs.map((log, i) => (
+                  {filteredProductionLogs.slice(0, 5).map((log, i) => (
                     <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
                       <div>
                         <span className="font-bold text-slate-800">{log.work_date || log.date}</span>
@@ -977,7 +992,7 @@ function LiningDashboardContent() {
                       </div>
                     </div>
                   ))}
-                  {productionLogs.length === 0 && (
+                  {filteredProductionLogs.length === 0 && (
                     <div className="text-center py-8 text-xs text-slate-400 font-medium">
                       No shift records logged yet.
                     </div>
@@ -1088,47 +1103,69 @@ function LiningDashboardContent() {
               <table className="w-full text-xs text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
+                    <th className="py-3 px-4">Order #</th>
                     <th className="py-3 px-4">Style Name</th>
                     <th className="py-3 px-4">Article</th>
                     <th className="py-3 px-4">Lining Type</th>
-                    <th className="py-3 px-4">Lot #</th>
-                    <th className="py-3 px-4 text-right">Target BOM</th>
-                    <th className="py-3 px-4 text-right">Actual Avg</th>
-                    <th className="py-3 px-4 text-right">Variance</th>
-                    <th className="py-3 px-4 text-right">Ordered / Minted</th>
+                    <th className="py-3 px-4 text-right">Total Ordered</th>
+                    <th className="py-3 px-4 text-right">Minted</th>
                     <th className="py-3 px-4 text-right">Completed</th>
+                    <th className="py-3 px-4 text-right">Pending</th>
+                    <th className="py-3 px-4 text-center">Completion %</th>
+                    <th className="py-3 px-4">Target Date</th>
+                    <th className="py-3 px-4 text-center">Delay Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {stylesList.map((s, idx) => (
+                  {filteredStylesList.map((s, idx) => (
                     <tr
                       key={idx}
                       onClick={() => setSelectedStyleDetail(s)}
-                      className={`hover:bg-slate-50 cursor-pointer transition-all ${
+                      className={`hover:bg-slate-5 cursor-pointer transition-all ${
                         selectedStyleDetail?.style_name === s.style_name || selectedStyleDetail?.name === s.name ? 'bg-rose-50/50' : ''
                       }`}
                     >
+                      <td className="py-3.5 px-4 font-mono font-bold text-rose-600">{s.order_number || activeOrder?.order_number || '—'}</td>
                       <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
                         <span>👗</span>
                         <span>{s.style_name || s.name}</span>
                       </td>
                       <td className="py-3.5 px-4">{s.article || 'Standard'}</td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-700">{s.lining_type || 'TAFFTA'}</td>
-                      <td className="py-3.5 px-4 font-mono text-rose-600">{s.lot_number || '—'}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-800">{(s.target_bom_dcm || 12.0).toFixed(1)} DCM</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-[#e11d48]">{(s.actual_avg_dcm || 11.8).toFixed(1)} DCM</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold">
-                        <span className={(s.variance_dcm || 0) <= 0 ? 'text-emerald-600' : 'text-rose-600'}>
-                          {(s.variance_dcm || 0) > 0 ? `+${(s.variance_dcm || 0).toFixed(1)}` : (s.variance_dcm || 0).toFixed(1)} DCM
+                      <td className="py-3.5 px-4 font-semibold text-slate-700">{s.lining_fabric || s.lining_type || 'TAFFTA'}</td>
+                      <td className="py-3.5 px-4 text-right font-bold text-slate-900">{(s.total_ordered || s.pieces || 0).toLocaleString()} pcs</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-bold">{(s.minted || 0).toLocaleString()}</td>
+                      <td className="py-3.5 px-4 text-right font-bold text-emerald-600">{(s.completed || 0).toLocaleString()} pcs</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-amber-700 font-bold">{(s.pending || 0).toLocaleString()}</td>
+                      <td className="py-3.5 px-4 text-center">
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-16 bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div
+                              className="bg-emerald-500 h-full rounded-full"
+                              style={{ width: `${s.completion_pct ?? 0}%` }}
+                            ></div>
+                          </div>
+                          <span className="font-mono font-bold text-[11px]">{s.completion_pct ?? 0}%</span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-700">{s.delivery_deadline || s.target_date || '—'}</td>
+                      <td className="py-3.5 px-4 text-center">
+                        <span
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                            s.delay_status === 'DELAYED'
+                              ? 'bg-rose-100 text-rose-800'
+                              : s.delay_status === 'NO_DEADLINE'
+                              ? 'bg-slate-100 text-slate-700'
+                              : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {s.delay_status || 'ON TRACK'}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold text-slate-900">{s.total_ordered || s.pieces || 0} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-bold text-emerald-600">{s.completed || 0} pcs</td>
                     </tr>
                   ))}
-                  {stylesList.length === 0 && (
+                  {filteredStylesList.length === 0 && orderProgress.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="text-center py-8 text-slate-400 font-medium">
+                      <td colSpan={11} className="text-center py-8 text-slate-400 font-medium">
                         No style matrices available for selected order.
                       </td>
                     </tr>
@@ -1140,18 +1177,18 @@ function LiningDashboardContent() {
 
           {/* Style Comparison Chart */}
           <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <h3 className="text-sm font-extrabold text-slate-900 mb-1">Style Lining BOM (Target vs Actual Consumed)</h3>
-            <p className="text-xs text-slate-500 mb-4">Target vs actual lining consumption per jacket model</p>
+            <h3 className="text-sm font-extrabold text-slate-900 mb-1">Style Lining Production & Progress</h3>
+            <p className="text-xs text-slate-500 mb-4">Total ordered vs completed pieces per style</p>
             <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stylesList}>
+                <BarChart data={orderProgress.length > 0 ? orderProgress : filteredStylesList}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="style_name" tick={{ fontSize: 11, fill: '#64748b' }} />
                   <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                  <Tooltip content={<CustomTooltip unit="DCM/pc" />} />
+                  <Tooltip content={<CustomTooltip unit="pcs" />} />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-                  <Bar dataKey="target_bom_dcm" name="Target BOM (DCM/pc)" fill="#3b82f6" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="actual_avg_dcm" name="Actual Consumed (DCM/pc)" fill="#e11d48" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="total_ordered" name="Total Ordered (pcs)" fill="#3b82f6" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="completed" name="Completed (pcs)" fill="#10b981" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1169,7 +1206,7 @@ function LiningDashboardContent() {
           className="w-full space-y-5"
         >
           <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5">
-            {employeesList.map((emp, idx) => (
+            {filteredEmployeesList.map((emp, idx) => (
               <div
                 key={idx}
                 onClick={() => handleOpenEmployeeModal(emp)}
@@ -1178,16 +1215,13 @@ function LiningDashboardContent() {
                 <div>
                   <div className="flex items-center gap-3 mb-4">
                     <img
-                      src={emp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
+                      src={emp.photo || emp.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                       alt={emp.name}
                       className="w-12 h-12 rounded-full object-cover border-2 border-[#e11d48]"
                     />
                     <div>
                       <h4 className="text-sm font-extrabold text-slate-900">{emp.name}</h4>
-                      <p className="text-xs text-slate-500">{emp.role || 'Operator'}</p>
-                      <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-rose-100 text-rose-800">
-                        {emp.status || 'Active'}
-                      </span>
+                      <p className="text-xs text-slate-500">{emp.designation || emp.role || 'Lining Cutter'}</p>
                     </div>
                   </div>
 
@@ -1195,18 +1229,24 @@ function LiningDashboardContent() {
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Assigned Pieces</span>
                       <div className="text-base font-black text-slate-900">{emp.assigned_pieces || 0} pcs</div>
+                      {emp.assigned_today !== undefined && (
+                        <span className="text-[10px] text-blue-600 block mt-0.5">{emp.assigned_today} today</span>
+                      )}
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
-                      <span className="text-[10px] text-slate-500">Lining Used</span>
-                      <div className="text-base font-black text-[#e11d48]">{emp.used_lining || 0} MTRS</div>
+                      <span className="text-[10px] text-slate-500">Completed</span>
+                      <div className="text-base font-black text-emerald-700">{emp.completed_pieces || 0} pcs</div>
+                      {emp.completed_today !== undefined && (
+                        <span className="text-[10px] text-emerald-600 block mt-0.5">{emp.completed_today} today</span>
+                      )}
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
-                      <span className="text-[10px] text-slate-500">Efficiency</span>
-                      <div className="text-base font-black text-emerald-700">{emp.efficiencyPct || 98}%</div>
+                      <span className="text-[10px] text-slate-500">Defects</span>
+                      <div className="text-base font-black text-rose-600">{emp.damage_pieces || 0} pcs</div>
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
-                      <span className="text-[10px] text-slate-500">Defects / Rework</span>
-                      <div className="text-base font-black text-rose-600">{emp.damage_pieces || 0} / {emp.reworkCount || 0}</div>
+                      <span className="text-[10px] text-slate-500">Rework</span>
+                      <div className="text-base font-black text-amber-600">{emp.rework_pieces || emp.rework_today || 0} pcs</div>
                     </div>
                   </div>
                 </div>
@@ -1216,15 +1256,15 @@ function LiningDashboardContent() {
                     e.stopPropagation();
                     handleOpenEmployeeModal(emp);
                   }}
-                  className="w-full mt-2 py-2 rounded-xl bg-slate-100 hover:bg-[#1e293b] hover:text-white text-slate-800 text-xs font-bold transition-all"
+                  className="w-full mt-2 py-2 rounded-xl bg-slate-100 hover:bg-[#e11d48] hover:text-white text-slate-800 text-xs font-bold transition-all"
                 >
-                  View Lined Pieces & Drawer
+                  View Performance History
                 </button>
               </div>
             ))}
-            {employeesList.length === 0 && (
+            {filteredEmployeesList.length === 0 && (
               <div className="col-span-3 text-center py-12 bg-white rounded-2xl border border-slate-200 text-slate-400 font-medium">
-                No lining operators registered.
+                No lining employees registered.
               </div>
             )}
           </div>
@@ -1531,7 +1571,7 @@ function LiningDashboardContent() {
               <p className="text-xs text-slate-500 mb-4">Throughput comparison across lining floor specialists</p>
               <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={employeesList}>
+                  <BarChart data={filteredEmployeesList}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />

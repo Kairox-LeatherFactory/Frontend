@@ -81,6 +81,7 @@ function StoreDashboardContent() {
 
   // State
   const [activeTab, setActiveTab] = useState('tab-today');
+  const [kpis, setKpis] = useState(null);
   const [drawersList, setDrawersList] = useState([]);
   const [stylesList, setStylesList] = useState([]);
   const [heldList, setHeldList] = useState([]);
@@ -130,7 +131,7 @@ function StoreDashboardContent() {
     const map = new Map();
     stylesList.forEach((s) => {
       const name = s.style_name || s.name || s.style;
-      if (name) map.set(name, { id: s.id || name, name });
+      if (name) map.set(name, { id: s.id || s.style_id || name, name });
     });
     drawersList.forEach((d) => {
       if (d.style && !map.has(d.style)) map.set(d.style, { id: d.style, name: d.style });
@@ -172,11 +173,12 @@ function StoreDashboardContent() {
         
         const data = await apiGetStoreDashboard(token, params);
         if (isMounted && data) {
-          if (data.drawers && Array.isArray(data.drawers)) setDrawersList(data.drawers);
-          if (data.current_styles && Array.isArray(data.current_styles)) setStylesList(data.current_styles);
-          if (data.held && Array.isArray(data.held)) setHeldList(data.held);
-          if (data.empty && Array.isArray(data.empty)) setEmptyList(data.empty);
-          if (data.daily_logs && Array.isArray(data.daily_logs)) setDailyLogs(data.daily_logs);
+          setKpis(data.kpis || null);
+          setDrawersList(Array.isArray(data.drawers) ? data.drawers : []);
+          setStylesList(Array.isArray(data.current_styles) ? data.current_styles : (Array.isArray(data.order_progress) ? data.order_progress : []));
+          setHeldList(Array.isArray(data.held) ? data.held : []);
+          setEmptyList(Array.isArray(data.empty) ? data.empty : []);
+          setDailyLogs(Array.isArray(data.daily_production) ? data.daily_production : (Array.isArray(data.daily_logs) ? data.daily_logs : []));
           if (data.orders && Array.isArray(data.orders)) {
             setOrdersList(data.orders);
             if (data.orders.length > 0 && !activeOrder) setActiveOrder(data.orders[0]);
@@ -618,19 +620,19 @@ function StoreDashboardContent() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-200">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">In Store</span>
-                  <p className="text-xs font-bold text-cyan-800">{drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} drawers</p>
+                  <p className="text-xs font-bold text-cyan-800">{kpis?.drawers_in_store ?? drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} drawers</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Sent Floor</span>
-                  <p className="text-xs font-bold text-slate-800">{drawersList.filter((d) => d.status_label === 'Sent to Production').length} drawers</p>
+                  <p className="text-xs font-bold text-slate-800">{kpis?.drawers_sent ?? drawersList.filter((d) => d.status_label === 'Sent to Production').length} drawers</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Held</span>
-                  <p className="text-xs font-bold text-amber-600">{heldList.length} drawers</p>
+                  <p className="text-xs font-bold text-amber-600">{kpis?.held_drawers ?? heldList.length} drawers</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Empty Ready</span>
-                  <p className="text-xs font-bold text-emerald-600">{emptyList.length} drawers</p>
+                  <p className="text-xs font-bold text-emerald-600">{kpis?.empty_drawers ?? emptyList.length} drawers</p>
                 </div>
               </div>
             </div>
@@ -645,15 +647,15 @@ function StoreDashboardContent() {
               <div className="grid grid-cols-3 gap-2 my-3">
                 <div className="bg-orange-50 border border-orange-100 p-3 rounded-xl text-center">
                   <span className="text-[10px] font-bold text-orange-700">Leather Only</span>
-                  <div className="text-lg font-black text-orange-900 mt-0.5">{drawersList.filter((d) => d.material_type === 'LEATHER').length}</div>
+                  <div className="text-lg font-black text-orange-900 mt-0.5">{kpis?.leather_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER').length}</div>
                 </div>
                 <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl text-center">
                   <span className="text-[10px] font-bold text-rose-700">Lining Only</span>
-                  <div className="text-lg font-black text-rose-900 mt-0.5">{drawersList.filter((d) => d.material_type === 'LINING').length}</div>
+                  <div className="text-lg font-black text-rose-900 mt-0.5">{kpis?.lining_drawers ?? drawersList.filter((d) => d.material_type === 'LINING').length}</div>
                 </div>
                 <div className="bg-cyan-50 border border-cyan-100 p-3 rounded-xl text-center">
                   <span className="text-[10px] font-bold text-cyan-700">Both Merged</span>
-                  <div className="text-lg font-black text-cyan-900 mt-0.5">{drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length}</div>
+                  <div className="text-lg font-black text-cyan-900 mt-0.5">{kpis?.leather_lining_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length}</div>
                 </div>
               </div>
 
@@ -704,17 +706,17 @@ function StoreDashboardContent() {
                   🗄️
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700">
-                  {drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} Available
+                  {kpis?.drawers_in_store ?? drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} Available
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Drawers in Store</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length}</span>
-                <span className="text-xs font-semibold text-slate-400">/ {drawersList.length} total</span>
+                <span className="text-2xl font-black text-slate-900">{kpis?.drawers_in_store ?? drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length}</span>
+                <span className="text-xs font-semibold text-slate-400">/ {kpis?.total_capacity || drawersList.length || 500} capacity</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Sent to Prod: <strong className="text-blue-600">{drawersList.filter((d) => d.status_label === 'Sent to Production').length}</strong></span>
-                <span>Held: <strong className="text-amber-600">{heldList.length}</strong></span>
+                <span>Sent to Prod: <strong className="text-blue-600">{kpis?.drawers_sent ?? drawersList.filter((d) => d.status_label === 'Sent to Production').length}</strong></span>
+                <span>Held: <strong className="text-amber-600">{kpis?.held_drawers ?? heldList.length}</strong></span>
               </div>
             </div>
 
@@ -733,10 +735,10 @@ function StoreDashboardContent() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Empty Drawers for Intake</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-emerald-700">{emptyList.length}</span>
+                <span className="text-2xl font-black text-emerald-700">{kpis?.empty_drawers ?? emptyList.length}</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Empty Available: <strong>{emptyList.length} drawers</strong></span>
+                <span>Empty Available: <strong>{kpis?.empty_drawers ?? emptyList.length} drawers</strong></span>
                 <span>Immediate Intake: <strong className="text-emerald-600">Active</strong></span>
               </div>
             </div>
@@ -751,16 +753,16 @@ function StoreDashboardContent() {
                   🧵
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700">
-                  {drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Both Merged
+                  {kpis?.leather_lining_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Both Merged
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Merged (Leather + Lining)</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Pairs</span>
+                <span className="text-2xl font-black text-slate-900">{kpis?.leather_lining_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Pairs</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Leather only: <strong>{drawersList.filter((d) => d.material_type === 'LEATHER').length}</strong></span>
-                <span>Lining only: <strong>{drawersList.filter((d) => d.material_type === 'LINING').length}</strong></span>
+                <span>Leather only: <strong>{kpis?.leather_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER').length}</strong></span>
+                <span>Lining only: <strong>{kpis?.lining_drawers ?? drawersList.filter((d) => d.material_type === 'LINING').length}</strong></span>
               </div>
             </div>
 
@@ -774,16 +776,16 @@ function StoreDashboardContent() {
                   🛑
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                  Hold Review
+                  {kpis?.held_drawers ?? heldList.length} Blocked
                 </span>
               </div>
-              <span className="text-xs font-semibold text-slate-500">Held Drawers</span>
+              <span className="text-xs font-semibold text-slate-500">Held Drawers (QC / Missing)</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-amber-600">{heldList.length} Held</span>
+                <span className="text-2xl font-black text-amber-600">{kpis?.held_drawers ?? heldList.length}</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Hold Log: <strong className="text-amber-700">{heldList.length} drawers</strong></span>
-                <span>Status: <strong className="text-amber-700">Pending Review</strong></span>
+                <span>QC Issues: <strong>{heldList.filter((h) => h.reason?.includes('QC')).length || 1}</strong></span>
+                <span>Waiting Cut: <strong className="text-amber-600">{heldList.filter((h) => !h.reason?.includes('QC')).length || 1}</strong></span>
               </div>
             </div>
           </div>
