@@ -18,6 +18,7 @@ import {
   apiReceiveDrawer,
   apiListDrawers,
   apiGetMaterialLots,
+  apiGetPieceDetail,
 } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Store, Layers, PackageCheck, ChevronRight, Camera, Send, RefreshCw } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
@@ -444,14 +445,8 @@ export default function ProductionLogEntry() {
   const [storeScanPart, setStoreScanPart] = useState('LEATHER'); // 'LEATHER' or 'LINING' — same barcode, different part gate
   const [storeCurrentScan, setStoreCurrentScan] = useState('');
   const [storeVerifyResult, setStoreVerifyResult] = useState(null);
-  const [holdCuttingOk, setHoldCuttingOk] = useState(false);
-  const [holdLiningOk, setHoldLiningOk] = useState(false);
   const [storeReceiveStatus, setStoreReceiveStatus] = useState('pending'); // 'pending', 'received', 'sended'
   const [storeApiLoading, setStoreApiLoading] = useState(false);
-
-  // Manual Checklists for Store Hub
-  const [isCheckedLeather, setIsCheckedLeather] = useState(false);
-  const [isCheckedLining, setIsCheckedLining] = useState(false);
 
   const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
@@ -549,7 +544,17 @@ export default function ProductionLogEntry() {
           status: d.state || 'Free',
           client: d.caption || 'Store Rack',
           style: d.code || '-',
-          pieces: d.seq || 0
+          pieces: d.seq || 0,
+          // Expanded Piece & Stage Breakdown Details
+          order_number: d.order_number || d.order_id || 'PO-1001',
+          style_name: d.style_name || d.style || d.code || 'ADELE-38',
+          article: d.article || d.material || 'LEATHER',
+          serial: d.serial || d.serial_no || '001',
+          colour: d.colour || d.color || 'BLACK',
+          size: d.size || '38',
+          display_label: d.display_label || d.label || d.stage_label || 'Store Inventory',
+          current_stage: d.current_stage || d.stage || 'Store Hub',
+          drawer_code: d.code || d.drawer_code || `DRW-${String(d.seq || 1).padStart(4, '0')}`
         }));
         setStoreDrawers(mapped);
       }
@@ -578,18 +583,24 @@ export default function ProductionLogEntry() {
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
 
   // --- Store Hub Backend-Driven Flow ---
-  const handleStoreVerify = async () => {
+  const handleStoreVerify = async (pieceOverride) => {
     setStoreApiLoading(true);
     setErrorMsg('');
     try {
       const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
       const drawerVal = storeDrawerInput.trim().toUpperCase();
-      const pieceVal = storePieceInput.trim();
+      const pieceVal = (typeof pieceOverride === 'string' ? pieceOverride : storePieceInput).trim();
 
-      const payload = {
-        part: storeScanPart
-      };
+      const payload = {};
+
+      if (barcodeWorker) {
+        if (barcodeWorker.employee_barcode || barcodeWorker.barcode) {
+          payload.employee_barcode = barcodeWorker.employee_barcode || barcodeWorker.barcode;
+        } else if (barcodeWorker.id) {
+          payload.employee_id = barcodeWorker.id;
+        }
+      }
 
       if (isUUID(drawerVal)) {
         payload.drawer_id = drawerVal.toLowerCase();
@@ -609,7 +620,6 @@ export default function ProductionLogEntry() {
       // Auto-refresh the live drawers list so we immediately have the drawer's UUID
       await fetchLiveDrawers();
 
-      setHoldCuttingOk(true);
       setSuccessMsg(`Scan logged successfully! (${res.state || 'OK'})`);
       fetchLiveDrawers();
     } catch (err) {
@@ -622,6 +632,59 @@ export default function ProductionLogEntry() {
       setStoreApiLoading(false);
     }
   };
+
+  // Bug #11: detect the scanned code's actual type (Drawer vs Piece) via the
+  // barcode registry instead of assuming "first scan = drawer, second = piece"
+  // — a piece scanned out of order used to get silently misfiled as a drawer ID.
+  const [storeScanResolving, setStoreScanResolving] = useState(false);
+  const handleStoreScanInput = async (val) => {
+    if (!val || storeScanResolving) return;
+    setStoreCurrentScan('');
+    setStoreScanResolving(true);
+    setErrorMsg('');
+    try {
+      let resolvedType = null;
+      try {
+        const resolved = await apiBarcodeResolve(token, val);
+        resolvedType = resolved?.type || null;
+      } catch {
+        // Code not yet in the registry (e.g. a drawer label printed but not
+        // scanned before) — fall back to the ordinal guess rather than
+        // blocking the whole flow on an unresolvable lookup.
+        resolvedType = null;
+      }
+
+      const looksLikeDrawer = resolvedType
+        ? resolvedType === 'DRAWER'
+        : !storeDrawerInput;
+
+      if (looksLikeDrawer) {
+        setStoreDrawerInput(val);
+        setSuccessMsg(`✅ Drawer '${val}' detected! Now scan the piece barcode.`);
+        setTimeout(() => storeInputRef.current?.focus(), 150);
+        return;
+      }
+
+      if (resolvedType === 'PIECE' && !storeDrawerInput) {
+        setErrorMsg('That looks like a Piece barcode — scan the Drawer barcode first.');
+        return;
+      }
+
+      setStorePieceInput(val);
+      await handleStoreVerify(val);
+      setTimeout(() => storeInputRef.current?.focus(), 150);
+    } finally {
+      setStoreScanResolving(false);
+    }
+  };
+
+  // Bug #3: auto-focus the Store scan input whenever this tab becomes active
+  // and again after every completed scan (handled inside handleStoreScanInput).
+  useEffect(() => {
+    if (activeDoor === 'store') {
+      setTimeout(() => storeInputRef.current?.focus(), 150);
+    }
+  }, [activeDoor]);
 
   const handleStoreTransition = async (transition, overrideDrawerId = null) => {
     setStoreApiLoading(true);
@@ -768,6 +831,10 @@ export default function ProductionLogEntry() {
   const [cuttingGeneratedPieces, setCuttingGeneratedPieces] = useState([]); // { code, serial_str, scanned: bool }
   const [cuttingPiecesDone, setCuttingPiecesDone] = useState(false); // true when all pieces scanned
 
+  // Bug #4 + #6 + #12: piece-detail resolution state for the pipeline scanner
+  const [barcodePieceResolving, setBarcodePieceResolving] = useState(false);
+  const [scannedPieceDrawerInfo, setScannedPieceDrawerInfo] = useState(null); // { code, holding }
+
   // 3 Material Spec Dropdowns (Dynamic API-driven)
   const [lotArticle, setLotArticle] = useState('');
   const [lotColor, setLotColor] = useState('');
@@ -803,6 +870,24 @@ export default function ProductionLogEntry() {
     'Final Inspection': ['Final Finish'],
     'Package Export': ['Final Inspection']
   };
+
+  // Bug #4 + #6 + #12: maps between this UI's stage names and the piece-detail
+  // API's SCREAMING_SNAKE_CASE stage identifiers, used to auto-detect a
+  // scanned piece's correct stage and read its backend-verified sequence state.
+  const UI_TO_API_STAGE = {
+    'Cutting': 'CUTTING',
+    'Lining': 'LINING_CUTTING',
+    'Pasting': 'PASTING',
+    'Fusing': 'FUSING',
+    'Line Stitching': 'LINE_STITCHING',
+    'Shell Stitching': 'SHELL_STITCHING',
+    'Final Finish': 'FINAL_FINISH',
+    'Final Inspection': 'FINAL_INSPECTION',
+    'Package Export': 'PACKAGE_EXPORT',
+  };
+  const API_TO_UI_STAGE = Object.fromEntries(
+    Object.entries(UI_TO_API_STAGE).map(([ui, api]) => [api, ui])
+  );
 
   const validateStageSequence = (targetStage, pieceOrSkuKey) => {
     if (!targetStage || targetStage === 'Cutting' || targetStage === 'Lining') return { valid: true };
@@ -1228,25 +1313,65 @@ export default function ProductionLogEntry() {
   };
 
   // Dedicated Barcode Pipeline Scan & Submit
-  const handleBarcodePieceScan = (codeToScan) => {
+  const handleBarcodePieceScan = async (codeToScan) => {
     const code = (codeToScan || barcodePieceInput).trim();
-    if (!code) return;
-
-    // Bug #6: Stage Sequence Validation Check
-    const seqCheck = validateStageSequence(barcodeStage, code);
-    if (!seqCheck.valid) {
-      setErrorMsg(seqCheck.error);
-      setBarcodePieceInput('');
-      return;
-    }
+    if (!code || barcodePieceResolving) return;
 
     if (barcodeBatchPieces.some(p => p.code === code)) {
       setBarcodePieceInput('');
       return;
     }
 
-    setBarcodeBatchPieces(prev => [...prev, { code, scanned_at: new Date().toLocaleTimeString() }]);
-    setBarcodePieceInput('');
+    setBarcodePieceResolving(true);
+    try {
+      let targetStage = barcodeStage;
+      let drawerInfo = null;
+
+      // Bug #4 + #6 + #12: resolve the scanned piece to auto-detect the stage
+      // it's actually due for next, validate against the backend's own view
+      // of completed/next/not_applicable stages, and surface its drawer.
+      try {
+        const detail = await apiGetPieceDetail(token, { piece_code: code });
+        const piece = detail?.piece || {};
+        drawerInfo = piece.drawer || (piece.drawer_code ? { code: piece.drawer_code } : null);
+
+        const mappedStage = detail?.next_stage ? (API_TO_UI_STAGE[detail.next_stage] || null) : null;
+        if (mappedStage && manualStages.includes(mappedStage)) {
+          targetStage = mappedStage;
+          if (mappedStage !== barcodeStage) {
+            setBarcodeStage(mappedStage);
+            setSuccessMsg(`🔄 Auto-detected stage: ${mappedStage}`);
+          }
+        }
+
+        const stageEntry = (detail?.stages || []).find(s => s.stage === UI_TO_API_STAGE[targetStage]);
+        if (stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
+          setErrorMsg(
+            stageEntry.state === 'not_applicable'
+              ? `⚠️ '${targetStage}' does not apply to this piece${stageEntry.reason ? ` (${stageEntry.reason})` : ''}.`
+              : `⚠️ Production Sequence Blocked: '${targetStage}' isn't ready yet for this piece.`
+          );
+          setBarcodePieceInput('');
+          return;
+        }
+      } catch {
+        // Piece-detail lookup failed (e.g. code not minted yet) — fall back
+        // to the local heuristic so scanning still works offline of the API.
+        const seqCheck = validateStageSequence(targetStage, code);
+        if (!seqCheck.valid) {
+          setErrorMsg(seqCheck.error);
+          setBarcodePieceInput('');
+          return;
+        }
+      }
+
+      setScannedPieceDrawerInfo(drawerInfo);
+      setBarcodeBatchPieces(prev => prev.some(p => p.code === code) ? prev : [...prev, { code, scanned_at: new Date().toLocaleTimeString() }]);
+      setBarcodePieceInput('');
+      setTimeout(() => pieceInputRef.current?.focus(), 100);
+    } finally {
+      setBarcodePieceResolving(false);
+    }
   };
 
   const handleBarcodeBatchSubmit = async () => {
@@ -1257,9 +1382,8 @@ export default function ProductionLogEntry() {
     try {
       const result = await apiProductionLogTwoDoor(token, {
         screen_context: 'PIPELINE',
-        actor: { employee_barcode: barcodeWorker.employee_barcode || barcodeWorker.id },
+        actor: { employee_barcode: barcodeWorker.employee_barcode || barcodeWorker.barcode || barcodeWorker.id },
         targets: { piece_barcodes: barcodeBatchPieces.map(p => p.code) },
-        operation_stage: barcodeStage.toUpperCase().replace(' ', '_'),
         work_date: date
       });
 
@@ -1277,6 +1401,7 @@ export default function ProductionLogEntry() {
       }
 
       setBarcodeBatchPieces([]);
+      setScannedPieceDrawerInfo(null);
     } catch (err) {
       setErrorMsg(`Pipeline submission failed: ${err.message}`);
     } finally {
@@ -2286,14 +2411,14 @@ export default function ProductionLogEntry() {
                             }
                           }}
                           style={{ paddingLeft: barcodeSkuInput ? '1rem' : '3.25rem', paddingRight: '3rem' }}
-                          className="w-full h-14 bg-white font-mono font-bold text-base text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all"
-                          autoFocus
-                          disabled={barcodeSkuVerifying}
+                          className="w-full h-14 bg-white font-mono font-bold text-base text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={!barcodeWorker || barcodeSkuVerifying}
                         />
                         <button
                           type="button"
                           onClick={() => setCameraScanTarget('sku')}
-                          className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-amber-50 text-[#c8834a] border border-[#c8834a]/30 hover:bg-amber-100 active:scale-95 transition-all cursor-pointer z-10"
+                          disabled={!barcodeWorker}
+                          className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-amber-50 text-[#c8834a] border border-[#c8834a]/30 hover:bg-amber-100 active:scale-95 transition-all cursor-pointer z-10 disabled:opacity-40 disabled:cursor-not-allowed"
                           title="Scan SKU Barcode with Mobile Camera"
                         >
                           <Camera className="w-5 h-5" />
@@ -2302,7 +2427,7 @@ export default function ProductionLogEntry() {
                       <button
                         type="button"
                         onClick={() => handleVerifySkuBarcode(barcodeSkuInput)}
-                        disabled={!barcodeSkuInput.trim() || barcodeSkuVerifying}
+                        disabled={!barcodeWorker || !barcodeSkuInput.trim() || barcodeSkuVerifying}
                         className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
                       >
                         {barcodeSkuVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
@@ -2425,8 +2550,8 @@ export default function ProductionLogEntry() {
                         </div>
                       </div>
 
-                      {/* Lot Status Indicator */}
-                      {lotArticle && lotColor && lotThickness && (
+                      {/* Lot Status Indicator — Bug #9: Thickness is optional, so this must not wait on it */}
+                      {lotArticle && lotColor && (
                         <div className={`p-4 rounded-xl border flex items-center justify-between ${lotResults.length === 1 && lotResults[0].covers_required !== false ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
                           <div>
                             <div className="text-xs font-black uppercase tracking-wider mb-1">Material Availability</div>
@@ -2636,19 +2761,33 @@ export default function ProductionLogEntry() {
                             }
                           }}
                           style={{ paddingLeft: barcodePieceInput ? '1rem' : '3.25rem', paddingRight: '1rem' }}
-                          className="w-full h-14 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all"
+                          className="w-full h-14 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={!barcodeWorker || barcodePieceResolving}
                           autoFocus
                         />
                       </div>
                       <button
                         type="button"
                         onClick={() => handleBarcodePieceScan()}
-                        className="h-14 px-6 rounded-xl font-black text-xs text-white shadow-md cursor-pointer"
+                        disabled={!barcodeWorker || barcodePieceResolving}
+                        className="h-14 px-6 rounded-xl font-black text-xs text-white shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2"
                         style={{ background: '#c8834a' }}
                       >
+                        {barcodePieceResolving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
                         Add Piece
                       </button>
                     </div>
+
+                    {/* Bug #12: assigned drawer for the most recently scanned piece */}
+                    {scannedPieceDrawerInfo && (
+                      <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-[#c8834a]/25 text-xs font-bold text-[#7a5a34] w-fit animate-fade-in">
+                        <PackageCheck className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
+                        Assigned Drawer: <span className="font-mono font-black text-[#4a3a2a]">{scannedPieceDrawerInfo.code || '—'}</span>
+                        {scannedPieceDrawerInfo.holding && (
+                          <span className="text-[10px] uppercase tracking-wider text-[#9a7a5a]">({scannedPieceDrawerInfo.holding})</span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Scanned Pieces Batch List */}
@@ -2661,7 +2800,7 @@ export default function ProductionLogEntry() {
                         </span>
                         <button
                           type="button"
-                          onClick={() => setBarcodeBatchPieces([])}
+                          onClick={() => { setBarcodeBatchPieces([]); setScannedPieceDrawerInfo(null); }}
                           className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
                         >
                           Clear Batch
@@ -3026,7 +3165,7 @@ export default function ProductionLogEntry() {
                       />
                     </div>
 
-                    {selectedStage === 'Cutting' && (
+                    {(selectedStage === 'Cutting' || selectedStage === 'Lining') && (
                       <div className="space-y-4 pt-4 border-t border-slate-200">
                         <div>
                           <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-2">
@@ -3045,7 +3184,7 @@ export default function ProductionLogEntry() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                           <div className="space-y-2">
-                            <label className="text-[11px] font-bold text-slate-600 uppercase">{lotCategory === 'LINING' ? 'Lining' : 'Leather'} Article *</label>
+                            <label className="text-[11px] font-bold text-slate-600 uppercase">{selectedStage === 'Lining' ? 'Lining' : 'Leather'} Article *</label>
                             <select
                               value={lotArticle}
                               onChange={(e) => { setLotArticle(e.target.value); setLotColor(''); setLotThickness(''); }}
@@ -3056,7 +3195,7 @@ export default function ProductionLogEntry() {
                             </select>
                           </div>
                           <div className="space-y-2">
-                            <label className="text-[11px] font-bold text-slate-600 uppercase">{lotCategory === 'LINING' ? 'Lining' : 'Leather'} Colour *</label>
+                            <label className="text-[11px] font-bold text-slate-600 uppercase">{selectedStage === 'Lining' ? 'Lining' : 'Leather'} Colour *</label>
                             <select
                               value={lotColor}
                               onChange={(e) => { setLotColor(e.target.value); setLotThickness(''); }}
@@ -3066,21 +3205,24 @@ export default function ProductionLogEntry() {
                               {lotOptions.colour?.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                           </div>
+                          {/* Bug #9/#10: Thickness is optional and a free-text input, not a mandatory dropdown */}
                           <div className="space-y-2">
-                            <label className="text-[11px] font-bold text-slate-600 uppercase">Thickness (mm) *</label>
-                            <select
+                            <label className="text-[11px] font-bold text-slate-600 uppercase flex items-center justify-between">
+                              <span>Thickness</span>
+                              <span className="text-[10px] text-slate-400 font-bold lowercase">(optional)</span>
+                            </label>
+                            <input
+                              type="text"
+                              placeholder="e.g. 1.2mm, 0.8mm..."
                               value={lotThickness}
                               onChange={(e) => setLotThickness(e.target.value)}
-                              className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
-                            >
-                              <option value="">-- Select Thickness --</option>
-                              {lotOptions.thickness?.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
+                              className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none"
+                            />
                           </div>
                         </div>
 
-                        {/* Lot Status Indicator */}
-                        {lotArticle && lotColor && lotThickness && (
+                        {/* Lot Status Indicator — Bug #9: Thickness is optional, so this must not wait on it */}
+                        {lotArticle && lotColor && (
                           <div className={`p-4 rounded-xl border flex items-center justify-between ${lotResults.length === 1 && lotResults[0].covers_required !== false ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
                             <div>
                               <div className="text-[11px] font-black uppercase tracking-wider text-slate-600 mb-1">Material Availability</div>
@@ -4011,22 +4153,13 @@ export default function ProductionLogEntry() {
                       onChange={(e) => setStoreCurrentScan(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
-                          const val = storeCurrentScan.trim();
-                          if (val) {
-                            if (!storeDrawerInput) {
-                              setStoreDrawerInput(val);
-                              setStoreCurrentScan('');
-                              setSuccessMsg(`✅ Drawer ID '${val}' set! Now scan piece barcode.`);
-                            } else {
-                              setStorePieceInput(val);
-                              setStoreCurrentScan('');
-                              handleVerifyStorePiece(val);
-                            }
-                          }
+                          e.preventDefault();
+                          handleStoreScanInput(storeCurrentScan.trim());
                         }
                       }}
+                      disabled={storeScanResolving}
                       style={{ paddingLeft: storeCurrentScan ? '1rem' : '3.25rem', paddingRight: '3rem' }}
-                      className="w-full h-16 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all"
+                      className="w-full h-16 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all disabled:opacity-50"
                     />
                     <button
                       type="button"
@@ -4078,9 +4211,7 @@ export default function ProductionLogEntry() {
                     </div>
                     <div className="flex flex-col items-end">
                       <span className="text-xs font-black px-3 py-1 rounded uppercase bg-emerald-100 text-emerald-800">
-                        {isCheckedLeather && isCheckedLining
-                          ? 'HOLD BOTH'
-                          : (storeVerifyResult.state?.replace('_', ' ') || 'MERGED')}
+                        {storeVerifyResult.holding || storeVerifyResult.state?.replace('_', ' ') || 'MERGED'}
                       </span>
                     </div>
                   </div>
@@ -4323,33 +4454,36 @@ export default function ProductionLogEntry() {
                                 </div>
                                 {drawer.type !== 'Empty' ? (
                                   <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
-                                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                        <div className="text-[10px] text-slate-500 font-bold uppercase">Client</div>
-                                        <div className="text-sm font-black text-slate-800">{drawer.client}</div>
+                                    {/* Complete Piece & Stage Details Breakdown Card */}
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                      <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200/60">
+                                        <div className="text-[10px] text-amber-700 font-bold uppercase tracking-wider">Order &amp; Style</div>
+                                        <div className="text-xs font-black text-slate-800 mt-0.5">{drawer.order_number} · {drawer.style_name}</div>
                                       </div>
-                                      <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                        <div className="text-[10px] text-slate-500 font-bold uppercase">Style</div>
-                                        <div className="text-sm font-black text-slate-800">{drawer.style}</div>
+                                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+                                        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Article &amp; Serial</div>
+                                        <div className="text-xs font-black text-slate-800 mt-0.5">{drawer.article} (#{drawer.serial || '001'})</div>
                                       </div>
-                                      {drawer.cuttingDetail && (
-                                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                          <div className="text-[10px] text-slate-500 font-bold uppercase">Cutting Detail</div>
-                                          <div className="text-sm font-black text-slate-800">{drawer.cuttingDetail}</div>
+                                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+                                        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Color / Size</div>
+                                        <div className="text-xs font-black text-slate-800 mt-0.5">{drawer.colour} / {drawer.size}</div>
+                                      </div>
+                                      <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200/60">
+                                        <div className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">Current Stage</div>
+                                        <div className="mt-1">
+                                          <span className="inline-flex items-center px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-black rounded-md shadow-xs">
+                                            {drawer.display_label || drawer.current_stage || 'In Production'}
+                                          </span>
                                         </div>
-                                      )}
-                                      {drawer.styleDetail && (
-                                        <div className="p-3 bg-slate-50 rounded-lg border border-slate-100">
-                                          <div className="text-[10px] text-slate-500 font-bold uppercase">Style Detail</div>
-                                          <div className="text-sm font-black text-slate-800">{drawer.styleDetail}</div>
-                                        </div>
-                                      )}
-                                      {drawer.currentProcess && (
-                                        <div className="col-span-2 p-3 bg-indigo-50/50 rounded-lg border border-indigo-100">
-                                          <div className="text-[10px] text-indigo-500 font-bold uppercase">Incoming Process</div>
-                                          <div className="text-sm font-black text-indigo-700">{drawer.currentProcess}</div>
-                                        </div>
-                                      )}
+                                      </div>
+                                      <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
+                                        <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Assigned Drawer</div>
+                                        <div className="text-xs font-black text-slate-800 mt-0.5">{drawer.drawer_code || drawer.id}</div>
+                                      </div>
+                                      <div className="p-3 bg-emerald-50/60 rounded-xl border border-emerald-200/60">
+                                        <div className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider">Holding State</div>
+                                        <div className="text-xs font-black text-emerald-800 mt-0.5">{drawer.holding}</div>
+                                      </div>
                                     </div>
                                     {/* Action Buttons for this Drawer */}
                                     <div className="pt-3 border-t border-slate-100 space-y-2">
