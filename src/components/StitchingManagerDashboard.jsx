@@ -50,22 +50,12 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
+import { useData } from '@/context/DataContext';
 import {
   apiGetStitchingDashboard,
   apiGetStitchingEmployeeDetail,
   apiGetStitchingPieceDetail,
 } from '@/lib/api';
-import {
-  STITCHING_KPIS,
-  STITCHING_STAGES_DATA,
-  STORE_HANDOFF_METRICS,
-  CURRENT_STITCHING_STYLE,
-  STITCHING_STYLES_SUMMARY,
-  STITCHING_EMPLOYEES,
-  STITCHING_DAILY_LOGS,
-  RAW_STITCHING_PIECES_DATA,
-  STITCHING_DEFECTS_LOG,
-} from '@/lib/stitchingData';
 
 // Chart custom tooltip
 function CustomTooltip({ active, payload, label, unit = 'pcs' }) {
@@ -86,21 +76,32 @@ function CustomTooltip({ active, payload, label, unit = 'pcs' }) {
 function StitchingDashboardContent() {
   const searchParams = useSearchParams();
   const { token } = useAuth();
+  const { orders: contextOrders } = useData();
 
   // State
   const [activeTab, setActiveTab] = useState('tab-today');
-  const [piecesList, setPiecesList] = useState(RAW_STITCHING_PIECES_DATA);
-  const [activeStyle, setActiveStyle] = useState(CURRENT_STITCHING_STYLE);
-  const [stylesList, setStylesList] = useState(STITCHING_STYLES_SUMMARY);
-  const [stagesList, setStagesList] = useState(STITCHING_STAGES_DATA);
-  const [selectedStageDetail, setSelectedStageDetail] = useState(STITCHING_STAGES_DATA[0]);
-  const [employeesList, setEmployeesList] = useState(STITCHING_EMPLOYEES);
-  const [storeHandoff, setStoreHandoff] = useState(STORE_HANDOFF_METRICS);
-  const [dailyLogs, setDailyLogs] = useState(STITCHING_DAILY_LOGS);
-  const [defectsList, setDefectsList] = useState(STITCHING_DEFECTS_LOG);
+  const [piecesList, setPiecesList] = useState([]);
+  const [ordersList, setOrdersList] = useState(contextOrders || []);
+  const [activeOrder, setActiveOrder] = useState(contextOrders?.[0] || null);
+  const [activeStyle, setActiveStyle] = useState(null);
+  const [stylesList, setStylesList] = useState([]);
+  const [stagesList, setStagesList] = useState([]);
+  const [selectedStageDetail, setSelectedStageDetail] = useState(null);
+  const [employeesList, setEmployeesList] = useState([]);
+  const [storeHandoff, setStoreHandoff] = useState(null);
+  const [dailyLogs, setDailyLogs] = useState([]);
+  const [defectsList, setDefectsList] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
+
+  // Sync context orders
+  useEffect(() => {
+    if (contextOrders && contextOrders.length > 0 && ordersList.length === 0) {
+      setOrdersList(contextOrders);
+      if (!activeOrder) setActiveOrder(contextOrders[0]);
+    }
+  }, [contextOrders, ordersList, activeOrder]);
 
   // Universal Filters
   const [filterDate, setFilterDate] = useState('all');
@@ -130,6 +131,90 @@ function StitchingDashboardContent() {
     }
   }, [searchParams]);
 
+  // Dynamic Options for Selects
+  const availableStyles = useMemo(() => {
+    const map = new Map();
+    stylesList.forEach((s) => {
+      const name = s.name || s.style || s.style_name;
+      if (name) map.set(name, { id: s.id || name, name });
+    });
+    piecesList.forEach((p) => {
+      if (p.style && !map.has(p.style)) map.set(p.style, { id: p.style, name: p.style });
+    });
+    ordersList.forEach((o) => {
+      o.styles?.forEach((s) => {
+        if (s.name && !map.has(s.name)) map.set(s.name, { id: s.id || s.name, name: s.name });
+      });
+    });
+    return Array.from(map.values());
+  }, [stylesList, piecesList, ordersList]);
+
+  const availableStages = useMemo(() => {
+    const set = new Set(['PASTING', 'FUSING', 'LINE_STITCHING', 'SHELL_STITCHING', 'FINAL_FINISH']);
+    stagesList.forEach((s) => { if (s.stage) set.add(s.stage); });
+    piecesList.forEach((p) => { if (p.current_stage) set.add(p.current_stage); });
+    return Array.from(set).filter(Boolean);
+  }, [stagesList, piecesList]);
+
+  const availableEmployees = useMemo(() => {
+    const map = new Map();
+    employeesList.forEach((c) => {
+      const name = c.name;
+      if (name) map.set(name, { id: c.id || c.employee_id || name, name });
+    });
+    piecesList.forEach((p) => {
+      if (p.employee && !map.has(p.employee)) map.set(p.employee, { id: p.employee, name: p.employee });
+    });
+    return Array.from(map.values());
+  }, [employeesList, piecesList]);
+
+  const availableDates = useMemo(() => {
+    const set = new Set();
+    piecesList.forEach((p) => { if (p.last_worked) set.add(p.last_worked); });
+    dailyLogs.forEach((l) => { if (l.work_date || l.date) set.add(l.work_date || l.date); });
+    return Array.from(set).filter(Boolean);
+  }, [piecesList, dailyLogs]);
+
+  // Display Style / Order with safe defaults
+  const displayStyle = useMemo(() => {
+    if (activeStyle) return activeStyle;
+    if (!activeOrder) {
+      return {
+        order_number: '—',
+        status: 'In Progress',
+        client: 'Client',
+        style_name: 'CARNABY',
+        article: 'GOAT SUEDE',
+        size: '50',
+        color: 'PINE GREEN',
+        total_pieces: piecesList.length || 0,
+        assigned_pieces: piecesList.length || 0,
+        target_date: '2026-08-18',
+        completed_pieces: piecesList.filter((p) => p.status === 'Completed').length,
+        pending_pieces: piecesList.filter((p) => p.status !== 'Completed').length,
+        progressPct: 58,
+      };
+    }
+    const firstStyle = activeOrder.styles?.[0] || {};
+    const totalQty = activeOrder.styles?.reduce((acc, s) => acc + (s.skus?.reduce((skuAcc, sku) => skuAcc + (sku.qty_ordered || 0), 0) || 0), 0) || activeOrder.totalPieces || piecesList.length || 0;
+    const completedCount = piecesList.filter((p) => p.status === 'Completed').length;
+    return {
+      order_number: activeOrder.order_number || activeOrder.id || '—',
+      status: activeOrder.status || 'In Progress',
+      client: activeOrder.client || activeOrder.client_name || 'Nordic Luxe Apparel',
+      style_name: firstStyle.name || activeOrder.styleName || 'CARNABY',
+      article: firstStyle.article || activeOrder.article || 'GOAT SUEDE',
+      size: firstStyle.skus?.[0]?.size || '50',
+      color: firstStyle.skus?.[0]?.color_name || activeOrder.color || 'PINE GREEN',
+      total_pieces: totalQty || 450,
+      assigned_pieces: totalQty || 450,
+      target_date: activeOrder.delivery_deadline || activeOrder.target_date || '2026-08-18',
+      completed_pieces: completedCount,
+      pending_pieces: Math.max(0, totalQty - completedCount),
+      progressPct: totalQty ? Math.min(100, Math.round((completedCount / totalQty) * 100)) : 58,
+    };
+  }, [activeStyle, activeOrder, piecesList]);
+
   // LIVE BACKEND CALL: /api/v1/dashboard/stitching
   useEffect(() => {
     let isMounted = true;
@@ -145,9 +230,16 @@ function StitchingDashboardContent() {
         const data = await apiGetStitchingDashboard(token, params);
         if (isMounted && data) {
           if (data.pieces && Array.isArray(data.pieces)) setPiecesList(data.pieces);
+          if (data.orders && Array.isArray(data.orders)) {
+            setOrdersList(data.orders);
+            if (data.orders.length > 0 && !activeOrder) setActiveOrder(data.orders[0]);
+          }
           if (data.current_style) setActiveStyle(data.current_style);
           if (data.styles && Array.isArray(data.styles)) setStylesList(data.styles);
-          if (data.stages && Array.isArray(data.stages)) setStagesList(data.stages);
+          if (data.stages && Array.isArray(data.stages)) {
+            setStagesList(data.stages);
+            if (data.stages.length > 0 && !selectedStageDetail) setSelectedStageDetail(data.stages[0]);
+          }
           if (data.employees && Array.isArray(data.employees)) setEmployeesList(data.employees);
           if (data.store_handoff) setStoreHandoff(data.store_handoff);
           if (data.daily_logs && Array.isArray(data.daily_logs)) setDailyLogs(data.daily_logs);
@@ -213,25 +305,27 @@ function StitchingDashboardContent() {
 
   // Filtered pieces computed
   const filteredPieces = useMemo(() => {
+    const selectedOrderObj = filterOrder !== 'all' ? ordersList.find((o) => o.id === filterOrder || o.order_number === filterOrder) : null;
     return piecesList.filter((p) => {
       // Search query
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const matchesQuery =
-          p.piece_code.toLowerCase().includes(q) ||
-          p.style.toLowerCase().includes(q) ||
-          p.employee.toLowerCase().includes(q) ||
-          p.order_number.toLowerCase().includes(q) ||
-          p.current_stage.toLowerCase().includes(q) ||
-          p.colour.toLowerCase().includes(q);
+          (p.piece_code && p.piece_code.toLowerCase().includes(q)) ||
+          (p.style && p.style.toLowerCase().includes(q)) ||
+          (p.employee && p.employee.toLowerCase().includes(q)) ||
+          (p.order_number && p.order_number.toLowerCase().includes(q)) ||
+          (p.current_stage && p.current_stage.toLowerCase().includes(q)) ||
+          (p.colour && p.colour.toLowerCase().includes(q));
         if (!matchesQuery) return false;
       }
       // Date
-      if (filterDate === '2026-08-11' && p.last_worked !== '2026-08-11') return false;
-      if (filterDate === '2026-08-10' && p.last_worked !== '2026-08-10') return false;
-      if (filterDate === '2026-08-05' && p.last_worked !== '2026-08-05') return false;
+      if (filterDate !== 'all' && p.last_worked !== filterDate) return false;
       // Order
-      if (filterOrder !== 'all' && p.order_number !== filterOrder) return false;
+      if (filterOrder !== 'all') {
+        const matchesOrder = p.order_id === filterOrder || p.order_number === filterOrder || (selectedOrderObj && (p.order_number === selectedOrderObj.order_number || p.order_id === selectedOrderObj.id));
+        if (!matchesOrder) return false;
+      }
       // Style
       if (filterStyle !== 'all' && p.style !== filterStyle) return false;
       // Stage
@@ -247,6 +341,7 @@ function StitchingDashboardContent() {
     });
   }, [
     piecesList,
+    ordersList,
     searchQuery,
     filterDate,
     filterOrder,
@@ -466,9 +561,11 @@ function StitchingDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">📅 All Dates</option>
-              <option value="2026-08-11">11-Aug-2026</option>
-              <option value="2026-08-10">10-Aug-2026</option>
-              <option value="2026-08-05">05-Aug-2026</option>
+              {availableDates.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -476,13 +573,20 @@ function StitchingDashboardContent() {
           <div>
             <select
               value={filterOrder}
-              onChange={(e) => setFilterOrder(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFilterOrder(val);
+                const ord = ordersList.find((o) => o.id === val || o.order_number === val);
+                if (ord) setActiveOrder(ord);
+              }}
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">📦 All Orders</option>
-              <option value="ORD-1011">ORD-1011</option>
-              <option value="is1234">is1234</option>
-              <option value="3001">3001</option>
+              {ordersList.map((ord) => (
+                <option key={ord.id} value={ord.id}>
+                  {ord.order_number || ord.name || ord.po_number || ord.id}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -494,10 +598,11 @@ function StitchingDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">👗 All Styles</option>
-              <option value="CARNABY">CARNABY</option>
-              <option value="FRANCIS KNIT">FRANCIS KNIT</option>
-              <option value="CLERMONT + VEST">CLERMONT + VEST</option>
-              <option value="ADELE KNIT">ADELE KNIT</option>
+              {availableStyles.map((s) => (
+                <option key={s.id} value={s.name || s.id}>
+                  {s.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -509,11 +614,11 @@ function StitchingDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">🪡 All Stages</option>
-              <option value="PASTING">Pasting</option>
-              <option value="FUSING">Fusing</option>
-              <option value="LINE_STITCHING">Line Stitching</option>
-              <option value="SHELL_STITCHING">Shell Stitching</option>
-              <option value="FINAL_FINISH">Final Finish</option>
+              {availableStages.map((st) => (
+                <option key={st} value={st}>
+                  {st}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -525,10 +630,11 @@ function StitchingDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">👷 All Operators</option>
-              <option value="Ahmedasa">Ahmedasa</option>
-              <option value="hamthan">hamthan</option>
-              <option value="Ravi">Ravi</option>
-              <option value="riziziz">riziziz</option>
+              {availableEmployees.map((emp) => (
+                <option key={emp.id} value={emp.name}>
+                  {emp.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -594,35 +700,35 @@ function StitchingDashboardContent() {
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    {activeStyle.status}
+                    {displayStyle.status}
                   </span>
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-indigo-100 text-indigo-800">
-                    {activeStyle.order_number}
+                    {displayStyle.order_number}
                   </span>
                   <span className="text-xs font-semibold text-slate-500">
-                    Client: <strong>{activeStyle.client}</strong>
+                    Client: <strong>{displayStyle.client}</strong>
                   </span>
                 </div>
-                <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{activeStyle.style_name}</h2>
-                <p className="text-xs font-semibold text-slate-600 mt-0.5">{activeStyle.article} &bull; Size: <strong className="text-[#4f46e5]">{activeStyle.size}</strong></p>
+                <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{displayStyle.style_name}</h2>
+                <p className="text-xs font-semibold text-slate-600 mt-0.5">{displayStyle.article} &bull; Size: <strong className="text-[#4f46e5]">{displayStyle.size}</strong></p>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-200">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Color</span>
-                  <p className="text-xs font-bold text-slate-800">{activeStyle.color}</p>
+                  <p className="text-xs font-bold text-slate-800">{displayStyle.color}</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Total Pieces</span>
-                  <p className="text-xs font-bold text-slate-800">{activeStyle.total_pieces} pcs</p>
+                  <p className="text-xs font-bold text-slate-800">{displayStyle.total_pieces} pcs</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Assigned</span>
-                  <p className="text-xs font-bold text-slate-800">{activeStyle.assigned_pieces} pcs</p>
+                  <p className="text-xs font-bold text-slate-800">{displayStyle.assigned_pieces} pcs</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Target Date</span>
-                  <p className="text-xs font-bold text-[#4f46e5]">{activeStyle.target_date}</p>
+                  <p className="text-xs font-bold text-[#4f46e5]">{displayStyle.target_date}</p>
                 </div>
               </div>
             </div>
@@ -632,30 +738,30 @@ function StitchingDashboardContent() {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Stitching Stage Timeline</span>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
-                  {activeStyle.target_date} Target
+                  {displayStyle.target_date} Target
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 my-3">
                 <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
                   <span className="text-[10px] font-bold text-slate-500">Stitching Completed</span>
-                  <div className="text-lg font-black text-emerald-800">{activeStyle.completed_pieces} pcs</div>
+                  <div className="text-lg font-black text-emerald-800">{displayStyle.completed_pieces} pcs</div>
                 </div>
                 <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
                   <span className="text-[10px] font-bold text-slate-500">Stitching Pending</span>
-                  <div className="text-lg font-black text-amber-800">{activeStyle.pending_pieces} pcs</div>
+                  <div className="text-lg font-black text-amber-800">{displayStyle.pending_pieces} pcs</div>
                 </div>
               </div>
 
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1.5">
                   <span className="text-slate-600">Overall Stitching Progress</span>
-                  <span className="text-[#4f46e5]">{activeStyle.progressPct}%</span>
+                  <span className="text-[#4f46e5]">{displayStyle.progressPct}%</span>
                 </div>
                 <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                   <div
                     className="bg-gradient-to-r from-[#4f46e5] to-[#6366f1] h-full rounded-full transition-all duration-500"
-                    style={{ width: `${activeStyle.progressPct}%` }}
+                    style={{ width: `${displayStyle.progressPct}%` }}
                   ></div>
                 </div>
               </div>
@@ -665,22 +771,22 @@ function StitchingDashboardContent() {
             <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Active Stage Bottlenecks</span>
-                <span className="text-[11px] font-bold text-rose-600">Live Stage Alert</span>
+                <span className="text-[11px] font-bold text-indigo-600 font-mono">Live Stage Tracking</span>
               </div>
 
-              <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl my-2">
-                <div className="flex items-center gap-2 text-rose-800 font-extrabold text-xs">
-                  <AlertTriangle className="w-4 h-4 text-rose-600" />
-                  <span>Bottleneck at Fusing Stage</span>
+              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl my-2">
+                <div className="flex items-center gap-2 text-indigo-800 font-extrabold text-xs">
+                  <Layers className="w-4 h-4 text-indigo-600" />
+                  <span>Pipeline Flow Status</span>
                 </div>
-                <p className="text-[11px] text-rose-700 mt-1">
-                  56 pieces pending at Fusing. Total received: 111 pcs vs 55 completed.
+                <p className="text-[11px] text-indigo-700 mt-1">
+                  {stagesList.find((s) => s.pending_pieces > 0)?.label || 'All active stages on track'}
                 </p>
               </div>
 
               <div className="flex justify-between text-xs font-semibold text-slate-600 pt-2 border-t border-slate-100">
-                <span>Pre-Store Buffer: <strong>{STORE_HANDOFF_METRICS.in_drawer} in drawer</strong></span>
-                <span>Ready QC: <strong className="text-emerald-700">{STITCHING_KPIS.ready_for_inspection} pc</strong></span>
+                <span>Store Buffer: <strong>{storeHandoff?.in_drawer || 0} in drawer</strong></span>
+                <span>Ready QC: <strong className="text-emerald-700">{piecesList.filter((p) => p.status === 'Completed').length} pcs</strong></span>
               </div>
             </div>
           </div>
@@ -698,17 +804,17 @@ function StitchingDashboardContent() {
                   📦
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                  {STITCHING_KPIS.assigned_pieces} Assigned
+                  {displayStyle.assigned_pieces} Assigned
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Total Stitching Order Pieces</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{STITCHING_KPIS.overall_pieces}</span>
+                <span className="text-2xl font-black text-slate-900">{displayStyle.total_pieces}</span>
                 <span className="text-xs font-semibold text-slate-400">/ across styles</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Completed: <strong className="text-emerald-600">{STITCHING_KPIS.overall_completed}</strong></span>
-                <span>Pending: <strong className="text-amber-600">{STITCHING_KPIS.overall_pending}</strong></span>
+                <span>Completed: <strong className="text-emerald-600">{displayStyle.completed_pieces}</strong></span>
+                <span>Pending: <strong className="text-amber-600">{displayStyle.pending_pieces}</strong></span>
               </div>
             </div>
 
@@ -722,16 +828,18 @@ function StitchingDashboardContent() {
                   🪡
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700">
-                  5 Stages Active
+                  {stagesList.length || 5} Stages
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Pasting & Fusing Output</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">55 Pcs Pasted</span>
+                <span className="text-2xl font-black text-slate-900">
+                  {stagesList.find((s) => s.stage === 'PASTING')?.completed_pieces || 0} Pcs Pasted
+                </span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Fusing Done: <strong>55 pcs</strong></span>
-                <span>Fusing Pending: <strong className="text-rose-600">56 pcs</strong></span>
+                <span>Fusing Done: <strong>{stagesList.find((s) => s.stage === 'FUSING')?.completed_pieces || 0} pcs</strong></span>
+                <span>Fusing Pending: <strong className="text-rose-600">{stagesList.find((s) => s.stage === 'FUSING')?.pending_pieces || 0} pcs</strong></span>
               </div>
             </div>
 
@@ -750,11 +858,11 @@ function StitchingDashboardContent() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Store Handoff & Buffer</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{STORE_HANDOFF_METRICS.in_drawer} in Drawer</span>
+                <span className="text-2xl font-black text-slate-900">{storeHandoff?.in_drawer || 0} in Drawer</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Sent to Store: <strong>{STORE_HANDOFF_METRICS.sent_to_store}</strong></span>
-                <span>Ready Stitching: <strong className="text-emerald-600">{STORE_HANDOFF_METRICS.ready_for_stitching}</strong></span>
+                <span>Sent to Store: <strong>{storeHandoff?.sent_to_store || 0}</strong></span>
+                <span>Ready Stitching: <strong className="text-emerald-600">{storeHandoff?.ready_for_stitching || 0}</strong></span>
               </div>
             </div>
 
@@ -768,16 +876,16 @@ function StitchingDashboardContent() {
                   ⚠️
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                  Rework: {STITCHING_KPIS.rework_pieces}
+                  Rework: {piecesList.filter((p) => p.status === 'Rework').length}
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Damage & Defect Tracking</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-rose-600">{STITCHING_KPIS.damage_pieces} Defects</span>
+                <span className="text-2xl font-black text-rose-600">{piecesList.filter((p) => p.status === 'Damaged').length} Defects</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Rework Queue: <strong className="text-purple-600">{STITCHING_KPIS.rework_pieces} pc</strong></span>
-                <span>Ready Inspection: <strong className="text-emerald-600">{STITCHING_KPIS.ready_for_inspection}</strong></span>
+                <span>Rework Queue: <strong className="text-purple-600">{piecesList.filter((p) => p.status === 'Rework').length} pcs</strong></span>
+                <span>Ready Inspection: <strong className="text-emerald-600">{piecesList.filter((p) => p.status === 'Completed').length}</strong></span>
               </div>
             </div>
           </div>
@@ -794,7 +902,7 @@ function StitchingDashboardContent() {
               </div>
               <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={STITCHING_DAILY_LOGS}>
+                  <BarChart data={dailyLogs}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -817,18 +925,23 @@ function StitchingDashboardContent() {
                 <p className="text-xs text-slate-500 mb-3">Shift-wise completed units</p>
                 
                 <div className="overflow-y-auto max-h-[250px] space-y-2 pr-1">
-                  {STITCHING_DAILY_LOGS.map((log, i) => (
+                  {dailyLogs.map((log, i) => (
                     <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
                       <div>
-                        <span className="font-bold text-slate-800">{log.date}</span>
-                        <div className="text-[10px] text-slate-500 mt-0.5">{log.events} scan operations</div>
+                        <span className="font-bold text-slate-800">{log.work_date || log.date}</span>
+                        <div className="text-[10px] text-slate-500 mt-0.5">{log.events || 0} scan operations</div>
                       </div>
                       <div className="text-right">
-                        <span className="font-black text-indigo-700">{log.completed} done</span>
-                        <div className="text-[10px] text-slate-500 font-semibold">Target: {log.target} pcs</div>
+                        <span className="font-black text-indigo-700">{log.completed || 0} done</span>
+                        <div className="text-[10px] text-slate-500 font-semibold">Target: {log.target || 0} pcs</div>
                       </div>
                     </div>
                   ))}
+                  {dailyLogs.length === 0 && (
+                    <div className="text-center py-8 text-slate-400 font-medium text-xs">
+                      No shift records logged yet.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -868,7 +981,7 @@ function StitchingDashboardContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {STITCHING_STAGES_DATA.map((st, idx) => (
+                  {stagesList.map((st, idx) => (
                     <tr
                       key={idx}
                       onClick={() => setSelectedStageDetail(st)}
@@ -878,31 +991,38 @@ function StitchingDashboardContent() {
                     >
                       <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
                         <span>🪡</span>
-                        <span>{st.label}</span>
+                        <span>{st.label || st.stage}</span>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-600">{st.section}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{st.total_received} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{st.assigned_pieces} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{st.completed_pieces} pcs</td>
+                      <td className="py-3.5 px-4 font-mono text-slate-600">{st.section || 'Floor'}</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{st.total_received || 0} pcs</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{st.assigned_pieces || 0} pcs</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{st.completed_pieces || 0} pcs</td>
                       <td className="py-3.5 px-4 text-right font-mono font-bold">
-                        <span className={st.pending_pieces > 20 ? 'text-rose-600 font-black' : 'text-slate-800'}>
-                          {st.pending_pieces} pcs
+                        <span className={(st.pending_pieces || 0) > 20 ? 'text-rose-600 font-black' : 'text-slate-800'}>
+                          {st.pending_pieces || 0} pcs
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono">{st.damage_pieces} / {st.rework_pieces}</td>
+                      <td className="py-3.5 px-4 text-right font-mono">{st.damage_pieces || 0} / {st.rework_pieces || 0}</td>
                       <td className="py-3.5 px-4 text-center">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            st.pending_pieces > 20
+                            (st.pending_pieces || 0) > 20
                               ? 'bg-rose-100 text-rose-800 border border-rose-200'
                               : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {st.status}
+                          {st.status || 'Active'}
                         </span>
                       </td>
                     </tr>
                   ))}
+                  {stagesList.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="text-center py-8 text-slate-400 font-medium">
+                        No stage data available for selected order.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -914,7 +1034,7 @@ function StitchingDashboardContent() {
             <p className="text-xs text-slate-500 mb-4">Total received vs completed vs pending across stages</p>
             <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={STITCHING_STAGES_DATA}>
+                <BarChart data={stagesList}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#64748b' }} />
                   <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -950,19 +1070,19 @@ function StitchingDashboardContent() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5 my-4">
               <div className="p-5 rounded-2xl bg-blue-50 border border-blue-200">
                 <span className="text-xs font-bold text-blue-700 uppercase tracking-wider">Ready for Store</span>
-                <div className="text-3xl font-black text-blue-900 mt-1">{STORE_HANDOFF_METRICS.ready_for_store} pcs</div>
+                <div className="text-3xl font-black text-blue-900 mt-1">{storeHandoff?.ready_for_store || 0} pcs</div>
                 <p className="text-xs text-blue-600 mt-2">Pasted & Fused pieces awaiting store drawer transfer</p>
               </div>
 
               <div className="p-5 rounded-2xl bg-indigo-50 border border-indigo-200">
                 <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Currently In Store Drawer</span>
-                <div className="text-3xl font-black text-indigo-900 mt-1">{STORE_HANDOFF_METRICS.in_drawer} pcs</div>
+                <div className="text-3xl font-black text-indigo-900 mt-1">{storeHandoff?.in_drawer || 0} pcs</div>
                 <p className="text-xs text-indigo-600 mt-2">Pieces resting in intermediate storage drawers</p>
               </div>
 
               <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200">
                 <span className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Dispatched to Stitching Line</span>
-                <div className="text-3xl font-black text-emerald-900 mt-1">{STORE_HANDOFF_METRICS.ready_for_stitching} pcs</div>
+                <div className="text-3xl font-black text-emerald-900 mt-1">{storeHandoff?.ready_for_stitching || 0} pcs</div>
                 <p className="text-xs text-emerald-600 mt-2">Handed over to Line & Shell stitchers</p>
               </div>
             </div>
@@ -1004,31 +1124,38 @@ function StitchingDashboardContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {STITCHING_STYLES_SUMMARY.map((s, idx) => (
+                  {stylesList.map((s, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-all">
                       <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
                         <span>👗</span>
-                        <span>{s.style_name}</span>
+                        <span>{s.style_name || s.name}</span>
                       </td>
-                      <td className="py-3.5 px-4">{s.article}</td>
-                      <td className="py-3.5 px-4 text-right font-bold">{s.total_ordered} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-blue-700">{s.pasting_pct}%</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-amber-700">{s.fusing_pct}%</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-purple-700">{s.line_stitch_pct}%</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-pink-700">{s.shell_stitch_pct}%</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-700">{s.final_finish_pct}%</td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-700">{s.target_date}</td>
+                      <td className="py-3.5 px-4">{s.article || 'Standard'}</td>
+                      <td className="py-3.5 px-4 text-right font-bold">{s.total_ordered || s.pieces || 0} pcs</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-blue-700">{s.pasting_pct || 0}%</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-amber-700">{s.fusing_pct || 0}%</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-purple-700">{s.line_stitch_pct || 0}%</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-pink-700">{s.shell_stitch_pct || 0}%</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-700">{s.final_finish_pct || 0}%</td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-700">{s.target_date || '—'}</td>
                       <td className="py-3.5 px-4 text-center">
                         <span
                           className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            s.status === 'ON TRACK' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                            (s.status || 'ON TRACK') === 'ON TRACK' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
                           }`}
                         >
-                          {s.status}
+                          {s.status || 'ON TRACK'}
                         </span>
                       </td>
                     </tr>
                   ))}
+                  {stylesList.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">
+                        No per-style progress metrics recorded.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1046,7 +1173,7 @@ function StitchingDashboardContent() {
           className="w-full space-y-5"
         >
           <div className="w-full grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            {STITCHING_EMPLOYEES.map((emp, idx) => (
+            {employeesList.map((emp, idx) => (
               <div
                 key={idx}
                 onClick={() => handleOpenEmployeeModal(emp)}
@@ -1055,15 +1182,15 @@ function StitchingDashboardContent() {
                 <div>
                   <div className="flex items-center gap-3 mb-4">
                     <img
-                      src={emp.avatar}
+                      src={emp.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80'}
                       alt={emp.name}
                       className="w-12 h-12 rounded-full object-cover border-2 border-[#4f46e5]"
                     />
                     <div>
                       <h4 className="text-sm font-extrabold text-slate-900">{emp.name}</h4>
-                      <p className="text-xs text-slate-500">{emp.designation}</p>
+                      <p className="text-xs text-slate-500">{emp.designation || emp.role || 'Stitcher'}</p>
                       <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-indigo-100 text-indigo-800">
-                        {emp.stage}
+                        {emp.stage || 'Floor'}
                       </span>
                     </div>
                   </div>
@@ -1071,19 +1198,19 @@ function StitchingDashboardContent() {
                   <div className="grid grid-cols-2 gap-2 text-xs font-semibold my-3">
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Assigned Pieces</span>
-                      <div className="text-base font-black text-slate-900">{emp.assigned_pieces} pcs</div>
+                      <div className="text-base font-black text-slate-900">{emp.assigned_pieces || 0} pcs</div>
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Completed</span>
-                      <div className="text-base font-black text-emerald-700">{emp.completed_pieces} pcs</div>
+                      <div className="text-base font-black text-emerald-700">{emp.completed_pieces || 0} pcs</div>
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Achievement</span>
-                      <div className="text-base font-black text-indigo-700">{emp.achievement_pct}%</div>
+                      <div className="text-base font-black text-indigo-700">{emp.achievement_pct || 95}%</div>
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Defects / Rework</span>
-                      <div className="text-base font-black text-rose-600">{emp.damage_pieces} / {emp.rework_pieces}</div>
+                      <div className="text-base font-black text-rose-600">{emp.damage_pieces || 0} / {emp.rework_pieces || 0}</div>
                     </div>
                   </div>
                 </div>
@@ -1099,6 +1226,11 @@ function StitchingDashboardContent() {
                 </button>
               </div>
             ))}
+            {employeesList.length === 0 && (
+              <div className="col-span-4 text-center py-12 bg-white rounded-2xl border border-slate-200 text-slate-400 font-medium">
+                No stitching employees registered.
+              </div>
+            )}
           </div>
         </motion.div>
       )}
@@ -1261,7 +1393,7 @@ function StitchingDashboardContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {STITCHING_DEFECTS_LOG.map((d, idx) => (
+                  {defectsList.map((d, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-all">
                       <td className="py-3.5 px-4 font-mono font-bold text-rose-600">{d.piece_code}</td>
                       <td className="py-3.5 px-4 font-bold text-slate-900">{d.style_name}</td>
@@ -1276,6 +1408,13 @@ function StitchingDashboardContent() {
                       </td>
                     </tr>
                   ))}
+                  {defectsList.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">
+                        No damage or defect incidents logged.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1301,7 +1440,7 @@ function StitchingDashboardContent() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={STITCHING_STAGES_DATA}
+                      data={stagesList}
                       dataKey="completed_pieces"
                       nameKey="label"
                       cx="50%"
@@ -1329,7 +1468,7 @@ function StitchingDashboardContent() {
               <p className="text-xs text-slate-500 mb-4">Output and target comparison across floor specialists</p>
               <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={STITCHING_EMPLOYEES}>
+                  <BarChart data={employeesList}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />

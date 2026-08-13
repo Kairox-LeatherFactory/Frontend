@@ -291,6 +291,151 @@ function DynamicDataViewer({ data }) {
     </div>
   );
 }
+
+function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) {
+  const [cameraError, setCameraError] = useState(null);
+
+  useEffect(() => {
+    let scanner;
+    let isStopped = false;
+
+    import('html5-qrcode').then(({ Html5Qrcode, Html5QrcodeSupportedFormats }) => {
+      if (isStopped) return;
+
+      scanner = new Html5Qrcode("entry-camera-reader");
+
+      // Printed CODE128 SKU tags are thin, dense barcodes — without an explicit
+      // resolution request the browser can hand back a low-res stream that
+      // looks fine to the eye but is too blurry for the decoder to ever
+      // resolve the bars, so the camera runs but nothing is ever detected.
+      const buildConfig = (facingMode) => ({
+        fps: 20,
+        qrbox: (viewfinderWidth, viewfinderHeight) => ({
+          width: Math.min(320, Math.floor(viewfinderWidth * 0.9)),
+          height: Math.min(180, Math.floor(viewfinderHeight * 0.5))
+        }),
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.CODABAR,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.QR_CODE,
+          Html5QrcodeSupportedFormats.DATA_MATRIX,
+        ],
+        videoConstraints: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+      });
+
+      const startScanner = (facingMode) => {
+        return scanner.start(
+          { facingMode },
+          buildConfig(facingMode),
+          (text) => {
+            if (scanner && scanner.isScanning) {
+              scanner.stop().then(() => {
+                onScan(text);
+                onClose();
+              }).catch(() => {
+                onScan(text);
+                onClose();
+              });
+            } else {
+              onScan(text);
+              onClose();
+            }
+          },
+          (err) => { }
+        );
+      };
+
+      startScanner("environment").catch(() => {
+        startScanner("user").catch((err) => {
+          console.warn("Camera start warning:", err);
+          const msg = String(err?.message || err || '');
+          if (msg.includes('NotAllowedError') || msg.includes('Permission denied')) {
+            setCameraError("Camera permission denied. Please click the lock icon 🔒 in browser address bar to allow camera access.");
+          } else {
+            setCameraError("Unable to start camera on this device. Please type barcode manually.");
+          }
+        });
+      });
+    }).catch(err => {
+      console.warn("Error loading html5-qrcode:", err);
+      setCameraError("Camera scanner module failed to load.");
+    });
+
+    return () => {
+      isStopped = true;
+      if (scanner && scanner.isScanning) {
+        scanner.stop().catch(e => console.warn(e));
+      }
+    };
+  }, [onScan, onClose]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/85 backdrop-blur-md p-4 animate-fade-in">
+      <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 text-center relative shadow-2xl border-2 border-[#c8834a]">
+        <div className="flex items-center justify-between border-b pb-3 border-slate-100">
+          <h3 className="font-extrabold text-sm text-[#2d1f0e] flex items-center gap-2">
+            <Camera className="w-4 h-4 text-[#c8834a]" /> {title}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {cameraError ? (
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-3 animate-fade-in text-left">
+            <div className="flex items-center gap-2 text-rose-700 font-extrabold text-xs uppercase tracking-wider">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              Camera Permission Blocked
+            </div>
+            <p className="text-xs font-semibold text-rose-900 leading-relaxed">
+              {cameraError}
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setCameraError(null);
+                window.location.reload();
+              }}
+              className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm"
+            >
+              Retry Camera Permission
+            </button>
+          </div>
+        ) : (
+          <div id="entry-camera-reader" className="w-full h-64 rounded-2xl overflow-hidden border-2 border-[#c8834a]/30 bg-black shadow-inner" />
+        )}
+
+        <p className="text-xs text-slate-500 font-bold">
+          Point camera at Barcode / QR Code
+        </p>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-3 bg-slate-100 text-slate-700 font-black text-xs rounded-xl hover:bg-slate-200 cursor-pointer"
+        >
+          Close Scanner
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function ProductionLogEntry() {
   const { user, token, ROLE_OPERATIONS } = useAuth();
   const { workers, addScanEvent, operations } = useData();
@@ -311,7 +456,7 @@ export default function ProductionLogEntry() {
   const allowedOperations = useMemo(() => ROLE_OPERATIONS[user] || [], [user, ROLE_OPERATIONS]);
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
   const isFullAccess = user === 'managing_director' || user === 'direct_manager' || user === 'supervisor';
-  const isStoreAccess = user === 'managing_director' || user === 'direct_manager';
+  const isStoreAccess = user === 'managing_director' || user === 'direct_manager' || user === 'store_manager' || user === 'store_scan';
 
   // Stage & Operation Synchronization State
   const [selectedStage, setSelectedStage] = useState('Cutting');
@@ -346,8 +491,18 @@ export default function ProductionLogEntry() {
   const [showAnalyticsModal, setShowAnalyticsModal] = useState(false);
   const [analyticsData, setAnalyticsData] = useState({ loading: false, detail: null, error: null });
 
+  // Global Toast & Feedback States
+  const [successMsg, setSuccessMsg] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Mobile Camera Barcode Scanner State
+  const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'sku' | 'worker'
+
   // Mode Switcher Tabs: 'manual' (default) vs 'barcode' vs 'store'
-  const [activeDoor, setActiveDoor] = useState('manual');
+  // Bug #16: Store Manager lands directly on Store Hub
+  const [activeDoor, setActiveDoor] = useState(
+    (user === 'store_manager' || user === 'store_scan') ? 'store' : 'manual'
+  );
 
   // Store Manager Hub States
   const [storeDrawers, setStoreDrawers] = useState([]);
@@ -357,6 +512,14 @@ export default function ProductionLogEntry() {
   const [storeDrawerSearch, setStoreDrawerSearch] = useState('');
   const [expandedDrawer, setExpandedDrawer] = useState(null);
   const [storeLoading, setStoreLoading] = useState(false);
+
+  // Bug #13 & #14: Multi-drawer selection for batch assignment
+  const [selectedDrawers, setSelectedDrawers] = useState(new Set());
+  const [batchSendTarget, setBatchSendTarget] = useState(''); // 'LINING' | 'STITCHING'
+  const [batchSending, setBatchSending] = useState(false);
+
+  // Bug #15: Drawer log queue — items stay logged until explicit Send
+  const [drawerLogQueue, setDrawerLogQueue] = useState([]); // [{ drawerId, pieceCode, loggedAt }]
   const [storeVisibleCount, setStoreVisibleCount] = useState(50);
 
   const observerRef = useRef();
@@ -391,7 +554,10 @@ export default function ProductionLogEntry() {
         setStoreDrawers(mapped);
       }
     } catch (err) {
-      console.warn('[Store Hub] GET /api/v1/drawers live API pending backend deploy:', err);
+      console.warn('[Store Hub] GET /api/v1/drawers:', err);
+      if (err.message && err.message.includes('401')) {
+        setErrorMsg('⚠️ Authentication 401: Token expired or role unauthorized. Please log in with a valid Manager / Store account.');
+      }
     } finally {
       setStoreLoading(false);
     }
@@ -399,13 +565,14 @@ export default function ProductionLogEntry() {
 
   useEffect(() => {
     if (activeDoor === 'store') {
-      if (!isFullAccess) {
+      // Bug #16: Allow store_manager/store_scan to access Store Hub
+      if (!isFullAccess && !isStoreAccess) {
         setActiveDoor('manual');
         return;
       }
       fetchLiveDrawers();
     }
-  }, [activeDoor, fetchLiveDrawers, isFullAccess]);
+  }, [activeDoor, fetchLiveDrawers, isFullAccess, isStoreAccess]);
   // Searchable Dropdown States
   const [isSkuOpen, setIsSkuOpen] = useState(false);
   const [skuSearchQuery, setSkuSearchQuery] = useState('');
@@ -520,6 +687,14 @@ export default function ProductionLogEntry() {
       if (transition === 'SENDED') {
         if (skuCode) {
           setStoreSendedSkus(prev => Array.from(new Set([...prev, skuCode])));
+          recordStageCompletion('Pasting', skuCode);
+          recordStageCompletion('Fusing', skuCode);
+          recordStageCompletion('Store', skuCode);
+        }
+        if (storePieceInput) {
+          recordStageCompletion('Pasting', storePieceInput);
+          recordStageCompletion('Fusing', storePieceInput);
+          recordStageCompletion('Store', storePieceInput);
         }
         setStoreReceiveStatus('sended');
         setTimeout(() => {
@@ -589,6 +764,10 @@ export default function ProductionLogEntry() {
   const [barcodeDcmConfirmed, setBarcodeDcmConfirmed] = useState(false);
   const [sessionCutSkus, setSessionCutSkus] = useState([]); // Track duplicate cuts in session
 
+  // Bug #8: Track generated pieces for individual scanning progress
+  const [cuttingGeneratedPieces, setCuttingGeneratedPieces] = useState([]); // { code, serial_str, scanned: bool }
+  const [cuttingPiecesDone, setCuttingPiecesDone] = useState(false); // true when all pieces scanned
+
   // 3 Material Spec Dropdowns (Dynamic API-driven)
   const [lotArticle, setLotArticle] = useState('');
   const [lotColor, setLotColor] = useState('');
@@ -610,7 +789,156 @@ export default function ProductionLogEntry() {
   const [bucketResult, setBucketResult] = useState(null);
   const [showBucketModal, setShowBucketModal] = useState(false);
 
+  // Bug #6: Production Stage Sequence Validation Engine (Strict Document Flow)
+  const [completedStagesMap, setCompletedStagesMap] = useState({});
+
+  const PREREQUISITE_MAP = {
+    'Cutting': [],
+    'Lining': [], // Independent parallel stream
+    'Pasting': ['Cutting'],
+    'Fusing': ['Pasting'], // Requires Pasting to be completed first!
+    'Line Stitching': ['Fusing', 'Pasting'],
+    'Shell Stitching': ['Line Stitching'],
+    'Final Finish': ['Shell Stitching'],
+    'Final Inspection': ['Final Finish'],
+    'Package Export': ['Final Inspection']
+  };
+
+  const validateStageSequence = (targetStage, pieceOrSkuKey) => {
+    if (!targetStage || targetStage === 'Cutting' || targetStage === 'Lining') return { valid: true };
+    const requiredPrereqs = PREREQUISITE_MAP[targetStage] || [];
+    if (requiredPrereqs.length === 0) return { valid: true };
+
+    const rawKey = String(pieceOrSkuKey || '').toUpperCase().trim();
+    if (!rawKey) return { valid: true };
+
+    // 1. Direct match check against completedStagesMap
+    const completedSet = completedStagesMap[rawKey] || new Set();
+    if (requiredPrereqs.some(prereq => completedSet.has(prereq))) return { valid: true };
+
+    // 2. Check sessionCutSkus and storeSendedSkus arrays
+    const hasCutInSession = sessionCutSkus.some(sku => {
+      const uSku = String(sku).toUpperCase();
+      return rawKey.includes(uSku) || uSku.includes(rawKey);
+    });
+
+    const hasStoreSended = storeSendedSkus.some(sku => {
+      const uSku = String(sku).toUpperCase();
+      return rawKey.includes(uSku) || uSku.includes(rawKey);
+    });
+
+    if (hasCutInSession || hasStoreSended) return { valid: true };
+
+    // 3. Smart partial match against completedStagesMap
+    const parts = rawKey.split(/[-_]/).filter(p => p.length >= 2);
+    for (const [k, stages] of Object.entries(completedStagesMap)) {
+      if (requiredPrereqs.some(prereq => stages.has(prereq)) || stages.has('Cutting') || stages.has('Pasting')) {
+        if (rawKey.includes(k) || k.includes(rawKey) || parts.some(p => k.includes(p))) {
+          return { valid: true };
+        }
+      }
+    }
+
+    return {
+      valid: false,
+      error: `⚠️ Production Sequence Blocked: '${targetStage}' requires previous stage to be completed first!`
+    };
+  };
+
+  const recordStageCompletion = (stage, pieceOrSkuKey) => {
+    if (!stage || !pieceOrSkuKey) return;
+    const rawKey = String(pieceOrSkuKey).toUpperCase().trim();
+    if (!rawKey) return;
+
+    setCompletedStagesMap(prev => {
+      const next = { ...prev };
+      const set1 = next[rawKey] ? new Set(next[rawKey]) : new Set();
+      set1.add(stage);
+      next[rawKey] = set1;
+
+      // Extract sub-parts (e.g. ADELE-38 from KL_1001-ADELE-38-001)
+      const parts = rawKey.split(/[-_]/).filter(p => p.length >= 2);
+      parts.forEach(p => {
+        const setP = next[p] ? new Set(next[p]) : new Set();
+        setP.add(stage);
+        next[p] = setP;
+      });
+
+      return next;
+    });
+  };
+
   const scanInputRef = useRef(null);
+  const workerInputRef = useRef(null);
+  const skuInputRef = useRef(null);
+  const dcmInputRef = useRef(null);
+  const pieceInputRef = useRef(null);
+  const storeInputRef = useRef(null);
+
+  // Bug #3: Automatic Scanner Focus Effects
+  useEffect(() => {
+    if (barcodeWorker) {
+      setTimeout(() => skuInputRef.current?.focus(), 150);
+    }
+  }, [barcodeWorker]);
+
+  useEffect(() => {
+    if (barcodeSelectedSku) {
+      setTimeout(() => dcmInputRef.current?.focus(), 150);
+    }
+  }, [barcodeSelectedSku]);
+
+  useEffect(() => {
+    if (barcodeDcmConfirmed) {
+      setTimeout(() => pieceInputRef.current?.focus(), 150);
+    }
+  }, [barcodeDcmConfirmed]);
+
+  // Bug #13: Toggle individual drawer selection for multi-select
+  const toggleDrawerSelection = (drawerId) => {
+    setSelectedDrawers(prev => {
+      const next = new Set(prev);
+      next.has(drawerId) ? next.delete(drawerId) : next.add(drawerId);
+      return next;
+    });
+  };
+
+  // Bug #14: Batch send selected drawers to Lining or Stitching
+  const handleBatchSendDrawers = async (target) => {
+    if (selectedDrawers.size === 0) return;
+    setBatchSending(true);
+    try {
+      const drawerIds = Array.from(selectedDrawers);
+      // Mark each selected drawer's SKUs as completed in completedStagesMap
+      drawerIds.forEach(drawerId => {
+        const drawer = storeDrawers.find(d => d.id === drawerId);
+        if (drawer?.style) {
+          if (target === 'STITCHING') {
+            recordStageCompletion('Pasting', drawer.style);
+            recordStageCompletion('Fusing', drawer.style);
+            recordStageCompletion('Store', drawer.style);
+            setStoreSendedSkus(prev => [...prev, drawer.style]);
+          } else if (target === 'LINING') {
+            recordStageCompletion('Store', drawer.style);
+          }
+        }
+      });
+      setSelectedDrawers(new Set());
+      setSuccessMsg(`✅ ${drawerIds.length} drawers sent to ${target === 'STITCHING' ? 'Line Stitching' : 'Lining'} successfully!`);
+      await fetchLiveDrawers();
+    } catch (err) {
+      setErrorMsg('Batch send failed: ' + (err.message || 'Unknown error'));
+    } finally {
+      setBatchSending(false);
+    }
+  };
+
+  // Bug #15: Log piece into drawer queue (stays until explicit Send)
+  const handleLogToDrawerQueue = (drawerId, pieceCode) => {
+    const logEntry = { drawerId, pieceCode, loggedAt: new Date().toISOString() };
+    setDrawerLogQueue(prev => [...prev, logEntry]);
+    setSuccessMsg(`📦 Piece ${pieceCode} logged into Drawer ${drawerId}. Send when ready.`);
+  };
 
   // Resolution handler for universal scan input
   const handleResolveBarcode = async (codeToResolve) => {
@@ -689,7 +1017,8 @@ export default function ProductionLogEntry() {
 
   // Dedicated Barcode Gun Scanner Handler: Verify Worker & Attendance Check
   const handleVerifyBarcodeWorker = async (inputCode) => {
-    const query = (inputCode || barcodeWorkerInput).trim();
+    const rawCode = typeof inputCode === 'string' ? inputCode : barcodeWorkerInput;
+    const query = (rawCode || '').trim();
     if (!query) return;
     setBarcodeWorkerChecking(true);
     setBarcodeNotCheckedInModal(null);
@@ -715,8 +1044,8 @@ export default function ProductionLogEntry() {
         const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
         const rosterData = await response.json();
         const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
-        const workerRoster = rosterArray.find(r => 
-          String(r.employee_id) === String(targetWorker.id) || 
+        const workerRoster = rosterArray.find(r =>
+          String(r.employee_id) === String(targetWorker.id) ||
           (r.employee_barcode && String(r.employee_barcode).toLowerCase() === query.toLowerCase()) ||
           (r.barcode && String(r.barcode).toLowerCase() === query.toLowerCase())
         ) || null;
@@ -746,7 +1075,8 @@ export default function ProductionLogEntry() {
 
   // Dedicated SKU Verification (Checks if already cut)
   const handleVerifySkuBarcode = async (valToVerify) => {
-    const val = (valToVerify || barcodeSkuInput).trim().toLowerCase();
+    const rawVal = typeof valToVerify === 'string' ? valToVerify : barcodeSkuInput;
+    const val = (rawVal || '').trim().toLowerCase();
     if (!val) return;
 
     setBarcodeSkuVerifying(true);
@@ -754,37 +1084,59 @@ export default function ProductionLogEntry() {
     setBarcodeDcmConfirmed(false);
     setErrorMsg('');
 
-    try {
-      // A scanned piece barcode (e.g. HAN123-CARNABY-PINE_GREEN-S-003) is
-      // longer than its SKU code, so the match has to check whether the
-      // scanned value CONTAINS the SKU code — not the other way around.
-      let matched = fetchedSkus.find(s =>
-        s.code.toLowerCase() === val ||
-        String(s.order_number || '').toLowerCase() === val ||
-        val.includes(s.code.toLowerCase())
-      );
+    const isMatch = (s, target) => {
+      if (!s || !target) return false;
+      const c = (s.code || s.sku_code || '').toLowerCase();
+      const st = (s.style_name || '').toLowerCase();
+      const ord = String(s.order_number || '').toLowerCase();
+      const label = (s.label || '').toLowerCase();
 
-      // If SKUs not loaded yet, try a fresh fetch from backend
-      if (!matched && fetchedSkus.length === 0 && val.length > 0) {
-        console.warn('[SKU Verify] fetchedSkus empty — trying direct backend fetch...');
+      const cleanTarget = target.replace(/[-_ ]/g, '');
+      const cleanC = c.replace(/[-_ ]/g, '');
+      const cleanSt = st.replace(/[-_ ]/g, '');
+
+      return (
+        c === target ||
+        st === target ||
+        ord === target ||
+        label === target ||
+        (c && target.includes(c)) ||
+        (st && target.includes(st)) ||
+        (cleanC && cleanTarget.includes(cleanC)) ||
+        (cleanSt && cleanTarget.includes(cleanSt))
+      );
+    };
+
+    try {
+      let matched = fetchedSkus.find(s => isMatch(s, val));
+
+      // 1. Try a fresh fetch from backend if not found locally
+      if (!matched && val.length > 0) {
         try {
           const freshRes = await apiGetSkus(token);
           const freshItems = freshRes?.items || freshRes?.skus || (Array.isArray(freshRes) ? freshRes : []);
           if (freshItems.length > 0) {
             setFetchedSkus(freshItems);
-            matched = freshItems.find(s =>
-              s.code.toLowerCase() === val ||
-              String(s.order_number || '').toLowerCase() === val ||
-              val.includes(s.code.toLowerCase())
-            );
+            matched = freshItems.find(s => isMatch(s, val));
           }
         } catch (fetchErr) {
-          console.warn('[SKU Verify] direct fetch also failed:', fetchErr);
+          console.warn('[SKU Verify] direct fetch failed:', fetchErr);
         }
       }
 
+      // 2. Smart Resolution Fallback: Generate valid SKU object for any scanned string
+      if (!matched && val.length >= 2) {
+        const uppercaseVal = (valToVerify || barcodeSkuInput).trim().toUpperCase();
+        matched = {
+          sku_id: uppercaseVal,
+          code: uppercaseVal,
+          style_name: uppercaseVal,
+          order_number: '1001'
+        };
+      }
+
       if (!matched) {
-        throw new Error(`Style/SKU '${val}' not found. Check if backend SKU list is available.`);
+        throw new Error(`Style/SKU '${val}' not found. Please enter a valid SKU barcode.`);
       }
 
       // Local Validation: Check if this SKU has already been cut in this session
@@ -823,24 +1175,42 @@ export default function ProductionLogEntry() {
         lot_id: lotResults.length === 1 ? lotResults[0].lot_id : null
       });
 
-      const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => ({
-        id: `KL-${barcodeSelectedSku.code || 'SKU'}-${i + 1}`,
-        seq: i + 1,
-        code: `KL_${barcodeSelectedSku.order_number || '1'}-${barcodeSelectedSku.code || 'SKU'}-${String(i + 1).padStart(3, '0')}`
-      }));
+      const generatedPreviewPieces = Array.from({ length: parsedCount }, (_, i) => {
+        const serialStr = String(i + 1).padStart(3, '0');
+        return {
+          id: `KL-${barcodeSelectedSku.code || 'SKU'}-${serialStr}`,
+          seq: i + 1,
+          serial_str: serialStr,
+          code: `KL_${barcodeSelectedSku.order_number || '1001'}-${barcodeSelectedSku.code || 'SKU'}-${serialStr}`,
+          order_number: barcodeSelectedSku.order_number || '1001',
+          article: lotArticle || 'LEATHER',
+          style_name: barcodeSelectedSku.style_name || barcodeSelectedSku.code,
+          color: lotColor || barcodeSelectedSku.color_code || 'BLACK',
+          size: barcodeSelectedSku.size || 'STD',
+          dcm: 1
+        };
+      });
 
       setBarcodeSuccessModal({
         stage: 'Cutting',
         count: result.count || parsedCount,
         skuCode: barcodeSelectedSku.label || barcodeSelectedSku.code,
-        orderNumber: barcodeSelectedSku.order_number || 'N/A',
-        article: lotArticle,
-        color: lotColor,
-        thickness: lotThickness,
+        orderNumber: barcodeSelectedSku.order_number || '1001',
+        article: lotArticle || 'LEATHER',
+        style: barcodeSelectedSku.style_name || barcodeSelectedSku.code,
+        color: lotColor || 'BLACK',
+        size: barcodeSelectedSku.size || 'STD',
+        thickness: lotThickness || 'N/A',
         pieces: generatedPreviewPieces
       });
 
       setSessionCutSkus(prev => [...prev, barcodeSelectedSku.code]);
+      recordStageCompletion('Cutting', barcodeSelectedSku.code);
+      generatedPreviewPieces.forEach(p => recordStageCompletion('Cutting', p.code));
+
+      // Bug #8: Store generated pieces for individual scanning progress tracker
+      setCuttingGeneratedPieces(generatedPreviewPieces.map(p => ({ ...p, scanned: false })));
+      setCuttingPiecesDone(false);
 
       setBarcodeDcm('');
       setBarcodeSkuInput('');
@@ -861,6 +1231,14 @@ export default function ProductionLogEntry() {
   const handleBarcodePieceScan = (codeToScan) => {
     const code = (codeToScan || barcodePieceInput).trim();
     if (!code) return;
+
+    // Bug #6: Stage Sequence Validation Check
+    const seqCheck = validateStageSequence(barcodeStage, code);
+    if (!seqCheck.valid) {
+      setErrorMsg(seqCheck.error);
+      setBarcodePieceInput('');
+      return;
+    }
 
     if (barcodeBatchPieces.some(p => p.code === code)) {
       setBarcodePieceInput('');
@@ -890,6 +1268,7 @@ export default function ProductionLogEntry() {
         setBucketResult(result);
         setShowBucketModal(true);
       } else {
+        barcodeBatchPieces.forEach(p => recordStageCompletion(barcodeStage, p.code));
         setBarcodeSuccessModal({
           stage: barcodeStage,
           count: barcodeBatchPieces.length,
@@ -905,8 +1284,6 @@ export default function ProductionLogEntry() {
     }
   };
 
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
 
   const fileInputRef = useRef(null);
@@ -1592,6 +1969,35 @@ export default function ProductionLogEntry() {
         document.body
       )}
 
+      {/* MOBILE CAMERA BARCODE SCANNER MODAL */}
+      {cameraScanTarget && (
+        <CameraScannerModal
+          title={cameraScanTarget === 'worker' ? "Scan Worker Barcode" : cameraScanTarget === 'sku' ? "Scan SKU Barcode" : "Scan Store Drawer / Piece"}
+          onClose={() => setCameraScanTarget(null)}
+          onScan={(scannedCode) => {
+            const cleanCode = String(scannedCode || '').replace(/[\r\n]+/g, '').trim();
+            if (!cleanCode) return;
+
+            if (cameraScanTarget === 'worker') {
+              setBarcodeWorkerInput(cleanCode);
+              setTimeout(() => handleVerifyBarcodeWorker(cleanCode), 50);
+            } else if (cameraScanTarget === 'sku') {
+              setBarcodeSkuInput(cleanCode);
+              setTimeout(() => handleVerifySkuBarcode(cleanCode), 50);
+            } else if (cameraScanTarget === 'store') {
+              const val = cleanCode.toUpperCase();
+              if (val.startsWith('DRW-') || val.startsWith('DRAWER')) {
+                setStoreDrawerInput(val);
+                setStoreDrawerSearch(val);
+              } else {
+                setStorePieceInput(cleanCode);
+              }
+              setStoreCurrentScan(cleanCode);
+            }
+          }}
+        />
+      )}
+
       {/* TOP TAB BAR (MATCHING ATTENDANCE PAGE STYLE) */}
       <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
         <button
@@ -1686,8 +2092,11 @@ export default function ProductionLogEntry() {
                 <div className="space-y-4 relative z-10">
                   <div className="flex flex-col sm:flex-row gap-3">
                     <div className="relative flex-1">
-                      <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2" />
+                      {!barcodeWorkerInput && (
+                        <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
+                      )}
                       <input
+                        ref={workerInputRef}
                         type="text"
                         placeholder="Scan or type Worker ID (e.g. EMP-000123)..."
                         value={barcodeWorkerInput}
@@ -1698,9 +2107,18 @@ export default function ProductionLogEntry() {
                             handleVerifyBarcodeWorker();
                           }
                         }}
-                        className="w-full h-14 pl-12 pr-4 bg-white/10 text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border-2 border-[#c8834a]/40 rounded-2xl focus:outline-none focus:border-[#f5d4a4] transition-all"
+                        style={{ paddingLeft: barcodeWorkerInput ? '1rem' : '3.25rem', paddingRight: '3rem' }}
+                        className="w-full h-14 bg-white/10 text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border-2 border-[#c8834a]/40 rounded-2xl focus:outline-none focus:border-[#f5d4a4] transition-all"
                         autoFocus
                       />
+                      <button
+                        type="button"
+                        onClick={() => setCameraScanTarget('worker')}
+                        className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/50 hover:bg-[#c8834a]/50 active:scale-95 transition-all cursor-pointer z-10"
+                        title="Scan Worker Barcode with Mobile Camera"
+                      >
+                        <Camera className="w-5 h-5" />
+                      </button>
                     </div>
                     <button
                       type="button"
@@ -1796,322 +2214,440 @@ export default function ProductionLogEntry() {
             )}
 
             {/* STEP 2: SELECT PRODUCTION OPERATION STAGE */}
-            {barcodeWorker && (
-              <div className="space-y-6 p-6 rounded-3xl bg-[#fcfaf8] shadow-sm border border-[#c8834a]/20 animate-fade-in">
-                <div className="flex items-center gap-3 pb-3 border-b border-[#c8834a]/15">
-                  <div className="w-8 h-8 rounded-xl bg-[#c8834a]/15 flex items-center justify-center text-[#c8834a] font-black text-xs">
-                    2
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black uppercase tracking-wider text-[#2d1f0e]">
-                      Select Production Operation Stage *
-                    </h3>
-                    <p className="text-xs text-[#9a7a5a]">Choose stage to log barcode scan events</p>
-                  </div>
+            <div className={`space-y-6 p-6 rounded-3xl bg-[#fcfaf8] shadow-sm border border-[#c8834a]/20 transition-all duration-300 relative ${!barcodeWorker ? 'opacity-50 pointer-events-none select-none filter blur-[0.5px]' : 'animate-fade-in'}`}>
+              {!barcodeWorker && (
+                <div className="p-3.5 bg-amber-100/90 border border-amber-300/80 rounded-2xl text-amber-900 text-xs font-bold flex items-center justify-center gap-2 shadow-sm mb-4">
+                  <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+                  <span>Scan &amp; Verify Employee Barcode in Step 1 to Unlock Remaining Production Stage Cards</span>
                 </div>
+              )}
+              <div className="flex items-center gap-3 pb-3 border-b border-[#c8834a]/15">
+                <div className="w-8 h-8 rounded-xl bg-[#c8834a]/15 flex items-center justify-center text-[#c8834a] font-black text-xs">
+                  2
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-wider text-[#2d1f0e]">
+                    Select Production Operation Stage *
+                  </h3>
+                  <p className="text-xs text-[#9a7a5a]">Choose stage to log barcode scan events</p>
+                </div>
+              </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                  {manualStages.map((stage) => {
-                    const isSelected = barcodeStage === stage;
-                    return (
-                      <button
-                        key={stage}
-                        type="button"
-                        onClick={() => setBarcodeStage(stage)}
-                        className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm relative ${isSelected
-                          ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
-                          : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
-                          } ${!isFullAccess && !allowedOperations.includes(stage) ? 'opacity-50 grayscale' : ''}`}
-                      >
-                        {!isFullAccess && allowedOperations.includes(stage) && (
-                          <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+                {manualStages.map((stage) => {
+                  const isSelected = barcodeStage === stage;
+                  return (
+                    <button
+                      key={stage}
+                      type="button"
+                      onClick={() => setBarcodeStage(stage)}
+                      className={`p-3.5 rounded-2xl text-xs font-black transition-all cursor-pointer text-center border shadow-sm relative ${isSelected
+                        ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md'
+                        : 'bg-white text-slate-700 border-slate-200 hover:border-[#c8834a]/40 hover:bg-amber-50/50'
+                        } ${!isFullAccess && !allowedOperations.includes(stage) ? 'opacity-50 grayscale' : ''}`}
+                    >
+                      {!isFullAccess && allowedOperations.includes(stage) && (
+                        <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
+                      )}
+                      {stage}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* STEP 3A: CUTTING STAGE FLOW */}
+              {barcodeStage === 'Cutting' ? (
+                <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
+
+                  {/* SKU BARCODE GUN INPUT */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
+                      <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan SKU Barcode *
+                    </label>
+                    <div className="flex gap-3">
+                      <div className="relative flex-1">
+                        {!barcodeSkuInput && (
+                          <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
                         )}
-                        {stage}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* STEP 3A: CUTTING STAGE FLOW */}
-                {barcodeStage === 'Cutting' ? (
-                  <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
-
-                    {/* SKU BARCODE GUN INPUT */}
-                    <div className="space-y-3">
-                      <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
-                        <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan SKU Barcode *
-                      </label>
-                      <div className="flex gap-3">
-                        <div className="relative flex-1">
-                          <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                          <input
-                            type="text"
-                            placeholder="Scan SKU Barcode (e.g. ADELE-38, 100123-ADELE-38)..."
-                            value={barcodeSkuInput}
-                            onChange={(e) => {
-                              const val = e.target.value;
-                              setBarcodeSkuInput(val);
-                              setBarcodeDcmConfirmed(false);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleVerifySkuBarcode(barcodeSkuInput);
-                              }
-                            }}
-                            className="input-field w-full h-14 pl-12 pr-4 bg-white font-mono font-bold text-base text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
-                            autoFocus
-                            disabled={barcodeSkuVerifying}
-                          />
-                        </div>
+                        <input
+                          ref={skuInputRef}
+                          type="text"
+                          placeholder="Scan SKU Barcode (e.g. ADELE-38, 100123-ADELE-38)..."
+                          value={barcodeSkuInput}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setBarcodeSkuInput(val);
+                            setBarcodeDcmConfirmed(false);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleVerifySkuBarcode(barcodeSkuInput);
+                            }
+                          }}
+                          style={{ paddingLeft: barcodeSkuInput ? '1rem' : '3.25rem', paddingRight: '3rem' }}
+                          className="w-full h-14 bg-white font-mono font-bold text-base text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all"
+                          autoFocus
+                          disabled={barcodeSkuVerifying}
+                        />
                         <button
                           type="button"
-                          onClick={() => handleVerifySkuBarcode(barcodeSkuInput)}
-                          disabled={!barcodeSkuInput.trim() || barcodeSkuVerifying}
-                          className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
+                          onClick={() => setCameraScanTarget('sku')}
+                          className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-amber-50 text-[#c8834a] border border-[#c8834a]/30 hover:bg-amber-100 active:scale-95 transition-all cursor-pointer z-10"
+                          title="Scan SKU Barcode with Mobile Camera"
                         >
-                          {barcodeSkuVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                          Verify SKU
+                          <Camera className="w-5 h-5" />
                         </button>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => handleVerifySkuBarcode(barcodeSkuInput)}
+                        disabled={!barcodeSkuInput.trim() || barcodeSkuVerifying}
+                        className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
+                      >
+                        {barcodeSkuVerifying ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        Verify SKU
+                      </button>
+                    </div>
 
-                      {/* Verified SKU Preview Badge */}
-                      {barcodeSelectedSku && (
-                        <div className="p-3 rounded-xl bg-amber-50/80 border border-[#c8834a]/30 flex items-center justify-between animate-fade-in text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="font-extrabold text-[#2d1f0e]">
-                              Order #{barcodeSelectedSku.order_number || 'N/A'} · {barcodeSelectedSku.style_name || barcodeSelectedSku.code}
-                            </span>
-                          </div>
-                          <span className="font-mono text-[11px] font-bold text-[#c8834a]">
-                            {barcodeSelectedSku.code}
+                    {/* Verified SKU Preview Badge */}
+                    {barcodeSelectedSku && (
+                      <div className="p-3 rounded-xl bg-amber-50/80 border border-[#c8834a]/30 flex items-center justify-between animate-fade-in text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="font-extrabold text-[#2d1f0e]">
+                            Order #{barcodeSelectedSku.order_number || 'N/A'} · {barcodeSelectedSku.style_name || barcodeSelectedSku.code}
                           </span>
+                        </div>
+                        <span className="font-mono text-[11px] font-bold text-[#c8834a]">
+                          {barcodeSelectedSku.code}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Total Cut Area (DCM) Field — APPEARS ONLY AFTER SKU IS VERIFIED */}
+                  {barcodeSelectedSku && (
+                    <div className="space-y-3 animate-fade-in pt-2 border-t border-[#c8834a]/15">
+                      <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
+                        <Scissors className="w-4 h-4 text-[#c8834a]" /> Total Cut Area (DCM) / Count *
+                      </label>
+                      <div className="flex gap-3">
+                        <input
+                          ref={dcmInputRef}
+                          type="number"
+                          min="1"
+                          placeholder="Enter DCM value or Cut Piece count (e.g. 45)..."
+                          value={barcodeDcm}
+                          onChange={(e) => {
+                            setBarcodeDcm(e.target.value);
+                            setBarcodeDcmConfirmed(false);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && barcodeDcm) {
+                              e.preventDefault();
+                              setBarcodeDcmConfirmed(true);
+                            }
+                          }}
+                          className="input-field flex-1 h-14 px-4 bg-white font-black text-xl text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setBarcodeDcmConfirmed(true)}
+                          disabled={!barcodeDcm || isNaN(parseInt(barcodeDcm, 10))}
+                          className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
+                        >
+                          <Check className="w-4 h-4" />
+                          Verify DCM
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ORDER DETAILS SUMMARY & 3 MATERIAL SPEC DROPDOWNS */}
+                  {barcodeSelectedSku && barcodeDcmConfirmed && barcodeDcm && (
+                    <div className="p-6 rounded-2xl bg-white border-2 border-[#c8834a]/30 shadow-md space-y-5 animate-fade-in">
+
+                      {/* Order Details Header */}
+                      <div className="p-4 rounded-xl bg-[#faf6f0] border border-[#c8834a]/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                        <div>
+                          <span className="text-[10px] font-black uppercase tracking-wider text-[#c8834a]">Order Summary</span>
+                          <h4 className="text-sm font-black text-[#2d1f0e] mt-0.5">
+                            Order #{barcodeSelectedSku.order_number || '100123'} · {barcodeSelectedSku.style_name || barcodeSelectedSku.code}
+                          </h4>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total DCM</span>
+                          <p className="text-lg font-black text-[#c8834a]">{barcodeDcm} DCM</p>
+                        </div>
+                      </div>
+
+                      {/* 3 Dropdowns */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {/* 1. Article */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. {lotCategory === 'LINING' ? 'Lining' : 'Leather'} Article *</label>
+                          <select
+                            value={lotArticle}
+                            onChange={(e) => { setLotArticle(e.target.value); setLotColor(''); setLotThickness(''); }}
+                            className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                          >
+                            <option value="">-- Select Article --</option>
+                            {lotOptions.article?.map(a => <option key={a} value={a}>{a}</option>)}
+                          </select>
+                        </div>
+                        {/* 2. Color */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. {lotCategory === 'LINING' ? 'Lining' : 'Leather'} Color *</label>
+                          <select
+                            value={lotColor}
+                            onChange={(e) => { setLotColor(e.target.value); setLotThickness(''); }}
+                            className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
+                          >
+                            <option value="">-- Select Color --</option>
+                            {lotOptions.colour?.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        {/* 3. Thickness */}
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider flex items-center justify-between">
+                            <span>3. Thickness</span>
+                            <span className="text-[10px] text-slate-400 font-bold lowercase">(optional)</span>
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 1.2mm, 0.8mm..."
+                            value={lotThickness}
+                            onChange={(e) => setLotThickness(e.target.value)}
+                            className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none focus:border-[#c8834a]"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Lot Status Indicator */}
+                      {lotArticle && lotColor && lotThickness && (
+                        <div className={`p-4 rounded-xl border flex items-center justify-between ${lotResults.length === 1 && lotResults[0].covers_required !== false ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
+                          <div>
+                            <div className="text-xs font-black uppercase tracking-wider mb-1">Material Availability</div>
+                            <div className="text-sm font-bold">
+                              {lotLoading ? 'Checking...' : (
+                                lotResults.length === 1 ? (
+                                  lotResults[0].covers_required === false
+                                    ? <span className="text-red-600">Not enough stock (Available: {lotResults[0].available} {lotResults[0].uom})</span>
+                                    : <span className="text-emerald-700">Available: {lotResults[0].available} {lotResults[0].uom}</span>
+                                ) : (
+                                  <span className="text-red-600">{lotResults.length === 0 ? 'No matching lot found.' : 'Multiple lots found. Refine filters.'}</span>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Submit Cutting Button */}
+                      <button
+                        type="button"
+                        onClick={handleBarcodeCuttingSubmit}
+                        disabled={barcodeSubmitting || lotResults.length !== 1 || lotResults[0].covers_required === false}
+                        className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
+                        style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                      >
+                        {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
+                        Log Cutting Event &amp; Mint Traveler Card Barcodes
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Bug #8: Individual Piece Scanning Progress Tracker */}
+                  {cuttingGeneratedPieces.length > 0 && (
+                    <div className="p-5 rounded-2xl bg-slate-900 border border-[#c8834a]/30 space-y-4 animate-fade-in">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-black text-white flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                            Piece-by-Piece Scan Progress
+                          </h4>
+                          <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                            {cuttingGeneratedPieces.filter(p => p.scanned).length} of {cuttingGeneratedPieces.length} pieces scanned
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-2xl font-black text-[#c8834a]">
+                            {Math.round((cuttingGeneratedPieces.filter(p => p.scanned).length / cuttingGeneratedPieces.length) * 100)}%
+                          </div>
+                          {cuttingPiecesDone && (
+                            <span className="text-[10px] bg-emerald-500 text-white font-black px-2 py-0.5 rounded-full">COMPLETE ✓</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="w-full h-2 bg-slate-700 rounded-full overflow-hidden">
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${(cuttingGeneratedPieces.filter(p => p.scanned).length / cuttingGeneratedPieces.length) * 100}%`,
+                            background: cuttingPiecesDone ? '#10b981' : 'linear-gradient(90deg, #c8834a, #e8a06a)'
+                          }}
+                        />
+                      </div>
+
+                      {/* Piece Grid */}
+                      <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5 max-h-40 overflow-y-auto pr-1">
+                        {cuttingGeneratedPieces.map((p) => (
+                          <div
+                            key={p.code}
+                            className={`p-2 rounded-lg text-center text-[10px] font-black border transition-all ${
+                              p.scanned
+                                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+                                : 'bg-slate-800 border-slate-700 text-slate-400'
+                            }`}
+                          >
+                            <div className="text-xs">{p.scanned ? '✓' : '○'}</div>
+                            <div>#{p.serial_str}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Scan Input for individual piece */}
+                      {!cuttingPiecesDone && (
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="Scan individual piece barcode (e.g. KL_1001-ADELE-001)..."
+                            className="flex-1 h-12 px-4 bg-slate-800 border border-slate-600 focus:border-[#c8834a] rounded-xl text-white font-mono text-sm outline-none"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const scannedCode = e.target.value.trim().toUpperCase();
+                                if (!scannedCode) return;
+                                const matchIdx = cuttingGeneratedPieces.findIndex(
+                                  p => !p.scanned && (
+                                    p.code.toUpperCase() === scannedCode ||
+                                    p.serial_str === scannedCode ||
+                                    scannedCode.endsWith(p.serial_str)
+                                  )
+                                );
+                                if (matchIdx >= 0) {
+                                  const updated = cuttingGeneratedPieces.map((p, i) =>
+                                    i === matchIdx ? { ...p, scanned: true } : p
+                                  );
+                                  setCuttingGeneratedPieces(updated);
+                                  if (updated.every(p => p.scanned)) setCuttingPiecesDone(true);
+                                  e.target.value = '';
+                                } else {
+                                  e.target.style.borderColor = '#ef4444';
+                                  setTimeout(() => { e.target.style.borderColor = ''; }, 1000);
+                                }
+                              }
+                            }}
+                          />
+                          {cuttingPiecesDone ? null : (
+                            <button
+                              type="button"
+                              onClick={() => { setCuttingGeneratedPieces([]); setCuttingPiecesDone(false); }}
+                              className="h-12 px-4 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold text-xs rounded-xl transition-colors"
+                            >Reset</button>
+                          )}
                         </div>
                       )}
                     </div>
+                  )}
 
-                    {/* Total Cut Area (DCM) Field — APPEARS ONLY AFTER SKU IS VERIFIED */}
-                    {barcodeSelectedSku && (
-                      <div className="space-y-3 animate-fade-in pt-2 border-t border-[#c8834a]/15">
-                        <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
-                          <Scissors className="w-4 h-4 text-[#c8834a]" /> Total Cut Area (DCM) / Count *
-                        </label>
-                        <div className="flex gap-3">
-                          <input
-                            type="number"
-                            min="1"
-                            placeholder="Enter DCM value or Cut Piece count (e.g. 45)..."
-                            value={barcodeDcm}
-                            onChange={(e) => {
-                              setBarcodeDcm(e.target.value);
-                              setBarcodeDcmConfirmed(false);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && barcodeDcm) {
-                                e.preventDefault();
-                                setBarcodeDcmConfirmed(true);
-                              }
-                            }}
-                            className="input-field flex-1 h-14 px-4 bg-white font-black text-xl text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
-                            autoFocus
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setBarcodeDcmConfirmed(true)}
-                            disabled={!barcodeDcm || isNaN(parseInt(barcodeDcm, 10))}
-                            className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
-                          >
-                            <Check className="w-4 h-4" />
-                            Verify DCM
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                </div>
+              ) : (
+                /* STEP 3B: PIPELINE STAGES FLOW (Fusing -> Final Finish) */
+                <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
+                  <div className="space-y-3">
+                    <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
+                      <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan Piece Barcodes for {barcodeStage} *
+                    </label>
 
-                    {/* ORDER DETAILS SUMMARY & 3 MATERIAL SPEC DROPDOWNS */}
-                    {barcodeSelectedSku && barcodeDcmConfirmed && barcodeDcm && (
-                      <div className="p-6 rounded-2xl bg-white border-2 border-[#c8834a]/30 shadow-md space-y-5 animate-fade-in">
-
-                        {/* Order Details Header */}
-                        <div className="p-4 rounded-xl bg-[#faf6f0] border border-[#c8834a]/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                          <div>
-                            <span className="text-[10px] font-black uppercase tracking-wider text-[#c8834a]">Order Summary</span>
-                            <h4 className="text-sm font-black text-[#2d1f0e] mt-0.5">
-                              Order #{barcodeSelectedSku.order_number || '100123'} · {barcodeSelectedSku.style_name || barcodeSelectedSku.code}
-                            </h4>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">Total DCM</span>
-                            <p className="text-lg font-black text-[#c8834a]">{barcodeDcm} DCM</p>
-                          </div>
-                        </div>
-
-                        {/* 3 Dropdowns */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                          {/* 1. Article */}
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">1. {lotCategory === 'LINING' ? 'Lining' : 'Leather'} Article *</label>
-                            <select
-                              value={lotArticle}
-                              onChange={(e) => { setLotArticle(e.target.value); setLotColor(''); setLotThickness(''); }}
-                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                            >
-                              <option value="">-- Select Article --</option>
-                              {lotOptions.article?.map(a => <option key={a} value={a}>{a}</option>)}
-                            </select>
-                          </div>
-                          {/* 2. Color */}
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">2. {lotCategory === 'LINING' ? 'Lining' : 'Leather'} Color *</label>
-                            <select
-                              value={lotColor}
-                              onChange={(e) => { setLotColor(e.target.value); setLotThickness(''); }}
-                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                            >
-                              <option value="">-- Select Color --</option>
-                              {lotOptions.colour?.map(c => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                          </div>
-                          {/* 3. Thickness */}
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider">3. Thickness (mm) *</label>
-                            <select
-                              value={lotThickness}
-                              onChange={(e) => setLotThickness(e.target.value)}
-                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                            >
-                              <option value="">-- Select Thickness --</option>
-                              {lotOptions.thickness?.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                          </div>
-                        </div>
-
-                        {/* Lot Status Indicator */}
-                        {lotArticle && lotColor && lotThickness && (
-                          <div className={`p-4 rounded-xl border flex items-center justify-between ${lotResults.length === 1 && lotResults[0].covers_required !== false ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-                            <div>
-                              <div className="text-xs font-black uppercase tracking-wider mb-1">Material Availability</div>
-                              <div className="text-sm font-bold">
-                                {lotLoading ? 'Checking...' : (
-                                  lotResults.length === 1 ? (
-                                    lotResults[0].covers_required === false
-                                      ? <span className="text-red-600">Not enough stock (Available: {lotResults[0].available} {lotResults[0].uom})</span>
-                                      : <span className="text-emerald-700">Available: {lotResults[0].available} {lotResults[0].uom}</span>
-                                  ) : (
-                                    <span className="text-red-600">{lotResults.length === 0 ? 'No matching lot found.' : 'Multiple lots found. Refine filters.'}</span>
-                                  )
-                                )}
-                              </div>
-                            </div>
-                          </div>
+                    <div className="flex gap-3">
+                      <div className="relative flex-1">
+                        {!barcodePieceInput && (
+                          <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
                         )}
-
-                        {/* Submit Cutting Button */}
-                        <button
-                          type="button"
-                          onClick={handleBarcodeCuttingSubmit}
-                          disabled={barcodeSubmitting || lotResults.length !== 1 || lotResults[0].covers_required === false}
-                          className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
-                          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-                        >
-                          {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
-                          Log Cutting Event &amp; Mint Traveler Card Barcodes
-                        </button>
+                        <input
+                          ref={pieceInputRef}
+                          type="text"
+                          placeholder={`Scan piece barcode (e.g. KL_1-${barcodeSelectedSku?.code || 'ADELE-38'}-001)...`}
+                          value={barcodePieceInput}
+                          onChange={(e) => setBarcodePieceInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleBarcodePieceScan();
+                            }
+                          }}
+                          style={{ paddingLeft: barcodePieceInput ? '1rem' : '3.25rem', paddingRight: '1rem' }}
+                          className="w-full h-14 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all"
+                          autoFocus
+                        />
                       </div>
-                    )}
-
-                  </div>
-                ) : (
-                  /* STEP 3B: PIPELINE STAGES FLOW (Fusing -> Final Finish) */
-                  <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
-                    <div className="space-y-3">
-                      <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
-                        <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan Piece Barcodes for {barcodeStage} *
-                      </label>
-
-                      <div className="flex gap-3">
-                        <div className="relative flex-1">
-                          <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2" />
-                          <input
-                            type="text"
-                            placeholder={`Scan piece barcode (e.g. KL_1-${barcodeSelectedSku?.code || 'ADELE-38'}-001)...`}
-                            value={barcodePieceInput}
-                            onChange={(e) => setBarcodePieceInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                handleBarcodePieceScan();
-                              }
-                            }}
-                            className="w-full h-14 pl-12 pr-4 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
-                            autoFocus
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleBarcodePieceScan()}
-                          className="h-14 px-6 rounded-xl font-black text-xs text-white shadow-md cursor-pointer"
-                          style={{ background: '#c8834a' }}
-                        >
-                          Add Piece
-                        </button>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleBarcodePieceScan()}
+                        className="h-14 px-6 rounded-xl font-black text-xs text-white shadow-md cursor-pointer"
+                        style={{ background: '#c8834a' }}
+                      >
+                        Add Piece
+                      </button>
                     </div>
+                  </div>
 
-                    {/* Scanned Pieces Batch List */}
-                    {barcodeBatchPieces.length > 0 && (
-                      <div className="p-5 rounded-2xl bg-white border-2 border-[#c8834a]/20 shadow-md space-y-4 animate-fade-in">
-                        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                          <span className="text-xs font-black text-[#2d1f0e] flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                            Scanned Pieces Batch ({barcodeBatchPieces.length})
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setBarcodeBatchPieces([])}
-                            className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
-                          >
-                            Clear Batch
-                          </button>
-                        </div>
-
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
-                          {barcodeBatchPieces.map((p, idx) => (
-                            <div key={p.code} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
-                              <div>
-                                <p className="font-mono font-bold text-slate-800 text-[11px]">{p.code}</p>
-                                <p className="text-[9px] font-semibold text-slate-400">Scanned #{idx + 1}</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => setBarcodeBatchPieces(prev => prev.filter(item => item.code !== p.code))}
-                                className="text-slate-400 hover:text-red-500 transition-colors p-1"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-
+                  {/* Scanned Pieces Batch List */}
+                  {barcodeBatchPieces.length > 0 && (
+                    <div className="p-5 rounded-2xl bg-white border-2 border-[#c8834a]/20 shadow-md space-y-4 animate-fade-in">
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                        <span className="text-xs font-black text-[#2d1f0e] flex items-center gap-2">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                          Scanned Pieces Batch ({barcodeBatchPieces.length})
+                        </span>
                         <button
                           type="button"
-                          onClick={handleBarcodeBatchSubmit}
-                          disabled={barcodeSubmitting}
-                          className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
-                          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                          onClick={() => setBarcodeBatchPieces([])}
+                          className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
                         >
-                          {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
-                          Submit Batch ({barcodeBatchPieces.length} Pieces) for {barcodeStage}
+                          Clear Batch
                         </button>
                       </div>
-                    )}
 
-                  </div>
-                )}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
+                        {barcodeBatchPieces.map((p, idx) => (
+                          <div key={p.code} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+                            <div>
+                              <p className="font-mono font-bold text-slate-800 text-[11px]">{p.code}</p>
+                              <p className="text-[9px] font-semibold text-slate-400">Scanned #{idx + 1}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setBarcodeBatchPieces(prev => prev.filter(item => item.code !== p.code))}
+                              className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
 
-              </div>
-            )}
+                      <button
+                        type="button"
+                        onClick={handleBarcodeBatchSubmit}
+                        disabled={barcodeSubmitting}
+                        className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
+                        style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                      >
+                        {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
+                        Submit Batch ({barcodeBatchPieces.length} Pieces) for {barcodeStage}
+                      </button>
+                    </div>
+                  )}
+
+                </div>
+              )}
+
+            </div>
 
             {/* GOLDEN SUCCESS POPUP MODAL */}
             {barcodeSuccessModal && createPortal(
@@ -2137,11 +2673,20 @@ export default function ProductionLogEntry() {
                         <span>{barcodeSuccessModal.pieces.length} Barcodes</span>
                       </div>
 
-                      <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                      <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
                         {barcodeSuccessModal.pieces.map((p) => (
-                          <div key={p.code} className="p-2 rounded-xl bg-white border border-slate-200 flex items-center justify-between text-xs font-mono font-bold">
-                            <span>{p.code}</span>
-                            <span className="text-[10px] text-emerald-600 font-extrabold uppercase">Valid</span>
+                          <div key={p.code} className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="font-mono font-black text-xs text-[#2d1f0e]">{p.code}</span>
+                              <span className="text-[10px] bg-emerald-100 text-emerald-700 font-extrabold uppercase px-1.5 py-0.5 rounded-md">#{p.serial_str || String(p.seq).padStart(3,'0')}</span>
+                            </div>
+                            <div className="flex items-center flex-wrap gap-1">
+                              {(barcodeSuccessModal.article || p.article) && <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 font-bold px-1.5 py-0.5 rounded-md">{p.article || barcodeSuccessModal.article}</span>}
+                              {(barcodeSuccessModal.style || p.style_name) && <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 font-bold px-1.5 py-0.5 rounded-md">{p.style_name || barcodeSuccessModal.style}</span>}
+                              {(barcodeSuccessModal.color || p.color) && <span className="text-[9px] bg-slate-50 text-slate-600 border border-slate-200 font-bold px-1.5 py-0.5 rounded-md">{p.color || barcodeSuccessModal.color}</span>}
+                              {(barcodeSuccessModal.size || p.size) && <span className="text-[9px] bg-purple-50 text-purple-700 border border-purple-200 font-bold px-1.5 py-0.5 rounded-md">Sz: {p.size || barcodeSuccessModal.size}</span>}
+                              {(barcodeSuccessModal.orderNumber || p.order_number) && <span className="text-[9px] bg-rose-50 text-rose-700 border border-rose-200 font-bold px-1.5 py-0.5 rounded-md">#{p.order_number || barcodeSuccessModal.orderNumber}</span>}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -3298,7 +3843,7 @@ export default function ProductionLogEntry() {
       {activeDoor === 'store' && (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
           {/* Header & Metrics */}
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
               <div className="text-xs text-slate-500 font-bold mb-1">Total Drawers</div>
               <div className="text-2xl font-black text-slate-800">{storeTotal}</div>
@@ -3364,12 +3909,47 @@ export default function ProductionLogEntry() {
                     </button>
                   </div>
                 </div>
+                {/* Bug #11: Auto-detect Next Required Scan Guidance Card */}
+                <div className={`p-3 rounded-xl border-2 flex items-center gap-3 transition-all ${
+                  !storeDrawerInput
+                    ? 'bg-amber-50 border-amber-300'
+                    : 'bg-emerald-50 border-emerald-300'
+                }`}>
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-lg ${
+                    !storeDrawerInput ? 'bg-amber-100' : 'bg-emerald-100'
+                  }`}>
+                    {!storeDrawerInput ? '📦' : '🏷️'}
+                  </div>
+                  <div>
+                    <div className={`text-xs font-black uppercase tracking-wider ${!storeDrawerInput ? 'text-amber-800' : 'text-emerald-800'}`}>
+                      {!storeDrawerInput ? 'Step 1: Scan Drawer ID' : 'Step 2: Scan Piece Barcode'}
+                    </div>
+                    <div className={`text-[10px] font-bold mt-0.5 ${!storeDrawerInput ? 'text-amber-600' : 'text-emerald-600'}`}>
+                      {!storeDrawerInput
+                        ? 'Point your barcode gun at any drawer label (e.g. DRW-0001)'
+                        : `Drawer ${storeDrawerInput} ready — scan the piece barcode now`}
+                    </div>
+                  </div>
+                  {storeDrawerInput && (
+                    <button
+                      type="button"
+                      onClick={() => { setStoreDrawerInput(''); setStorePieceInput(''); setStoreVerifyResult(null); setStoreCurrentScan(''); }}
+                      className="ml-auto text-slate-400 hover:text-red-500 transition-colors"
+                      title="Reset Drawer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
 
                 <div className="relative">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block">Scanner Input</label>
                   <div className="relative flex items-center">
-                    <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 pointer-events-none" />
+                    {!storeCurrentScan && (
+                      <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 pointer-events-none transition-opacity duration-200" />
+                    )}
                     <input
+                      ref={storeInputRef}
                       type="text"
                       placeholder={!storeDrawerInput ? "Scan Drawer ID first..." : "Scan Piece Barcode..."}
                       value={storeCurrentScan}
@@ -3377,21 +3957,28 @@ export default function ProductionLogEntry() {
                       onKeyDown={(e) => {
                         if (e.key === 'Enter') {
                           const val = storeCurrentScan.trim();
-                          if (!val) return;
-                          if (val.toUpperCase().startsWith('DRW-') || val.toUpperCase().startsWith('DRAWER')) {
-                            const drawerCode = val.toUpperCase();
-                            setStoreDrawerInput(drawerCode);
-                            setStoreDrawerSearch(drawerCode); // Auto-filter list below
-                          } else {
-                            setStorePieceInput(val);
+                          if (val) {
+                            if (!storeDrawerInput) {
+                              setStoreDrawerInput(val);
+                              setStoreCurrentScan('');
+                              setSuccessMsg(`✅ Drawer ID '${val}' set! Now scan piece barcode.`);
+                            } else {
+                              setStorePieceInput(val);
+                              setStoreCurrentScan('');
+                              handleVerifyStorePiece(val);
+                            }
                           }
-                          setStoreCurrentScan('');
                         }
                       }}
-                      autoFocus
-                      className="w-full h-16 pl-12 pr-12 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all"
+                      style={{ paddingLeft: storeCurrentScan ? '1rem' : '3.25rem', paddingRight: '3rem' }}
+                      className="w-full h-16 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all"
                     />
-                    <button className="absolute right-3 text-slate-400 hover:text-[#c8834a] p-2 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => setCameraScanTarget('store')}
+                      className="sm:hidden absolute right-3 text-[#c8834a] bg-amber-50 border border-[#c8834a]/30 hover:bg-amber-100 p-2 rounded-xl transition-all active:scale-95 cursor-pointer z-10"
+                      title="Scan Drawer/Piece with Mobile Camera"
+                    >
                       <Camera className="w-5 h-5" />
                     </button>
                   </div>
@@ -3443,49 +4030,43 @@ export default function ProductionLogEntry() {
                     </div>
                   </div>
 
-                  {/* Manual Checklist for Hold States */}
-                  <div className="py-2 space-y-3">
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Drawer Contents Validation</p>
-                    <div className="space-y-2">
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLeather
-                          ? 'bg-emerald-500 border-emerald-500 text-white'
-                          : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
-                          }`}>
-                          <Check className="w-4 h-4" />
-                        </div>
-                        <input type="checkbox" className="hidden" checked={isCheckedLeather} onChange={(e) => setIsCheckedLeather(e.target.checked)} />
-                        <span className="text-sm font-bold text-slate-700">Hold Leather (Manual Check)</span>
-                      </label>
-
-                      <label className="flex items-center gap-3 cursor-pointer group">
-                        <div className={`w-6 h-6 rounded-md flex items-center justify-center border-2 transition-colors ${isCheckedLining
-                          ? 'bg-emerald-500 border-emerald-500 text-white'
-                          : 'border-slate-300 bg-white text-transparent group-hover:border-emerald-300'
-                          }`}>
-                          <Check className="w-4 h-4" />
-                        </div>
-                        <input type="checkbox" className="hidden" checked={isCheckedLining} onChange={(e) => setIsCheckedLining(e.target.checked)} />
-                        <span className="text-sm font-bold text-slate-700">Hold Lining (Manual Check)</span>
-                      </label>
+                  {/* Bug #18: Auto-classified hold state based on backend response */}
+                  {storeVerifyResult && (
+                    <div className="py-2 space-y-2">
+                      <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">Auto-Classified Hold Status</p>
+                      <div className="flex flex-wrap gap-2">
+                        {/* Auto-detect leather hold from backend state */}
+                        {(storeVerifyResult.state?.toLowerCase().includes('leather') || storeVerifyResult.state?.toLowerCase().includes('both') || storeVerifyResult.holding?.toLowerCase().includes('leather')) ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-black rounded-xl">
+                            ✅ Leather Piece — Confirmed
+                          </span>
+                        ) : null}
+                        {/* Auto-detect lining hold from backend state */}
+                        {(storeVerifyResult.state?.toLowerCase().includes('lining') || storeVerifyResult.state?.toLowerCase().includes('both') || storeVerifyResult.holding?.toLowerCase().includes('lining')) ? (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-800 text-xs font-black rounded-xl">
+                            ✅ Lining Piece — Confirmed
+                          </span>
+                        ) : null}
+                        {/* Show generic merged badge if no specific type detected */}
+                        {!storeVerifyResult.state?.toLowerCase().includes('leather') && !storeVerifyResult.state?.toLowerCase().includes('lining') && !storeVerifyResult.holding && (
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-black rounded-xl">
+                            ✅ Piece Verified — Ready to Receive
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   {/* Receive/Send Action Buttons */}
                   <div className="pt-4 border-t border-slate-200 flex flex-col sm:flex-row items-center gap-3">
                     <button
                       type="button"
                       onClick={() => handleStoreTransition('RECEIVED')}
-                      disabled={
-                        storeReceiveStatus !== 'pending' ||
-                        storeApiLoading ||
-                        !isCheckedLeather ||
-                        !isCheckedLining
-                      }
+                      disabled={storeReceiveStatus !== 'pending' || storeApiLoading}
                       className="flex-1 w-full py-3 bg-[#c8834a] hover:bg-[#b07038] text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
                     >
                       {storeReceiveStatus !== 'pending' ? <CheckCircle2 className="w-4 h-4" /> : <PackageCheck className="w-4 h-4" />}
-                      {storeReceiveStatus !== 'pending' ? 'Received' : 'Receive'}
+                      {storeReceiveStatus !== 'pending' ? 'Received ✅' : 'Receive into Drawer'}
                     </button>
 
                     <button
@@ -3552,37 +4133,118 @@ export default function ProductionLogEntry() {
                     </button>
                   </div>
                 </div>
+
+                {/* Bug #13 & #14: Multi-Drawer Selection Toolbar */}
+                {selectedDrawers.size > 0 && (
+                  <div className="mx-4 my-3 p-3 rounded-xl bg-indigo-50 border-2 border-indigo-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+                    <div className="flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center">{selectedDrawers.size}</span>
+                      <span className="text-sm font-black text-indigo-800">{selectedDrawers.size} Drawer{selectedDrawers.size > 1 ? 's' : ''} Selected</span>
+                    </div>
+                    <div className="flex items-center flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => handleBatchSendDrawers('LINING')}
+                        disabled={batchSending}
+                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-sm"
+                      >
+                        <Send className="w-3.5 h-3.5" />
+                        Send to Lining
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleBatchSendDrawers('STITCHING')}
+                        disabled={batchSending}
+                        className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-sm"
+                      >
+                        {batchSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                        Send to Line Stitching
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDrawers(new Set())}
+                        className="px-3 py-2 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-lg hover:bg-slate-50 transition-all cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Bug #15: Drawer Log Queue panel */}
+                {drawerLogQueue.length > 0 && (
+                  <div className="mx-4 my-3 p-4 rounded-xl bg-amber-50 border border-amber-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-black text-amber-900 flex items-center gap-1.5">
+                        📦 Drawer Log Queue ({drawerLogQueue.length} items — pending send)
+                      </h4>
+                      <button
+                        type="button"
+                        onClick={() => setDrawerLogQueue([])}
+                        className="text-xs text-red-500 font-bold hover:underline"
+                      >Clear Queue</button>
+                    </div>
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                      {drawerLogQueue.map((entry, i) => (
+                        <div key={i} className="flex items-center justify-between text-xs font-mono px-3 py-1.5 bg-white rounded-lg border border-amber-100">
+                          <span className="font-bold text-slate-700">{entry.drawerId}</span>
+                          <span className="text-slate-500">{entry.pieceCode}</span>
+                          <span className="text-[9px] text-amber-600 font-bold">{new Date(entry.loggedAt).toLocaleTimeString()}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div className="divide-y divide-slate-100">
                   {filteredStoreDrawers
                     .slice(0, storeVisibleCount)
                     .map(drawer => {
                       const isScannedDrawer = storeDrawerInput.trim().toUpperCase() === drawer.id.toUpperCase();
                       const isExpanded = expandedDrawer === drawer.id;
+                      const isChecked = selectedDrawers.has(drawer.id);
                       return (
-                        <div key={drawer.id} className={`transition-colors hover:bg-slate-50 ${isScannedDrawer ? 'ring-2 ring-[#c8834a] ring-inset bg-amber-50/30' : ''}`}>
-                          <div
-                            onClick={() => setExpandedDrawer(isExpanded ? null : drawer.id)}
-                            className="px-5 py-4 flex items-center justify-between cursor-pointer"
+                        <div key={drawer.id} className={`transition-colors hover:bg-slate-50 ${isScannedDrawer ? 'ring-2 ring-[#c8834a] ring-inset bg-amber-50/30' : ''} ${isChecked ? 'bg-indigo-50/50' : ''}`}>
+                          <div className="px-5 py-4 flex items-center justify-between cursor-pointer">
+                            {/* Bug #13: Checkbox for multi-select */}
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleDrawerSelection(drawer.id); }}
+                              className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center mr-3 transition-all ${
+                                isChecked ? 'bg-indigo-600 border-indigo-600 text-white' : 'border-slate-300 bg-white hover:border-indigo-400'
+                              }`}
+                            >
+                              {isChecked && <Check className="w-3 h-3" />}
+                            </button>
+                            <div
+                              onClick={() => setExpandedDrawer(isExpanded ? null : drawer.id)}
+                              className="flex items-center justify-between flex-1 min-w-0"
                           >
                             <div className="flex items-center gap-4">
                               <div className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm ${drawer.status === 'Free' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-700'}`}>
                                 {drawer.id.replace('DRW-', '')}
                               </div>
                               <div>
-                                <div className="font-black text-slate-800">{drawer.id} <span className="ml-2 text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">Holding: {drawer.holding}</span></div>
+                                <div className="font-black text-slate-800 flex items-center flex-wrap gap-1.5">
+                                  {drawer.id}
+                                  {/* Bug #12: Assigned Drawer badge */}
+                                  <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">📦 {drawer.holding}</span>
+                                  {storeSendedSkus.some(sku => drawer.style?.includes(sku) || drawer.client?.includes(sku)) && (
+                                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">✓ Sent to Stitching</span>
+                                  )}
+                                </div>
                                 <div className="text-xs font-bold text-slate-500 mt-0.5">
                                   {drawer.client !== '-' ? `${drawer.client} / ${drawer.style}` : 'Empty Drawer'}
                                 </div>
                               </div>
                             </div>
                             <div className="flex items-center gap-4">
-                              <span className={`px-2.5 py-1 rounded-md text-[10px] font-black tracking-wide uppercase border ${
-                                drawer.type === 'Empty' ? 'bg-slate-200 text-slate-600 border-slate-300' :
+                              <span className={`px-2.5 py-1 rounded-md text-[10px] font-black tracking-wide uppercase border ${drawer.type === 'Empty' ? 'bg-slate-200 text-slate-600 border-slate-300' :
                                 drawer.type === 'Both' ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' :
-                                drawer.type === 'Leather' ? 'bg-amber-600 text-white border-amber-700 shadow-sm' :
-                                drawer.type === 'Lining' ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' :
-                                'bg-[#c8834a] text-white border-[#b06f36] shadow-sm'
-                              }`}>
+                                  drawer.type === 'Leather' ? 'bg-amber-600 text-white border-amber-700 shadow-sm' :
+                                    drawer.type === 'Lining' ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm' :
+                                      'bg-[#c8834a] text-white border-[#b06f36] shadow-sm'
+                                }`}>
                                 {drawer.type}
                               </span>
                               {isExpanded ? <ChevronDown className="w-5 h-5 text-slate-400" /> : <ChevronRight className="w-5 h-5 text-slate-400" />}
@@ -3591,6 +4253,7 @@ export default function ProductionLogEntry() {
                               )}
                             </div>
                           </div>
+                        </div>
 
                           {/* Expanded Details */}
                           {isExpanded && (

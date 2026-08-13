@@ -50,20 +50,13 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
+import { useData } from '@/context/DataContext';
 import {
   apiGetStoreDashboard,
   apiGetStoreDrawerDetail,
   apiGetStoreDrawerMovement,
   apiGetStoreTraceability,
 } from '@/lib/api';
-import {
-  STORE_KPIS,
-  STORE_CURRENT_STYLES,
-  STORE_DRAWERS_LIST,
-  STORE_HELD_DRAWERS,
-  STORE_EMPTY_DRAWERS,
-  STORE_DAILY_LOGS,
-} from '@/lib/storeData';
 
 // Chart custom tooltip
 function CustomTooltip({ active, payload, label, unit = 'drawers' }) {
@@ -84,17 +77,28 @@ function CustomTooltip({ active, payload, label, unit = 'drawers' }) {
 function StoreDashboardContent() {
   const searchParams = useSearchParams();
   const { token } = useAuth();
+  const { orders: contextOrders } = useData();
 
   // State
   const [activeTab, setActiveTab] = useState('tab-today');
-  const [drawersList, setDrawersList] = useState(STORE_DRAWERS_LIST);
-  const [stylesList, setStylesList] = useState(STORE_CURRENT_STYLES);
-  const [heldList, setHeldList] = useState(STORE_HELD_DRAWERS);
-  const [emptyList, setEmptyList] = useState(STORE_EMPTY_DRAWERS);
-  const [dailyLogs, setDailyLogs] = useState(STORE_DAILY_LOGS);
+  const [drawersList, setDrawersList] = useState([]);
+  const [stylesList, setStylesList] = useState([]);
+  const [heldList, setHeldList] = useState([]);
+  const [emptyList, setEmptyList] = useState([]);
+  const [dailyLogs, setDailyLogs] = useState([]);
+  const [ordersList, setOrdersList] = useState(contextOrders || []);
+  const [activeOrder, setActiveOrder] = useState(contextOrders?.[0] || null);
 
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
+
+  // Sync context orders
+  useEffect(() => {
+    if (contextOrders && contextOrders.length > 0 && ordersList.length === 0) {
+      setOrdersList(contextOrders);
+      if (!activeOrder) setActiveOrder(contextOrders[0]);
+    }
+  }, [contextOrders, ordersList, activeOrder]);
 
   // Universal Filters
   const [filterDate, setFilterDate] = useState('all');
@@ -121,6 +125,38 @@ function StoreDashboardContent() {
     }
   }, [searchParams]);
 
+  // Dynamic Options for Selects
+  const availableStyles = useMemo(() => {
+    const map = new Map();
+    stylesList.forEach((s) => {
+      const name = s.style_name || s.name || s.style;
+      if (name) map.set(name, { id: s.id || name, name });
+    });
+    drawersList.forEach((d) => {
+      if (d.style && !map.has(d.style)) map.set(d.style, { id: d.style, name: d.style });
+    });
+    ordersList.forEach((o) => {
+      o.styles?.forEach((s) => {
+        if (s.name && !map.has(s.name)) map.set(s.name, { id: s.id || s.name, name: s.name });
+      });
+    });
+    return Array.from(map.values());
+  }, [stylesList, drawersList, ordersList]);
+
+  const availableMaterials = useMemo(() => {
+    return [
+      { id: 'LEATHER+LINING', label: 'Leather + Lining (Both)' },
+      { id: 'LEATHER', label: 'Leather Only' },
+      { id: 'LINING', label: 'Lining Only' },
+    ];
+  }, []);
+
+  const availableStatuses = useMemo(() => {
+    const set = new Set(['In Store', 'Ready to Send', 'Sent to Production', 'Held']);
+    drawersList.forEach((d) => { if (d.status_label) set.add(d.status_label); });
+    return Array.from(set).filter(Boolean);
+  }, [drawersList]);
+
   // LIVE BACKEND CALL: /api/v1/dashboard/store
   useEffect(() => {
     let isMounted = true;
@@ -141,6 +177,10 @@ function StoreDashboardContent() {
           if (data.held && Array.isArray(data.held)) setHeldList(data.held);
           if (data.empty && Array.isArray(data.empty)) setEmptyList(data.empty);
           if (data.daily_logs && Array.isArray(data.daily_logs)) setDailyLogs(data.daily_logs);
+          if (data.orders && Array.isArray(data.orders)) {
+            setOrdersList(data.orders);
+            if (data.orders.length > 0 && !activeOrder) setActiveOrder(data.orders[0]);
+          }
         }
       } catch (err) {
         console.warn('Backend API /api/v1/dashboard/store notice:', err.message);
@@ -192,23 +232,27 @@ function StoreDashboardContent() {
 
   // Filtered drawers computed
   const filteredDrawers = useMemo(() => {
+    const selectedOrderObj = filterOrder !== 'all' ? ordersList.find((o) => o.id === filterOrder || o.order_number === filterOrder) : null;
     return drawersList.filter((d) => {
       // Search query
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const matchesQuery =
-          d.drawer_code.toLowerCase().includes(q) ||
-          d.style.toLowerCase().includes(q) ||
-          d.piece_code.toLowerCase().includes(q) ||
-          d.order_number.toLowerCase().includes(q) ||
-          d.cut_by.toLowerCase().includes(q) ||
-          d.status_label.toLowerCase().includes(q);
+          (d.drawer_code && d.drawer_code.toLowerCase().includes(q)) ||
+          (d.style && d.style.toLowerCase().includes(q)) ||
+          (d.piece_code && d.piece_code.toLowerCase().includes(q)) ||
+          (d.order_number && d.order_number.toLowerCase().includes(q)) ||
+          (d.cut_by && d.cut_by.toLowerCase().includes(q)) ||
+          (d.status_label && d.status_label.toLowerCase().includes(q));
         if (!matchesQuery) return false;
       }
       // Style
       if (filterStyle !== 'all' && d.style !== filterStyle) return false;
       // Order
-      if (filterOrder !== 'all' && d.order_number !== filterOrder) return false;
+      if (filterOrder !== 'all') {
+        const matchesOrder = d.order_id === filterOrder || d.order_number === filterOrder || (selectedOrderObj && (d.order_number === selectedOrderObj.order_number || d.order_id === selectedOrderObj.id));
+        if (!matchesOrder) return false;
+      }
       // Material
       if (filterMaterial !== 'all') {
         if (filterMaterial === 'LEATHER' && d.material_type !== 'LEATHER') return false;
@@ -220,7 +264,7 @@ function StoreDashboardContent() {
 
       return true;
     });
-  }, [drawersList, searchQuery, filterStyle, filterOrder, filterMaterial, filterStatus]);
+  }, [drawersList, ordersList, searchQuery, filterStyle, filterOrder, filterMaterial, filterStatus]);
 
   // Paginated drawers
   const paginatedDrawers = useMemo(() => {
@@ -454,9 +498,11 @@ function StoreDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
             >
               <option value="all">👗 All Styles</option>
-              <option value="CARNABY">CARNABY</option>
-              <option value="FRANCIS KNIT">FRANCIS KNIT</option>
-              <option value="ADELE KNIT">ADELE KNIT</option>
+              {availableStyles.map((s) => (
+                <option key={s.id} value={s.name || s.id}>
+                  {s.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -464,13 +510,20 @@ function StoreDashboardContent() {
           <div>
             <select
               value={filterOrder}
-              onChange={(e) => setFilterOrder(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFilterOrder(val);
+                const ord = ordersList.find((o) => o.id === val || o.order_number === val);
+                if (ord) setActiveOrder(ord);
+              }}
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
             >
               <option value="all">📦 All Orders</option>
-              <option value="ORD-1011">ORD-1011</option>
-              <option value="is1234">is1234</option>
-              <option value="3001">3001</option>
+              {ordersList.map((ord) => (
+                <option key={ord.id} value={ord.id}>
+                  {ord.order_number || ord.name || ord.po_number || ord.id}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -482,9 +535,11 @@ function StoreDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
             >
               <option value="all">🧵 Material Contents</option>
-              <option value="LEATHER+LINING">Leather + Lining (Both)</option>
-              <option value="LEATHER">Leather Only</option>
-              <option value="LINING">Lining Only</option>
+              {availableMaterials.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -496,10 +551,11 @@ function StoreDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
             >
               <option value="all">🗄️ All Statuses</option>
-              <option value="In Store">In Store</option>
-              <option value="Ready to Send">Ready to Send</option>
-              <option value="Sent to Production">Sent to Production</option>
-              <option value="Held">Held</option>
+              {availableStatuses.map((st) => (
+                <option key={st} value={st}>
+                  {st}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -552,7 +608,7 @@ function StoreDashboardContent() {
                     Store Storage Online
                   </span>
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-slate-100 text-slate-800">
-                    4,275 Total Capacity
+                    {drawersList.length || 0} Registered
                   </span>
                 </div>
                 <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">Store Storage & Buffer Hub</h2>
@@ -562,19 +618,19 @@ function StoreDashboardContent() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-200">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">In Store</span>
-                  <p className="text-xs font-bold text-cyan-800">{STORE_KPIS.drawers_in_store} drawers</p>
+                  <p className="text-xs font-bold text-cyan-800">{drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} drawers</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Sent Floor</span>
-                  <p className="text-xs font-bold text-slate-800">{STORE_KPIS.drawers_sent} drawers</p>
+                  <p className="text-xs font-bold text-slate-800">{drawersList.filter((d) => d.status_label === 'Sent to Production').length} drawers</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Held</span>
-                  <p className="text-xs font-bold text-amber-600">{STORE_KPIS.held_drawers} drawers</p>
+                  <p className="text-xs font-bold text-amber-600">{heldList.length} drawers</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Empty Ready</span>
-                  <p className="text-xs font-bold text-emerald-600">{STORE_KPIS.empty_drawers} drawers</p>
+                  <p className="text-xs font-bold text-emerald-600">{emptyList.length} drawers</p>
                 </div>
               </div>
             </div>
@@ -589,15 +645,15 @@ function StoreDashboardContent() {
               <div className="grid grid-cols-3 gap-2 my-3">
                 <div className="bg-orange-50 border border-orange-100 p-3 rounded-xl text-center">
                   <span className="text-[10px] font-bold text-orange-700">Leather Only</span>
-                  <div className="text-lg font-black text-orange-900 mt-0.5">{STORE_KPIS.leather_drawers}</div>
+                  <div className="text-lg font-black text-orange-900 mt-0.5">{drawersList.filter((d) => d.material_type === 'LEATHER').length}</div>
                 </div>
                 <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl text-center">
                   <span className="text-[10px] font-bold text-rose-700">Lining Only</span>
-                  <div className="text-lg font-black text-rose-900 mt-0.5">{STORE_KPIS.lining_drawers}</div>
+                  <div className="text-lg font-black text-rose-900 mt-0.5">{drawersList.filter((d) => d.material_type === 'LINING').length}</div>
                 </div>
                 <div className="bg-cyan-50 border border-cyan-100 p-3 rounded-xl text-center">
                   <span className="text-[10px] font-bold text-cyan-700">Both Merged</span>
-                  <div className="text-lg font-black text-cyan-900 mt-0.5">{STORE_KPIS.leather_lining_drawers}</div>
+                  <div className="text-lg font-black text-cyan-900 mt-0.5">{drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length}</div>
                 </div>
               </div>
 
@@ -614,18 +670,23 @@ function StoreDashboardContent() {
               </div>
 
               <div className="space-y-2 my-2">
-                {STORE_CURRENT_STYLES.slice(0, 3).map((st, idx) => (
+                {stylesList.slice(0, 3).map((st, idx) => (
                   <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
                     <div>
-                      <span className="font-bold text-slate-900">{st.style_name}</span>
-                      <span className="text-[10px] text-slate-500 block">{st.order_number}</span>
+                      <span className="font-bold text-slate-900">{st.style_name || st.name}</span>
+                      <span className="text-[10px] text-slate-500 block">{st.order_number || '—'}</span>
                     </div>
                     <div className="text-right">
-                      <span className="font-mono font-bold text-cyan-700">{st.drawers} drawers</span>
-                      <span className="text-[10px] text-emerald-600 font-bold block">{st.ready_to_send} ready</span>
+                      <span className="font-mono font-bold text-cyan-700">{st.drawers || 0} drawers</span>
+                      <span className="text-[10px] text-emerald-600 font-bold block">{st.ready_to_send || 0} ready</span>
                     </div>
                   </div>
                 ))}
+                {stylesList.length === 0 && (
+                  <div className="text-center py-4 text-xs text-slate-400 font-medium">
+                    No active styles in store buffer.
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -643,17 +704,17 @@ function StoreDashboardContent() {
                   🗄️
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700">
-                  {STORE_KPIS.drawers_in_store} Available
+                  {drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} Available
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Drawers in Store</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{STORE_KPIS.drawers_in_store}</span>
-                <span className="text-xs font-semibold text-slate-400">/ 4,275 registered</span>
+                <span className="text-2xl font-black text-slate-900">{drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length}</span>
+                <span className="text-xs font-semibold text-slate-400">/ {drawersList.length} total</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Sent to Prod: <strong className="text-blue-600">{STORE_KPIS.drawers_sent}</strong></span>
-                <span>Held: <strong className="text-amber-600">{STORE_KPIS.held_drawers}</strong></span>
+                <span>Sent to Prod: <strong className="text-blue-600">{drawersList.filter((d) => d.status_label === 'Sent to Production').length}</strong></span>
+                <span>Held: <strong className="text-amber-600">{heldList.length}</strong></span>
               </div>
             </div>
 
@@ -672,10 +733,10 @@ function StoreDashboardContent() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Empty Drawers for Intake</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-emerald-700">{STORE_KPIS.empty_drawers}</span>
+                <span className="text-2xl font-black text-emerald-700">{emptyList.length}</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Empty Rate: <strong>99.3%</strong></span>
+                <span>Empty Available: <strong>{emptyList.length} drawers</strong></span>
                 <span>Immediate Intake: <strong className="text-emerald-600">Active</strong></span>
               </div>
             </div>
@@ -690,16 +751,16 @@ function StoreDashboardContent() {
                   🧵
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700">
-                  {STORE_KPIS.leather_lining_drawers} Both Merged
+                  {drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Both Merged
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Merged (Leather + Lining)</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{STORE_KPIS.leather_lining_drawers} Pairs</span>
+                <span className="text-2xl font-black text-slate-900">{drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Pairs</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Leather only: <strong>{STORE_KPIS.leather_drawers}</strong></span>
-                <span>Lining only: <strong>{STORE_KPIS.lining_drawers}</strong></span>
+                <span>Leather only: <strong>{drawersList.filter((d) => d.material_type === 'LEATHER').length}</strong></span>
+                <span>Lining only: <strong>{drawersList.filter((d) => d.material_type === 'LINING').length}</strong></span>
               </div>
             </div>
 
@@ -718,11 +779,11 @@ function StoreDashboardContent() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Held Drawers</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-amber-600">{STORE_KPIS.held_drawers} Held</span>
+                <span className="text-2xl font-black text-amber-600">{heldList.length} Held</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Lining Wait: <strong className="text-amber-700">2 drawers</strong></span>
-                <span>QC Hold: <strong className="text-rose-700">1 drawer</strong></span>
+                <span>Hold Log: <strong className="text-amber-700">{heldList.length} drawers</strong></span>
+                <span>Status: <strong className="text-amber-700">Pending Review</strong></span>
               </div>
             </div>
           </div>
@@ -739,7 +800,7 @@ function StoreDashboardContent() {
               </div>
               <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={STORE_DAILY_LOGS}>
+                  <BarChart data={dailyLogs}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -760,18 +821,23 @@ function StoreDashboardContent() {
                 <p className="text-xs text-slate-500 mb-3">Shift-wise drawer transitions</p>
                 
                 <div className="overflow-y-auto max-h-[250px] space-y-2 pr-1">
-                  {STORE_DAILY_LOGS.map((log, i) => (
+                  {dailyLogs.map((log, i) => (
                     <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
                       <div>
-                        <span className="font-bold text-slate-800">{log.work_date}</span>
-                        <div className="text-[10px] text-slate-500 mt-0.5">{log.received} in &bull; {log.sent} out</div>
+                        <span className="font-bold text-slate-800">{log.work_date || log.date}</span>
+                        <div className="text-[10px] text-slate-500 mt-0.5">{log.received || 0} in &bull; {log.sent || 0} out</div>
                       </div>
                       <div className="text-right">
-                        <span className="font-black text-emerald-700">{log.emptied} emptied</span>
-                        <div className="text-[10px] text-amber-600 font-semibold">{log.held} held</div>
+                        <span className="font-black text-emerald-700">{log.emptied || 0} emptied</span>
+                        <div className="text-[10px] text-amber-600 font-semibold">{log.held || 0} held</div>
                       </div>
                     </div>
                   ))}
+                  {dailyLogs.length === 0 && (
+                    <div className="text-center py-8 text-slate-400 font-medium text-xs">
+                      No daily movement logs available.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -847,7 +913,7 @@ function StoreDashboardContent() {
                               : 'bg-rose-100 text-rose-800'
                           }`}
                         >
-                          {d.contents}
+                          {d.contents || d.material_type}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-slate-800">{d.cut_by}</td>
@@ -856,7 +922,7 @@ function StoreDashboardContent() {
                         {d.sended_at ? (
                           <span className="text-blue-700 font-bold">Sent: {d.sended_at}</span>
                         ) : (
-                          <span className="text-emerald-700 font-bold">In Store: {d.received_at}</span>
+                          <span className="text-emerald-700 font-bold">In Store: {d.received_at || 'Present'}</span>
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-center">
@@ -871,7 +937,7 @@ function StoreDashboardContent() {
                               : 'bg-slate-100 text-slate-800'
                           }`}
                         >
-                          {d.status_label}
+                          {d.status_label || 'In Store'}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-center">
@@ -887,6 +953,13 @@ function StoreDashboardContent() {
                       </td>
                     </tr>
                   ))}
+                  {paginatedDrawers.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="text-center py-8 text-slate-400 font-medium">
+                        No drawers matching filter criteria.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -950,26 +1023,33 @@ function StoreDashboardContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {STORE_CURRENT_STYLES.map((st, idx) => (
+                  {stylesList.map((st, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-all">
                       <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
                         <span>👗</span>
-                        <span>{st.style_name}</span>
+                        <span>{st.style_name || st.name}</span>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-600">{st.order_number}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{st.drawers}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-orange-700 font-bold">{st.leather_drawers}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-rose-700 font-bold">{st.lining_drawers}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-cyan-700 font-black">{st.both_drawers}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-bold">{st.ready_to_send}</td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-700">{st.target_date}</td>
+                      <td className="py-3.5 px-4 font-mono text-slate-600">{st.order_number || '—'}</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{st.drawers || 0}</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-orange-700 font-bold">{st.leather_drawers || 0}</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-rose-700 font-bold">{st.lining_drawers || 0}</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-cyan-700 font-black">{st.both_drawers || 0}</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-bold">{st.ready_to_send || 0}</td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-700">{st.target_date || '—'}</td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-100 text-cyan-800">
-                          {st.status}
+                          {st.status || 'Active'}
                         </span>
                       </td>
                     </tr>
                   ))}
+                  {stylesList.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="text-center py-8 text-slate-400 font-medium">
+                        No styles in store buffer.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -990,21 +1070,21 @@ function StoreDashboardContent() {
             {/* Leather Drawer Card */}
             <div className="p-5 rounded-2xl bg-orange-50 border border-orange-200">
               <span className="text-xs font-bold text-orange-800 uppercase tracking-wider">Leather Only Drawers</span>
-              <div className="text-3xl font-black text-orange-950 mt-1">{STORE_KPIS.leather_drawers} Drawers</div>
+              <div className="text-3xl font-black text-orange-950 mt-1">{drawersList.filter((d) => d.material_type === 'LEATHER').length} Drawers</div>
               <p className="text-xs text-orange-700 mt-2">Drawers containing cut leather pattern pieces awaiting lining pairing</p>
             </div>
 
             {/* Lining Drawer Card */}
             <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200">
               <span className="text-xs font-bold text-rose-800 uppercase tracking-wider">Lining Only Drawers</span>
-              <div className="text-3xl font-black text-rose-950 mt-1">{STORE_KPIS.lining_drawers} Drawer</div>
+              <div className="text-3xl font-black text-rose-950 mt-1">{drawersList.filter((d) => d.material_type === 'LINING').length} Drawers</div>
               <p className="text-xs text-rose-700 mt-2">Drawers containing cut lining components waiting for leather matching</p>
             </div>
 
             {/* Both Drawer Card */}
             <div className="p-5 rounded-2xl bg-cyan-50 border border-cyan-200">
               <span className="text-xs font-bold text-cyan-800 uppercase tracking-wider">Merged (Leather + Lining)</span>
-              <div className="text-3xl font-black text-cyan-950 mt-1">{STORE_KPIS.leather_lining_drawers} Drawers</div>
+              <div className="text-3xl font-black text-cyan-950 mt-1">{drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Drawers</div>
               <p className="text-xs text-cyan-700 mt-2">Complete matching kit ready to be dispatched to Stitching Floor</p>
             </div>
           </div>
@@ -1053,19 +1133,26 @@ function StoreDashboardContent() {
                   {heldList.map((h, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-all">
                       <td className="py-3.5 px-4 font-mono font-bold text-amber-800">{h.drawer_code}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{h.style_name}</td>
-                      <td className="py-3.5 px-4 font-mono text-slate-600">{h.order_number}</td>
+                      <td className="py-3.5 px-4 font-bold text-slate-900">{h.style_name || h.style}</td>
+                      <td className="py-3.5 px-4 font-mono text-slate-600">{h.order_number || '—'}</td>
                       <td className="py-3.5 px-4 font-bold">{h.material_type}</td>
                       <td className="py-3.5 px-4 text-slate-800">{h.held_by}</td>
                       <td className="py-3.5 px-4 font-semibold text-amber-900">{h.reason}</td>
                       <td className="py-3.5 px-4 text-slate-500">{h.held_date}</td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800">
-                          {h.status}
+                          {h.status || 'Held'}
                         </span>
                       </td>
                     </tr>
                   ))}
+                  {heldList.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="text-center py-8 text-slate-400 font-medium">
+                        No drawers currently on hold.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1089,7 +1176,7 @@ function StoreDashboardContent() {
                 <p className="text-xs text-slate-500">Recycled drawers ready to receive newly cut leather or lining pattern pieces</p>
               </div>
               <span className="text-xs font-bold text-slate-500">
-                Available Empty Count: <strong className="text-emerald-700">{STORE_KPIS.empty_drawers}</strong>
+                Available Empty Count: <strong className="text-emerald-700">{emptyList.length}</strong>
               </span>
             </div>
 
@@ -1117,11 +1204,18 @@ function StoreDashboardContent() {
                       <td className="py-3.5 px-4 font-mono font-semibold text-slate-700">{e.location}</td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
-                          {e.available}
+                          {e.available || 'Empty Ready'}
                         </span>
                       </td>
                     </tr>
                   ))}
+                  {emptyList.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">
+                        No empty drawers recorded.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1201,10 +1295,10 @@ function StoreDashboardContent() {
                   <PieChart>
                     <Pie
                       data={[
-                        { name: 'Leather + Lining (Both)', value: STORE_KPIS.leather_lining_drawers, color: '#0891b2' },
-                        { name: 'Leather Only', value: STORE_KPIS.leather_drawers, color: '#f97316' },
-                        { name: 'Lining Only', value: STORE_KPIS.lining_drawers, color: '#f43f5e' },
-                        { name: 'Held Drawers', value: STORE_KPIS.held_drawers, color: '#f59e0b' },
+                        { name: 'Leather + Lining (Both)', value: drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length, color: '#0891b2' },
+                        { name: 'Leather Only', value: drawersList.filter((d) => d.material_type === 'LEATHER').length, color: '#f97316' },
+                        { name: 'Lining Only', value: drawersList.filter((d) => d.material_type === 'LINING').length, color: '#f43f5e' },
+                        { name: 'Held Drawers', value: heldList.length, color: '#f59e0b' },
                       ]}
                       dataKey="value"
                       nameKey="name"
@@ -1232,7 +1326,7 @@ function StoreDashboardContent() {
               <p className="text-xs text-slate-500 mb-4">Received vs Sent vs Emptied drawers</p>
               <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={STORE_DAILY_LOGS}>
+                  <BarChart data={dailyLogs}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />

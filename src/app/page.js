@@ -100,6 +100,15 @@ const PANELS = [
     img: '/images/roles/auditor.png',
     allowedRoles: ['client', 'viewer']
   },
+  {
+    role: 'store_workspace',
+    title: 'Store Manager\nHub',
+    subtitle: 'Store Management, Drawer Assignment, Inventory Dispatch & Stitching Queue',
+    accent: '#0e9488',
+    icon: Layers,
+    img: '/images/roles/manager.png',
+    allowedRoles: ['store_manager', 'store_scan', 'direct_manager', 'managing_director', 'supervisor', 'cutting_manager', 'stitching_manager', 'lining_manager']
+  },
 ];
 
 /* ─── Preloader ───────────────────────────────────── */

@@ -47,20 +47,12 @@ import {
   CartesianGrid,
 } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
+import { useData } from '@/context/DataContext';
 import {
   apiGetCuttingDashboard,
   apiGetCuttingEmployeeDetail,
   apiGetCuttingConsumption,
 } from '@/lib/api';
-import {
-  RAW_PIECES_DATA,
-  MASTER_ORDERS,
-  STYLE_CONSUMPTION_MATRIX,
-  LEATHER_LOTS_STOCK,
-  CUTTERS_PERFORMANCE,
-  DAILY_PRODUCTION_LOGS,
-  WASTE_BREAKDOWN,
-} from '@/lib/cuttingData';
 
 // Chart custom tooltip
 function CustomTooltip({ active, payload, label, unit = 'DCM' }) {
@@ -81,21 +73,30 @@ function CustomTooltip({ active, payload, label, unit = 'DCM' }) {
 function DashboardInner() {
   const searchParams = useSearchParams();
   const { token } = useAuth();
+  const { orders: contextOrders } = useData();
 
   // State
   const [activeTab, setActiveTab] = useState('tab-today');
-  const [piecesList, setPiecesList] = useState(RAW_PIECES_DATA);
-  const [ordersList, setOrdersList] = useState(MASTER_ORDERS);
-  const [activeOrder, setActiveOrder] = useState(MASTER_ORDERS[0]);
-  const [stylesList, setStylesList] = useState(STYLE_CONSUMPTION_MATRIX);
-  const [selectedStyleDetail, setSelectedStyleDetail] = useState(STYLE_CONSUMPTION_MATRIX[0]);
-  const [cuttersList, setCuttersList] = useState(CUTTERS_PERFORMANCE);
-  const [lotsList, setLotsList] = useState(LEATHER_LOTS_STOCK);
-  const [consumptionLogs, setConsumptionLogs] = useState(DAILY_PRODUCTION_LOGS);
-  const [wasteData, setWasteData] = useState(WASTE_BREAKDOWN);
+  const [piecesList, setPiecesList] = useState([]);
+  const [ordersList, setOrdersList] = useState(contextOrders || []);
+  const [activeOrder, setActiveOrder] = useState(contextOrders?.[0] || null);
+  const [stylesList, setStylesList] = useState([]);
+  const [selectedStyleDetail, setSelectedStyleDetail] = useState(null);
+  const [cuttersList, setCuttersList] = useState([]);
+  const [lotsList, setLotsList] = useState([]);
+  const [consumptionLogs, setConsumptionLogs] = useState([]);
+  const [wasteData, setWasteData] = useState([]);
 
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
+
+  // Sync context orders when available
+  useEffect(() => {
+    if (contextOrders && contextOrders.length > 0 && ordersList.length === 0) {
+      setOrdersList(contextOrders);
+      if (!activeOrder) setActiveOrder(contextOrders[0]);
+    }
+  }, [contextOrders, ordersList, activeOrder]);
 
   // Universal Filters
   const [filterDate, setFilterDate] = useState('all');
@@ -128,6 +129,100 @@ function DashboardInner() {
     }
   }, [searchParams]);
 
+  // Dynamic Options for Selects
+  const availableStyles = useMemo(() => {
+    const map = new Map();
+    stylesList.forEach((s) => {
+      const name = s.name || s.style || s.style_name;
+      if (name) map.set(name, { id: s.id || name, name });
+    });
+    piecesList.forEach((p) => {
+      if (p.style && !map.has(p.style)) map.set(p.style, { id: p.style, name: p.style });
+    });
+    ordersList.forEach((o) => {
+      o.styles?.forEach((s) => {
+        if (s.name && !map.has(s.name)) map.set(s.name, { id: s.id || s.name, name: s.name });
+      });
+    });
+    return Array.from(map.values());
+  }, [stylesList, piecesList, ordersList]);
+
+  const availableLots = useMemo(() => {
+    const set = new Set();
+    lotsList.forEach((l) => set.add(l.lot_number || l.lot_id));
+    piecesList.forEach((p) => { if (p.lot_number) set.add(p.lot_number); });
+    return Array.from(set).filter(Boolean);
+  }, [lotsList, piecesList]);
+
+  const availableCutters = useMemo(() => {
+    const map = new Map();
+    cuttersList.forEach((c) => {
+      const name = c.name;
+      if (name) map.set(name, { id: c.id || c.employee_id || name, name });
+    });
+    piecesList.forEach((p) => {
+      if (p.employee && !map.has(p.employee)) map.set(p.employee, { id: p.employee, name: p.employee });
+    });
+    return Array.from(map.values());
+  }, [cuttersList, piecesList]);
+
+  const availableDates = useMemo(() => {
+    const set = new Set();
+    piecesList.forEach((p) => { if (p.last_worked) set.add(p.last_worked); });
+    consumptionLogs.forEach((l) => { if (l.work_date || l.date) set.add(l.work_date || l.date); });
+    return Array.from(set).filter(Boolean);
+  }, [piecesList, consumptionLogs]);
+
+  // Display Order mapper with safe fallbacks
+  const displayOrder = useMemo(() => {
+    if (!activeOrder) {
+      return {
+        order_number: '—',
+        status: 'Active',
+        id: '—',
+        client: 'Client',
+        article: 'Leather Article',
+        styleName: 'Style',
+        targetBomDcm: 12.5,
+        color: 'Standard',
+        thickness: '0.8-1.0 mm',
+        totalPieces: piecesList.length || 0,
+        lotNumber: 'LOT-LEATHER',
+        expectedCompletionDate: '2026-08-20',
+        avgDailyProduction: 38,
+        requiredDailyProduction: 30,
+        progressPct: 65,
+        completedPieces: piecesList.filter((p) => p.status === 'Completed').length,
+        pendingPieces: piecesList.filter((p) => p.status !== 'Completed').length,
+        damagePieces: piecesList.filter((p) => p.status === 'Damaged').length,
+        reworkPieces: piecesList.filter((p) => p.status === 'Rework').length,
+      };
+    }
+    const firstStyle = activeOrder.styles?.[0] || {};
+    const totalQty = activeOrder.styles?.reduce((acc, s) => acc + (s.skus?.reduce((skuAcc, sku) => skuAcc + (sku.qty_ordered || 0), 0) || 0), 0) || activeOrder.totalPieces || piecesList.length || 0;
+    return {
+      order_number: activeOrder.order_number || activeOrder.id || '—',
+      status: activeOrder.status || 'In Production',
+      id: activeOrder.order_number || activeOrder.id || '—',
+      client: activeOrder.client || activeOrder.client_name || 'Nordic Luxe Apparel',
+      article: firstStyle.article || activeOrder.article || 'GOAT SUEDE',
+      styleName: firstStyle.name || activeOrder.styleName || 'CARNABY',
+      targetBomDcm: activeOrder.targetBomDcm || 12.5,
+      color: firstStyle.skus?.[0]?.color_name || activeOrder.color || 'PINE GREEN',
+      thickness: firstStyle.thickness || activeOrder.thickness || '0.8-1.0 mm',
+      totalPieces: totalQty || 450,
+      lotNumber: activeOrder.lotNumber || 'LOT-SUEDE-01',
+      expectedCompletionDate: activeOrder.delivery_deadline || activeOrder.expectedCompletionDate || '2026-08-14',
+      avgDailyProduction: activeOrder.avgDailyProduction || 38,
+      requiredDailyProduction: activeOrder.requiredDailyProduction || 30,
+      progressPct: activeOrder.progressPct || (totalQty ? Math.min(100, Math.round((piecesList.filter((p) => p.status === 'Completed').length / totalQty) * 100)) : 61),
+      completedPieces: activeOrder.completedPieces ?? piecesList.filter((p) => p.status === 'Completed').length ?? 48,
+      pendingPieces: activeOrder.pendingPieces ?? piecesList.filter((p) => p.status !== 'Completed').length ?? 12,
+      damagePieces: activeOrder.damagePieces ?? piecesList.filter((p) => p.status === 'Damaged').length ?? 3,
+      reworkPieces: activeOrder.reworkPieces ?? piecesList.filter((p) => p.status === 'Rework').length ?? 4,
+    };
+  }, [activeOrder, piecesList]);
+
   // LIVE BACKEND CALL: /api/v1/dashboard/cutting
   useEffect(() => {
     let isMounted = true;
@@ -145,7 +240,7 @@ function DashboardInner() {
           if (data.pieces && Array.isArray(data.pieces)) setPiecesList(data.pieces);
           if (data.orders && Array.isArray(data.orders)) {
             setOrdersList(data.orders);
-            if (data.orders.length > 0) setActiveOrder(data.orders[0]);
+            if (data.orders.length > 0 && !activeOrder) setActiveOrder(data.orders[0]);
           }
           if (data.styles && Array.isArray(data.styles)) {
             setStylesList(data.styles);
@@ -228,25 +323,27 @@ function DashboardInner() {
 
   // Filtered pieces computed
   const filteredPieces = useMemo(() => {
+    const selectedOrderObj = filterOrder !== 'all' ? ordersList.find((o) => o.id === filterOrder || o.order_number === filterOrder) : null;
     return piecesList.filter((p) => {
       // Search query
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const matchesQuery =
-          p.piece_code.toLowerCase().includes(q) ||
-          p.style.toLowerCase().includes(q) ||
-          p.employee.toLowerCase().includes(q) ||
-          p.order_number.toLowerCase().includes(q) ||
-          p.lot_number.toLowerCase().includes(q) ||
-          p.colour.toLowerCase().includes(q);
+          (p.piece_code && p.piece_code.toLowerCase().includes(q)) ||
+          (p.style && p.style.toLowerCase().includes(q)) ||
+          (p.employee && p.employee.toLowerCase().includes(q)) ||
+          (p.order_number && p.order_number.toLowerCase().includes(q)) ||
+          (p.lot_number && p.lot_number.toLowerCase().includes(q)) ||
+          (p.colour && p.colour.toLowerCase().includes(q));
         if (!matchesQuery) return false;
       }
       // Date
-      if (filterDate === '2026-08-11' && p.last_worked !== '2026-08-11') return false;
-      if (filterDate === '2026-08-10' && p.last_worked !== '2026-08-10') return false;
-      if (filterDate === '2026-08-05' && p.last_worked !== '2026-08-05') return false;
+      if (filterDate !== 'all' && p.last_worked !== filterDate) return false;
       // Order
-      if (filterOrder !== 'all' && p.order_number !== filterOrder) return false;
+      if (filterOrder !== 'all') {
+        const matchesOrder = p.order_id === filterOrder || p.order_number === filterOrder || (selectedOrderObj && (p.order_number === selectedOrderObj.order_number || p.order_id === selectedOrderObj.id));
+        if (!matchesOrder) return false;
+      }
       // Style
       if (filterStyle !== 'all' && p.style !== filterStyle) return false;
       // Lot
@@ -266,6 +363,7 @@ function DashboardInner() {
     });
   }, [
     piecesList,
+    ordersList,
     searchQuery,
     filterDate,
     filterOrder,
@@ -298,7 +396,7 @@ function DashboardInner() {
       colour: 'PINE GREEN',
       style: 'CARNABY',
       current_stage: 'CUTTING',
-      last_worked: '2026-08-13',
+      last_worked: new Date().toISOString().slice(0, 10),
       employee: sampleCutter,
       stage: 'CUTTING',
       actual_consumption: Number((11.5 + Math.random() * 1.5).toFixed(1)),
@@ -307,7 +405,7 @@ function DashboardInner() {
       waste_dcm: 0.4,
       leather_article: 'GOAT SUEDE',
       thickness: '0.8-1.0',
-      order_number: 'ORD-1011',
+      order_number: activeOrder?.order_number || 'ORD-1011',
       lot_number: 'LOT-SUEDE-01',
       status: 'Completed',
     };
@@ -514,9 +612,11 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">📅 All Dates</option>
-              <option value="2026-08-11">11-Aug-2026</option>
-              <option value="2026-08-10">10-Aug-2026</option>
-              <option value="2026-08-05">05-Aug-2026</option>
+              {availableDates.map((d) => (
+                <option key={d} value={d}>
+                  {d}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -524,13 +624,20 @@ function DashboardInner() {
           <div>
             <select
               value={filterOrder}
-              onChange={(e) => setFilterOrder(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setFilterOrder(val);
+                const ord = ordersList.find((o) => o.id === val || o.order_number === val);
+                if (ord) setActiveOrder(ord);
+              }}
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">📦 All Orders</option>
-              <option value="ORD-1011">ORD-1011</option>
-              <option value="is1234">is1234</option>
-              <option value="3001">3001</option>
+              {ordersList.map((ord) => (
+                <option key={ord.id} value={ord.id}>
+                  {ord.order_number || ord.name || ord.po_number || ord.id}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -542,11 +649,11 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">👗 All Styles</option>
-              <option value="CARNABY">CARNABY</option>
-              <option value="FRANCIS KNIT">FRANCIS KNIT</option>
-              <option value="CLERMONT + VEST">CLERMONT + VEST</option>
-              <option value="CLERMONT">CLERMONT</option>
-              <option value="ADELE KNIT">ADELE KNIT</option>
+              {availableStyles.map((s) => (
+                <option key={s.id} value={s.name || s.id}>
+                  {s.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -558,10 +665,11 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">🧵 All Lots</option>
-              <option value="LOT-SUEDE-01">LOT-SUEDE-01</option>
-              <option value="LOT-CALF-01">LOT-CALF-01</option>
-              <option value="LOT-SUEDE-02">LOT-SUEDE-02</option>
-              <option value="LOT-NAPPA-01">LOT-NAPPA-01</option>
+              {availableLots.map((lot) => (
+                <option key={lot} value={lot}>
+                  {lot}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -573,9 +681,11 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">✂️ All Cutters</option>
-              <option value="Ahmedasa">Ahmedasa</option>
-              <option value="Ravi">Ravi</option>
-              <option value="hamthan">hamthan</option>
+              {availableCutters.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -657,35 +767,35 @@ function DashboardInner() {
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-emerald-100 text-emerald-800 border border-emerald-200">
-                    {activeOrder.status}
+                    {displayOrder.status}
                   </span>
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-blue-100 text-blue-800">
-                    {activeOrder.id}
+                    {displayOrder.order_number}
                   </span>
                   <span className="text-xs font-semibold text-slate-500">
-                    Client: <strong>{activeOrder.client}</strong>
+                    Client: <strong>{displayOrder.client}</strong>
                   </span>
                 </div>
-                <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{activeOrder.article}</h2>
-                <p className="text-xs font-semibold text-slate-600 mt-0.5">{activeOrder.styleName} &bull; Target BOM: <strong className="text-[#2563eb]">{activeOrder.targetBomDcm} DCM / pc</strong></p>
+                <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{displayOrder.article}</h2>
+                <p className="text-xs font-semibold text-slate-600 mt-0.5">{displayOrder.styleName} &bull; Target BOM: <strong className="text-[#2563eb]">{displayOrder.targetBomDcm} DCM / pc</strong></p>
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-200">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Color</span>
-                  <p className="text-xs font-bold text-slate-800">{activeOrder.color}</p>
+                  <p className="text-xs font-bold text-slate-800">{displayOrder.color}</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Thickness</span>
-                  <p className="text-xs font-bold text-slate-800">{activeOrder.thickness}</p>
+                  <p className="text-xs font-bold text-slate-800">{displayOrder.thickness}</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Order Total</span>
-                  <p className="text-xs font-bold text-slate-800">{activeOrder.totalPieces} pcs</p>
+                  <p className="text-xs font-bold text-slate-800">{displayOrder.totalPieces} pcs</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Lot #</span>
-                  <p className="text-xs font-bold text-[#2563eb]">{activeOrder.lotNumber}</p>
+                  <p className="text-xs font-bold text-[#2563eb]">{displayOrder.lotNumber}</p>
                 </div>
               </div>
             </div>
@@ -695,30 +805,30 @@ function DashboardInner() {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Timeline & Pacing</span>
                 <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800">
-                  {activeOrder.expectedCompletionDate} Expected
+                  {displayOrder.expectedCompletionDate} Expected
                 </span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 my-3">
                 <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
                   <span className="text-[10px] font-bold text-slate-500">Avg Daily Cut</span>
-                  <div className="text-lg font-black text-slate-900">{activeOrder.avgDailyProduction} pcs</div>
+                  <div className="text-lg font-black text-slate-900">{displayOrder.avgDailyProduction} pcs</div>
                 </div>
                 <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
                   <span className="text-[10px] font-bold text-slate-500">Req. Daily Pacing</span>
-                  <div className="text-lg font-black text-slate-900">{activeOrder.requiredDailyProduction} pcs</div>
+                  <div className="text-lg font-black text-slate-900">{displayOrder.requiredDailyProduction} pcs</div>
                 </div>
               </div>
 
               <div>
                 <div className="flex justify-between text-xs font-bold mb-1.5">
                   <span className="text-slate-600">Completion Progress</span>
-                  <span className="text-[#2563eb]">{activeOrder.progressPct}%</span>
+                  <span className="text-[#2563eb]">{displayOrder.progressPct}%</span>
                 </div>
                 <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
                   <div
                     className="bg-gradient-to-r from-[#2563eb] to-[#3b82f6] h-full rounded-full transition-all duration-500"
-                    style={{ width: `${activeOrder.progressPct}%` }}
+                    style={{ width: `${displayOrder.progressPct}%` }}
                   ></div>
                 </div>
               </div>
@@ -728,25 +838,28 @@ function DashboardInner() {
             <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Live Shift Breakdown</span>
-                <span className="text-[11px] font-bold text-slate-400">Floor A Live</span>
+                <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                  Floor A Live
+                </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2.5 my-2">
-                <div className="bg-emerald-50 border border-emerald-100 p-2.5 rounded-xl">
-                  <span className="text-[10px] font-bold text-emerald-700">Completed</span>
-                  <div className="text-lg font-black text-emerald-800">{activeOrder.completedToday} pcs</div>
+              <div className="grid grid-cols-2 gap-2.5 my-2.5 text-xs font-bold">
+                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Completed</span>
+                  <div className="text-xl font-black text-slate-900">{displayOrder.completedPieces} pcs</div>
                 </div>
-                <div className="bg-amber-50 border border-amber-100 p-2.5 rounded-xl">
-                  <span className="text-[10px] font-bold text-amber-700">Pending</span>
-                  <div className="text-lg font-black text-amber-800">{activeOrder.pendingToday} pcs</div>
+                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
+                  <span className="text-[10px] text-slate-400 uppercase font-semibold">Pending</span>
+                  <div className="text-xl font-black text-slate-900">{displayOrder.pendingPieces} pcs</div>
                 </div>
-                <div className="bg-red-50 border border-red-100 p-2.5 rounded-xl">
-                  <span className="text-[10px] font-bold text-red-700">Defects</span>
-                  <div className="text-lg font-black text-red-800">{activeOrder.damagePieces} pcs</div>
+                <div className="bg-red-50/70 p-2.5 rounded-xl border border-red-100">
+                  <span className="text-[10px] text-red-500 uppercase font-semibold">Defects</span>
+                  <div className="text-xl font-black text-red-600">{displayOrder.damagePieces} pcs</div>
                 </div>
-                <div className="bg-purple-50 border border-purple-100 p-2.5 rounded-xl">
-                  <span className="text-[10px] font-bold text-purple-700">Rework</span>
-                  <div className="text-lg font-black text-purple-800">{activeOrder.reworkPieces} pcs</div>
+                <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-100">
+                  <span className="text-[10px] text-purple-500 uppercase font-semibold">Rework</span>
+                  <div className="text-xl font-black text-purple-700">{displayOrder.reworkPieces} pcs</div>
                 </div>
               </div>
             </div>
@@ -862,9 +975,9 @@ function DashboardInner() {
               </div>
               <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={DAILY_PRODUCTION_LOGS}>
+                  <BarChart data={consumptionLogs}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#64748b' }} />
+                    <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
                     <Tooltip content={<CustomTooltip unit="pcs" />} />
                     <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
@@ -883,18 +996,23 @@ function DashboardInner() {
                 <p className="text-xs text-slate-500 mb-3">Shift-wise production records</p>
                 
                 <div className="overflow-y-auto max-h-[250px] space-y-2 pr-1">
-                  {DAILY_PRODUCTION_LOGS.map((log, i) => (
+                  {consumptionLogs.map((log, i) => (
                     <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
                       <div>
-                        <span className="font-bold text-slate-800">{log.date}</span>
-                        <div className="text-[10px] text-slate-500 mt-0.5">Target: {log.target} pcs</div>
+                        <span className="font-bold text-slate-800">{log.work_date || log.date}</span>
+                        <div className="text-[10px] text-slate-500 mt-0.5">Target: {log.target || 0} pcs</div>
                       </div>
                       <div className="text-right">
-                        <span className="font-black text-emerald-700">{log.completed} done</span>
-                        <div className="text-[10px] text-amber-600 font-semibold">{log.pending} pending</div>
+                        <span className="font-black text-emerald-700">{log.completed || 0} done</span>
+                        <div className="text-[10px] text-amber-600 font-semibold">{log.pending || 0} pending</div>
                       </div>
                     </div>
                   ))}
+                  {consumptionLogs.length === 0 && (
+                    <div className="text-center py-8 text-xs text-slate-400 font-medium">
+                      No shift records logged yet.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -940,30 +1058,30 @@ function DashboardInner() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {STYLE_CONSUMPTION_MATRIX.map((s, idx) => (
+                  {stylesList.map((s, idx) => (
                     <tr
                       key={idx}
                       onClick={() => setSelectedStyleDetail(s)}
                       className={`hover:bg-slate-50 cursor-pointer transition-all ${
-                        selectedStyleDetail?.style_name === s.style_name ? 'bg-blue-50/50' : ''
+                        selectedStyleDetail?.style_name === s.style_name || selectedStyleDetail?.name === s.name ? 'bg-blue-50/50' : ''
                       }`}
                     >
                       <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
                         <span>👗</span>
-                        <span>{s.style_name}</span>
+                        <span>{s.style_name || s.name}</span>
                       </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-600">{s.order_number}</td>
-                      <td className="py-3.5 px-4">{s.leather_article}</td>
-                      <td className="py-3.5 px-4 font-mono text-blue-600">{s.lot_number}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-800">{s.target_bom_dcm.toFixed(1)} DCM</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-[#2563eb]">{s.actual_avg_dcm.toFixed(1)} DCM</td>
+                      <td className="py-3.5 px-4 font-mono text-slate-600">{s.order_number || activeOrder?.order_number || '—'}</td>
+                      <td className="py-3.5 px-4">{s.leather_article || s.article || 'Leather'}</td>
+                      <td className="py-3.5 px-4 font-mono text-blue-600">{s.lot_number || '—'}</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-800">{(s.target_bom_dcm || 12.5).toFixed(1)} DCM</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-[#2563eb]">{(s.actual_avg_dcm || 12.0).toFixed(1)} DCM</td>
                       <td className="py-3.5 px-4 text-right font-mono font-bold">
-                        <span className={s.variance_dcm <= 0 ? 'text-emerald-600' : 'text-red-600'}>
-                          {s.variance_dcm > 0 ? `+${s.variance_dcm.toFixed(1)}` : s.variance_dcm.toFixed(1)} DCM
+                        <span className={(s.variance_dcm || 0) <= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                          {(s.variance_dcm || 0) > 0 ? `+${(s.variance_dcm || 0).toFixed(1)}` : (s.variance_dcm || 0).toFixed(1)} DCM
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-right font-bold text-slate-900">{s.total_pieces_cut} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-extrabold text-slate-900">{s.total_dcm_consumed.toFixed(1)} DCM</td>
+                      <td className="py-3.5 px-4 text-right font-bold text-slate-900">{s.total_pieces_cut || s.pieces || 0} pcs</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-extrabold text-slate-900">{(s.total_dcm_consumed || 0).toFixed(1)} DCM</td>
                       <td className="py-3.5 px-4 text-center">
                         <button
                           onClick={(e) => {
@@ -977,23 +1095,30 @@ function DashboardInner() {
                       </td>
                     </tr>
                   ))}
+                  {stylesList.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">
+                        No style matrices available for selected order.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
 
           {/* Interactive Size-Wise Breakdown for Selected Style */}
-          {selectedStyleDetail && (
+          {selectedStyleDetail && selectedStyleDetail.size_breakdown && (
             <div className="w-full bg-gradient-to-br from-white to-[#f8fafc] p-6 rounded-2xl border border-slate-200 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h4 className="text-sm font-extrabold text-[#1e293b]">
-                    Size-Wise Leather Consumption (DCM) for Style: <span className="text-[#2563eb]">{selectedStyleDetail.style_name}</span>
+                    Size-Wise Leather Consumption (DCM) for Style: <span className="text-[#2563eb]">{selectedStyleDetail.style_name || selectedStyleDetail.name}</span>
                   </h4>
                   <p className="text-xs text-slate-500">Jacket size grading and consumption variance breakdown</p>
                 </div>
                 <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-white border border-slate-200">
-                  {selectedStyleDetail.leather_article} &bull; {selectedStyleDetail.color}
+                  {selectedStyleDetail.leather_article || 'Leather'} &bull; {selectedStyleDetail.color || 'Standard'}
                 </span>
               </div>
 
@@ -1003,23 +1128,23 @@ function DashboardInner() {
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-base font-black text-slate-900">Size {sb.size}</span>
                       <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
-                        {sb.pieces} pcs cut
+                        {sb.pieces || 0} pcs cut
                       </span>
                     </div>
 
                     <div className="space-y-1.5 text-xs font-medium my-2">
                       <div className="flex justify-between text-slate-500">
                         <span>Target BOM:</span>
-                        <span className="font-mono font-bold text-slate-800">{sb.target_dcm.toFixed(1)} DCM</span>
+                        <span className="font-mono font-bold text-slate-800">{(sb.target_dcm || 12.5).toFixed(1)} DCM</span>
                       </div>
                       <div className="flex justify-between text-slate-500">
                         <span>Actual Consumed:</span>
-                        <span className="font-mono font-bold text-[#2563eb]">{sb.actual_avg_dcm.toFixed(1)} DCM</span>
+                        <span className="font-mono font-bold text-[#2563eb]">{(sb.actual_avg_dcm || 12.0).toFixed(1)} DCM</span>
                       </div>
                       <div className="flex justify-between text-slate-500 pt-1 border-t border-slate-100">
                         <span>Variance:</span>
-                        <span className={`font-mono font-bold ${sb.variance <= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
-                          {sb.variance > 0 ? `+${sb.variance.toFixed(1)}` : sb.variance.toFixed(1)} DCM
+                        <span className={`font-mono font-bold ${(sb.variance || 0) <= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                          {(sb.variance || 0) > 0 ? `+${(sb.variance || 0).toFixed(1)}` : (sb.variance || 0).toFixed(1)} DCM
                         </span>
                       </div>
                     </div>
@@ -1035,7 +1160,7 @@ function DashboardInner() {
             <p className="text-xs text-slate-500 mb-4">Variance comparison across jacket production models</p>
             <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={STYLE_CONSUMPTION_MATRIX}>
+                <BarChart data={stylesList}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                   <XAxis dataKey="style_name" tick={{ fontSize: 11, fill: '#64748b' }} />
                   <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -1066,7 +1191,7 @@ function DashboardInner() {
                 <p className="text-xs text-slate-500">Available hide inventory, allocations, and consumption in Decimeters (DCM / dm²)</p>
               </div>
               <span className="text-xs font-bold text-slate-500">
-                Total Stock Available: <strong className="text-slate-900">36,200 DCM</strong>
+                Total Stock Available: <strong className="text-slate-900">{lotsList.reduce((acc, l) => acc + (l.remaining_dcm || l.total_stock_dcm || 0), 0).toLocaleString()} DCM</strong>
               </span>
             </div>
 
@@ -1087,19 +1212,19 @@ function DashboardInner() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {LEATHER_LOTS_STOCK.map((lot, idx) => (
+                  {lotsList.map((lot, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-all">
                       <td className="py-3.5 px-4 font-mono font-bold text-blue-600">{lot.lot_number}</td>
                       <td className="py-3.5 px-4 font-bold text-slate-900">{lot.article}</td>
                       <td className="py-3.5 px-4">{lot.color}</td>
                       <td className="py-3.5 px-4">{lot.thickness}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{lot.total_stock_dcm.toLocaleString()} DCM</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{lot.allocated_dcm.toLocaleString()} DCM</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-purple-700 font-bold">{lot.consumed_dcm.toLocaleString()} DCM</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{lot.remaining_dcm.toLocaleString()} DCM</td>
+                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{(lot.total_stock_dcm || 0).toLocaleString()} DCM</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{(lot.allocated_dcm || 0).toLocaleString()} DCM</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-purple-700 font-bold">{(lot.consumed_dcm || 0).toLocaleString()} DCM</td>
+                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{(lot.remaining_dcm || 0).toLocaleString()} DCM</td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
-                          {lot.status}
+                          {lot.status || 'Active'}
                         </span>
                       </td>
                       <td className="py-3.5 px-4 text-center">
@@ -1112,6 +1237,13 @@ function DashboardInner() {
                       </td>
                     </tr>
                   ))}
+                  {lotsList.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">
+                        No leather inventory lots recorded.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1129,7 +1261,7 @@ function DashboardInner() {
           className="w-full space-y-5"
         >
           <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5">
-            {CUTTERS_PERFORMANCE.map((cutter, idx) => (
+            {cuttersList.map((cutter, idx) => (
               <div
                 key={idx}
                 onClick={() => handleOpenCutterModal(cutter)}
@@ -1138,15 +1270,15 @@ function DashboardInner() {
                 <div>
                   <div className="flex items-center gap-3 mb-4">
                     <img
-                      src={cutter.avatar}
+                      src={cutter.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80'}
                       alt={cutter.name}
                       className="w-12 h-12 rounded-full object-cover border-2 border-[#2563eb]"
                     />
                     <div>
                       <h4 className="text-sm font-extrabold text-slate-900">{cutter.name}</h4>
-                      <p className="text-xs text-slate-500">{cutter.role}</p>
+                      <p className="text-xs text-slate-500">{cutter.role || 'Cutter'}</p>
                       <span className="inline-block mt-1 px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-100 text-emerald-800">
-                        {cutter.status}
+                        {cutter.status || 'Active'}
                       </span>
                     </div>
                   </div>
@@ -1154,19 +1286,19 @@ function DashboardInner() {
                   <div className="grid grid-cols-2 gap-2 text-xs font-semibold my-3">
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Completed Today</span>
-                      <div className="text-base font-black text-slate-900">{cutter.completedToday} pcs</div>
+                      <div className="text-base font-black text-slate-900">{cutter.completedToday || 0} pcs</div>
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">DCM Consumed</span>
-                      <div className="text-base font-black text-[#2563eb]">{cutter.totalDcmConsumed} DCM</div>
+                      <div className="text-base font-black text-[#2563eb]">{cutter.totalDcmConsumed || 0} DCM</div>
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Efficiency</span>
-                      <div className="text-base font-black text-emerald-700">{cutter.efficiencyPct}%</div>
+                      <div className="text-base font-black text-emerald-700">{cutter.efficiencyPct || 98}%</div>
                     </div>
                     <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                       <span className="text-[10px] text-slate-500">Defects / Rework</span>
-                      <div className="text-base font-black text-red-600">{cutter.damageCount} / {cutter.reworkCount}</div>
+                      <div className="text-base font-black text-red-600">{cutter.damageCount || 0} / {cutter.reworkCount || 0}</div>
                     </div>
                   </div>
                 </div>
@@ -1182,6 +1314,11 @@ function DashboardInner() {
                 </button>
               </div>
             ))}
+            {cuttersList.length === 0 && (
+              <div className="col-span-3 text-center py-12 bg-white rounded-2xl border border-slate-200 text-slate-400 font-medium">
+                No cutter operators registered.
+              </div>
+            )}
           </div>
         </motion.div>
       )}
@@ -1404,7 +1541,7 @@ function DashboardInner() {
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={WASTE_BREAKDOWN}
+                      data={wasteData}
                       dataKey="value"
                       nameKey="name"
                       cx="50%"
@@ -1413,8 +1550,8 @@ function DashboardInner() {
                       innerRadius={50}
                       paddingAngle={4}
                     >
-                      {WASTE_BREAKDOWN.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      {wasteData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color || '#3b82f6'} />
                       ))}
                     </Pie>
                     <Tooltip content={<CustomTooltip unit="DCM" />} />
@@ -1430,7 +1567,7 @@ function DashboardInner() {
               <p className="text-xs text-slate-500 mb-4">Performance output across master cutters</p>
               <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={CUTTERS_PERFORMANCE}>
+                  <BarChart data={cuttersList}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
