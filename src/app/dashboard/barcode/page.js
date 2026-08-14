@@ -38,6 +38,17 @@ function normalizeEmployee(row) {
 // broke the check digit on every "EMP-" badge. Same library, same options as
 // the Admin employee badge — see EmployeeIdCardModal in dashboard/admin/page.js.
 
+// Bug #19 correction: this used to hash the piece code into a fake "BC-XXXXX"
+// ID client-side. The backend has never heard of that code — scanning it
+// returns 404 from /barcode/resolve, which is exactly why mobile scans were
+// failing. The backend already returns the correct code to encode (its own
+// short_code / PC-XXXXXX when backfilled, otherwise the full piece code) as
+// `code` in the POST /barcode/print response — there is nothing to invent
+// here, just encode whatever the backend gave us.
+function getCompactBarcodeId(pieceCode) {
+ return pieceCode;
+}
+
 // ─── ID CARD EXPORT (full card, not just the barcode) ────────────────────────
 // The same field set the "View" modal shows — shared so the on-screen card,
 // the single-card export, and the bulk export all render identically.
@@ -45,7 +56,8 @@ function buildCardFields(barcode, labels) {
  if (!barcode) return [];
  return [
  [labels.orderIdLabel, barcode.orderId], [labels.clientLabel, barcode.client],
- [labels.styleLabel, barcode.style], [labels.colorLabel, barcode.color],
+ [labels.styleLabel, barcode.style], ['Article', barcode.article],
+ [labels.colorLabel, barcode.color],
  [labels.sizeLabel, barcode.size], ['Serial', barcode.serialStr],
  ['Batch', barcode.batchNo], ['Status', barcode.printStatus],
  ];
@@ -203,10 +215,7 @@ async function savePdfBlob(pdf, filename) {
 // Style/Bucket categories only — Employee uses the monochrome EmployeeTicketCard below.
 function IdCard({ barcode, labels, cardRef, width }) {
  const fields = buildCardFields(barcode, labels);
- // Bug #19: Generate compact unique barcode ID: BC-XXXXX using piece code hash
- const compactId = barcode.pieceCode
-   ? `BC-${String(Math.abs(barcode.pieceCode.split('').reduce((a, c) => ((a << 5) - a + c.charCodeAt(0)) | 0, 0))).slice(-5).padStart(5, '0')}`
-   : barcode.pieceCode;
+ const compactId = getCompactBarcodeId(barcode.pieceCode);
  return (
  <div ref={cardRef} className="p-5 text-center" style={{ background: '#ffffff', ...(width ? { width } : null) }}>
    {/* Bug #19: Compact barcode renders short compactId, but full spec is displayed below */}
@@ -219,6 +228,7 @@ function IdCard({ barcode, labels, cardRef, width }) {
      {barcode.orderId && <span className="text-[9px] bg-rose-50 text-rose-700 border border-rose-200 font-black px-2 py-0.5 rounded-full">#{barcode.orderId}</span>}
      {barcode.client && <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 font-black px-2 py-0.5 rounded-full">{barcode.client}</span>}
      {barcode.style && <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 font-black px-2 py-0.5 rounded-full">{barcode.style}</span>}
+     {barcode.article && <span className="text-[9px] bg-orange-50 text-orange-700 border border-orange-200 font-black px-2 py-0.5 rounded-full">{barcode.article}</span>}
      {barcode.color && <span className="text-[9px] bg-slate-50 text-slate-700 border border-slate-200 font-black px-2 py-0.5 rounded-full">{barcode.color}</span>}
      {barcode.size && <span className="text-[9px] bg-purple-50 text-purple-700 border border-purple-200 font-black px-2 py-0.5 rounded-full">Sz: {barcode.size}</span>}
      {barcode.serialStr && <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-black px-2 py-0.5 rounded-full">#{barcode.serialStr}</span>}
@@ -960,6 +970,7 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  orderId: currentOrder?.order_number || '—',
  client: currentOrder?.client_name || '—',
  style: row?.style_name || l.caption || '—',
+ article: row?.article || '—',
  color: row?.colour || '—',
  size: row?.size || '—',
  serialStr: row?.seq != null ? String(row.seq).padStart(3, '0') : '—',
@@ -2514,16 +2525,19 @@ export default function BarcodeManagementPage() {
  }
  .print-label-page .bucket-label svg { width: 92mm; height: auto; }
  .print-card {
- border: 1px dashed #999; border-radius: 6px; padding: 3mm; box-sizing: border-box;
+ border: 1px dashed #999; border-radius: 6px; padding: 2mm; box-sizing: border-box;
  display: flex; flex-direction: column; align-items: center; justify-content: center;
  break-inside: avoid; overflow: hidden;
  }
  /* Capped only as a safety net for unusually long codes — at the
  sizing set on BarcodeCanvas below, the barcode renders at its
  true native resolution and never actually hits this cap, so the
- browser never has to downscale (blur) or upscale (pixelate) it. */
- .print-card canvas { max-width: 94%; max-height: 20mm; }
- .print-card .card-code { font-family: monospace; font-weight: bold; font-size: 8pt; margin: 1mm 0; color: #000; }
+ browser never has to downscale (blur) or upscale (pixelate) it.
+ Trimmed from 20mm/3mm padding to make room for the Bug #19 spec
+ line without changing the 8-per-page row math. */
+ .print-card canvas { max-width: 94%; max-height: 16mm; }
+ .print-card .card-code { font-family: monospace; font-weight: bold; font-size: 8pt; margin: 0.5mm 0; color: #000; }
+ .print-card .card-spec { font-size: 6pt; line-height: 1.2; color: #444; text-align: center; max-width: 96%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
  .print-ticket-cell {
  display: flex; align-items: center; justify-content: center;
  break-inside: avoid; overflow: hidden;
@@ -2709,12 +2723,22 @@ export default function BarcodeManagementPage() {
  ))
  : chunkArray(printSheetItems, STYLE_LABELS_PER_PAGE).map((group, pageIdx) => (
  <div className="print-page-barcodes" key={pageIdx}>
- {group.map((b) => (
+ {group.map((b) => {
+ // Bug #19: scan the small compact ID, not the ~30+ char piece code —
+ // reference the same hash IdCard uses so the printed label and the
+ // on-screen card always agree on one code per garment.
+ const compactId = getCompactBarcodeId(b.pieceCode);
+ const specLine = [b.orderId, b.article, b.style, b.color, b.size, b.serialStr]
+ .filter((v) => v && v !== '—')
+ .join(' · ');
+ return (
  <div className="print-card" key={b.pieceCode}>
- <BarcodeCanvas code={b.pieceCode} height={55} moduleWidth={1.5} margin={8} showText={false} />
- <div className="card-code">{b.pieceCode}</div>
+ <BarcodeCanvas code={compactId} height={42} moduleWidth={1.5} margin={8} showText={false} />
+ <div className="card-code">{compactId}</div>
+ {specLine && <div className="card-spec">{specLine}</div>}
  </div>
- ))}
+ );
+ })}
  </div>
  ))}
  </div>
