@@ -1370,6 +1370,8 @@ export async function apiListDrawers(token, params = {}) {
   if (params.seq_to) qs.append('seq_to', params.seq_to);
   if (params.state) qs.append('state', params.state);
   if (params.offset) qs.append('offset', params.offset);
+  if (params.has_piece !== undefined) qs.append('has_piece', params.has_piece);
+  if (params.sendable !== undefined) qs.append('sendable', params.sendable);
 
   const res = await fetch(`${API_BASE_URL}/api/v1/drawers?${qs.toString()}`, {
     method: 'GET',

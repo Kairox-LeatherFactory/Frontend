@@ -30,6 +30,8 @@ import {
   ScissorsLineDashed,
   Waypoints,
   Shirt,
+  Boxes,
+  ChevronDown,
 } from 'lucide-react';
 
 // Raw hide → cut pattern pieces → stitched seam → finished jacket
@@ -109,10 +111,14 @@ function AnimatedNavIcon({ isActive, Icon, className }) {
 }
 
 const NAV_ICONS = {
-  '/dashboard': LayoutDashboard,
+  '/dashboard': ScissorsLineDashed,
+  '/dashboard/direct-manager': Factory,
+  '/dashboard/cutting': ScissorsLineDashed,
+  '/dashboard/lining': Shirt,
+  '/dashboard/stitching': Waypoints,
+  '/dashboard/store': Boxes,
   '/dashboard/analytics': BarChart3,
   '/dashboard/entry': ClipboardPen,
-  '/dashboard/store': Layers,
   '/dashboard/progress': BarChart3,
   '/dashboard/orders': TreePine,
   '/dashboard/wages': Wallet,
@@ -266,6 +272,10 @@ export default function DashboardLayout({ children }) {
       {
         name: 'Dashboard Home',
         href: '/dashboard',
+      },
+      {
+        name: 'Direct Manager Flow',
+        href: '/dashboard/direct-manager',
       },
       {
         name: 'Analytics & Alerts',
@@ -655,7 +665,7 @@ export default function DashboardLayout({ children }) {
             ================================================ */}
 
         <main
-          className="flex-1 p-4 md:p-8 max-w-7xl w-full min-h-screen overflow-y-auto z-0 mx-auto relative"
+          className="flex-1 p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full min-h-screen overflow-y-auto z-0 mx-auto relative"
           style={{ background: '#faf6f0' }}
         >
           {children}

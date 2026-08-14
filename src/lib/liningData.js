@@ -1,0 +1,298 @@
+/**
+ * Lining Manager Dashboard - Real Factory Data Store & Live Backend Seed
+ * Modeled strictly on live endpoints:
+ * /api/v1/dashboard/lining
+ * /api/v1/dashboard/lining/employees/{employee_id}
+ * /api/v1/dashboard/lining/consumption
+ */
+
+export const LINING_META = {
+  generated_for: "2026-08-13",
+  scope: "all_clients",
+};
+
+export const LINING_PRODUCTION_KPIS = {
+  total_order_pieces: 12417,
+  lining_required_pieces: 947,
+  assigned_pieces: 28,
+  assigned_today: 14,
+  completed_today: 12,
+  overall_completed: 28,
+  pending_today: 919,
+  overall_pending: 919,
+  damage_pieces: 2,
+  damage_today: 0,
+  rework_pieces: 1,
+  rework_today: 0,
+};
+
+export const LINING_MATERIAL_KPIS = {
+  total_available_lining: 1825.8,
+  allocated_lining: 1120.0,
+  used_lining: 828.0,
+  remaining_lining: 1825.8,
+  total_lining_waste: 42.5,
+};
+
+export const CURRENT_LINING_ORDER = {
+  order_id: "171bea5b-6589-4212-af05-1f085ae9f00a",
+  order_number: "is1234",
+  client: "ism (Urban Heritage)",
+  article: "GOAT SUEDE",
+  styleName: "CARNABY / FRANCIS KNIT",
+  liningType: "TAFFTA & COTTON",
+  liningCode: "LIN-TAFF-BLK-01",
+  color: "PINE GREEN / WHISKY",
+  thickness: "0.8-1.0 mm",
+  totalPieces: 1425,
+  assignedQuantity: 947,
+  completedQuantity: 28,
+  pendingQuantity: 919,
+  damageQuantity: 2,
+  reworkQuantity: 1,
+  dailyTarget: 35,
+  targetBomDcm: 12.0,
+  actualAvgDcm: 11.8,
+  orderStartDate: "2026-08-01",
+  expectedCompletionDate: "2026-08-18",
+  deliveryDeadline: "2026-08-20",
+  status: "IN PROGRESS",
+  progressPct: 38,
+};
+
+export const LINING_STYLES_SUMMARY = [
+  { style_name: "CARNABY", article: "GOAT SUEDE", total_ordered: 152, minted: 152, completed: 24, pending: 128, target_bom_dcm: 12.0, actual_avg_dcm: 11.8, variance_dcm: -0.2, lining_type: "TAFFTA LINING", lot_number: "LOT-LIN-TAFF-01" },
+  { style_name: "FRANCIS KNIT", article: "GOAT SUEDE / COW CALF", total_ordered: 139, minted: 139, completed: 2, pending: 137, target_bom_dcm: 11.5, actual_avg_dcm: 12.0, variance_dcm: 0.5, lining_type: "COTTON LINING", lot_number: "LOT-LIN-COT-01" },
+  { style_name: "CLERMONT + VEST", article: "GOAT SUEDE", total_ordered: 108, minted: 108, completed: 1, pending: 107, target_bom_dcm: 8.8, actual_avg_dcm: 9.0, variance_dcm: 0.2, lining_type: "COTTON / RIB", lot_number: "LOT-LIN-RIB-01" },
+  { style_name: "SHINOBI KNIT + DETACH", article: "GOAT SUEDE", total_ordered: 157, minted: 157, completed: 1, pending: 156, target_bom_dcm: 14.0, actual_avg_dcm: 13.8, variance_dcm: -0.2, lining_type: "TAFFTA LINING", lot_number: "LOT-LIN-TAFF-01" },
+  { style_name: "ADELE KNIT", article: "SHEEP NAPPA", total_ordered: 48, minted: 48, completed: 0, pending: 48, target_bom_dcm: 98.0, actual_avg_dcm: 99.0, variance_dcm: 1.0, lining_type: "CUPRO SATIN", lot_number: "LOT-LIN-CUP-01" },
+  { style_name: "TOWER", article: "GOAT SUEDE", total_ordered: 106, minted: 106, completed: 0, pending: 106, target_bom_dcm: 13.5, actual_avg_dcm: 13.2, variance_dcm: -0.3, lining_type: "TAFFTA LINING", lot_number: "LOT-LIN-TAFF-01" },
+  { style_name: "ISLAY", article: "GOAT SUEDE", total_ordered: 139, minted: 139, completed: 0, pending: 139, target_bom_dcm: 12.8, actual_avg_dcm: 12.5, variance_dcm: -0.3, lining_type: "COTTON LINING", lot_number: "LOT-LIN-COT-01" },
+  { style_name: "SANDY", article: "GOAT SUEDE", total_ordered: 46, minted: 46, completed: 0, pending: 46, target_bom_dcm: 10.5, actual_avg_dcm: 10.2, variance_dcm: -0.3, lining_type: "TAFFTA LINING", lot_number: "LOT-LIN-TAFF-01" },
+];
+
+export const LINING_LOTS_STOCK = [
+  {
+    lot_id: "23390f49-bf8d-5a7b-8c4f-fd3a6c302463",
+    lot_number: "LOT-LIN-COT-01",
+    lining_type: "COTTON",
+    article: "COTTON LINING",
+    colour: "NATURAL",
+    thickness: "0.35 mm",
+    uom: "MTRS",
+    available: 436.0,
+    allocated: 280.0,
+    used: 408.0,
+    pieces_lined: 24,
+    remaining: 436.0,
+    supplier: "Tessile Milano SpA",
+    status: "Healthy",
+  },
+  {
+    lot_id: "f3cfc9a0-9602-5973-9a71-d48e1a1ee337",
+    lot_number: "LOT-LIN-RIB-01",
+    lining_type: "RIBS",
+    article: "KNIT RIB",
+    colour: "NAVY",
+    thickness: "1.10 mm",
+    uom: "MTRS",
+    available: 291.8,
+    allocated: 120.0,
+    used: 8.2,
+    pieces_lined: 12,
+    remaining: 291.8,
+    supplier: "Bergamo Textile Lab",
+    status: "Healthy",
+  },
+  {
+    lot_id: "a8f6c378-4ccc-5b56-b716-a32cb0ab2b9d",
+    lot_number: "LOT-LIN-TAFF-01",
+    lining_type: "TAFFTA",
+    article: "TAFFTA LINING",
+    colour: "BLACK",
+    thickness: "0.22 mm",
+    uom: "MTRS",
+    available: 1098.0,
+    allocated: 720.0,
+    used: 102.0,
+    pieces_lined: 32,
+    remaining: 1098.0,
+    supplier: "Prato Silk & Synth",
+    status: "Healthy",
+  },
+  {
+    lot_id: "c4109e5b-1122-4a09-98df-88cb13a37266",
+    lot_number: "LOT-LIN-CUP-01",
+    lining_type: "CUPRO",
+    article: "CUPRO BEMBERG",
+    colour: "ICE GREY",
+    thickness: "0.28 mm",
+    uom: "MTRS",
+    available: 540.0,
+    allocated: 350.0,
+    used: 65.0,
+    pieces_lined: 18,
+    remaining: 475.0,
+    supplier: "Asahi Kasei Fibers",
+    status: "Healthy",
+  }
+];
+
+export const LINING_EMPLOYEES = [
+  {
+    employee_id: "bc604e5d-ef47-4008-a599-74bf6de526c2",
+    name: "Ahmedasa",
+    designation: "LINING_CUTTING_OPERATOR",
+    role: "Senior Lining Master",
+    assigned_pieces: 21,
+    completedToday: 12,
+    rework_today: 0,
+    used_lining: 268.0,
+    daily_target: 25,
+    efficiencyPct: 96.8,
+    damage_pieces: 1,
+    reworkCount: 0,
+    status: "Active on Floor",
+    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&auto=format&fit=crop&q=80",
+  },
+  {
+    employee_id: "b52277ed-d2d3-457d-98ef-0dfc77116a5e",
+    name: "hamthan",
+    designation: "PRODUCTION_MANAGER",
+    role: "Lining Flow Supervisor",
+    assigned_pieces: 4,
+    completedToday: 4,
+    rework_today: 0,
+    used_lining: 50.0,
+    daily_target: 10,
+    efficiencyPct: 98.2,
+    damage_pieces: 0,
+    reworkCount: 1,
+    status: "Supervising",
+    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=120&auto=format&fit=crop&q=80",
+  },
+  {
+    employee_id: "f8aedd75-8de6-4f4f-ae87-f4e31e407745",
+    name: "Ravi",
+    designation: "STITCHING",
+    role: "Lining Assembly Specialist",
+    assigned_pieces: 3,
+    completedToday: 3,
+    rework_today: 0,
+    used_lining: 510.0,
+    daily_target: 15,
+    efficiencyPct: 97.4,
+    damage_pieces: 1,
+    reworkCount: 0,
+    status: "Active on Floor",
+    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=120&auto=format&fit=crop&q=80",
+  }
+];
+
+export const LINING_DAILY_PRODUCTION_LOGS = [
+  { work_date: "11-Aug", date: "11-Aug-2026", assigned: 21, completed: 21, events: 127, target: 20, used_lining: 268.0, remaining: 1825.8 },
+  { work_date: "10-Aug", date: "10-Aug-2026", assigned: 15, completed: 14, events: 48, target: 20, used_lining: 180.0, remaining: 2093.8 },
+  { work_date: "05-Aug", date: "05-Aug-2026", assigned: 4, completed: 4, events: 74, target: 15, used_lining: 50.0, remaining: 2273.8 },
+  { work_date: "02-Aug", date: "02-Aug-2026", assigned: 3, completed: 3, events: 20, target: 10, used_lining: 330.0, remaining: 2323.8 },
+];
+
+export const UPCOMING_LINING_PRODUCTION = [
+  {
+    order_id: "643d0624-b559-40f1-8707-d672b55acb70",
+    order_number: "is-1001",
+    style_name: "ADELE KNIT",
+    article: "GOAT SUEDE",
+    colour: "DARK BROWN",
+    thickness: "0.8-1.0",
+    size: "38",
+    expected_qty: 3,
+    target_date: "2026-08-15",
+    cutting_status: "DONE",
+    lining_status: "READY FOR CUTTING",
+    lining_code: "LIN-TWILL-BLK-01",
+  },
+  {
+    order_id: "643d0624-b559-40f1-8707-d672b55acb70",
+    order_number: "is-1001",
+    style_name: "ADELE KNIT",
+    article: "GOAT SUEDE",
+    colour: "DARK BROWN",
+    thickness: "0.8-1.0",
+    size: "42",
+    expected_qty: 11,
+    target_date: "2026-08-16",
+    cutting_status: "DONE",
+    lining_status: "READY FOR CUTTING",
+    lining_code: "LIN-TWILL-BLK-01",
+  },
+  {
+    order_id: "643d0624-b559-40f1-8707-d672b55acb70",
+    order_number: "is-1001",
+    style_name: "ADELE KNIT",
+    article: "GOAT SUEDE",
+    colour: "DARK BROWN",
+    thickness: "0.8-1.0",
+    size: "44",
+    expected_qty: 4,
+    target_date: "2026-08-16",
+    cutting_status: "DONE",
+    lining_status: "READY FOR CUTTING",
+    lining_code: "LIN-TWILL-BLK-01",
+  },
+  {
+    order_id: "643d0624-b559-40f1-8707-d672b55acb70",
+    order_number: "is-1001",
+    style_name: "ADELE KNIT",
+    article: "GOAT SUEDE",
+    colour: "RICE",
+    thickness: "0.8-1.0",
+    size: "40",
+    expected_qty: 4,
+    target_date: "2026-08-17",
+    cutting_status: "DONE",
+    lining_status: "QUEUED",
+    lining_code: "LIN-CUP-ICE-01",
+  },
+];
+
+export const RAW_LINING_PIECES_DATA = [
+  // IS1234 CARNABY
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-001", seq: 1, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "LINING_CUTTING", last_worked: "2026-08-05", employee: "hamthan", stage: "LINING_CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.4, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "is1234", lot_number: "LOT-LIN-TAFF-01", status: "Lining Cut" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-002", seq: 2, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_FINISH", last_worked: "2026-08-05", employee: "hamthan", stage: "LINING_CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.3, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "is1234", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-003", seq: 3, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "LINING_CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.4, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "is1234", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-S-004", seq: 4, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 12.0, variance: 0.0, waste_dcm: 0.2, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "is1234", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-L-001", seq: 1, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "PASTING", last_worked: "2026-08-05", employee: "Ravi", stage: "LINING_CUTTING", actual_consumption: 14.0, expected_consumption: 14.0, variance: 0.0, waste_dcm: 0.5, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-L-036", seq: 36, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-05", employee: "Ravi", stage: "LINING_CUTTING", actual_consumption: 14.2, expected_consumption: 14.0, variance: 0.2, waste_dcm: 0.4, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Lining Cut" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-001", seq: 1, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "Ravi", stage: "LINING_CUTTING", actual_consumption: 12.5, expected_consumption: 13.0, variance: -0.5, waste_dcm: 0.3, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-028", seq: 28, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "Ravi", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 13.0, variance: -1.0, waste_dcm: 0.4, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-001", seq: 1, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "LINING_CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.5, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-021", seq: 21, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "PASTING", last_worked: "2026-08-05", employee: "hamthan", stage: "LINING_CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.3, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-022", seq: 22, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "LINING_CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.4, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-023", seq: 23, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "LINE_STITCHING", last_worked: "2026-08-05", employee: "hamthan", stage: "LINING_CUTTING", actual_consumption: 12.5, expected_consumption: 12.0, variance: 0.5, waste_dcm: 0.4, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-024", seq: 24, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", last_worked: "2026-08-05", employee: "hamthan", stage: "LINING_CUTTING", actual_consumption: 8.2, expected_consumption: 12.0, variance: -3.8, waste_dcm: 0.2, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Completed" },
+  { piece_code: "ORD_1011-CARNABY-PINE_GREEN-XL-001", seq: 1, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "CUTTING", last_worked: "2026-08-05", employee: "Ravi", stage: "LINING_CUTTING", actual_consumption: 16.0, expected_consumption: 16.0, variance: 0.0, waste_dcm: 0.6, lining_type: "TAFFTA", lining_code: "LIN-TAFF-BLK-01", order_number: "ORD-1011", lot_number: "LOT-LIN-TAFF-01", status: "Lining Cut" },
+  
+  // ORD_1011 FRANCIS KNIT
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-001", seq: 1, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-002", seq: 2, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.3, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-003", seq: 3, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-004", seq: 4, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-005", seq: 5, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.3, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-006", seq: 6, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.3, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-007", seq: 7, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-008", seq: 8, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Completed" },
+  { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-009", seq: 9, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.5, variance: 0.5, waste_dcm: 0.4, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Completed" },
+  
+  // ORD_1011 CLERMONT + VEST
+  { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-50-010", seq: 10, size: "50", colour: "WHISKY", style: "CLERMONT + VEST", current_stage: "LINING_CUTTING", last_worked: "2026-08-11", employee: "Ahmedasa", stage: "LINING_CUTTING", actual_consumption: 12.0, expected_consumption: 11.0, variance: 1.0, waste_dcm: 0.4, lining_type: "COTTON", lining_code: "LIN-COT-NAT-01", order_number: "ORD-1011", lot_number: "LOT-LIN-COT-01", status: "Damaged", damage_reason: "Seam fraying on curved armhole", rework_cutter: "hamthan" },
+  { piece_code: "KL_1-ADELE_KNIT-DARK_BROWN-38-001", seq: 1, size: "38", colour: "ICE", style: "ADELE KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-10", employee: "Farooq", stage: "LINING_CUTTING", actual_consumption: 1.25, expected_consumption: 1.20, variance: 0.05, waste_dcm: 0.05, lining_type: "CUPRO", lining_code: "LIN-CUP-ICE-01", order_number: "3001", lot_number: "LOT-LIN-CUP-01", status: "Completed" },
+  { piece_code: "KL_1-ADELE_KNIT-DARK_BROWN-38-002", seq: 2, size: "38", colour: "ICE", style: "ADELE KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-10", employee: "Farooq", stage: "LINING_CUTTING", actual_consumption: 1.20, expected_consumption: 1.20, variance: 0.00, waste_dcm: 0.04, lining_type: "CUPRO", lining_code: "LIN-CUP-ICE-01", order_number: "3001", lot_number: "LOT-LIN-CUP-01", status: "Completed" },
+  { piece_code: "KL_1-ADELE_KNIT-DARK_BROWN-38-005", seq: 5, size: "38", colour: "ICE", style: "ADELE KNIT", current_stage: "LINING_CUTTING", last_worked: "2026-08-10", employee: "Farooq", stage: "LINING_CUTTING", actual_consumption: 1.30, expected_consumption: 1.20, variance: 0.10, waste_dcm: 0.08, lining_type: "CUPRO", lining_code: "LIN-CUP-ICE-01", order_number: "3001", lot_number: "LOT-LIN-CUP-01", status: "Rework", damage_reason: "Tension puckering during lining cut", rework_cutter: "hamthan" },
+];
+
+export const LINING_WASTE_BREAKDOWN = [
+  { name: "Curved Trimmings", value: 18.5, color: "#3b82f6" },
+  { name: "Pattern Offcuts", value: 14.2, color: "#8b5cf6" },
+  { name: "Fraying & Selvedge", value: 6.8, color: "#f59e0b" },
+  { name: "Defect Scraps", value: 3.0, color: "#ef4444" },
+];
