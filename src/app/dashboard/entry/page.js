@@ -688,6 +688,10 @@ export default function ProductionLogEntry() {
   const handleStoreVerify = async (pieceOverride) => {
     setStoreApiLoading(true);
     setErrorMsg('');
+    // Reset to a clean slate for this scan — otherwise a stale value from a
+    // previous (possibly incorrect) short-circuit stays stuck across scans,
+    // showing "Received ✅" for a drawer that was never actually received.
+    setStoreReceiveStatus('pending');
     try {
       const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
 
@@ -710,9 +714,18 @@ export default function ProductionLogEntry() {
           const occupantCode = String(drawerDetail?.piece?.code || '').toUpperCase();
           const scanningSamePiece = !pieceVal || !occupantCode || occupantCode === pieceVal.toUpperCase();
 
+          // `complete` only describes CONTENTS (drawer has everything it
+          // needs — true the instant a leather-only piece's leather goes in,
+          // since it never needs lining). It does NOT mean the drawer has
+          // been formally RECEIVED — that's a separate state-machine step,
+          // and per the API docs leather-only pieces don't auto-receive at
+          // all. Treating `complete` as "already processed" was skipping the
+          // real store-scan/receive call and leaving the UI falsely showing
+          // "Received ✅" while the backend was still stuck at holding_leather
+          // with received_at: null. Only a real state transition (or `sent`)
+          // means there's nothing left to do here.
           const alreadyProcessed = scanningSamePiece && (
             drawerDetail?.sent === true ||
-            drawerDetail?.complete === true ||
             ['sended', 'received'].includes(String(drawerDetail?.state || '').toLowerCase())
           );
 
