@@ -3438,10 +3438,9 @@ export default function ProductionLogEntry() {
                               handleBarcodePieceScan();
                             }
                           }}
-                          disabled={barcodePieceValidating}
                           style={{ paddingLeft: barcodePieceInput ? '1rem' : '3.25rem', paddingRight: '1rem' }}
                           className="w-full h-14 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                          disabled={!barcodeWorker || barcodePieceResolving}
+                          disabled={!barcodeWorker || barcodePieceResolving || barcodePieceValidating}
                           autoFocus
                         />
                       </div>
