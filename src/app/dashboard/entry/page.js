@@ -4652,22 +4652,29 @@ export default function ProductionLogEntry() {
                       <span>Scan &amp; Verify Worker ID in Step 1 Banner above to Unlock Store Scanner</span>
                     </div>
                   )}
-                  <div className="relative flex items-center">
+                  {/* Wrapped in a <form> because mobile virtual keyboards
+                      don't reliably fire a raw onKeyDown "Enter" event — the
+                      Go/Search/Done action key needs a real form submit to be
+                      caught consistently across mobile browsers. enterKeyHint
+                      also hints the keyboard to show a "Go"-style action key. */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleStoreScanInput(storeCurrentScan.trim());
+                    }}
+                    className="relative flex items-center"
+                  >
                     {!storeCurrentScan && (
                       <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 pointer-events-none transition-opacity duration-200" />
                     )}
                     <input
                       ref={storeInputRef}
                       type="text"
+                      inputMode="text"
+                      enterKeyHint="go"
                       placeholder={!barcodeWorker ? "Scan Worker ID in Step 1 Banner above..." : (!storeDrawerInput ? "Scan Drawer ID first..." : "Scan Piece Barcode...")}
                       value={storeCurrentScan}
                       onChange={(e) => setStoreCurrentScan(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          handleStoreScanInput(storeCurrentScan.trim());
-                        }
-                      }}
                       disabled={!barcodeWorker || storeScanResolving}
                       style={{ paddingLeft: storeCurrentScan ? '1rem' : '3.25rem', paddingRight: '3rem' }}
                       className="w-full h-16 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all disabled:opacity-50"
@@ -4680,7 +4687,7 @@ export default function ProductionLogEntry() {
                     >
                       <Camera className="w-5 h-5" />
                     </button>
-                  </div>
+                  </form>
                 </div>
 
                 {/* Status Badges */}
