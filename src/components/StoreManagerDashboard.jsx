@@ -57,6 +57,145 @@ import {
   apiGetStoreDrawerMovement,
   apiGetStoreTraceability,
 } from '@/lib/api';
+import {
+  STORE_KPIS,
+  STORE_CURRENT_STYLES,
+  STORE_DRAWERS_LIST,
+  STORE_HELD_DRAWERS,
+  STORE_EMPTY_DRAWERS,
+  STORE_DAILY_LOGS
+} from '@/lib/storeData';
+
+// Interactive Monthly Calendar Filter Picker Component
+function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates = [], themeColor = '#0891b2' }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(() => new Date(2026, 7, 1));
+
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const firstDayIndex = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const handlePrevMonth = (e) => {
+    e.stopPropagation();
+    setCurrentMonth(new Date(year, month - 1, 1));
+  };
+  const handleNextMonth = (e) => {
+    e.stopPropagation();
+    setCurrentMonth(new Date(year, month + 1, 1));
+  };
+
+  const isSelected = (dayStr) => selectedDate === dayStr;
+  const hasPieces = (dayStr) => availableDates.includes(dayStr);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:border-cyan-500 focus:outline-none flex items-center justify-between gap-1 shadow-sm transition-all cursor-pointer"
+        title="Open full interactive calendar"
+      >
+        <span className="truncate flex items-center gap-1">
+          <span>📅</span>
+          <span>{selectedDate === 'all' ? 'All Dates' : selectedDate}</span>
+        </span>
+        <span className="text-[10px] text-slate-400 font-bold">▼</span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full mt-2 left-0 z-50 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xl w-80 animate-fade-in text-slate-800">
+          <div className="grid grid-cols-3 gap-1.5 mb-3 pb-2.5 border-b border-slate-100 text-[11px] font-bold">
+            <button
+              onClick={() => { onSelectDate('all'); setIsOpen(false); }}
+              className={`px-2 py-1 rounded-lg transition-all ${selectedDate === 'all' ? 'bg-[#0891b2] text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+            >
+              All Dates
+            </button>
+            <button
+              onClick={() => { onSelectDate(new Date().toISOString().slice(0, 10)); setIsOpen(false); }}
+              className={`px-2 py-1 rounded-lg transition-all ${selectedDate === new Date().toISOString().slice(0, 10) ? 'bg-[#0891b2] text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+            >
+              ⚡ Today
+            </button>
+            <button
+              onClick={() => {
+                const y = new Date();
+                y.setDate(y.getDate() - 1);
+                onSelectDate(y.toISOString().slice(0, 10));
+                setIsOpen(false);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all"
+            >
+              Yesterday
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={handlePrevMonth} className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 font-black text-sm">&larr;</button>
+            <span className="text-xs font-extrabold text-slate-900">{monthNames[month]} {year}</span>
+            <button onClick={handleNextMonth} className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 font-black text-sm">&rarr;</button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-extrabold text-slate-400 mb-1">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-xs">
+            {Array.from({ length: firstDayIndex }).map((_, i) => (
+              <div key={`empty-${i}`} className="p-1"></div>
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const d = i + 1;
+              const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+              const active = isSelected(dayStr);
+              const pieceActivity = hasPieces(dayStr);
+              return (
+                <button
+                  key={d}
+                  onClick={() => {
+                    onSelectDate(dayStr);
+                    setIsOpen(false);
+                  }}
+                  className={`p-1.5 rounded-xl font-bold transition-all relative flex flex-col items-center justify-center ${
+                    active
+                      ? 'bg-[#0891b2] text-white shadow-md scale-105 font-black'
+                      : pieceActivity
+                      ? 'bg-cyan-50 text-cyan-900 hover:bg-cyan-100 font-extrabold'
+                      : 'hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <span>{d}</span>
+                  {pieceActivity && !active && (
+                    <span className="w-1 h-1 rounded-full bg-[#0891b2] mt-0.5"></span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold text-slate-400">Pick any date:</span>
+            <input
+              type="date"
+              value={selectedDate === 'all' ? '' : selectedDate}
+              onChange={(e) => {
+                onSelectDate(e.target.value || 'all');
+                if (e.target.value) setIsOpen(false);
+              }}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 focus:outline-none focus:border-cyan-600 cursor-pointer"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Chart custom tooltip
 function CustomTooltip({ active, payload, label, unit = 'drawers' }) {
@@ -79,16 +218,16 @@ function StoreDashboardContent() {
   const { token } = useAuth();
   const { orders: contextOrders } = useData();
 
-  // State
+  // State initialized with fallback data
   const [activeTab, setActiveTab] = useState('tab-today');
-  const [kpis, setKpis] = useState(null);
-  const [drawersList, setDrawersList] = useState([]);
-  const [stylesList, setStylesList] = useState([]);
-  const [heldList, setHeldList] = useState([]);
-  const [emptyList, setEmptyList] = useState([]);
-  const [dailyLogs, setDailyLogs] = useState([]);
-  const [ordersList, setOrdersList] = useState(contextOrders || []);
-  const [activeOrder, setActiveOrder] = useState(contextOrders?.[0] || null);
+  const [kpis, setKpis] = useState(() => STORE_KPIS || null);
+  const [drawersList, setDrawersList] = useState(() => STORE_DRAWERS_LIST || []);
+  const [stylesList, setStylesList] = useState(() => STORE_CURRENT_STYLES || []);
+  const [heldList, setHeldList] = useState(() => STORE_HELD_DRAWERS || []);
+  const [emptyList, setEmptyList] = useState(() => STORE_EMPTY_DRAWERS || []);
+  const [dailyLogs, setDailyLogs] = useState(() => STORE_DAILY_LOGS || []);
+  const [ordersList, setOrdersList] = useState(() => contextOrders || []);
+  const [activeOrder, setActiveOrder] = useState(() => contextOrders?.[0] || null);
 
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
@@ -157,6 +296,89 @@ function StoreDashboardContent() {
     drawersList.forEach((d) => { if (d.status_label) set.add(d.status_label); });
     return Array.from(set).filter(Boolean);
   }, [drawersList]);
+
+  const availableDates = useMemo(() => {
+    const set = new Set();
+    drawersList.forEach((d) => {
+      if (d.received_at) set.add(d.received_at.slice(0, 10));
+      if (d.sended_at) set.add(d.sended_at.slice(0, 10));
+    });
+    dailyLogs.forEach((l) => { if (l.work_date || l.date) set.add(l.work_date || l.date); });
+    return Array.from(set).filter(Boolean);
+  }, [drawersList, dailyLogs]);
+
+  // Filtered drawers computed dynamically based on ALL cross-filters
+  const filteredDrawers = useMemo(() => {
+    const selectedOrderObj = filterOrder !== 'all' ? ordersList.find((o) => o.id === filterOrder || o.order_number === filterOrder || o.po_number === filterOrder) : null;
+    return drawersList.filter((d) => {
+      // Search query
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchesQuery =
+          (d.drawer_code && d.drawer_code.toLowerCase().includes(q)) ||
+          (d.style && d.style.toLowerCase().includes(q)) ||
+          (d.piece_code && d.piece_code.toLowerCase().includes(q)) ||
+          (d.order_number && d.order_number.toLowerCase().includes(q)) ||
+          (d.cut_by && d.cut_by.toLowerCase().includes(q)) ||
+          (d.status_label && d.status_label.toLowerCase().includes(q));
+        if (!matchesQuery) return false;
+      }
+      // Date
+      if (filterDate !== 'all') {
+        const recDate = d.received_at ? d.received_at.slice(0, 10) : null;
+        const sendDate = d.sended_at ? d.sended_at.slice(0, 10) : null;
+        if (recDate !== filterDate && sendDate !== filterDate) return false;
+      }
+      // Style
+      if (filterStyle !== 'all' && d.style !== filterStyle) return false;
+      // Order
+      if (filterOrder !== 'all') {
+        const matchesOrder = d.order_id === filterOrder || d.order_number === filterOrder || (selectedOrderObj && (d.order_number === selectedOrderObj.order_number || d.order_id === selectedOrderObj.id || d.order_number === selectedOrderObj.po_number));
+        if (!matchesOrder) return false;
+      }
+      // Material
+      if (filterMaterial !== 'all') {
+        if (filterMaterial === 'LEATHER' && d.material_type !== 'LEATHER') return false;
+        if (filterMaterial === 'LINING' && d.material_type !== 'LINING') return false;
+        if (filterMaterial === 'LEATHER+LINING' && d.material_type !== 'LEATHER+LINING') return false;
+      }
+      // Status
+      if (filterStatus !== 'all' && d.status_label !== filterStatus) return false;
+
+      return true;
+    });
+  }, [drawersList, ordersList, searchQuery, filterDate, filterStyle, filterOrder, filterMaterial, filterStatus]);
+
+  // Paginated drawers
+  const paginatedDrawers = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredDrawers.slice(start, start + pageSize);
+  }, [filteredDrawers, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredDrawers.length / pageSize) || 1;
+
+  // Dynamic daily production / drawer throughput chart data
+  const dynamicDailyChartData = useMemo(() => {
+    const map = new Map();
+    filteredDrawers.forEach((d) => {
+      const date = d.received_at ? d.received_at.slice(0, 10) : (d.sended_at ? d.sended_at.slice(0, 10) : '2026-08-14');
+      if (!map.has(date)) {
+        map.set(date, {
+          work_date: date,
+          received: 0,
+          sent: 0,
+          held: 0,
+          emptied: 0,
+        });
+      }
+      const row = map.get(date);
+      if (d.state === 'received' || d.status_label === 'In Store' || d.status_label === 'Ready to Send') row.received += 1;
+      if (d.state === 'sended' || d.status_label === 'Sent to Production') row.sent += 1;
+      if (d.state === 'held' || d.status_label === 'Held') row.held += 1;
+    });
+    if (map.size === 0) return dailyLogs;
+    return Array.from(map.values()).sort((a, b) => b.work_date.localeCompare(a.work_date));
+  }, [filteredDrawers, dailyLogs]);
 
   // LIVE BACKEND CALL: /api/v1/dashboard/store
   useEffect(() => {
@@ -231,50 +453,6 @@ function StoreDashboardContent() {
     setSearchQuery('');
     triggerToast('Store filters reset to default view');
   };
-
-  // Filtered drawers computed
-  const filteredDrawers = useMemo(() => {
-    const selectedOrderObj = filterOrder !== 'all' ? ordersList.find((o) => o.id === filterOrder || o.order_number === filterOrder) : null;
-    return drawersList.filter((d) => {
-      // Search query
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matchesQuery =
-          (d.drawer_code && d.drawer_code.toLowerCase().includes(q)) ||
-          (d.style && d.style.toLowerCase().includes(q)) ||
-          (d.piece_code && d.piece_code.toLowerCase().includes(q)) ||
-          (d.order_number && d.order_number.toLowerCase().includes(q)) ||
-          (d.cut_by && d.cut_by.toLowerCase().includes(q)) ||
-          (d.status_label && d.status_label.toLowerCase().includes(q));
-        if (!matchesQuery) return false;
-      }
-      // Style
-      if (filterStyle !== 'all' && d.style !== filterStyle) return false;
-      // Order
-      if (filterOrder !== 'all') {
-        const matchesOrder = d.order_id === filterOrder || d.order_number === filterOrder || (selectedOrderObj && (d.order_number === selectedOrderObj.order_number || d.order_id === selectedOrderObj.id));
-        if (!matchesOrder) return false;
-      }
-      // Material
-      if (filterMaterial !== 'all') {
-        if (filterMaterial === 'LEATHER' && d.material_type !== 'LEATHER') return false;
-        if (filterMaterial === 'LINING' && d.material_type !== 'LINING') return false;
-        if (filterMaterial === 'LEATHER+LINING' && d.material_type !== 'LEATHER+LINING') return false;
-      }
-      // Status
-      if (filterStatus !== 'all' && d.status_label !== filterStatus) return false;
-
-      return true;
-    });
-  }, [drawersList, ordersList, searchQuery, filterStyle, filterOrder, filterMaterial, filterStatus]);
-
-  // Paginated drawers
-  const paginatedDrawers = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredDrawers.slice(start, start + pageSize);
-  }, [filteredDrawers, currentPage, pageSize]);
-
-  const totalPages = Math.ceil(filteredDrawers.length / pageSize) || 1;
 
   // Real-time Simulation action
   const handleSimulateMovement = () => {
@@ -479,7 +657,7 @@ function StoreDashboardContent() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
           {/* Quick Search */}
           <div className="relative col-span-2">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -492,6 +670,16 @@ function StoreDashboardContent() {
             />
           </div>
 
+          {/* Date Filter with Complete Interactive Monthly Calendar Picker */}
+          <div>
+            <CompleteDateCalendarPicker
+              selectedDate={filterDate}
+              onSelectDate={setFilterDate}
+              availableDates={availableDates}
+              themeColor="#0891b2"
+            />
+          </div>
+
           {/* Style Filter */}
           <div>
             <select
@@ -501,7 +689,7 @@ function StoreDashboardContent() {
             >
               <option value="all">👗 All Styles</option>
               {availableStyles.map((s) => (
-                <option key={s.id} value={s.name || s.id}>
+                <option key={s.id || s.name} value={s.name || s.id}>
                   {s.name}
                 </option>
               ))}
@@ -515,15 +703,15 @@ function StoreDashboardContent() {
               onChange={(e) => {
                 const val = e.target.value;
                 setFilterOrder(val);
-                const ord = ordersList.find((o) => o.id === val || o.order_number === val);
+                const ord = ordersList.find((o) => o.id === val || o.order_number === val || o.po_number === val);
                 if (ord) setActiveOrder(ord);
               }}
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
             >
               <option value="all">📦 All Orders</option>
-              {ordersList.map((ord) => (
-                <option key={ord.id} value={ord.id}>
-                  {ord.order_number || ord.name || ord.po_number || ord.id}
+              {ordersList.map((ord, idx) => (
+                <option key={`${ord.id || ord.order_number}-${idx}`} value={ord.id || ord.order_number}>
+                  {ord.order_number ? `${ord.client ? `${ord.client} - ` : ''}PO: ${ord.order_number}` : (ord.name || ord.po_number || ord.id)}
                 </option>
               ))}
             </select>
@@ -537,8 +725,8 @@ function StoreDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
             >
               <option value="all">🧵 Material Contents</option>
-              {availableMaterials.map((m) => (
-                <option key={m.id} value={m.id}>
+              {availableMaterials.map((m, idx) => (
+                <option key={`${m.id}-${idx}`} value={m.id}>
                   {m.label}
                 </option>
               ))}
@@ -553,8 +741,8 @@ function StoreDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
             >
               <option value="all">🗄️ All Statuses</option>
-              {availableStatuses.map((st) => (
-                <option key={st} value={st}>
+              {availableStatuses.map((st, idx) => (
+                <option key={`${st}-${idx}`} value={st}>
                   {st}
                 </option>
               ))}
@@ -802,7 +990,7 @@ function StoreDashboardContent() {
               </div>
               <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyLogs}>
+                  <BarChart data={dynamicDailyChartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -823,7 +1011,7 @@ function StoreDashboardContent() {
                 <p className="text-xs text-slate-500 mb-3">Shift-wise drawer transitions</p>
                 
                 <div className="overflow-y-auto max-h-[250px] space-y-2 pr-1">
-                  {dailyLogs.map((log, i) => (
+                  {dynamicDailyChartData.map((log, i) => (
                     <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
                       <div>
                         <span className="font-bold text-slate-800">{log.work_date || log.date}</span>
@@ -835,9 +1023,9 @@ function StoreDashboardContent() {
                       </div>
                     </div>
                   ))}
-                  {dailyLogs.length === 0 && (
+                  {dynamicDailyChartData.length === 0 && (
                     <div className="text-center py-8 text-slate-400 font-medium text-xs">
-                      No daily movement logs available.
+                      No daily movement logs available for selected filter.
                     </div>
                   )}
                 </div>
@@ -1025,26 +1213,44 @@ function StoreDashboardContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {stylesList.map((st, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-all">
-                      <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                        <span>👗</span>
-                        <span>{st.style_name || st.name}</span>
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-600">{st.order_number || '—'}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{st.drawers || 0}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-orange-700 font-bold">{st.leather_drawers || 0}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-rose-700 font-bold">{st.lining_drawers || 0}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-cyan-700 font-black">{st.both_drawers || 0}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-bold">{st.ready_to_send || 0}</td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-700">{st.target_date || '—'}</td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-100 text-cyan-800">
-                          {st.status || 'Active'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {stylesList.map((st, idx) => {
+                    const sName = st.style_name || st.name;
+                    const isSelected = filterStyle === sName;
+                    return (
+                      <tr
+                        key={idx}
+                        onClick={() => {
+                          setFilterStyle(sName);
+                          setActiveTab('tab-overview');
+                          triggerToast(`⚡ Filtered Store to Style: ${sName}`);
+                        }}
+                        className={`hover:bg-cyan-50/70 cursor-pointer transition-all ${
+                          isSelected ? 'bg-cyan-50/90 font-bold' : ''
+                        }`}
+                        title="Click to filter drawers by this style"
+                      >
+                        <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span>👗</span>
+                            <span>{sName}</span>
+                          </div>
+                          <span className="text-[10px] text-cyan-700 font-bold opacity-0 hover:opacity-100 transition-opacity">View Drawers &rarr;</span>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-slate-600">{st.order_number || '—'}</td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{st.drawers || 0}</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-orange-700 font-bold">{st.leather_drawers || 0}</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-rose-700 font-bold">{st.lining_drawers || 0}</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-cyan-700 font-black">{st.both_drawers || 0}</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-bold">{st.ready_to_send || 0}</td>
+                        <td className="py-3.5 px-4 font-semibold text-slate-700">{st.target_date || '—'}</td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-100 text-cyan-800">
+                            {st.status || 'Active'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {stylesList.length === 0 && (
                     <tr>
                       <td colSpan={9} className="text-center py-8 text-slate-400 font-medium">

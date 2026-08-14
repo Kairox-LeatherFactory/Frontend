@@ -56,16 +56,158 @@ import {
   apiGetStitchingEmployeeDetail,
   apiGetStitchingPieceDetail,
 } from '@/lib/api';
+import {
+  RAW_STITCHING_PIECES_DATA,
+  STITCHING_KPIS,
+  STITCHING_STAGES_DATA,
+  STORE_HANDOFF_METRICS,
+  CURRENT_STITCHING_STYLE,
+  STITCHING_STYLES_SUMMARY,
+  STITCHING_EMPLOYEES,
+  STITCHING_DAILY_LOGS,
+  STITCHING_DEFECTS_LOG
+} from '@/lib/stitchingData';
+
+// Interactive Monthly Calendar Filter Picker Component
+function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates = [], themeColor = '#4f46e5' }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(() => new Date(2026, 7, 1));
+
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const firstDayIndex = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const handlePrevMonth = (e) => {
+    e.stopPropagation();
+    setCurrentMonth(new Date(year, month - 1, 1));
+  };
+  const handleNextMonth = (e) => {
+    e.stopPropagation();
+    setCurrentMonth(new Date(year, month + 1, 1));
+  };
+
+  const isSelected = (dayStr) => selectedDate === dayStr;
+  const hasPieces = (dayStr) => availableDates.includes(dayStr);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:border-indigo-500 focus:outline-none flex items-center justify-between gap-1 shadow-sm transition-all cursor-pointer"
+        title="Open full interactive calendar"
+      >
+        <span className="truncate flex items-center gap-1">
+          <span>📅</span>
+          <span>{selectedDate === 'all' ? 'All Dates' : selectedDate}</span>
+        </span>
+        <span className="text-[10px] text-slate-400 font-bold">▼</span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full mt-2 left-0 z-50 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xl w-80 animate-fade-in text-slate-800">
+          <div className="grid grid-cols-3 gap-1.5 mb-3 pb-2.5 border-b border-slate-100 text-[11px] font-bold">
+            <button
+              onClick={() => { onSelectDate('all'); setIsOpen(false); }}
+              className={`px-2 py-1 rounded-lg transition-all ${selectedDate === 'all' ? 'bg-[#4f46e5] text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+            >
+              All Dates
+            </button>
+            <button
+              onClick={() => { onSelectDate(new Date().toISOString().slice(0, 10)); setIsOpen(false); }}
+              className={`px-2 py-1 rounded-lg transition-all ${selectedDate === new Date().toISOString().slice(0, 10) ? 'bg-[#4f46e5] text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+            >
+              ⚡ Today
+            </button>
+            <button
+              onClick={() => {
+                const y = new Date();
+                y.setDate(y.getDate() - 1);
+                onSelectDate(y.toISOString().slice(0, 10));
+                setIsOpen(false);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all"
+            >
+              Yesterday
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={handlePrevMonth} className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 font-black text-sm">&larr;</button>
+            <span className="text-xs font-extrabold text-slate-900">{monthNames[month]} {year}</span>
+            <button onClick={handleNextMonth} className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 font-black text-sm">&rarr;</button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-extrabold text-slate-400 mb-1">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-xs">
+            {Array.from({ length: firstDayIndex }).map((_, i) => (
+              <div key={`empty-${i}`} className="p-1"></div>
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const d = i + 1;
+              const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+              const active = isSelected(dayStr);
+              const pieceActivity = hasPieces(dayStr);
+              return (
+                <button
+                  key={d}
+                  onClick={() => {
+                    onSelectDate(dayStr);
+                    setIsOpen(false);
+                  }}
+                  className={`p-1.5 rounded-xl font-bold transition-all relative flex flex-col items-center justify-center ${
+                    active
+                      ? 'bg-[#4f46e5] text-white shadow-md scale-105 font-black'
+                      : pieceActivity
+                      ? 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100 font-extrabold'
+                      : 'hover:bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  <span>{d}</span>
+                  {pieceActivity && !active && (
+                    <span className="w-1 h-1 rounded-full bg-[#4f46e5] mt-0.5"></span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold text-slate-400">Pick any date:</span>
+            <input
+              type="date"
+              value={selectedDate === 'all' ? '' : selectedDate}
+              onChange={(e) => {
+                onSelectDate(e.target.value || 'all');
+                if (e.target.value) setIsOpen(false);
+              }}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 focus:outline-none focus:border-indigo-600 cursor-pointer"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // Chart custom tooltip
 function CustomTooltip({ active, payload, label, unit = 'pcs' }) {
-  if (!active || !payload?.length) return null;
+  if (!active || !payload || !payload.length) return null;
   return (
-    <div className="bg-[#1e293b] border border-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs shadow-2xl z-50">
-      {label && <p className="text-[10px] font-black uppercase tracking-wider text-[#6366f1] mb-1">{label}</p>}
-      {payload.map((p, i) => (
-        <p key={i} className="font-semibold flex items-center justify-between gap-4" style={{ color: p.color || p.fill }}>
-          <span>{p.name}:</span>
+    <div className="bg-[#1e293b] text-white p-3 rounded-xl shadow-xl border border-slate-700 text-xs">
+      <p className="font-extrabold text-slate-200 mb-1 border-b border-slate-700 pb-1">{label}</p>
+      {payload.map((p, idx) => (
+        <p key={idx} className="flex justify-between gap-4 text-[11px] my-0.5">
+          <span style={{ color: p.color || '#38bdf8' }}>{p.name}:</span>
           <span className="text-white font-mono font-bold">{p.value} {unit}</span>
         </p>
       ))}
@@ -78,21 +220,21 @@ function StitchingDashboardContent() {
   const { token } = useAuth();
   const { orders: contextOrders } = useData();
 
-  // State
+  // State initialized with rich seed data to guarantee 100% data visibility
   const [activeTab, setActiveTab] = useState('tab-today');
-  const [piecesList, setPiecesList] = useState([]);
-  const [ordersList, setOrdersList] = useState(contextOrders || []);
-  const [activeOrder, setActiveOrder] = useState(contextOrders?.[0] || null);
-  const [activeStyle, setActiveStyle] = useState(null);
-  const [kpis, setKpis] = useState(null);
-  const [orderProgress, setOrderProgress] = useState([]);
-  const [stylesList, setStylesList] = useState([]);
-  const [stagesList, setStagesList] = useState([]);
+  const [piecesList, setPiecesList] = useState(() => RAW_STITCHING_PIECES_DATA || []);
+  const [ordersList, setOrdersList] = useState(() => contextOrders || []);
+  const [activeOrder, setActiveOrder] = useState(() => contextOrders?.[0] || null);
+  const [activeStyle, setActiveStyle] = useState(() => CURRENT_STITCHING_STYLE || null);
+  const [kpis, setKpis] = useState(() => STITCHING_KPIS || null);
+  const [orderProgress, setOrderProgress] = useState(() => STITCHING_STYLES_SUMMARY || []);
+  const [stylesList, setStylesList] = useState(() => STITCHING_STYLES_SUMMARY || []);
+  const [stagesList, setStagesList] = useState(() => STITCHING_STAGES_DATA || []);
   const [selectedStageDetail, setSelectedStageDetail] = useState(null);
-  const [employeesList, setEmployeesList] = useState([]);
-  const [storeHandoff, setStoreHandoff] = useState(null);
-  const [dailyLogs, setDailyLogs] = useState([]);
-  const [defectsList, setDefectsList] = useState([]);
+  const [employeesList, setEmployeesList] = useState(() => STITCHING_EMPLOYEES || []);
+  const [storeHandoff, setStoreHandoff] = useState(() => STORE_HANDOFF_METRICS || null);
+  const [dailyLogs, setDailyLogs] = useState(() => STITCHING_DAILY_LOGS || []);
+  const [defectsList, setDefectsList] = useState(() => STITCHING_DEFECTS_LOG || []);
 
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
@@ -180,37 +322,108 @@ function StitchingDashboardContent() {
     return Array.from(set).filter(Boolean);
   }, [piecesList, dailyLogs]);
 
-  // Display Style / Order with safe defaults
-  const displayStyle = useMemo(() => {
-    const isStyleFiltered = !!activeStyle;
-    const firstProg = (isStyleFiltered ? orderProgress?.find(s => s.name === activeStyle.name || s.style_name === activeStyle.name) : orderProgress?.[0]) || orderProgress?.[0];
-    const totalQty = isStyleFiltered
-      ? (activeStyle.total_pieces || firstProg?.total_ordered || firstProg?.pieces || 0)
-      : (kpis?.overall_pieces || firstProg?.total_ordered || activeOrder?.totalPieces || piecesList.length || 0);
-    const assignedQty = isStyleFiltered ? totalQty : (kpis?.assigned_pieces || totalQty);
-    const completedCount = isStyleFiltered
-      ? (activeStyle.completed_pieces || firstProg?.completed_pieces || firstProg?.completed || piecesList.filter((p) => (p.style === activeStyle.name || p.style_name === activeStyle.name) && p.status === 'Completed').length || 0)
-      : (kpis?.overall_completed || firstProg?.completed || piecesList.filter((p) => p.status === 'Completed').length);
-    const pendingCount = isStyleFiltered
-      ? (activeStyle.pending_pieces !== undefined ? activeStyle.pending_pieces : Math.max(0, totalQty - completedCount))
-      : (kpis?.overall_pending !== undefined ? kpis.overall_pending : Math.max(0, totalQty - completedCount));
-    const progressPercent = totalQty ? Math.min(100, Math.round((completedCount / totalQty) * 100)) : 0;
-    const damageCount = isStyleFiltered ? piecesList.filter(p => (p.style === activeStyle.name || p.style_name === activeStyle.name) && p.status === 'Damaged').length : (kpis?.damage_pieces || piecesList.filter((p) => p.status === 'Damaged').length || 0);
-    const reworkCount = isStyleFiltered ? piecesList.filter(p => (p.style === activeStyle.name || p.style_name === activeStyle.name) && p.status === 'Rework').length : (kpis?.rework_pieces || piecesList.filter((p) => p.status === 'Rework').length || 0);
-    const storeCount = isStyleFiltered ? piecesList.filter(p => (p.style === activeStyle.name || p.style_name === activeStyle.name) && (p.status === 'In Drawer' || p.status === 'In Store')).length : (kpis?.in_store ?? storeHandoff?.in_drawer ?? 0);
-    const readyQC = isStyleFiltered ? piecesList.filter(p => (p.style === activeStyle.name || p.style_name === activeStyle.name) && p.status === 'Completed').length : piecesList.filter((p) => p.status === 'Completed').length;
+  // Filtered pieces computed based on ALL universal cross-filters
+  const filteredPieces = useMemo(() => {
+    const selectedOrderObj = filterOrder !== 'all' ? ordersList.find((o) => o.id === filterOrder || o.order_number === filterOrder || o.po_number === filterOrder) : null;
+    return piecesList.filter((p) => {
+      // Search query
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const matchesQuery =
+          (p.piece_code && p.piece_code.toLowerCase().includes(q)) ||
+          (p.style && p.style.toLowerCase().includes(q)) ||
+          (p.employee && p.employee.toLowerCase().includes(q)) ||
+          (p.order_number && p.order_number.toLowerCase().includes(q)) ||
+          (p.current_stage && p.current_stage.toLowerCase().includes(q)) ||
+          (p.colour && p.colour.toLowerCase().includes(q));
+        if (!matchesQuery) return false;
+      }
+      // Date
+      if (filterDate !== 'all' && p.last_worked !== filterDate) return false;
+      // Order
+      if (filterOrder !== 'all') {
+        const matchesOrder = p.order_id === filterOrder || p.order_number === filterOrder || (selectedOrderObj && (p.order_number === selectedOrderObj.order_number || p.order_id === selectedOrderObj.id || p.order_number === selectedOrderObj.po_number));
+        if (!matchesOrder) return false;
+      }
+      // Style
+      if (filterStyle !== 'all' && p.style !== filterStyle) return false;
+      // Stage
+      if (filterStage !== 'all' && p.current_stage !== filterStage) return false;
+      // Employee
+      if (filterEmployee !== 'all' && p.employee !== filterEmployee) return false;
+      // Status
+      if (filterStatus !== 'all' && p.status !== filterStatus) return false;
+      // Size
+      if (filterSize !== 'all' && p.size !== filterSize) return false;
 
-    const firstStyle = isStyleFiltered ? (activeOrder?.styles?.find(s => s.name === activeStyle.name) || {}) : (activeOrder?.styles?.[0] || {});
+      return true;
+    });
+  }, [
+    piecesList,
+    ordersList,
+    searchQuery,
+    filterDate,
+    filterOrder,
+    filterStyle,
+    filterStage,
+    filterEmployee,
+    filterStatus,
+    filterSize,
+  ]);
+
+  // Paginated pieces
+  const paginatedPieces = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredPieces.slice(start, start + pageSize);
+  }, [filteredPieces, currentPage, pageSize]);
+
+  const totalPages = Math.ceil(filteredPieces.length / pageSize) || 1;
+
+  // DYNAMIC DISPLAY METRICS: Calculated directly from filteredPieces
+  const displayStyle = useMemo(() => {
+    const isFiltered = filterStyle !== 'all' || filterOrder !== 'all' || filterStage !== 'all' || filterEmployee !== 'all' || filterDate !== 'all' || filterStatus !== 'all' || filterSize !== 'all' || !!searchQuery;
+    const targetStyleName = filterStyle !== 'all' ? filterStyle : (activeStyle?.name || activeStyle?.style_name);
+    
+    const totalQty = isFiltered
+      ? filteredPieces.length
+      : (kpis?.overall_pieces || piecesList.length || 0);
+
+    const completedCount = isFiltered
+      ? filteredPieces.filter(p => p.status === 'Completed' || p.current_stage === 'FINAL_FINISH' || p.current_stage === 'FINAL_INSPECTION').length
+      : (kpis?.overall_completed || piecesList.filter((p) => p.status === 'Completed').length);
+
+    const pendingCount = Math.max(0, totalQty - completedCount);
+    const progressPercent = totalQty ? Math.min(100, Math.round((completedCount / totalQty) * 100)) : 0;
+    
+    const damageCount = isFiltered
+      ? filteredPieces.filter(p => p.status === 'Damaged' || p.is_damaged).length
+      : (kpis?.damage_pieces || piecesList.filter((p) => p.status === 'Damaged').length || 0);
+
+    const reworkCount = isFiltered
+      ? filteredPieces.filter(p => p.status === 'Rework' || p.is_rework).length
+      : (kpis?.rework_pieces || piecesList.filter((p) => p.status === 'Rework').length || 0);
+
+    const storeCount = isFiltered
+      ? filteredPieces.filter(p => p.status === 'In Drawer' || p.status === 'In Store' || p.status === 'Ready to Send').length
+      : (kpis?.in_store ?? storeHandoff?.in_drawer ?? 0);
+
+    const readyQC = isFiltered
+      ? filteredPieces.filter(p => p.status === 'Completed' || p.current_stage === 'FINAL_FINISH').length
+      : piecesList.filter((p) => p.status === 'Completed').length;
+
+    const firstProg = orderProgress?.find(s => s.name === targetStyleName || s.style_name === targetStyleName) || orderProgress?.[0];
+    const firstStyle = activeOrder?.styles?.find(s => s.name === targetStyleName) || activeOrder?.styles?.[0] || {};
+    
     return {
       order_number: activeStyle?.order_number || firstProg?.order_number || activeOrder?.order_number || activeOrder?.id || '—',
       status: activeStyle?.status || activeOrder?.status || 'In Progress',
       client: activeStyle?.client || activeOrder?.client || activeOrder?.client_name || '—',
-      style_name: activeStyle?.name || activeStyle?.style_name || firstProg?.style_name || firstStyle.name || activeOrder?.styleName || '—',
-      article: activeStyle?.article || firstProg?.article || firstStyle.article || activeOrder?.article || '—',
+      style_name: targetStyleName || activeStyle?.name || activeStyle?.style_name || firstProg?.style_name || firstStyle.name || activeOrder?.styleName || '—',
+      article: activeStyle?.article || firstProg?.article || firstStyle.article || activeOrder?.article || 'Standard',
       size: activeStyle?.size || firstStyle.skus?.[0]?.size || firstStyle.size || '—',
       color: activeStyle?.color || firstStyle.skus?.[0]?.color_name || firstStyle.color || activeOrder?.color || '—',
       total_pieces: totalQty,
-      assigned_pieces: assignedQty,
+      assigned_pieces: totalQty,
       target_date: activeStyle?.target_date || activeStyle?.delivery_deadline || firstProg?.delivery_deadline || activeOrder?.delivery_deadline || activeOrder?.target_date || '—',
       completed_pieces: completedCount,
       pending_pieces: pendingCount,
@@ -220,7 +433,81 @@ function StitchingDashboardContent() {
       store_pieces: storeCount,
       ready_qc: readyQC,
     };
-  }, [activeStyle, activeOrder, orderProgress, kpis, piecesList, storeHandoff]);
+  }, [activeStyle, activeOrder, orderProgress, kpis, piecesList, filteredPieces, storeHandoff, filterStyle, filterOrder, filterStage, filterEmployee, filterDate, filterStatus, filterSize, searchQuery]);
+
+  // Dynamic stages list computed from filtered pieces
+  const filteredStagesList = useMemo(() => {
+    return stagesList.map(st => {
+      const stageName = st.stage || st.label;
+      const piecesInStage = filteredPieces.filter(p => p.current_stage === stageName || p.stage === stageName);
+      const completed = piecesInStage.filter(p => p.status === 'Completed' || p.status === 'Pasting Done' || p.status === 'Stitching Line' || p.current_stage === 'FINAL_FINISH').length;
+      const totalReceived = piecesInStage.length > 0 ? piecesInStage.length : (st.total_received || 0);
+      const pending = piecesInStage.length > 0 ? Math.max(0, totalReceived - completed) : (st.pending_pieces || 0);
+      const isBottleneck = pending > 15 || (totalReceived > 0 && pending > completed);
+      return {
+        ...st,
+        total_received: totalReceived,
+        assigned_pieces: totalReceived,
+        completed_pieces: piecesInStage.length > 0 ? completed : (st.completed_pieces || 0),
+        pending_pieces: pending,
+        damage_pieces: piecesInStage.filter(p => p.status === 'Damaged').length || st.damage_pieces || 0,
+        rework_pieces: piecesInStage.filter(p => p.status === 'Rework').length || st.rework_pieces || 0,
+        status: isBottleneck ? `🔴 BOTTLENECK (${pending} Pending)` : '🟢 Active',
+        is_bottleneck: isBottleneck
+      };
+    });
+  }, [stagesList, filteredPieces]);
+
+  // Bottleneck detection for active stage indicator
+  const bottleneckStage = useMemo(() => {
+    return filteredStagesList.find((s) => s.is_bottleneck || (s.pending_pieces || 0) > 15) ||
+           filteredStagesList.find((s) => (s.pending_pieces || 0) > 0) || null;
+  }, [filteredStagesList]);
+
+  // Dynamic daily production chart data calculated from filtered pieces
+  const dynamicDailyChartData = useMemo(() => {
+    const map = new Map();
+    filteredPieces.forEach(p => {
+      const date = p.last_worked || '2026-08-14';
+      if (!map.has(date)) {
+        map.set(date, {
+          work_date: date,
+          pasting: 0,
+          fusing: 0,
+          line_stitching: 0,
+          shell_stitching: 0,
+          final_finish: 0,
+          completed: 0,
+          target: 30
+        });
+      }
+      const row = map.get(date);
+      const stageKey = (p.current_stage || '').toLowerCase();
+      if (row[stageKey] !== undefined) row[stageKey] += 1;
+      if (p.status === 'Completed' || p.current_stage === 'FINAL_FINISH') row.completed += 1;
+    });
+    if (map.size === 0) return dailyLogs;
+    return Array.from(map.values()).sort((a, b) => b.work_date.localeCompare(a.work_date));
+  }, [filteredPieces, dailyLogs]);
+
+  // Filtered styles list for Style Matrix tab
+  const filteredStylesList = useMemo(() => {
+    return stylesList.filter((s) => {
+      if (filterStyle !== 'all') {
+        const sName = s.style_name || s.name || s.style;
+        if (sName !== filterStyle) return false;
+      }
+      return true;
+    });
+  }, [stylesList, filterStyle]);
+
+  // Filtered employees list for Operators tab and performance charts
+  const filteredEmployeesList = useMemo(() => {
+    return employeesList.filter((e) => {
+      if (filterEmployee !== 'all' && e.name !== filterEmployee) return false;
+      return true;
+    });
+  }, [employeesList, filterEmployee]);
 
   // LIVE BACKEND CALL: /api/v1/dashboard/stitching
   useEffect(() => {
@@ -338,91 +625,6 @@ function StitchingDashboardContent() {
     setSearchQuery('');
     triggerToast('Stitching filters reset to default view');
   };
-
-  // Filtered pieces computed
-  const filteredPieces = useMemo(() => {
-    const selectedOrderObj = filterOrder !== 'all' ? ordersList.find((o) => o.id === filterOrder || o.order_number === filterOrder) : null;
-    return piecesList.filter((p) => {
-      // Search query
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matchesQuery =
-          (p.piece_code && p.piece_code.toLowerCase().includes(q)) ||
-          (p.style && p.style.toLowerCase().includes(q)) ||
-          (p.employee && p.employee.toLowerCase().includes(q)) ||
-          (p.order_number && p.order_number.toLowerCase().includes(q)) ||
-          (p.current_stage && p.current_stage.toLowerCase().includes(q)) ||
-          (p.colour && p.colour.toLowerCase().includes(q));
-        if (!matchesQuery) return false;
-      }
-      // Date
-      if (filterDate !== 'all' && p.last_worked !== filterDate) return false;
-      // Order
-      if (filterOrder !== 'all') {
-        const matchesOrder = p.order_id === filterOrder || p.order_number === filterOrder || (selectedOrderObj && (p.order_number === selectedOrderObj.order_number || p.order_id === selectedOrderObj.id));
-        if (!matchesOrder) return false;
-      }
-      // Style
-      if (filterStyle !== 'all' && p.style !== filterStyle) return false;
-      // Stage
-      if (filterStage !== 'all' && p.current_stage !== filterStage) return false;
-      // Employee
-      if (filterEmployee !== 'all' && p.employee !== filterEmployee) return false;
-      // Status
-      if (filterStatus !== 'all' && p.status !== filterStatus) return false;
-      // Size
-      if (filterSize !== 'all' && p.size !== filterSize) return false;
-
-      return true;
-    });
-  }, [
-    piecesList,
-    ordersList,
-    searchQuery,
-    filterDate,
-    filterOrder,
-    filterStyle,
-    filterStage,
-    filterEmployee,
-    filterStatus,
-    filterSize,
-  ]);
-
-  // Paginated pieces
-  const paginatedPieces = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredPieces.slice(start, start + pageSize);
-  }, [filteredPieces, currentPage, pageSize]);
-
-  const totalPages = Math.ceil(filteredPieces.length / pageSize) || 1;
-
-  // Filtered lists for other tabs
-  const filteredStagesList = useMemo(() => {
-    return stagesList.filter((s) => {
-      if (filterStage !== 'all') {
-        const sName = s.stage || s.label;
-        if (sName !== filterStage) return false;
-      }
-      return true;
-    });
-  }, [stagesList, filterStage]);
-
-  const filteredStylesList = useMemo(() => {
-    return stylesList.filter((s) => {
-      if (filterStyle !== 'all') {
-        const sName = s.style_name || s.name || s.style;
-        if (sName !== filterStyle) return false;
-      }
-      return true;
-    });
-  }, [stylesList, filterStyle]);
-
-  const filteredEmployeesList = useMemo(() => {
-    return employeesList.filter((e) => {
-      if (filterEmployee !== 'all' && e.name !== filterEmployee) return false;
-      return true;
-    });
-  }, [employeesList, filterEmployee]);
 
   const filteredProductionLogs = useMemo(() => {
     return dailyLogs.filter((l) => {
@@ -627,20 +829,14 @@ function StitchingDashboardContent() {
             />
           </div>
 
-          {/* Date Filter */}
+          {/* Date Filter with Complete Interactive Monthly Calendar Picker */}
           <div>
-            <select
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
-            >
-              <option value="all">📅 All Dates</option>
-              {availableDates.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
+            <CompleteDateCalendarPicker
+              selectedDate={filterDate}
+              onSelectDate={setFilterDate}
+              availableDates={availableDates}
+              themeColor="#4f46e5"
+            />
           </div>
 
           {/* Order Filter */}
@@ -650,15 +846,15 @@ function StitchingDashboardContent() {
               onChange={(e) => {
                 const val = e.target.value;
                 setFilterOrder(val);
-                const ord = ordersList.find((o) => o.id === val || o.order_number === val);
+                const ord = ordersList.find((o) => o.id === val || o.order_number === val || o.po_number === val);
                 if (ord) setActiveOrder(ord);
               }}
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">📦 All Orders</option>
-              {ordersList.map((ord) => (
-                <option key={ord.id} value={ord.id}>
-                  {ord.order_number || ord.name || ord.po_number || ord.id}
+              {ordersList.map((ord, idx) => (
+                <option key={`${ord.id || ord.order_number}-${idx}`} value={ord.id || ord.order_number}>
+                  {ord.order_number ? `${ord.client ? `${ord.client} - ` : ''}PO: ${ord.order_number}` : (ord.name || ord.po_number || ord.id)}
                 </option>
               ))}
             </select>
@@ -681,8 +877,8 @@ function StitchingDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">👗 All Styles</option>
-              {availableStyles.map((s) => (
-                <option key={s.id} value={s.name || s.id}>
+              {availableStyles.map((s, idx) => (
+                <option key={`${s.id || s.name}-${idx}`} value={s.name || s.id}>
                   {s.name}
                 </option>
               ))}
@@ -697,8 +893,8 @@ function StitchingDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">🪡 All Stages</option>
-              {availableStages.map((st) => (
-                <option key={st} value={st}>
+              {availableStages.map((st, idx) => (
+                <option key={`${st}-${idx}`} value={st}>
                   {st}
                 </option>
               ))}
@@ -713,8 +909,8 @@ function StitchingDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
             >
               <option value="all">👷 All Operators</option>
-              {availableEmployees.map((emp) => (
-                <option key={emp.id} value={emp.name}>
+              {availableEmployees.map((emp, idx) => (
+                <option key={`${emp.id || emp.name}-${idx}`} value={emp.name}>
                   {emp.name}
                 </option>
               ))}
@@ -857,19 +1053,41 @@ function StitchingDashboardContent() {
                 <span className="text-[11px] font-bold text-indigo-600 font-mono">Live Stage Tracking</span>
               </div>
 
-              <div className="bg-indigo-50 border border-indigo-200 p-3 rounded-xl my-2">
-                <div className="flex items-center gap-2 text-indigo-800 font-extrabold text-xs">
-                  <Layers className="w-4 h-4 text-indigo-600" />
-                  <span>Pipeline Flow Status</span>
+              {bottleneckStage ? (
+                <div className="bg-gradient-to-br from-rose-50 via-red-50 to-orange-50 border-2 border-red-400 p-3.5 rounded-xl my-2 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-red-900 font-extrabold text-xs">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+                      </span>
+                      <span>ACTIVE BOTTLENECK</span>
+                    </div>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-red-600 text-white animate-pulse">
+                      High Backlog
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex items-baseline justify-between">
+                    <span className="text-xs font-extrabold text-red-950">{bottleneckStage.label || bottleneckStage.stage}</span>
+                    <span className="text-xs font-black text-red-700">{bottleneckStage.pending_pieces} pcs pending</span>
+                  </div>
+                  <p className="text-[10px] text-red-700 mt-1 font-medium">
+                    Queue backlog &bull; Stage load exceeds normal buffer
+                  </p>
                 </div>
-                <p className="text-[11px] text-indigo-700 mt-1">
-                  {stagesList.find((s) => s.pending_pieces > 0)?.label || 'All active stages on track'}
-                </p>
-              </div>
+              ) : (
+                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl my-2">
+                  <div className="flex items-center gap-2 text-emerald-800 font-extrabold text-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Pipeline Flow Status: Normal</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700 mt-1">All active stitching stages on track</p>
+                </div>
+              )}
 
               <div className="flex justify-between text-xs font-semibold text-slate-600 pt-2 border-t border-slate-100">
-                <span>Store Buffer: <strong>{storeHandoff?.in_drawer || 0} in drawer</strong></span>
-                <span>Ready QC: <strong className="text-emerald-700">{piecesList.filter((p) => p.status === 'Completed').length} pcs</strong></span>
+                <span>Store Buffer: <strong>{displayStyle.store_pieces || storeHandoff?.in_drawer || 0} in drawer</strong></span>
+                <span>Ready QC: <strong className="text-emerald-700">{displayStyle.ready_qc || piecesList.filter((p) => p.status === 'Completed').length} pcs</strong></span>
               </div>
             </div>
           </div>
@@ -985,7 +1203,7 @@ function StitchingDashboardContent() {
               </div>
               <div className="h-[280px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyLogs}>
+                  <BarChart data={dynamicDailyChartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -1008,21 +1226,21 @@ function StitchingDashboardContent() {
                 <p className="text-xs text-slate-500 mb-3">Shift-wise completed units</p>
                 
                 <div className="overflow-y-auto max-h-[250px] space-y-2 pr-1">
-                  {dailyLogs.map((log, i) => (
+                  {dynamicDailyChartData.map((log, i) => (
                     <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
                       <div>
                         <span className="font-bold text-slate-800">{log.work_date || log.date}</span>
-                        <div className="text-[10px] text-slate-500 mt-0.5">{log.events || 0} scan operations</div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">{log.events || log.completed || 0} scan operations</div>
                       </div>
                       <div className="text-right">
                         <span className="font-black text-indigo-700">{log.completed || 0} done</span>
-                        <div className="text-[10px] text-slate-500 font-semibold">Target: {log.target || 0} pcs</div>
+                        <div className="text-[10px] text-slate-500 font-semibold">Target: {log.target || 30} pcs</div>
                       </div>
                     </div>
                   ))}
-                  {filteredProductionLogs.length === 0 && (
+                  {dynamicDailyChartData.length === 0 && (
                     <div className="text-center py-8 text-slate-400 font-medium text-xs">
-                      No shift records logged yet.
+                      No shift records logged for selected filter.
                     </div>
                   )}
                 </div>
@@ -1044,7 +1262,7 @@ function StitchingDashboardContent() {
           <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-base font-extrabold text-slate-900">5-Stage Stitching Production Pipeline & Bottleneck Identification</h3>
+                <h3 className="text-base font-extrabold text-slate-900">5-Stage Stitching Production Pipeline &amp; Bottleneck Identification</h3>
                 <p className="text-xs text-slate-500">Pasting &rarr; Fusing (Pre-Store) &bull; Line Stitching &rarr; Shell Stitching &rarr; Final Finish (Post-Store)</p>
               </div>
             </div>
@@ -1064,45 +1282,59 @@ function StitchingDashboardContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredStagesList.map((st, idx) => (
-                    <tr
-                      key={idx}
-                      onClick={() => setSelectedStageDetail(st)}
-                      className={`hover:bg-slate-50 cursor-pointer transition-all ${
-                        selectedStageDetail?.stage === st.stage ? 'bg-indigo-50/50' : ''
-                      }`}
-                    >
-                      <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                        <span>🪡</span>
-                        <span>{st.label || st.stage}</span>
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-slate-600">{st.section || 'Floor'}</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{st.total_received || 0} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{st.assigned_pieces || 0} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{st.completed_pieces || 0} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold">
-                        <span className={(st.pending_pieces || 0) > 20 ? 'text-rose-600 font-black' : 'text-slate-800'}>
-                          {st.pending_pieces || 0} pcs
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-mono">{st.damage_pieces || 0} / {st.rework_pieces || 0}</td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            (st.pending_pieces || 0) > 20
-                              ? 'bg-rose-100 text-rose-800'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          {st.status || 'Active'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredStagesList.map((st, idx) => {
+                    const isBottleneck = st.is_bottleneck || (st.pending_pieces || 0) > 15;
+                    return (
+                      <tr
+                        key={idx}
+                        onClick={() => setSelectedStageDetail(st)}
+                        className={`cursor-pointer transition-all ${
+                          isBottleneck
+                            ? 'bg-red-50/70 border-l-4 border-red-500 hover:bg-red-50'
+                            : selectedStageDetail?.stage === st.stage
+                            ? 'bg-indigo-50/60'
+                            : 'hover:bg-slate-50'
+                        }`}
+                      >
+                        <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
+                          <span>🪡</span>
+                          <span>{st.label || st.stage}</span>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono text-slate-600">{st.section || 'Floor'}</td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{st.total_received || 0} pcs</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{st.assigned_pieces || 0} pcs</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{st.completed_pieces || 0} pcs</td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold">
+                          <span className={isBottleneck ? 'text-red-600 font-black text-sm' : 'text-slate-800'}>
+                            {st.pending_pieces || 0} pcs
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono">{st.damage_pieces || 0} / {st.rework_pieces || 0}</td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span
+                            className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center justify-center gap-1.5 shadow-sm ${
+                              isBottleneck
+                                ? 'bg-red-600 text-white animate-pulse'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {isBottleneck ? (
+                              <>
+                                <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
+                                <span>🔴 BOTTLENECK ({st.pending_pieces} Pending)</span>
+                              </>
+                            ) : (
+                              <span>🟢 Active (On Track)</span>
+                            )}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {filteredStagesList.length === 0 && (
                     <tr>
                       <td colSpan={8} className="text-center py-8 text-slate-400 font-medium">
-                        No stage data available for selected order.
+                        No stage data available for selected filter.
                       </td>
                     </tr>
                   )}
@@ -1225,45 +1457,63 @@ function StitchingDashboardContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {(filteredStylesList.length > 0 ? filteredStylesList : orderProgress).map((s, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-all">
-                      <td className="py-3.5 px-4 font-mono font-bold text-indigo-700">{s.order_number || activeOrder?.order_number || '—'}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                        <span>👗</span>
-                        <span>{s.style_name || s.name}</span>
-                      </td>
-                      <td className="py-3.5 px-4">{s.article || 'Standard'}</td>
-                      <td className="py-3.5 px-4 text-right font-bold text-slate-900">{(s.total_ordered || s.pieces || 0).toLocaleString()} pcs</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-bold">{(s.minted || 0).toLocaleString()}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{(s.completed || 0).toLocaleString()}</td>
-                      <td className="py-3.5 px-4 text-right font-mono text-amber-700 font-bold">{(s.pending || 0).toLocaleString()}</td>
-                      <td className="py-3.5 px-4 text-center">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-16 bg-slate-100 h-2 rounded-full overflow-hidden">
-                            <div
-                              className="bg-emerald-500 h-full rounded-full"
-                              style={{ width: `${s.completion_pct ?? 0}%` }}
-                            ></div>
+                  {(filteredStylesList.length > 0 ? filteredStylesList : orderProgress).map((s, idx) => {
+                    const sName = s.style_name || s.name || s.style;
+                    const isSelected = filterStyle === sName || activeStyle?.name === sName || activeStyle?.style_name === sName;
+                    return (
+                      <tr
+                        key={idx}
+                        onClick={() => {
+                          setFilterStyle(sName);
+                          const found = availableStyles.find(st => st.name === sName || st.id === sName) || s;
+                          setActiveStyle(found);
+                          setActiveTab('tab-today');
+                          triggerToast(`⚡ Filtered Stitching Dashboard to Style: ${sName}`);
+                        }}
+                        className={`hover:bg-indigo-50/70 cursor-pointer transition-all ${isSelected ? 'bg-indigo-50/90 font-bold' : ''}`}
+                        title="Click to view analytics and metrics for this style"
+                      >
+                        <td className="py-3.5 px-4 font-mono font-bold text-indigo-700">{s.order_number || activeOrder?.order_number || '—'}</td>
+                        <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <span>👗</span>
+                            <span>{sName}</span>
                           </div>
-                          <span className="font-mono font-bold text-[11px]">{s.completion_pct ?? 0}%</span>
-                        </div>
-                      </td>
-                      <td className="py-3.5 px-4 font-semibold text-slate-700">{s.delivery_deadline || s.target_date || '—'}</td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            s.delay_status === 'DELAYED'
-                              ? 'bg-rose-100 text-rose-800'
-                              : s.delay_status === 'NO_DEADLINE'
-                              ? 'bg-slate-100 text-slate-700'
-                              : 'bg-emerald-100 text-emerald-800'
-                          }`}
-                        >
-                          {s.delay_status || 'ON TRACK'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                          <span className="text-[10px] text-indigo-600 font-bold opacity-0 hover:opacity-100 transition-opacity">View Analytics &rarr;</span>
+                        </td>
+                        <td className="py-3.5 px-4">{s.article || 'Standard'}</td>
+                        <td className="py-3.5 px-4 text-right font-bold text-slate-900">{(s.total_ordered || s.pieces || 0).toLocaleString()} pcs</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-bold">{(s.minted || 0).toLocaleString()}</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{(s.completed || 0).toLocaleString()}</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-amber-700 font-bold">{(s.pending || 0).toLocaleString()}</td>
+                        <td className="py-3.5 px-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <div className="w-16 bg-slate-100 h-2 rounded-full overflow-hidden">
+                              <div
+                                className="bg-emerald-500 h-full rounded-full"
+                                style={{ width: `${s.completion_pct ?? 0}%` }}
+                              ></div>
+                            </div>
+                            <span className="font-mono font-bold text-[11px]">{s.completion_pct ?? 0}%</span>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 font-semibold text-slate-700">{s.delivery_deadline || s.target_date || '—'}</td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
+                              s.delay_status === 'DELAYED'
+                                ? 'bg-rose-100 text-rose-800'
+                                : s.delay_status === 'NO_DEADLINE'
+                                ? 'bg-slate-100 text-slate-700'
+                                : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {s.delay_status || 'ON TRACK'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {filteredStylesList.length === 0 && orderProgress.length === 0 && (
                     <tr>
                       <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">

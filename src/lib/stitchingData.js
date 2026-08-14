@@ -233,19 +233,51 @@ export const STITCHING_DAILY_LOGS = [
 ];
 
 export const RAW_STITCHING_PIECES_DATA = [
+  // IS1234 / is1234 CARNABY
   { piece_code: "IS1234-CARNABY-PINE_GREEN-S-001", seq: 1, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "PASTING", previous_stage: "FUSING", employee: "Ahmedasa", order_number: "is1234", last_worked: "2026-08-11", status: "Pasting Done" },
   { piece_code: "IS1234-CARNABY-PINE_GREEN-S-002", seq: 2, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_FINISH", previous_stage: "SHELL_STITCHING", employee: "riziziz", order_number: "is1234", last_worked: "2026-08-05", status: "Completed" },
   { piece_code: "IS1234-CARNABY-PINE_GREEN-S-003", seq: 3, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", previous_stage: "FINAL_FINISH", employee: "hamthan", order_number: "is1234", last_worked: "2026-08-05", status: "Completed" },
   { piece_code: "IS1234-CARNABY-PINE_GREEN-S-004", seq: 4, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_INSPECTION", previous_stage: "FINAL_FINISH", employee: "hamthan", order_number: "is1234", last_worked: "2026-08-05", status: "Completed" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-M-005", seq: 5, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "FUSING", previous_stage: "CUTTING", employee: "Ahmedasa", order_number: "is1234", last_worked: "2026-08-14", status: "In Progress" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-M-006", seq: 6, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "LINE_STITCHING", previous_stage: "PASTING", employee: "Ravi", order_number: "is1234", last_worked: "2026-08-13", status: "Stitching Line" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-L-007", seq: 7, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "SHELL_STITCHING", previous_stage: "LINE_STITCHING", employee: "hamthan", order_number: "is1234", last_worked: "2026-08-12", status: "Shell Assembly" },
+  { piece_code: "IS1234-CARNABY-PINE_GREEN-XL-008", seq: 8, size: "XL", colour: "PINE GREEN", style: "CARNABY", current_stage: "FINAL_FINISH", previous_stage: "SHELL_STITCHING", employee: "riziziz", order_number: "is1234", last_worked: "2026-08-14", status: "Completed" },
+
+  // HAN123 / han123
+  { piece_code: "HAN123-CARNABY-WHISKY-S-001", seq: 1, size: "S", colour: "WHISKY", style: "CARNABY", current_stage: "PASTING", previous_stage: "FUSING", employee: "Ahmedasa", order_number: "han123", last_worked: "2026-08-14", status: "Pasting Done" },
+  { piece_code: "HAN123-CARNABY-WHISKY-M-002", seq: 2, size: "M", colour: "WHISKY", style: "CARNABY", current_stage: "FUSING", previous_stage: "CUTTING", employee: "Ahmedasa", order_number: "han123", last_worked: "2026-08-14", status: "In Progress" },
+  { piece_code: "HAN123-CARNABY-WHISKY-L-003", seq: 3, size: "L", colour: "WHISKY", style: "CARNABY", current_stage: "LINE_STITCHING", previous_stage: "PASTING", employee: "Ravi", order_number: "han123", last_worked: "2026-08-13", status: "Stitching Line" },
+  { piece_code: "HAN123-FRANCIS-DARK_BROWN-50-001", seq: 1, size: "50", colour: "DARK BROWN", style: "FRANCIS KNIT", current_stage: "SHELL_STITCHING", previous_stage: "LINE_STITCHING", employee: "hamthan", order_number: "han123", last_worked: "2026-08-12", status: "Shell Assembly" },
+  { piece_code: "HAN123-FRANCIS-DARK_BROWN-52-002", seq: 2, size: "52", colour: "DARK BROWN", style: "FRANCIS KNIT", current_stage: "FINAL_FINISH", previous_stage: "SHELL_STITCHING", employee: "riziziz", order_number: "han123", last_worked: "2026-08-14", status: "Completed" },
+
+  // 4001
+  { piece_code: "PO4001-CARNABY-BLACK-M-001", seq: 1, size: "M", colour: "BLACK", style: "CARNABY", current_stage: "PASTING", previous_stage: "FUSING", employee: "Ahmedasa", order_number: "4001", last_worked: "2026-08-14", status: "Pasting Done" },
+  { piece_code: "PO4001-CARNABY-BLACK-L-002", seq: 2, size: "L", colour: "BLACK", style: "CARNABY", current_stage: "FUSING", previous_stage: "CUTTING", employee: "Ahmedasa", order_number: "4001", last_worked: "2026-08-14", status: "In Progress" },
+  { piece_code: "PO4001-ADELE-BLACK-38-001", seq: 1, size: "38", colour: "BLACK", style: "ADELE KNIT", current_stage: "LINE_STITCHING", previous_stage: "PASTING", employee: "Ravi", order_number: "4001", last_worked: "2026-08-13", status: "Stitching Line" },
+  { piece_code: "PO4001-ADELE-BLACK-40-002", seq: 2, size: "40", colour: "BLACK", style: "ADELE KNIT", current_stage: "FINAL_FINISH", previous_stage: "SHELL_STITCHING", employee: "riziziz", order_number: "4001", last_worked: "2026-08-14", status: "Completed" },
+
+  // E234 / e234
+  { piece_code: "E234-FRANCIS-NAVY-50-001", seq: 1, size: "50", colour: "NAVY", style: "FRANCIS KNIT", current_stage: "PASTING", previous_stage: "FUSING", employee: "Ahmedasa", order_number: "e234", last_worked: "2026-08-14", status: "Pasting Done" },
+  { piece_code: "E234-FRANCIS-NAVY-52-002", seq: 2, size: "52", colour: "NAVY", style: "FRANCIS KNIT", current_stage: "LINE_STITCHING", previous_stage: "PASTING", employee: "Ravi", order_number: "e234", last_worked: "2026-08-13", status: "Stitching Line" },
+
+  // UM-1 / 2433
+  { piece_code: "UM1-CARNABY-TAN-M-001", seq: 1, size: "M", colour: "TAN", style: "CARNABY", current_stage: "PASTING", previous_stage: "FUSING", employee: "Ahmedasa", order_number: "UM-1", last_worked: "2026-08-14", status: "Pasting Done" },
+  { piece_code: "PO2433-CLERMONT-COGNAC-50-001", seq: 1, size: "50", colour: "COGNAC", style: "CLERMONT + VEST", current_stage: "LINE_STITCHING", previous_stage: "PASTING", employee: "hamthan", order_number: "2433", last_worked: "2026-08-13", status: "Stitching Line" },
+
+  // ORD_1011 CARNABY
   { piece_code: "ORD_1011-CARNABY-PINE_GREEN-L-001", seq: 1, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "PASTING", previous_stage: "FUSING", employee: "Ahmedasa", order_number: "ORD-1011", last_worked: "2026-08-05", status: "Pasting Done" },
   { piece_code: "ORD_1011-CARNABY-PINE_GREEN-L-036", seq: 36, size: "L", colour: "PINE GREEN", style: "CARNABY", current_stage: "FUSING", previous_stage: "CUTTING", employee: "Ahmedasa", order_number: "ORD-1011", last_worked: "2026-08-11", status: "In Progress" },
   { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-001", seq: 1, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "LINE_STITCHING", previous_stage: "PASTING", employee: "Ravi", order_number: "ORD-1011", last_worked: "2026-08-05", status: "Stitching Line" },
   { piece_code: "ORD_1011-CARNABY-PINE_GREEN-M-028", seq: 28, size: "M", colour: "PINE GREEN", style: "CARNABY", current_stage: "SHELL_STITCHING", previous_stage: "LINE_STITCHING", employee: "hamthan", order_number: "ORD-1011", last_worked: "2026-08-05", status: "Shell Assembly" },
   { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-021", seq: 21, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "PASTING", previous_stage: "FUSING", employee: "Ahmedasa", order_number: "ORD-1011", last_worked: "2026-08-05", status: "Pasting Done" },
   { piece_code: "ORD_1011-CARNABY-PINE_GREEN-S-023", seq: 23, size: "S", colour: "PINE GREEN", style: "CARNABY", current_stage: "LINE_STITCHING", previous_stage: "PASTING", employee: "hamthan", order_number: "ORD-1011", last_worked: "2026-08-05", status: "Stitching Line" },
+
+  // ORD_1011 FRANCIS KNIT
   { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-001", seq: 1, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "PASTING", previous_stage: "FUSING", employee: "Ahmedasa", order_number: "ORD-1011", last_worked: "2026-08-11", status: "Pasting Done" },
   { piece_code: "ORD_1011-FRANCIS_KNIT-DARK_BROWN-50-002", seq: 2, size: "50", colour: "WHISKY", style: "FRANCIS KNIT", current_stage: "PASTING", previous_stage: "FUSING", employee: "Ahmedasa", order_number: "ORD-1011", last_worked: "2026-08-11", status: "Pasting Done" },
   { piece_code: "ORD_1011-CLERMONT_VEST-DARK_BROWN-50-010", seq: 10, size: "50", colour: "WHISKY", style: "CLERMONT + VEST", current_stage: "LINE_STITCHING", previous_stage: "PASTING", employee: "hamthan", order_number: "ORD-1011", last_worked: "2026-08-11", status: "Damaged", damage_reason: "Needle puncture on shoulder seam", rework_cutter: "hamthan" },
+
+  // 3001 ADELE KNIT
   { piece_code: "KL_1-ADELE_KNIT-DARK_BROWN-38-001", seq: 1, size: "38", colour: "DARK BROWN", style: "ADELE KNIT", current_stage: "FINAL_FINISH", previous_stage: "SHELL_STITCHING", employee: "riziziz", order_number: "3001", last_worked: "2026-08-10", status: "Completed" },
   { piece_code: "KL_1-ADELE_KNIT-DARK_BROWN-38-005", seq: 5, size: "38", colour: "DARK BROWN", style: "ADELE KNIT", current_stage: "SHELL_STITCHING", previous_stage: "LINE_STITCHING", employee: "Ravi", order_number: "3001", last_worked: "2026-08-10", status: "Rework", damage_reason: "Tension puckering along side seam", rework_cutter: "hamthan" },
 ];

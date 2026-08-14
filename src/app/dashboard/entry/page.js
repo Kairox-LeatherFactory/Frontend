@@ -784,6 +784,7 @@ export default function ProductionLogEntry() {
   const [barcodeSubmitting, setBarcodeSubmitting] = useState(false);
   const [barcodeSuccessModal, setBarcodeSuccessModal] = useState(null); // Success popup details
   const [barcodeSequenceWarning, setBarcodeSequenceWarning] = useState(null); // Sequence gate alert
+  const [barcodePieceValidating, setBarcodePieceValidating] = useState(false); // true while checking the piece's real current_stage
 
   // Partial-Accept Bucket Results Modal
   const [bucketResult, setBucketResult] = useState(null);
@@ -843,6 +844,45 @@ export default function ProductionLogEntry() {
       valid: false,
       error: `⚠️ Production Sequence Blocked: '${targetStage}' requires previous stage to be completed first!`
     };
+  };
+
+  // Real-backend stage check for the Barcode Gun Scanner pipeline flow.
+  // `validateStageSequence` above only knows about stages completed in THIS
+  // browser session (completedStagesMap resets on reload and never sees work
+  // done by other operators/sessions) — so it can wrongly block or wrongly pass
+  // a piece. This calls /api/v1/barcode/resolve to read the piece's actual
+  // current_stage and validates against that instead.
+  const normalizeStage = (label) => String(label || '').toUpperCase().trim().replace(/\s+/g, '_');
+  const STAGE_LABEL_BY_NORMALIZED = Object.fromEntries(manualStages.map((s) => [normalizeStage(s), s]));
+
+  const checkRealPieceStage = async (targetStage, code) => {
+    if (!targetStage || targetStage === 'Cutting' || targetStage === 'Lining') return { valid: true };
+    const requiredPrereqs = PREREQUISITE_MAP[targetStage] || [];
+    if (requiredPrereqs.length === 0) return { valid: true };
+
+    try {
+      const res = await apiBarcodeResolve(token, code);
+      if (res?.type && res.type !== 'PIECE') {
+        return { valid: false, error: `⚠️ '${code}' is not a piece barcode (resolved as ${res.type}).` };
+      }
+      const realStageRaw = res?.piece?.current_stage;
+      if (!realStageRaw) {
+        return { valid: false, error: `⚠️ Could not determine the current stage for '${code}'.` };
+      }
+      const realStageLabel = STAGE_LABEL_BY_NORMALIZED[normalizeStage(realStageRaw)] || realStageRaw;
+      if (requiredPrereqs.includes(realStageLabel)) {
+        return { valid: true, realStageLabel, piece: res.piece };
+      }
+      return {
+        valid: false,
+        error: `⚠️ '${code}' is currently at ${realStageLabel} — '${targetStage}' requires ${requiredPrereqs.join(' or ')} to be completed first.`
+      };
+    } catch (err) {
+      // Backend lookup failed (offline / code not found) — fall back to the
+      // local session heuristic instead of hard-blocking the operator.
+      console.warn('Real piece-stage lookup failed, falling back to local check:', err.message);
+      return validateStageSequence(targetStage, code);
+    }
   };
 
   const recordStageCompletion = (stage, pieceOrSkuKey) => {
@@ -1140,7 +1180,8 @@ export default function ProductionLogEntry() {
       }
 
       // Local Validation: Check if this SKU has already been cut in this session
-      if (sessionCutSkus.includes(matched.code)) {
+      // (Cutting-only — Lining legitimately logs the same SKU across multiple batches)
+      if (barcodeStage === 'Cutting' && sessionCutSkus.includes(matched.code)) {
         throw new Error(`Style ${matched.code} has already been cut! It cannot be scanned again in Cutting.`);
       }
 
@@ -1228,40 +1269,74 @@ export default function ProductionLogEntry() {
   };
 
   // Dedicated Barcode Pipeline Scan & Submit
-  const handleBarcodePieceScan = (codeToScan) => {
+  const handleBarcodePieceScan = async (codeToScan) => {
     const code = (codeToScan || barcodePieceInput).trim();
     if (!code) return;
 
-    // Bug #6: Stage Sequence Validation Check
-    const seqCheck = validateStageSequence(barcodeStage, code);
-    if (!seqCheck.valid) {
-      setErrorMsg(seqCheck.error);
-      setBarcodePieceInput('');
-      return;
-    }
+    if (barcodePieceValidating) return; // ignore re-scans while a lookup is already in flight
 
     if (barcodeBatchPieces.some(p => p.code === code)) {
       setBarcodePieceInput('');
       return;
     }
 
-    setBarcodeBatchPieces(prev => [...prev, { code, scanned_at: new Date().toLocaleTimeString() }]);
-    setBarcodePieceInput('');
+    setBarcodePieceValidating(true);
+    try {
+      // Stage Sequence Validation Check — against the piece's REAL current_stage
+      // from the backend, not local session memory, so it stays correct across
+      // reloads and pieces progressed by other operators.
+      const seqCheck = await checkRealPieceStage(barcodeStage, code);
+      if (!seqCheck.valid) {
+        setErrorMsg(seqCheck.error);
+        setBarcodePieceInput('');
+        return;
+      }
+
+      setBarcodeBatchPieces(prev => [...prev, { code, scanned_at: new Date().toLocaleTimeString() }]);
+      setBarcodePieceInput('');
+    } finally {
+      setBarcodePieceValidating(false);
+      // Keep focus on the scan input so the barcode gun (keyboard-emulated
+      // Enter after each scan) can keep firing scans back-to-back without
+      // the operator needing to click back into the field.
+      pieceInputRef.current?.focus();
+    }
   };
 
   const handleBarcodeBatchSubmit = async () => {
     if (!barcodeWorker) return setErrorMsg("Please scan and verify Worker ID first!");
     if (barcodeBatchPieces.length === 0) return setErrorMsg("Please scan at least one piece barcode!");
 
+    // Lining is a "measured cut" like Cutting — the backend rejects it (422) unless
+    // we name the material via consumption.article(+colour/thickness) or a lot_id.
+    if (barcodeStage === 'Lining' && !(lotResults.length === 1 && lotResults[0].lot_id) && !lotArticle) {
+      return setErrorMsg('Please select a Lining Article (and Colour) before logging — the backend needs to know which material was consumed.');
+    }
+
     setBarcodeSubmitting(true);
     try {
-      const result = await apiProductionLogTwoDoor(token, {
+      const payload = {
         screen_context: 'PIPELINE',
         actor: { employee_barcode: barcodeWorker.employee_barcode || barcodeWorker.id },
         targets: { piece_barcodes: barcodeBatchPieces.map(p => p.code) },
         operation_stage: barcodeStage.toUpperCase().replace(' ', '_'),
         work_date: date
-      });
+      };
+
+      if (barcodeStage === 'Lining') {
+        if (lotResults.length === 1 && lotResults[0].lot_id) {
+          payload.lot_id = lotResults[0].lot_id;
+        } else {
+          payload.consumption = {
+            article: lotArticle,
+            ...(lotColor ? { colour: lotColor } : {}),
+            ...(lotThickness ? { thickness: lotThickness } : {}),
+          };
+        }
+        if (barcodeDcm) payload.dcm = parseInt(barcodeDcm, 10);
+      }
+
+      const result = await apiProductionLogTwoDoor(token, payload);
 
       if (result && (result.logged || result.sequence_blocked || result.skill_blocked || result.merge_blocked)) {
         result.stage = barcodeStage;
@@ -2255,8 +2330,11 @@ export default function ProductionLogEntry() {
                 })}
               </div>
 
-              {/* STEP 3A: CUTTING STAGE FLOW */}
-              {barcodeStage === 'Cutting' ? (
+              {/* STEP 3A: MEASURED-CUT STAGE FLOW (Cutting mints new pieces; Lining logs
+                  material against pieces that already exist from Cutting — both need
+                  SKU + DCM + Article/Colour/Thickness material identification, which is
+                  exactly what the backend's "measured cut" contract requires. */}
+              {(barcodeStage === 'Cutting' || barcodeStage === 'Lining') ? (
                 <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
 
                   {/* SKU BARCODE GUN INPUT */}
@@ -2445,17 +2523,107 @@ export default function ProductionLogEntry() {
                         </div>
                       )}
 
-                      {/* Submit Cutting Button */}
-                      <button
-                        type="button"
-                        onClick={handleBarcodeCuttingSubmit}
-                        disabled={barcodeSubmitting || lotResults.length !== 1 || lotResults[0].covers_required === false}
-                        className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
-                        style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-                      >
-                        {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
-                        Log Cutting Event &amp; Mint Traveler Card Barcodes
-                      </button>
+                      {barcodeStage === 'Cutting' ? (
+                        /* Cutting mints brand-new piece codes from a raw count. */
+                        <button
+                          type="button"
+                          onClick={handleBarcodeCuttingSubmit}
+                          disabled={barcodeSubmitting || lotResults.length !== 1 || lotResults[0].covers_required === false}
+                          className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
+                          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                        >
+                          {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
+                          Log Cutting Event &amp; Mint Traveler Card Barcodes
+                        </button>
+                      ) : (
+                        /* Lining logs against pieces that already exist from Cutting —
+                           scan each one individually instead of minting new codes. */
+                        <div className="space-y-4 pt-4 border-t border-[#c8834a]/15">
+                          <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
+                            <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan Piece Barcodes ({barcodeBatchPieces.length} scanned) *
+                          </label>
+                          <div className="flex gap-3">
+                            <div className="relative flex-1">
+                              {!barcodePieceInput && (
+                                <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
+                              )}
+                              <input
+                                ref={pieceInputRef}
+                                type="text"
+                                placeholder={barcodePieceValidating ? 'Checking piece stage…' : 'Scan next piece barcode...'}
+                                value={barcodePieceInput}
+                                onChange={(e) => setBarcodePieceInput(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleBarcodePieceScan();
+                                  }
+                                }}
+                                disabled={barcodePieceValidating}
+                                style={{ paddingLeft: barcodePieceInput ? '1rem' : '3.25rem', paddingRight: '1rem' }}
+                                className="w-full h-14 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all disabled:opacity-60"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleBarcodePieceScan()}
+                              disabled={barcodePieceValidating}
+                              className="h-14 px-6 rounded-xl font-black text-xs text-white shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
+                              style={{ background: '#c8834a' }}
+                            >
+                              {barcodePieceValidating && <Loader2 className="w-4 h-4 animate-spin" />}
+                              {barcodePieceValidating ? 'Checking…' : 'Add Piece'}
+                            </button>
+                          </div>
+
+                          {barcodeBatchPieces.length > 0 && (
+                            <div className="p-5 rounded-2xl bg-white border-2 border-[#c8834a]/20 shadow-md space-y-4 animate-fade-in">
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                                <span className="text-xs font-black text-[#2d1f0e] flex items-center gap-2">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  Scanned Pieces Batch ({barcodeBatchPieces.length})
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setBarcodeBatchPieces([])}
+                                  className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
+                                >
+                                  Clear Batch
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
+                                {barcodeBatchPieces.map((p, idx) => (
+                                  <div key={p.code} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between text-xs">
+                                    <div>
+                                      <p className="font-mono font-bold text-slate-800 text-[11px]">{p.code}</p>
+                                      <p className="text-[9px] font-semibold text-slate-400">#{idx + 1}</p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => setBarcodeBatchPieces(prev => prev.filter(item => item.code !== p.code))}
+                                      className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                                    >
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={handleBarcodeBatchSubmit}
+                                disabled={barcodeSubmitting || (!(lotResults.length === 1 && lotResults[0].lot_id) && !lotArticle)}
+                                className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
+                                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                              >
+                                {barcodeSubmitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Rocket className="w-5 h-5" />}
+                                Log {barcodeStage} Event &amp; Mint Traveler Card Barcodes
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -2571,7 +2739,7 @@ export default function ProductionLogEntry() {
                         <input
                           ref={pieceInputRef}
                           type="text"
-                          placeholder={`Scan piece barcode (e.g. KL_1-${barcodeSelectedSku?.code || 'ADELE-38'}-001)...`}
+                          placeholder={barcodePieceValidating ? 'Checking piece stage…' : `Scan piece barcode (e.g. KL_1-${barcodeSelectedSku?.code || 'ADELE-38'}-001)...`}
                           value={barcodePieceInput}
                           onChange={(e) => setBarcodePieceInput(e.target.value)}
                           onKeyDown={(e) => {
@@ -2580,18 +2748,21 @@ export default function ProductionLogEntry() {
                               handleBarcodePieceScan();
                             }
                           }}
+                          disabled={barcodePieceValidating}
                           style={{ paddingLeft: barcodePieceInput ? '1rem' : '3.25rem', paddingRight: '1rem' }}
-                          className="w-full h-14 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all"
+                          className="w-full h-14 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all disabled:opacity-60"
                           autoFocus
                         />
                       </div>
                       <button
                         type="button"
                         onClick={() => handleBarcodePieceScan()}
-                        className="h-14 px-6 rounded-xl font-black text-xs text-white shadow-md cursor-pointer"
+                        disabled={barcodePieceValidating}
+                        className="h-14 px-6 rounded-xl font-black text-xs text-white shadow-md cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2"
                         style={{ background: '#c8834a' }}
                       >
-                        Add Piece
+                        {barcodePieceValidating && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {barcodePieceValidating ? 'Checking…' : 'Add Piece'}
                       </button>
                     </div>
                   </div>

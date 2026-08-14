@@ -1279,11 +1279,13 @@ export async function apiListDrawers(token, params = {}) {
   const qs = new URLSearchParams();
   if (params.limit) qs.append('limit', params.limit);
   else qs.append('limit', 500); // Default fallback
-  
+
   if (params.seq_from) qs.append('seq_from', params.seq_from);
   if (params.seq_to) qs.append('seq_to', params.seq_to);
   if (params.state) qs.append('state', params.state);
   if (params.offset) qs.append('offset', params.offset);
+  if (params.has_piece !== undefined) qs.append('has_piece', params.has_piece);
+  if (params.sendable !== undefined) qs.append('sendable', params.sendable);
 
   const res = await fetch(`${API_BASE_URL}/api/v1/drawers?${qs.toString()}`, {
     method: 'GET',
@@ -1294,6 +1296,32 @@ export async function apiListDrawers(token, params = {}) {
     let detail = errText;
     try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
     throw new Error(detail || `Failed to list drawers (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /api/v1/drawers/send
+ * Sends many drawers onward in one action. Sending to STITCHING releases that
+ * whole batch of pieces into line-stitching. Partially accepts — check
+ * `count_sent` and render `not_ready`, do not rely on the HTTP status alone.
+ * @param {string} token
+ * @param {{ drawer_ids: string[], destination: string }} payload
+ */
+export async function apiSendDrawers(token, { drawer_ids, destination }) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/send`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ drawer_ids, destination }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
+    throw new Error(detail || `Failed to send drawers (${res.status})`);
   }
   return res.json();
 }
@@ -1553,4 +1581,76 @@ export async function apiGetStoreTraceability(token, params = {}) {
   }
   return res.json();
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 24. DIRECT MANAGER DASHBOARD ENDPOINTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/dashboard/direct-manager
+ * @param {string} token
+ */
+export async function apiGetDirectManagerDashboard(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/direct-manager`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch direct manager dashboard (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/direct-manager/orders/{order_id}
+ * @param {string} token
+ * @param {string} orderId
+ */
+export async function apiGetDirectManagerOrderDetail(token, orderId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/direct-manager/orders/${encodeURIComponent(orderId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch direct manager order detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/direct-manager/styles/{style_id}
+ * @param {string} token
+ * @param {string} styleId
+ */
+export async function apiGetDirectManagerStyleDetail(token, styleId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/direct-manager/styles/${encodeURIComponent(styleId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch direct manager style detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/direct-manager/pieces/{piece_code}
+ * @param {string} token
+ * @param {string} pieceCode
+ */
+export async function apiGetDirectManagerPieceDetail(token, pieceCode) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/direct-manager/pieces/${encodeURIComponent(pieceCode)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch direct manager piece detail (${res.status})`);
+  }
+  return res.json();
+}
+
 
