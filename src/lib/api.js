@@ -1413,3 +1413,331 @@ export async function apiGetDrawer(token, drawerId) {
   return res.json();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 23. MANAGER DASHBOARD ENDPOINTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/dashboard/cutting
+ * @param {string} token
+ * @param {{ order_id?: string }} params
+ */
+export async function apiGetCuttingDashboard(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.order_id) qs.set('order_id', params.order_id);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/cutting${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch cutting dashboard (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/cutting/employees/{employee_id}
+ * @param {string} token
+ * @param {string} employeeId
+ */
+export async function apiGetCuttingEmployeeDetail(token, employeeId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/cutting/employees/${encodeURIComponent(employeeId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch cutting employee detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/cutting/consumption
+ * @param {string} token
+ * @param {{ order_id?: string, employee_id?: string, start?: string, end?: string }} params
+ */
+export async function apiGetCuttingConsumption(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.order_id) qs.set('order_id', params.order_id);
+  if (params.employee_id) qs.set('employee_id', params.employee_id);
+  if (params.start) qs.set('start', params.start);
+  if (params.end) qs.set('end', params.end);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/cutting/consumption${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch cutting consumption (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/lining
+ * @param {string} token
+ * @param {{ order_id?: string }} params
+ */
+export async function apiGetLiningDashboard(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.order_id) qs.set('order_id', params.order_id);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/lining${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch lining dashboard (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/lining/employees/{employee_id}
+ * @param {string} token
+ * @param {string} employeeId
+ */
+export async function apiGetLiningEmployeeDetail(token, employeeId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/lining/employees/${encodeURIComponent(employeeId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch lining employee detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/lining/consumption
+ * @param {string} token
+ * @param {{ order_id?: string, employee_id?: string, start?: string, end?: string }} params
+ */
+export async function apiGetLiningConsumption(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.order_id) qs.set('order_id', params.order_id);
+  if (params.employee_id) qs.set('employee_id', params.employee_id);
+  if (params.start) qs.set('start', params.start);
+  if (params.end) qs.set('end', params.end);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/lining/consumption${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch lining consumption (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/stitching
+ * @param {string} token
+ * @param {{ order_id?: string }} params
+ */
+export async function apiGetStitchingDashboard(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.order_id) qs.set('order_id', params.order_id);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/stitching${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch stitching dashboard (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/stitching/employees/{employee_id}
+ * @param {string} token
+ * @param {string} employeeId
+ */
+export async function apiGetStitchingEmployeeDetail(token, employeeId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/stitching/employees/${encodeURIComponent(employeeId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch stitching employee detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/stitching/pieces/{piece_code}
+ * @param {string} token
+ * @param {string} pieceCode
+ */
+export async function apiGetStitchingPieceDetail(token, pieceCode) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/stitching/pieces/${encodeURIComponent(pieceCode)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch stitching piece detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/store
+ * @param {string} token
+ * @param {{ style_id?: string, state?: string, material_type?: string }} params
+ */
+export async function apiGetStoreDashboard(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.style_id) qs.set('style_id', params.style_id);
+  if (params.state) qs.set('state', params.state);
+  if (params.material_type) qs.set('material_type', params.material_type);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/store${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch store dashboard (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/store/drawers/{drawer_id}
+ * @param {string} token
+ * @param {string} drawerId
+ */
+export async function apiGetStoreDrawerDetail(token, drawerId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/store/drawers/${encodeURIComponent(drawerId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch store drawer detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/store/drawers/{drawer_id}/movement
+ * @param {string} token
+ * @param {string} drawerId
+ */
+export async function apiGetStoreDrawerMovement(token, drawerId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/store/drawers/${encodeURIComponent(drawerId)}/movement`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch store drawer movement (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/store/traceability
+ * @param {string} token
+ * @param {{ piece_code?: string, style_id?: string, material_type?: string }} params
+ */
+export async function apiGetStoreTraceability(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.piece_code) qs.set('piece_code', params.piece_code);
+  if (params.style_id) qs.set('style_id', params.style_id);
+  if (params.material_type) qs.set('material_type', params.material_type);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/store/traceability${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch store traceability (${res.status})`);
+  }
+  return res.json();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 24. DIRECT MANAGER DASHBOARD ENDPOINTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/v1/dashboard/direct-manager
+ * @param {string} token
+ */
+export async function apiGetDirectManagerDashboard(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/direct-manager`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch direct manager dashboard (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/direct-manager/orders/{order_id}
+ * @param {string} token
+ * @param {string} orderId
+ */
+export async function apiGetDirectManagerOrderDetail(token, orderId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/direct-manager/orders/${encodeURIComponent(orderId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch direct manager order detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/direct-manager/styles/{style_id}
+ * @param {string} token
+ * @param {string} styleId
+ */
+export async function apiGetDirectManagerStyleDetail(token, styleId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/direct-manager/styles/${encodeURIComponent(styleId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch direct manager style detail (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/direct-manager/pieces/{piece_code}
+ * @param {string} token
+ * @param {string} pieceCode
+ */
+export async function apiGetDirectManagerPieceDetail(token, pieceCode) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/direct-manager/pieces/${encodeURIComponent(pieceCode)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => '');
+    throw new Error(err || `Failed to fetch direct manager piece detail (${res.status})`);
+  }
+  return res.json();
+}
+
+
