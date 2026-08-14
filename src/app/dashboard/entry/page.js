@@ -2679,13 +2679,13 @@ export default function ProductionLogEntry() {
                   </div>
 
                   {/* Quick Select Worker Dropdown Fallback */}
-                  <div className="pt-2 flex items-center gap-2 text-xs text-[#e2d5c3]/70">
-                    <span>Or select active worker:</span>
+                  <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-xs text-[#e2d5c3]/70">
+                    <span className="shrink-0">Or select active worker:</span>
                     <select
                       onChange={(e) => {
                         if (e.target.value) handleVerifyBarcodeWorker(e.target.value);
                       }}
-                      className="bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
+                      className="w-full sm:w-auto max-w-full min-w-0 bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
                     >
                       <option value="" className="bg-[#1c1207] text-white">-- Choose Worker --</option>
                       {workers.map(w => (
@@ -4501,13 +4501,13 @@ export default function ProductionLogEntry() {
                 </div>
 
                 {/* Quick Select Worker Dropdown Fallback — same as Barcode Scanner page */}
-                <div className="pt-2 flex items-center gap-2 text-xs text-[#e2d5c3]/70">
-                  <span>Or select active worker:</span>
+                <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-xs text-[#e2d5c3]/70">
+                  <span className="shrink-0">Or select active worker:</span>
                   <select
                     onChange={(e) => {
                       if (e.target.value) handleVerifyBarcodeWorker(e.target.value);
                     }}
-                    className="bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
+                    className="w-full sm:w-auto max-w-full min-w-0 bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
                   >
                     <option value="" className="bg-[#1c1207] text-white">-- Choose Worker --</option>
                     {workers.map(w => (
