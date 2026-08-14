@@ -925,10 +925,6 @@ export default function ProductionLogEntry() {
           setStoreDrawerInput('');
           setStorePieceInput('');
           setStoreVerifyResult(null);
-          setHoldCuttingOk(false);
-          setHoldLiningOk(false);
-          setIsCheckedLeather(false);
-          setIsCheckedLining(false);
           setStoreDrawerSearch(''); // Clear list filter after reset
         }, 1500);
       }
@@ -1080,6 +1076,44 @@ export default function ProductionLogEntry() {
     Object.entries(UI_TO_API_STAGE).map(([ui, api]) => [api, ui])
   );
 
+  // A piece can have more than one stage open at once — e.g. LINING_CUTTING
+  // and FUSING run as independent parallel branches, both reported as
+  // state:'next' in stages[] simultaneously. The server's singular
+  // `next_stage` is just its own pick among those, not the only workable one.
+  // If that pick isn't this role's to work, look for another stages[] entry
+  // in state:'next' that IS this role's — instead of blocking a scan that is
+  // actually workable right now (e.g. a lining_manager scanning a piece whose
+  // picked next_stage happens to be FUSING, while LINING_CUTTING sits open).
+  const resolveWorkableStage = (pieceState) => {
+    const primary = pieceState?.next_stage ? (API_TO_UI_STAGE[pieceState.next_stage] || null) : null;
+    if (primary && (isFullAccess || allowedOperations.includes(primary))) return primary;
+    const altEntry = (pieceState?.stages || []).find((s) => {
+      const uiStage = API_TO_UI_STAGE[s.stage];
+      return s.state === 'next' && uiStage && manualStages.includes(uiStage) &&
+        (isFullAccess || allowedOperations.includes(uiStage));
+    });
+    return altEntry ? API_TO_UI_STAGE[altEntry.stage] : primary;
+  };
+
+  // Multi-stage roles (stitching_manager, DM/MD/supervisor) batch-process many
+  // pieces through one stage, then move on as a batch — after a successful
+  // pipeline submit, jump the Operation Stage selector to the next stage this
+  // role is permitted to work, so the very next scan doesn't need a manual tab
+  // click. The next real scan's own auto-detect (resolveWorkableStage) still
+  // corrects this if the actual next piece turns out to need a different stage.
+  const PIPELINE_STAGE_ORDER = ['Cutting', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish', 'Final Inspection', 'Package Export'];
+  const advanceToNextPipelineStage = () => {
+    const idx = PIPELINE_STAGE_ORDER.indexOf(barcodeStage);
+    if (idx === -1) return;
+    for (let i = idx + 1; i < PIPELINE_STAGE_ORDER.length; i++) {
+      const candidate = PIPELINE_STAGE_ORDER[i];
+      if (isFullAccess || allowedOperations.includes(candidate)) {
+        setBarcodeStage(candidate);
+        return;
+      }
+    }
+  };
+
   // Stage-button tabs are gated by ROLE only (see button click handlers below).
   // validateStageSequence remains as an OFFLINE FALLBACK sequence check, used
   // only inside handleBarcodePieceScan when the live GET /production/piece-state
@@ -1138,11 +1172,17 @@ export default function ProductionLogEntry() {
   const storeInputRef = useRef(null);
 
   // Bug #3: Automatic Scanner Focus Effects
+  // Cutting/Lining land on the dedicated SKU-scan screen (skuInputRef); every
+  // other (pipeline) stage renders the generic piece-scan screen instead
+  // (pieceInputRef) — focusing skuInputRef there was a no-op since it's never
+  // mounted, leaving multi-stage roles (stitching_manager, DM/MD/supervisor)
+  // with no cursor in the scan box after Worker Verify.
   useEffect(() => {
-    if (barcodeWorker) {
-      setTimeout(() => skuInputRef.current?.focus(), 150);
-    }
-  }, [barcodeWorker]);
+    if (!barcodeWorker) return;
+    const isCutOrLining = barcodeStage === 'Cutting' || barcodeStage === 'Lining';
+    const targetRef = isCutOrLining ? skuInputRef : pieceInputRef;
+    setTimeout(() => targetRef.current?.focus(), 150);
+  }, [barcodeWorker, barcodeStage]);
 
   useEffect(() => {
     if (barcodeSelectedSku) {
@@ -1420,7 +1460,7 @@ export default function ProductionLogEntry() {
       // Cutting Manager has no permission for and has no DCM form anyway),
       // producing a confusing secondary "Role Restricted" error later instead
       // of a clear message right here.
-      const mappedStage = pieceState?.next_stage ? (API_TO_UI_STAGE[pieceState.next_stage] || null) : null;
+      const mappedStage = resolveWorkableStage(pieceState);
       if (mappedStage && manualStages.includes(mappedStage) && mappedStage !== barcodeStage) {
         const roleCanWorkMappedStage = isFullAccess || allowedOperations.includes(mappedStage);
         if (!roleCanWorkMappedStage) {
@@ -1447,8 +1487,15 @@ export default function ProductionLogEntry() {
       // is legitimately false at verify time for every cut; that is not an error.
       // Only OTHER gates (employee, attendance, role, sequence, merge, completed)
       // are real stops.
+      // pieceState.blockers/ready_to_log are computed by the server against ITS
+      // OWN next_stage pick — when resolveWorkableStage() has redirected us to a
+      // different, independently-open parallel stage (e.g. LINING_CUTTING while
+      // the server's pick was FUSING), that global blocker list describes the
+      // stage we're NOT logging and must not veto us. stageEntry above (looked
+      // up for targetStage specifically) is the authoritative per-stage gate.
+      const usingAlternateStage = !!(pieceState?.next_stage && UI_TO_API_STAGE[targetStage] !== pieceState.next_stage);
       const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption');
-      if (pieceState?.ready_to_log === false && realBlockers.length > 0) {
+      if (!usingAlternateStage && pieceState?.ready_to_log === false && realBlockers.length > 0) {
         throw new Error(realBlockers[0].reason || 'Scan blocked by server');
       }
 
@@ -1631,6 +1678,10 @@ export default function ProductionLogEntry() {
       // submits, not Lining, so a Lining submit never blocks a real re-cut.
       if (!isLining) setSessionCutSkus(prev => [...prev, ...pieceCodes]);
       pieceCodes.forEach(code => recordStageCompletion(barcodeStage, code));
+      // Cutting has a clear linear next stage (Fusing); Lining is a parallel,
+      // independent branch feeding the Store merge gate, not a tab in this
+      // linear chain — only advance the highlighted tab for a Cutting submit.
+      if (!isLining) advanceToNextPipelineStage();
 
       // Bug #8: once the backend confirms this style's full required
       // quantity has been submitted, close it — no more scanning into it.
@@ -1710,7 +1761,7 @@ export default function ProductionLogEntry() {
         // Never auto-switch into a stage this role isn't permitted to work —
         // surface a clear message instead of silently jumping tabs and then
         // failing a secondary role check.
-        const mappedStage = pieceState?.next_stage ? (API_TO_UI_STAGE[pieceState.next_stage] || null) : null;
+        const mappedStage = resolveWorkableStage(pieceState);
         if (mappedStage && manualStages.includes(mappedStage)) {
           const roleCanWorkMappedStage = isFullAccess || allowedOperations.includes(mappedStage);
           if (!roleCanWorkMappedStage) {
@@ -1736,8 +1787,13 @@ export default function ProductionLogEntry() {
           }
         }
 
-        // If the server says NOT ready_to_log, surface the first blocker reason verbatim
-        if (pieceState?.ready_to_log === false && Array.isArray(pieceState?.blockers) && pieceState.blockers.length > 0) {
+        // If the server says NOT ready_to_log, surface the first blocker reason
+        // verbatim — but blockers[] is computed against the server's OWN
+        // next_stage pick, so it must not veto a scan that resolveWorkableStage()
+        // has already redirected to a different, independently-open parallel
+        // stage (e.g. LINING_CUTTING while the server's pick was FUSING).
+        const usingAlternateStage = !!(pieceState?.next_stage && UI_TO_API_STAGE[targetStage] !== pieceState.next_stage);
+        if (!usingAlternateStage && pieceState?.ready_to_log === false && Array.isArray(pieceState?.blockers) && pieceState.blockers.length > 0) {
           const firstBlocker = pieceState.blockers[0];
           setErrorMsg(`⚠️ ${firstBlocker.reason || 'Scan blocked by server'}`);
           setBarcodePieceInput('');
@@ -1803,6 +1859,7 @@ export default function ProductionLogEntry() {
       const loggedCodes = Array.isArray(result?.logged) ? result.logged : [];
       const reworkCodes = Array.isArray(result?.rework) ? result.rework : [];
       [...loggedCodes, ...reworkCodes].forEach(code => recordStageCompletion(barcodeStage, code));
+      if (loggedCodes.length > 0 || reworkCodes.length > 0) advanceToNextPipelineStage();
 
       const hasBlockedItems =
         (result?.sequence_blocked?.length > 0) ||
@@ -1941,6 +1998,7 @@ export default function ProductionLogEntry() {
     }
 
     const params = {
+      category,
       article: lotArticle,
       colour: lotColor,
       thickness: lotThickness
