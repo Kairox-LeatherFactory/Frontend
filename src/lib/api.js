@@ -1056,8 +1056,48 @@ export async function apiStoreDrawerScan(token, drawerData) {
     body: JSON.stringify(drawerData),
   });
   if (!res.ok) {
-    const errText = await res.text().catch(() => 'Drawer store scan failed');
-    throw new Error(errText || `Drawer store scan failed (${res.status})`);
+    let detail;
+    try {
+      const errObj = await res.json();
+      detail = errObj.detail || errObj.message;
+    } catch {
+      // no JSON body
+    }
+    const err = new Error(detail || `Drawer store scan failed (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/**
+ * POST /api/v1/drawers/send
+ * Batch-releases many drawers to LINING or STITCHING in one call. Sending to
+ * STITCHING is what releases those pieces into line-stitching. Accepts
+ * PARTIALLY — some drawers may come back in not_ready/not_found while others
+ * succeed in `sent`; check count_sent, don't treat the call as all-or-nothing.
+ * @param {{ drawer_ids: string[], destination: 'STITCHING' | 'LINING' }} payload
+ */
+export async function apiSendDrawers(token, { drawer_ids, destination }) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/send`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ drawer_ids, destination }),
+  });
+  if (!res.ok) {
+    let detail;
+    try {
+      const errObj = await res.json();
+      detail = errObj.detail || errObj.message;
+    } catch {
+      // no JSON body
+    }
+    const err = new Error(detail || `Failed to send drawers (${res.status})`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -1075,7 +1115,18 @@ export async function apiReceiveDrawer(token, drawerId, transition) {
     },
     body: JSON.stringify({ transition }),
   });
-  if (!res.ok) throw new Error(`Failed to update drawer transition (${res.status})`);
+  if (!res.ok) {
+    let detail;
+    try {
+      const errObj = await res.json();
+      detail = errObj.detail || errObj.message;
+    } catch {
+      // no JSON body
+    }
+    const err = new Error(detail || `Failed to update drawer transition (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
   return res.json();
 }
 
@@ -1095,6 +1146,41 @@ export async function apiAttendanceScanCheckIn(token, scanData) {
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Scan check-in failed');
     throw new Error(errText || `Scan check-in failed (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/production/piece-state
+ * THE SCAN-AND-VERIFY CALL (per API docs).
+ * For ONE scanned piece: identity, current stage, next stage, drawer, actor readiness.
+ * Send code + employee_barcode after both scans are done.
+ * If ready_to_log === true → POST /production/log immediately, no stage picker needed.
+ * If ready_to_log === false → render blockers[].
+ * Use stages[] to enable/disable the stage cards.
+ * @param {{ code, piece_id, employee_barcode, employee_id }} params
+ * @returns {{ piece, drawer, current_stage, next_stage, stages, ready_to_log, blockers, actor, sku }}
+ */
+export async function apiGetPieceState(token, { code, piece_id, employee_barcode, employee_id } = {}) {
+  const params = new URLSearchParams();
+  if (code) params.append('code', code);
+  if (piece_id) params.append('piece_id', piece_id);
+  if (employee_barcode) params.append('employee_barcode', employee_barcode);
+  if (employee_id) params.append('employee_id', employee_id);
+
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/piece-state?${params.toString()}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    let errText;
+    try {
+      const errObj = await res.json();
+      errText = errObj.detail || errObj.message || JSON.stringify(errObj);
+    } catch {
+      errText = await res.text().catch(() => 'Failed to fetch piece state');
+    }
+    throw new Error(errText || `Failed to fetch piece state (${res.status})`);
   }
   return res.json();
 }
@@ -1279,7 +1365,7 @@ export async function apiListDrawers(token, params = {}) {
   const qs = new URLSearchParams();
   if (params.limit) qs.append('limit', params.limit);
   else qs.append('limit', 500); // Default fallback
-  
+
   if (params.seq_from) qs.append('seq_from', params.seq_from);
   if (params.seq_to) qs.append('seq_to', params.seq_to);
   if (params.state) qs.append('state', params.state);
@@ -1294,6 +1380,33 @@ export async function apiListDrawers(token, params = {}) {
     let detail = errText;
     try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
     throw new Error(detail || `Failed to list drawers (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/drawers/{drawer_id}
+ * One drawer opened: contents, full piece card, awaiting/complete/can_send.
+ * Used to inspect a drawer's real state BEFORE deciding whether to POST a
+ * store-scan — a drawer already HOLDING BOTH / RECEIVED / sended must not be
+ * re-scanned.
+ */
+export async function apiGetDrawer(token, drawerId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/${encodeURIComponent(drawerId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    let detail;
+    try {
+      const errObj = await res.json();
+      detail = errObj.detail || errObj.message;
+    } catch {
+      // no JSON body
+    }
+    const err = new Error(detail || `Failed to fetch drawer (${res.status})`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
