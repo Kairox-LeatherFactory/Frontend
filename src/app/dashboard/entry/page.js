@@ -454,6 +454,13 @@ export default function ProductionLogEntry() {
   const isReadOnly = useMemo(() => allowedOperations.length === 0, [allowedOperations]);
   const isFullAccess = user === 'managing_director' || user === 'direct_manager' || user === 'supervisor';
   const isStoreAccess = user === 'managing_director' || user === 'direct_manager' || user === 'store_manager' || user === 'store_scan';
+  // Stage permission helper — allow `lining_manager` explicitly for Lining
+  const isStageAllowedForRole = useCallback((stage) => {
+    if (isFullAccess) return true;
+    if (!stage) return false;
+    if (stage === 'Lining' && user === 'lining_manager') return true;
+    return allowedOperations.includes(stage);
+  }, [isFullAccess, allowedOperations, user]);
 
   // Stage & Operation Synchronization State
   const [selectedStage, setSelectedStage] = useState('Cutting');
@@ -1398,9 +1405,9 @@ export default function ProductionLogEntry() {
       setSuccessMsg(`✅ Worker ${targetWorker.name} verified & checked-in!`);
 
       // FIX 2: Auto-switch barcodeStage to first allowed operation if current stage is restricted for this role (e.g. stitching_manager)
-      if (!isFullAccess && allowedOperations.length > 0 && !allowedOperations.includes(barcodeStage)) {
-        setBarcodeStage(allowedOperations[0]);
-      }
+      if (!isStageAllowedForRole(barcodeStage) && allowedOperations.length > 0) {
+          setBarcodeStage(allowedOperations[0]);
+        }
     } catch (err) {
       setErrorMsg(`Worker verification failed: ${err.message}`);
     } finally {
@@ -1454,6 +1461,21 @@ export default function ProductionLogEntry() {
         throw new Error(`Style ${piece.sku_code} is closed — all required quantities have already been cut.`);
       }
 
+      // Check if THIS stage even applies to this piece BEFORE looking at
+      // next_stage/role gating below. A piece that doesn't need Lining will
+      // have next_stage pointing straight to Line Stitching — that must read
+      // as "Lining doesn't apply here," not "you're not allowed on that stage."
+      const currentStageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[barcodeStage]);
+      // Allow Lining scans irrespective of API 'not_applicable' flags —
+      // Lining is permitted to be performed in any stage context per request.
+      if (barcodeStage !== 'Lining' && currentStageEntry?.state === 'not_applicable') {
+        throw new Error(
+          `'${barcodeStage}' does not apply to this piece${currentStageEntry.reason ? ` (${currentStageEntry.reason})` : ''}. It skips straight to its next required stage.`
+        );
+      }
+
+      // The server names the stage — auto-switch the UI to match (never chosen
+
       // The server names the stage — auto-switch the UI to match (never chosen
       // by hand). But NEVER auto-switch into a stage this role can't work —
       // that silently dumped a Cutting Manager into the Lining tab (which
@@ -1462,18 +1484,33 @@ export default function ProductionLogEntry() {
       // of a clear message right here.
       const mappedStage = resolveWorkableStage(pieceState);
       if (mappedStage && manualStages.includes(mappedStage) && mappedStage !== barcodeStage) {
-        const roleCanWorkMappedStage = isFullAccess || allowedOperations.includes(mappedStage);
+        const roleCanWorkMappedStage = isStageAllowedForRole(mappedStage);
         if (!roleCanWorkMappedStage) {
-          throw new Error(`This piece's next stage is '${mappedStage}', which isn't assigned to your role. Please have the appropriate manager scan this piece.`);
+          // If the operator intentionally chose Lining, allow them to proceed
+          // even when the server's next_stage points elsewhere.
+          if (barcodeStage !== 'Lining') {
+            throw new Error(`This piece's next stage is '${mappedStage}', which isn't assigned to your role. Please have the appropriate manager scan this piece.`);
+          }
+          // otherwise ignore mappedStage and continue with Lining
+        } else {
+          // Role can work the mapped stage. Auto-switch only if the
+          // operator has not explicitly chosen Lining (we prefer an
+          // intentional Lining selection over auto-switching away).
+          if (barcodeStage !== 'Lining') {
+            setBarcodeStage(mappedStage);
+            setSuccessMsg(`🔄 Auto-detected stage: ${mappedStage}`);
+          } else {
+            setSuccessMsg(`🔄 Detected next stage: ${mappedStage}. Keeping Lining as selected.`);
+          }
         }
-        setBarcodeStage(mappedStage);
-        setSuccessMsg(`🔄 Auto-detected stage: ${mappedStage}`);
       }
-      const targetStage = mappedStage || barcodeStage;
+      const targetStage = (barcodeStage === 'Lining') ? 'Lining' : (mappedStage || barcodeStage);
 
       // Enforce the pipeline gate using stages[] before letting the operator proceed.
       const stageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[targetStage]);
-      if (stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
+      // Exempt Lining from stage-entry gating so lining cuts can be logged
+      // regardless of the API-reported current/next stage.
+      if (targetStage !== 'Lining' && stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
         throw new Error(
           stageEntry.reason ||
           (stageEntry.state === 'not_applicable'
@@ -1495,7 +1532,9 @@ export default function ProductionLogEntry() {
       // up for targetStage specifically) is the authoritative per-stage gate.
       const usingAlternateStage = !!(pieceState?.next_stage && UI_TO_API_STAGE[targetStage] !== pieceState.next_stage);
       const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption');
-      if (!usingAlternateStage && pieceState?.ready_to_log === false && realBlockers.length > 0) {
+      // Allow Lining to bypass server-side blockers and ready_to_log checks
+      // so lining can be performed at any time. Role checks remain enforced.
+      if (!(barcodeStage === 'Lining' || (typeof targetStage !== 'undefined' && targetStage === 'Lining')) && pieceState?.ready_to_log === false && realBlockers.length > 0) {
         throw new Error(realBlockers[0].reason || 'Scan blocked by server');
       }
 
@@ -1579,9 +1618,10 @@ export default function ProductionLogEntry() {
       }
 
       // Same sequence gate as every other scan — must actually be due for
-      // this Cutting/Lining stage right now.
+      // this Cutting/Lining stage right now. Exempt Lining so lining cuts
+      // can be performed regardless of API stage flags.
       const stageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[barcodeStage]);
-      if (stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
+      if (barcodeStage !== 'Lining' && stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
         throw new Error(
           stageEntry.reason ||
           (stageEntry.state === 'not_applicable'
@@ -1590,7 +1630,9 @@ export default function ProductionLogEntry() {
         );
       }
       const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption');
-      if (pieceState?.ready_to_log === false && realBlockers.length > 0) {
+      // Exempt Lining from blocker enforcement so lining piece scans aren't
+      // blocked by server readiness flags.
+      if (barcodeStage !== 'Lining' && pieceState?.ready_to_log === false && realBlockers.length > 0) {
         throw new Error(realBlockers[0].reason || 'Scan blocked by server');
       }
 
@@ -1714,7 +1756,7 @@ export default function ProductionLogEntry() {
     if (!code || barcodePieceResolving) return;
 
     // FIX 2: Hard role-boundary gate — checked before ANY scan work
-    if (!isFullAccess && !allowedOperations.includes(barcodeStage)) {
+    if (!isStageAllowedForRole(barcodeStage)) {
       setErrorMsg(`⚠️ Role Restricted: Your role cannot scan for the '${barcodeStage}' stage.`);
       setBarcodePieceInput('');
       return;
@@ -1763,37 +1805,42 @@ export default function ProductionLogEntry() {
         // failing a secondary role check.
         const mappedStage = resolveWorkableStage(pieceState);
         if (mappedStage && manualStages.includes(mappedStage)) {
-          const roleCanWorkMappedStage = isFullAccess || allowedOperations.includes(mappedStage);
+          const roleCanWorkMappedStage = isStageAllowedForRole(mappedStage);
           if (!roleCanWorkMappedStage) {
-            setErrorMsg(`⚠️ This piece's next stage is '${mappedStage}', which isn't assigned to your role.`);
-            setBarcodePieceInput('');
-            return;
-          }
-          targetStage = mappedStage;
-          if (mappedStage !== barcodeStage) {
-            setBarcodeStage(mappedStage);
-            setSuccessMsg(`🔄 Auto-detected stage: ${mappedStage}`);
+            if (barcodeStage === 'Lining') {
+              // Operator forced Lining — ignore the mappedStage and continue
+            } else {
+              setErrorMsg(`⚠️ This piece's next stage is '${mappedStage}', which isn't assigned to your role.`);
+              setBarcodePieceInput('');
+              return;
+            }
+          } else {
+            // Role can handle mappedStage — auto-switch only if operator
+            // hasn't explicitly chosen Lining.
+            if (barcodeStage !== 'Lining') {
+              targetStage = mappedStage;
+              if (mappedStage !== barcodeStage) {
+                setBarcodeStage(mappedStage);
+                setSuccessMsg(`🔄 Auto-detected stage: ${mappedStage}`);
+              }
+            } else {
+              setSuccessMsg(`🔄 Detected next stage: ${mappedStage}. Keeping Lining as selected.`);
+            }
           }
 
           // Cutting/Lining have their own dedicated consumption screen (DCM/
-          // Article/Colour), not the generic pipeline batch list this handler
-          // feeds. A piece scanned here that turns out to be due for either
-          // must be routed to that screen's basket instead of silently
-          // landing in barcodeBatchPieces, which that UI never renders.
-          if (mappedStage === 'Cutting' || mappedStage === 'Lining') {
+          // Article/Colour). If either the mappedStage OR the operator's
+          // selected stage is a cut stage, route to the dedicated flow.
+          if (mappedStage === 'Cutting' || mappedStage === 'Lining' || barcodeStage === 'Cutting' || barcodeStage === 'Lining') {
             setBarcodePieceInput('');
             await handleVerifySkuBarcode(code);
             return;
           }
         }
 
-        // If the server says NOT ready_to_log, surface the first blocker reason
-        // verbatim — but blockers[] is computed against the server's OWN
-        // next_stage pick, so it must not veto a scan that resolveWorkableStage()
-        // has already redirected to a different, independently-open parallel
-        // stage (e.g. LINING_CUTTING while the server's pick was FUSING).
-        const usingAlternateStage = !!(pieceState?.next_stage && UI_TO_API_STAGE[targetStage] !== pieceState.next_stage);
-        if (!usingAlternateStage && pieceState?.ready_to_log === false && Array.isArray(pieceState?.blockers) && pieceState.blockers.length > 0) {
+        // If the server says NOT ready_to_log, surface the first blocker reason verbatim
+        // Exempt Lining so it's not prevented by ready_to_log blockers.
+        if (!(barcodeStage === 'Lining' || targetStage === 'Lining') && pieceState?.ready_to_log === false && Array.isArray(pieceState?.blockers) && pieceState.blockers.length > 0) {
           const firstBlocker = pieceState.blockers[0];
           setErrorMsg(`⚠️ ${firstBlocker.reason || 'Scan blocked by server'}`);
           setBarcodePieceInput('');
@@ -1801,8 +1848,10 @@ export default function ProductionLogEntry() {
         }
 
         // Use stages[] from piece-state to enforce the pipeline gate (Bug #6)
+        // Allow Lining to bypass this gate so lining cuts can be scanned
+        // regardless of the backend's current-stage flags.
         const stageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[targetStage]);
-        if (stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
+        if (targetStage !== 'Lining' && stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
           setErrorMsg(
             stageEntry.state === 'not_applicable'
               ? `⚠️ '${targetStage}' does not apply to this piece${stageEntry.reason ? ` (${stageEntry.reason})` : ''}.`
@@ -1836,7 +1885,7 @@ export default function ProductionLogEntry() {
     if (barcodeBatchPieces.length === 0) return setErrorMsg("Please scan at least one piece barcode!");
 
     // FIX 2: Secondary hard role-boundary gate — safety net before API call
-    if (!isFullAccess && !allowedOperations.includes(barcodeStage)) {
+    if (!isStageAllowedForRole(barcodeStage)) {
       setErrorMsg(`⚠️ Role Restricted: Your role (${user.replace('_', ' ')}) is not permitted to submit logs for the '${barcodeStage}' stage.`);
       return;
     }
@@ -2854,7 +2903,7 @@ export default function ProductionLogEntry() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                 {manualStages.map((stage) => {
                   const isSelected = barcodeStage === stage;
-                  const isRoleAllowed = isFullAccess || allowedOperations.includes(stage);
+                  const isRoleAllowed = isStageAllowedForRole(stage);
                   const roleLocked = !isRoleAllowed;
                   // Tab access is gated by ROLE only. Sequence completion is
                   // inherently per-piece (many pieces sit at many different
@@ -2889,7 +2938,7 @@ export default function ProductionLogEntry() {
                       }`}
                       title={roleLocked ? '🔒 Not permitted for your role' : stage}
                     >
-                      {!isFullAccess && allowedOperations.includes(stage) && (
+                      {!isFullAccess && isStageAllowedForRole(stage) && (
                         <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
                       )}
                       {roleLocked && <span className="mr-0.5 text-[9px]">🔒</span>}
@@ -3442,8 +3491,8 @@ export default function ProductionLogEntry() {
                     Machine as the Barcode Gun door (parity: isStageReady/PREREQUISITE_MAP) */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {manualStages.map((stage) => {
-                    const isSelected = selectedStage === stage;
-                    const isRoleAllowed = isFullAccess || allowedOperations.includes(stage);
+                      const isSelected = selectedStage === stage;
+                      const isRoleAllowed = isStageAllowedForRole(stage);
                     const roleLocked = !isRoleAllowed;
                     // Tab access is gated by ROLE only — see matching comment
                     // in the Barcode Gun door's stage buttons. Sequence
@@ -3474,7 +3523,7 @@ export default function ProductionLogEntry() {
                         }`}
                         title={roleLocked ? '🔒 Not permitted for your role' : stage}
                       >
-                        {!isFullAccess && allowedOperations.includes(stage) && (
+                        {!isFullAccess && isStageAllowedForRole(stage) && (
                           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
                         )}
                         {roleLocked && <span className="mr-0.5 text-[9px]">🔒</span>}
