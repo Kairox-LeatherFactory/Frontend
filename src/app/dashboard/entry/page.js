@@ -4641,15 +4641,20 @@ export default function ProductionLogEntry() {
 
                 <div className="relative">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block">Scanner Input</label>
+                  {/* This warning was nested inside the input's horizontal flex
+                      row below, so on narrow screens it squeezed in side-by-side
+                      with the input instead of stacking above it as intended
+                      (its own mb-2 assumed vertical stacking). Moved it out to
+                      its own block so it always sits above, full width. */}
+                  {!barcodeWorker && (
+                    <div className="p-3 mb-2 bg-amber-100/90 border border-amber-300/80 rounded-xl text-amber-900 text-xs font-bold flex items-center justify-center gap-2 shadow-sm">
+                      <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>Scan &amp; Verify Worker ID in Step 1 Banner above to Unlock Store Scanner</span>
+                    </div>
+                  )}
                   <div className="relative flex items-center">
                     {!storeCurrentScan && (
                       <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 pointer-events-none transition-opacity duration-200" />
-                    )}
-                    {!barcodeWorker && (
-                      <div className="p-3 bg-amber-100/90 border border-amber-300/80 rounded-xl text-amber-900 text-xs font-bold flex items-center justify-center gap-2 shadow-sm mb-2">
-                        <Lock className="w-4 h-4 text-amber-700 shrink-0" />
-                        <span>Scan &amp; Verify Worker ID in Step 1 Banner above to Unlock Store Scanner</span>
-                      </div>
                     )}
                     <input
                       ref={storeInputRef}
