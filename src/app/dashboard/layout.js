@@ -333,13 +333,22 @@ export default function DashboardLayout({ children }) {
       },
     ];
 
+    // "Direct Manager Flow" routes to the Direct Manager dashboard, which is
+    // scoped to the whole factory — only the roles that land on it by default
+    // (Direct Manager, Managing Director, HR) should see it in the sidebar.
+    // Every other role (Lining Manager, Cutting Manager, Stitching Manager,
+    // Store Manager, etc.) gets their own dashboard as home and shouldn't see
+    // this link.
+    const canSeeDirectManagerFlow = ['direct_manager', 'managing_director', 'hr'].includes(user);
+    const scoped = canSeeDirectManagerFlow ? links : links.filter((link) => link.name !== 'Direct Manager Flow');
+
     if (user === 'security') {
-      return links.filter(
+      return scoped.filter(
         (link) => link.name === 'Attendance'
       );
     }
 
-    return links;
+    return scoped;
   }, [user]);
 
   // --------------------------------------------------

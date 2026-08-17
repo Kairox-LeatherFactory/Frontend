@@ -103,6 +103,19 @@ export async function apiGetEmployees(token) {
 }
 
 /**
+ * GET /api/v1/attendance/config
+ * @returns {{ shift_start, shift_length_hours, late_grace_minutes, timezone, factory_lat, factory_lon, radius_m }}
+ */
+export async function apiGetAttendanceConfig(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/attendance/config`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch attendance config (${res.status})`);
+  return res.json();
+}
+
+/**
  * Fetch production operations
  * @returns {Array<{ id, code, label, sequence }>}
  */

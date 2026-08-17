@@ -1293,6 +1293,7 @@ export default function ProductionLogEntry() {
   const skuInputRef = useRef(null);
   const dcmInputRef = useRef(null);
   const pieceInputRef = useRef(null);
+  const cuttingPieceInputRef = useRef(null);
   const storeInputRef = useRef(null);
 
   // Bug #3: Automatic Scanner Focus Effects
@@ -3339,6 +3340,7 @@ export default function ProductionLogEntry() {
                               <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
                             )}
                             <input
+                              ref={cuttingPieceInputRef}
                               type="text"
                               placeholder="Scan next piece barcode..."
                               value={cuttingPieceInput}

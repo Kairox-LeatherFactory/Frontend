@@ -2088,8 +2088,8 @@ function StitchingDashboardContent() {
                     required
                     className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
                   >
-                    {piecesList.slice(0, 15).map((p) => (
-                      <option key={p.piece_code} value={p.piece_code}>
+                    {piecesList.slice(0, 15).map((p, idx) => (
+                      <option key={`stitch-pc-opt-${p.piece_code || p.id || idx}-${idx}`} value={p.piece_code}>
                         {p.piece_code} ({p.style})
                       </option>
                     ))}
