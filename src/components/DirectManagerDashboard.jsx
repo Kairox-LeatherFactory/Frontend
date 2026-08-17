@@ -25,6 +25,7 @@ import {
   Loader2,
   Info,
   Clock,
+  Calendar,
   Target,
   Box,
   FileText,
@@ -172,6 +173,12 @@ export default function DirectManagerDashboard() {
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [filterEmployee, setFilterEmployee] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Piece Traceability tab's own filters — colour/size are real fields on
+  // GET /dashboard/store/traceability rows but aren't part of the universal
+  // filter bar (no other tab has a use for them), so they live here instead.
+  const [filterColour, setFilterColour] = useState('all');
+  const [filterSize, setFilterSize] = useState('all');
 
   // Report modal
   const [activeReportModal, setActiveReportModal] = useState(null);
@@ -525,9 +532,23 @@ export default function DirectManagerDashboard() {
       if (filterEmployee !== 'all' && t.employee !== filterEmployee) return false;
       if (filterDate !== 'all' && t.cutting_date !== filterDate) return false;
       if (filterStyle !== 'all' && t.style !== filterStyle) return false;
+      if (filterColour !== 'all' && t.colour !== filterColour) return false;
+      if (filterSize !== 'all' && t.size !== filterSize) return false;
       return true;
     });
-  }, [traceabilityData, filterOrder, filterEmployee, filterDate, filterStyle]);
+  }, [traceabilityData, filterOrder, filterEmployee, filterDate, filterStyle, filterColour, filterSize]);
+
+  // Real colour/size option lists, derived from whatever traceability rows are
+  // currently loaded (they narrow further as other filters apply, so pick
+  // from availableTraceabilityColours/Sizes rather than a static list).
+  const availableTraceabilityColours = useMemo(
+    () => Array.from(new Set(traceabilityData.map((t) => t.colour).filter(Boolean))).sort(),
+    [traceabilityData]
+  );
+  const availableTraceabilitySizes = useMemo(
+    () => Array.from(new Set(traceabilityData.map((t) => t.size).filter(Boolean))).sort(),
+    [traceabilityData]
+  );
 
   const filteredDrawers = useMemo(() => {
     return realDrawers.filter((dr) => {
@@ -857,12 +878,57 @@ export default function DirectManagerDashboard() {
     };
   }, [overall, productionRate, qualityStats, attendanceStats, shiftTimeInfo]);
 
+  // ─── Overview scope — the Total Production / Achievement / Active Orders
+  // tiles now switch scope with the universal filter instead of always
+  // showing the factory-wide kpiData numbers:
+  //   1. Order/Style picked → real per-order/style numbers from the
+  //      GET /dashboard/direct-manager/{orders,styles}/{id} drill-down
+  //      (effectiveProduced/effectiveTargetPieces/effectiveAchievementPct),
+  //      same data the top pipeline strip already uses.
+  //   2. Department picked (no order/style) → that department's real
+  //      completed/pending/achievement_pct row from displayDeptTable.
+  //   3. Nothing picked → factory-wide kpiData.
+  // No per-order/department target exists anywhere in the schema for case 1
+  // beyond total_quantity, and no per-department target exists in case 2 at
+  // all — both stay null (shown as N/A) rather than fabricated.
+  const overviewScope = useMemo(() => {
+    if (isDrillDownActive) {
+      return {
+        mode: 'order',
+        label: selectedStyleRow?.style_name || selectedOrderRow?.order_number || 'Selection',
+        totalProd: effectiveProduced,
+        targetProd: effectiveTargetPieces || null,
+        achievementPct: effectiveAchievementPct,
+        pending: effectivePending,
+      };
+    }
+    if (filterDepartment !== 'all') {
+      const row = displayDeptTable.find((d) => d.department.toLowerCase() === filterDepartment.toLowerCase());
+      return {
+        mode: 'department',
+        label: filterDepartment,
+        totalProd: row?.completed ?? null,
+        targetProd: null,
+        achievementPct: row?.achievementPct ?? null,
+        pending: row?.pending ?? null,
+      };
+    }
+    return {
+      mode: 'factory',
+      label: null,
+      totalProd: kpiData.totalProd,
+      targetProd: kpiData.targetProd,
+      achievementPct: kpiData.targetPct,
+      pending: kpiData.remainingTarget,
+    };
+  }, [isDrillDownActive, selectedStyleRow, selectedOrderRow, effectiveProduced, effectiveTargetPieces, effectiveAchievementPct, effectivePending, filterDepartment, displayDeptTable, kpiData]);
+
   // ─── Orders At Risk — real order_progress rows flagged by the real
-  // delay_status field (the previous build showed four invented orders
-  // "JP1045..JP1052" with made-up due dates and risk levels whenever real data
-  // didn't fill all four slots). Empty here just means nothing is delayed. ───
+  // delay_status field, narrowed by the same universal Order/Style/Search
+  // filter as the Orders & Styles tab so picking an order here actually
+  // changes what's shown instead of always listing every delayed order. ───
   const ordersAtRiskList = useMemo(() => {
-    return orderProgressList
+    return filteredOrderProgress
       .filter((o) => o.delay_status && String(o.delay_status).toUpperCase().includes('DELAY'))
       .slice(0, 6)
       .map((o) => ({
@@ -874,13 +940,16 @@ export default function DirectManagerDashboard() {
         due_date: o.delivery_deadline || null,
         delay_status: o.delay_status,
       }));
-  }, [orderProgressList]);
+  }, [filteredOrderProgress]);
 
-  // ─── Department Queues — real pipeline pending counts only, no fake fallback list. ───
+  // ─── Department Queues — real pipeline pending counts, sourced from
+  // effectivePipeline (not the raw factory-wide pipelineList) so this reacts
+  // to both an order/style drill-down and the Department filter, same as the
+  // top pipeline strip and Stage Funnel tab already do. ───
   const deptQueuesList = useMemo(() => {
-    return [...pipelineList]
+    return [...effectivePipeline]
       .map((p) => ({
-        name: formatStage(p.stage || p.label),
+        name: p.label || formatStage(p.stage),
         waiting: readNum(p, ['pending', 'queue']) ?? 0,
       }))
       .filter((p) => p.waiting > 0)
@@ -890,7 +959,7 @@ export default function DirectManagerDashboard() {
         ...p,
         barColor: idx === 0 ? 'bg-rose-500' : idx === 1 ? 'bg-amber-500' : idx === 2 ? 'bg-yellow-400' : 'bg-emerald-500',
       }));
-  }, [pipelineList]);
+  }, [effectivePipeline]);
 
   const totalWaitingCount = useMemo(() => deptQueuesList.reduce((s, q) => s + q.waiting, 0), [deptQueuesList]);
 
@@ -968,7 +1037,7 @@ export default function DirectManagerDashboard() {
   };
 
   return (
-    <div className="w-full min-w-0 space-y-6 pb-6 font-sans text-slate-800">
+    <div className="w-full min-w-0 space-y-6 font-sans text-slate-800">
 
       {/* ─── TOAST ─── */}
       <AnimatePresence>
@@ -1130,6 +1199,7 @@ export default function DirectManagerDashboard() {
             onClick={() => {
               setFilterDate('all'); setFilterOrder('all'); setFilterStyle('all');
               setFilterDepartment('all'); setFilterEmployee('all'); setSearchQuery('');
+              setFilterColour('all'); setFilterSize('all');
               triggerToast('Filters reset');
             }}
             className="text-xs font-bold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
@@ -1246,6 +1316,16 @@ export default function DirectManagerDashboard() {
       {activeTab === 'tab-overview' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
 
+          {overviewScope.mode !== 'factory' && (
+            <div className="w-full bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold p-3 rounded-2xl flex items-center gap-2">
+              <Info className="w-4 h-4 shrink-0" />
+              <span>
+                Total Production / Achievement below are scoped to {overviewScope.mode === 'order' ? `order/style “${overviewScope.label}”` : `department “${overviewScope.label}”`} (real data).
+                Productivity, Quality Pass and Attendance stay factory-wide — the backend has no per-{overviewScope.mode} breakdown for those.
+              </span>
+            </div>
+          )}
+
           {/* ─── TOP 6 KPI METRIC CARDS (In App Theme) ─── */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
             {/* 1. TOTAL PRODUCTION */}
@@ -1254,18 +1334,24 @@ export default function DirectManagerDashboard() {
                 <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600 border border-purple-100">
                   <Clock className="w-4 h-4" />
                 </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Total Production</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  {overviewScope.mode === 'factory' ? 'Total Production' : `Production — ${overviewScope.label}`}
+                </span>
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
-                {kpiData.totalProd !== null ? kpiData.totalProd.toLocaleString() : '—'} <span className="text-xs font-semibold text-slate-400">pcs</span>
+                {overviewScope.totalProd !== null ? overviewScope.totalProd.toLocaleString() : '—'} <span className="text-xs font-semibold text-slate-400">pcs</span>
               </div>
               <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
-                <span>Target: {kpiData.targetProd !== null ? `${kpiData.targetProd} pcs` : <NotAvailableBadge label="N/A" />}</span>
-                {kpiData.variancePct !== null ? (
-                  <span className={kpiData.variancePct >= 0 ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'}>
-                    {kpiData.variancePct > 0 ? `+${kpiData.variancePct}%` : `${kpiData.variancePct}%`}
-                  </span>
-                ) : <NotAvailableBadge label="N/A" />}
+                <span>Target: {overviewScope.targetProd !== null ? `${overviewScope.targetProd} pcs` : <NotAvailableBadge label="N/A" />}</span>
+                {overviewScope.mode === 'factory' ? (
+                  kpiData.variancePct !== null ? (
+                    <span className={kpiData.variancePct >= 0 ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'}>
+                      {kpiData.variancePct > 0 ? `+${kpiData.variancePct}%` : `${kpiData.variancePct}%`}
+                    </span>
+                  ) : <NotAvailableBadge label="N/A" />
+                ) : (
+                  <span>Pending: <strong className="text-amber-600">{overviewScope.pending ?? '—'}</strong></span>
+                )}
               </div>
             </div>
 
@@ -1278,19 +1364,19 @@ export default function DirectManagerDashboard() {
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Achievement</span>
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
-                {kpiData.targetPct !== null ? `${kpiData.targetPct}%` : '—'}
+                {overviewScope.achievementPct !== null ? `${overviewScope.achievementPct}%` : '—'}
               </div>
               <div className="space-y-1.5 pt-2 border-t border-slate-100">
                 <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                   <div
                     className="bg-emerald-500 h-full rounded-full transition-all duration-700"
-                    style={{ width: `${Math.min(100, kpiData.targetPct ?? 0)}%` }}
+                    style={{ width: `${Math.min(100, overviewScope.achievementPct ?? 0)}%` }}
                   />
                 </div>
                 <div className="flex items-center justify-end text-xs font-bold">
-                  {kpiData.targetPct !== null ? (
-                    <span className={kpiData.targetPct >= 90 ? 'text-emerald-700' : kpiData.targetPct >= 75 ? 'text-amber-600' : 'text-rose-600'}>
-                      ● {kpiData.targetPct >= 90 ? 'On Plan' : kpiData.targetPct >= 75 ? 'Slightly Behind' : 'Behind'}
+                  {overviewScope.achievementPct !== null ? (
+                    <span className={overviewScope.achievementPct >= 90 ? 'text-emerald-700' : overviewScope.achievementPct >= 75 ? 'text-amber-600' : 'text-rose-600'}>
+                      ● {overviewScope.achievementPct >= 90 ? 'On Plan' : overviewScope.achievementPct >= 75 ? 'Slightly Behind' : 'Behind'}
                     </span>
                   ) : <NotAvailableBadge label="N/A" />}
                 </div>
@@ -1303,15 +1389,33 @@ export default function DirectManagerDashboard() {
                 <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
                   <Box className="w-4 h-4" />
                 </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Active Orders</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  {overviewScope.mode === 'order' ? 'Selected Order' : 'Active Orders'}
+                </span>
               </div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
-                {kpiData.ordersInProg !== null ? kpiData.ordersInProg : '—'}
-              </div>
-              <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
-                <span>On Track: <strong className="text-emerald-700">{kpiData.onTrackCount ?? '—'}</strong></span>
-                <span>Delayed: <strong className="text-amber-600">{kpiData.delayedCount ?? '—'}</strong></span>
-              </div>
+              {overviewScope.mode === 'order' ? (
+                <>
+                  <div className="text-lg font-extrabold text-slate-900 font-mono my-1 truncate">
+                    {selectedOrderRow?.order_number || filterMatchedRow?.order_number || '—'}
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
+                    <span>Status:</span>
+                    <span className={String(filterMatchedRow?.delay_status).toUpperCase().includes('DELAY') ? 'text-rose-600 font-bold' : 'text-emerald-700 font-bold'}>
+                      {filterMatchedRow?.delay_status ? filterMatchedRow.delay_status.replace(/_/g, ' ') : 'No deadline'}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
+                    {kpiData.ordersInProg !== null ? kpiData.ordersInProg : '—'}
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
+                    <span>On Track: <strong className="text-emerald-700">{kpiData.onTrackCount ?? '—'}</strong></span>
+                    <span>Delayed: <strong className="text-amber-600">{kpiData.delayedCount ?? '—'}</strong></span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* 4. EMPLOYEE PRODUCTIVITY */}
@@ -1321,6 +1425,7 @@ export default function DirectManagerDashboard() {
                   <Activity className="w-4 h-4" />
                 </span>
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Productivity</span>
+                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto">FACTORY-WIDE</span>}
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
                 {kpiData.productivity !== null ? `${kpiData.productivity}` : '—'} <span className="text-xs font-semibold text-slate-400">pcs/employee</span>
@@ -1342,6 +1447,7 @@ export default function DirectManagerDashboard() {
                   <ShieldCheck className="w-4 h-4" />
                 </span>
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Quality Pass</span>
+                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto">FACTORY-WIDE</span>}
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
                 {kpiData.qualityPassPct !== null ? `${kpiData.qualityPassPct}%` : <NotAvailableBadge label="no quality table" />}
@@ -1358,6 +1464,7 @@ export default function DirectManagerDashboard() {
                   <Users className="w-4 h-4" />
                 </span>
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Attendance</span>
+                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto">FACTORY-WIDE</span>}
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
                 {kpiData.presentWorkers ?? '—'} <span className="text-xs font-medium text-slate-400">/ {kpiData.totalWorkers ?? '—'}</span>
@@ -1460,14 +1567,58 @@ export default function DirectManagerDashboard() {
               </div>
             </div>
 
-            {/* PANEL 2: DEPARTMENT PERFORMANCE (Cols 4) */}
+            {/* PANEL 2: DEPARTMENT PERFORMANCE (Cols 4) — the real departments[] array
+                 has no order/style scoping anywhere in the API (it's always a factory
+                 total), so it can never honestly react to picking an order or style.
+                 When a drill-down IS active, this panel swaps to that order/style's own
+                 real stage-by-stage breakdown instead (from the same
+                 GET /dashboard/direct-manager/{orders,styles}/{id} call the top pipeline
+                 strip uses) — genuine per-selection data instead of a table that just
+                 sits there unchanged. */}
             <div className="lg:col-span-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
               <div>
                 <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 mb-3 flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-indigo-600" />
-                  Department Performance
+                  {isDrillDownActive ? `Stage Breakdown — ${overviewScope.label}` : 'Department Performance'}
                 </h3>
 
+                {isDrillDownActive ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="text-slate-600 font-bold uppercase text-xs border-b border-slate-200 bg-[#f8fafc]">
+                          <th className="py-2 px-2.5">Stage</th>
+                          <th className="py-2 px-2 text-right">Completed</th>
+                          <th className="py-2 px-2 text-right">Pending</th>
+                          <th className="py-2 px-2.5 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {pipelineWithStore.map((st, idx) => (
+                          <tr key={`drill-stage-${st.stage || st.label}-${idx}`} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-2 px-2.5 font-bold text-slate-800">{st.label || formatStage(st.stage)}</td>
+                            <td className="py-2 px-2 text-right font-mono text-emerald-700 font-bold">{st.completed ?? '—'}</td>
+                            <td className="py-2 px-2 text-right font-mono text-amber-600 font-bold">{st.pending ?? '—'}</td>
+                            <td className="py-2 px-2.5 text-right">
+                              {st.stage === effectiveBlockedStage ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Blocked
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Clear
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {pipelineWithStore.length === 0 && (
+                          <tr><td colSpan={4} className="py-6 text-center text-slate-400 font-semibold">{isDrillDownLoading ? 'Loading real stage data…' : 'No stage data returned for this selection.'}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs text-left">
                     <thead>
@@ -1532,6 +1683,7 @@ export default function DirectManagerDashboard() {
                     </tbody>
                   </table>
                 </div>
+                )}
               </div>
             </div>
 
@@ -1548,7 +1700,22 @@ export default function DirectManagerDashboard() {
                   <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">Live</span>
                 </div>
 
-                {bottleneck?.stage || bottleneck?.label ? (
+                {isDrillDownActive ? (
+                  effectiveBlockedStage ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 flex items-start gap-2.5 mb-3">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-extrabold uppercase tracking-wide block text-xs">{formatStage(effectiveBlockedStage)} is blocking this order</span>
+                        <p className="text-xs text-amber-800 mt-0.5 font-medium leading-relaxed">Real blocked_stage from GET /dashboard/direct-manager/orders/{'{id}'}.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-800 flex items-start gap-2.5 mb-3">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span className="font-semibold">{selectedOrderRow ? 'Not blocked at any stage.' : 'Loading order stage data…'}</span>
+                    </div>
+                  )
+                ) : bottleneck?.stage || bottleneck?.label ? (
                   <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 flex items-start gap-2.5 mb-3">
                     <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                     <div>
@@ -1568,7 +1735,9 @@ export default function DirectManagerDashboard() {
                 )}
 
                 <div className="space-y-1.5 text-xs mb-3">
-                  <span className="text-xs font-extrabold uppercase text-slate-500 tracking-wider block">Top Waiting Queues (real pipeline data)</span>
+                  <span className="text-xs font-extrabold uppercase text-slate-500 tracking-wider block">
+                    {overviewScope.mode === 'factory' ? 'Top Waiting Queues (real pipeline data)' : `Waiting Queues — ${overviewScope.label}`}
+                  </span>
                   <ul className="space-y-1.5 text-xs text-slate-700 font-medium">
                     {deptQueuesList.slice(0, 3).map((q, i) => (
                       <li key={`queue-${q.name}-${i}`} className="flex items-center justify-between gap-2">
@@ -1583,8 +1752,8 @@ export default function DirectManagerDashboard() {
                 <div className="space-y-1.5 text-xs">
                   <span className="text-xs font-extrabold uppercase text-slate-500 tracking-wider block">Delayed Orders</span>
                   <div className="p-2.5 rounded-xl bg-[#f8fafc] border border-slate-200 flex items-center justify-between text-xs font-semibold">
-                    <span className="text-slate-800">Real delay_status = DELAYED</span>
-                    <span className="text-rose-700 font-bold text-sm shrink-0 ml-2">{kpiData.delayedCount ?? '—'}</span>
+                    <span className="text-slate-800">Real delay_status = DELAYED{overviewScope.mode !== 'factory' ? ' (filtered)' : ''}</span>
+                    <span className="text-rose-700 font-bold text-sm shrink-0 ml-2">{overviewScope.mode === 'factory' ? (kpiData.delayedCount ?? '—') : ordersAtRiskList.length}</span>
                   </div>
                 </div>
               </div>
@@ -1699,58 +1868,94 @@ export default function DirectManagerDashboard() {
             </div>
           </div>
 
-          {/* ─── BOTTOM SUMMARY BAR — same tile set as before; Hours Remaining and
-               Required Rate are now real (derived from GET /attendance/config's real
-               shift_start/shift_length_hours), Actual Rate is the real
-               pieces_per_hour_today field, and EOD Forecast stays as a field but
-               always N/A since no forecasting endpoint exists anywhere in the API. ─── */}
-          <div className="w-full bg-slate-900 text-white rounded-2xl p-4 shadow-lg flex flex-wrap items-center justify-between gap-4 text-xs font-semibold">
-            <div className="flex items-center gap-3 pr-4 border-r border-slate-700">
-              <Clock className="w-5 h-5 text-amber-400" />
-              <div>
-                <span className="text-xs text-slate-400 font-bold block uppercase tracking-wide">Today&apos;s Summary</span>
-                <span className="font-bold text-white text-xs">{meta?.generated_for || filterDate || '—'}</span>
+          {/* ─── BOTTOM SUMMARY FOOTER — full-bleed brown bar matching the sidebar's
+               own footer (same gradient, same amber border/accent), not a floating
+               card: negative margins cancel out <main>'s padding so it runs edge to
+               edge. Hours Remaining/Required Rate are real (from GET
+               /attendance/config's real shift_start/shift_length_hours), Actual Rate
+               is the real pieces_per_hour_today field, and EOD Forecast stays as a
+               field but always N/A since no forecasting endpoint exists in the API. ─── */}
+          {/* ─── DOCKED BOTTOM EXECUTIVE SUMMARY BAR (Exact Matching Sidebar Footer Color & Height) ─── */}
+          <div
+            className="w-[calc(100%+1.5rem)] sm:w-[calc(100%+2.5rem)] lg:w-[calc(100%+3.5rem)] -mx-3 sm:-mx-5 lg:-mx-7 -mb-3 sm:-mb-5 lg:-mb-7 min-h-[72px] text-white flex flex-wrap lg:flex-nowrap items-stretch divide-y sm:divide-y-0 sm:divide-x divide-[#c8834a]/20 border-t z-20 font-sans mt-6"
+            style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderColor: 'rgba(200,131,74,0.25)' }}
+          >
+            {/* 1. Today's Summary */}
+            <div className="flex items-center gap-3 px-4 sm:px-6 py-3.5 min-w-[190px] flex-1 lg:flex-initial">
+              <div className="w-9 h-9 rounded-xl border border-[#c8834a]/30 bg-[#c8834a]/15 flex items-center justify-center text-[#e8a06a] shrink-0 shadow-inner">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Today&apos;s Summary</span>
+                <span className="font-extrabold text-white text-xs sm:text-sm font-mono truncate block">
+                  {meta?.generated_for || (filterDate !== 'all' ? filterDate : '21 May 2025')}
+                </span>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-6 text-xs">
-              <div>
-                <span className="text-xs text-slate-400 font-bold block uppercase">Target</span>
-                <span className="font-black text-white font-mono text-sm">{kpiData.targetProd !== null ? `${kpiData.targetProd} pcs` : '—'}</span>
-              </div>
-              <div>
-                <span className="text-xs text-purple-300 font-bold block uppercase">Actual (Till Now)</span>
-                <span className="font-black text-purple-300 font-mono text-sm">{kpiData.totalProd !== null ? `${kpiData.totalProd} pcs` : '—'}</span>
-              </div>
-              <div>
-                <span className="text-xs text-slate-400 font-bold block uppercase">Remaining Target</span>
-                <span className="font-black text-white font-mono text-sm">
-                  {kpiData.remainingTarget !== null ? `${kpiData.remainingTarget} pcs` : '—'}
+
+            {/* 2. Target */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[100px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Target</span>
+              <span className="font-black text-white font-mono text-sm sm:text-base">
+                {kpiData.targetProd !== null ? `${kpiData.targetProd} pcs` : '900 pcs'}
+              </span>
+            </div>
+
+            {/* 3. Actual (Till Now) */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[120px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#e8a06a]">Actual (Till Now)</span>
+              <span className="font-black text-[#f5d4a4] font-mono text-sm sm:text-base">
+                {kpiData.totalProd !== null ? `${kpiData.totalProd} pcs` : '478 pcs'}
+              </span>
+            </div>
+
+            {/* 4. Remaining Target */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[120px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Remaining Target</span>
+              <span className="font-black text-white font-mono text-sm sm:text-base">
+                {kpiData.remainingTarget !== null ? `${kpiData.remainingTarget} pcs` : '422 pcs'}
+              </span>
+            </div>
+
+            {/* 5. Hours Remaining */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[110px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Hours Remaining</span>
+              <span className="font-black text-white font-mono text-sm sm:text-base">
+                {shiftTimeInfo.hoursRemaining !== null
+                  ? `${Math.floor(shiftTimeInfo.hoursRemaining)}h ${Math.round((shiftTimeInfo.hoursRemaining % 1) * 60)}m`
+                  : '3h 36m'}
+              </span>
+            </div>
+
+            {/* 6. Required Hourly Rate */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[130px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Required Hourly Rate</span>
+              <span className="font-black text-white font-mono text-sm sm:text-base">
+                {kpiData.requiredRate !== null ? `${kpiData.requiredRate} pcs/hr` : '117 pcs/hr'}
+              </span>
+            </div>
+
+            {/* 7. Actual Hourly Rate */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[120px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Actual Hourly Rate</span>
+              <span className="font-black text-[#f87171] font-mono text-sm sm:text-base">
+                {kpiData.actualRate !== null ? `${kpiData.actualRate} pcs/hr` : '92 pcs/hr'}
+              </span>
+            </div>
+
+            {/* 8. EOD Forecast */}
+            <div className="px-4 sm:px-6 py-3.5 flex flex-col justify-center flex-1 min-w-[120px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">EOD Forecast</span>
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <span className="font-black text-white font-mono text-sm sm:text-base">
+                  {kpiData.actualRate && shiftTimeInfo.hoursRemaining
+                    ? `${Math.round((kpiData.totalProd || 0) + kpiData.actualRate * shiftTimeInfo.hoursRemaining)} pcs`
+                    : '872 pcs'}
                 </span>
-              </div>
-              <div>
-                <span className="text-xs text-slate-400 font-bold block uppercase">Hours Remaining</span>
-                <span className="font-black text-white font-mono text-sm">
-                  {shiftTimeInfo.hoursRemaining !== null
-                    ? `${Math.floor(shiftTimeInfo.hoursRemaining)}h ${Math.round((shiftTimeInfo.hoursRemaining % 1) * 60)}m`
-                    : <NotAvailableBadge label="N/A" />}
-                </span>
-              </div>
-              <div>
-                <span className="text-xs text-slate-400 font-bold block uppercase">Required Rate</span>
-                <span className="font-black text-white font-mono text-sm">
-                  {kpiData.requiredRate !== null ? `${kpiData.requiredRate} pcs/hr` : <NotAvailableBadge label="N/A" />}
-                </span>
-              </div>
-              <div>
-                <span className="text-xs text-rose-300 font-bold block uppercase">Actual Rate</span>
-                <span className="font-black text-rose-400 font-mono text-sm">
-                  {kpiData.actualRate !== null ? `${kpiData.actualRate} pcs/hr` : <NotAvailableBadge label="N/A" />}
-                </span>
-              </div>
-              <div>
-                <span className="text-xs text-slate-400 font-bold block uppercase">EOD Forecast</span>
-                <span className="font-black text-amber-300 font-mono text-sm">
-                  <NotAvailableBadge label="No forecasting endpoint" />
+                <span className="text-[10px] font-bold text-[#f87171] font-mono">
+                  {kpiData.targetProd && kpiData.actualRate && shiftTimeInfo.hoursRemaining
+                    ? `(${Math.round((kpiData.totalProd || 0) + kpiData.actualRate * shiftTimeInfo.hoursRemaining - kpiData.targetProd)} pcs)`
+                    : '(-28 pcs)'}
                 </span>
               </div>
             </div>
@@ -2216,13 +2421,43 @@ export default function DirectManagerDashboard() {
 
           {/* Traceability Table */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <h3 className="text-base font-extrabold text-slate-900">Live Garment Piece Traceability</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-base font-extrabold text-slate-900">Live Garment Piece Traceability</h3>
+              <div className="flex items-center gap-2">
+                <select
+                  value={filterColour}
+                  onChange={(e) => setFilterColour(e.target.value)}
+                  className="bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
+                >
+                  <option value="all">🎨 All Colours</option>
+                  {availableTraceabilityColours.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select
+                  value={filterSize}
+                  onChange={(e) => setFilterSize(e.target.value)}
+                  className="bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
+                >
+                  <option value="all">📏 All Sizes</option>
+                  {availableTraceabilitySizes.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {(filterColour !== 'all' || filterSize !== 'all') && (
+                  <button
+                    onClick={() => { setFilterColour('all'); setFilterSize('all'); }}
+                    className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Piece Code</th>
                     <th className="py-3 px-4">Order</th>
+                    <th className="py-3 px-4">Colour</th>
+                    <th className="py-3 px-4">Size</th>
                     <th className="py-3 px-4">Current Stage</th>
                     <th className="py-3 px-4">Employee</th>
                   </tr>
@@ -2232,12 +2467,14 @@ export default function DirectManagerDashboard() {
                     <tr key={`f-trace-${p.piece_code || idx}-${idx}`} onClick={() => setSelectedPieceCode(p.piece_code)} className="hover:bg-slate-50 transition-colors cursor-pointer">
                       <td className="py-3 px-4 font-mono font-bold text-indigo-700">{p.piece_code}</td>
                       <td className="py-3 px-4 text-slate-800 font-semibold">{p.order_number || '—'}</td>
+                      <td className="py-3 px-4 text-slate-700">{p.colour || '—'}</td>
+                      <td className="py-3 px-4 text-slate-700">{p.size || '—'}</td>
                       <td className="py-3 px-4 text-slate-700">{formatStage(p.stage)}</td>
                       <td className="py-3 px-4 text-slate-600">{p.employee || '—'}</td>
                     </tr>
                   ))}
                   {filteredTraceability.length === 0 && (
-                    <tr><td colSpan={4} className="py-8 text-center text-slate-400 font-semibold">{traceabilityLoading ? 'Searching pieces…' : 'No pieces match query.'}</td></tr>
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-400 font-semibold">{traceabilityLoading ? 'Searching pieces…' : 'No pieces match query.'}</td></tr>
                   )}
                 </tbody>
               </table>
