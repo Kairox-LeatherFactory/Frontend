@@ -574,6 +574,7 @@ export default function ProductionLogEntry() {
   const [closedCuttingSkus, setClosedCuttingSkus] = useState([]); // sku_code[] fully cut, closed for further scanning
 
   const [barcodePieceResolving, setBarcodePieceResolving] = useState(false);
+  const [barcodePieceValidating, setBarcodePieceValidating] = useState(false);
   const [scannedPieceDrawerInfo, setScannedPieceDrawerInfo] = useState(null); // { code, holding }
 
   // 3 Material Spec Dropdowns (Dynamic API-driven)

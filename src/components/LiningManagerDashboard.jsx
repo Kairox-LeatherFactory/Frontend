@@ -217,6 +217,7 @@ function DashboardInner() {
   const [employeesList, setEmployeesList] = useState([]);
   const [lotsList, setLotsList] = useState([]);
   const [dailyProduction, setDailyProduction] = useState([]);
+  const [upcomingList, setUpcomingList] = useState([]);
 
   // ── Piece-level lining cut log, from GET /api/v1/dashboard/lining/consumption ──
   const [piecesList, setPiecesList] = useState([]);
@@ -277,6 +278,7 @@ function DashboardInner() {
         setEmployeesList(Array.isArray(data.employees) ? data.employees : (Array.isArray(data.cutters) ? data.cutters : []));
         setLotsList(Array.isArray(data.lining_lots) ? data.lining_lots : (Array.isArray(data.lots) ? data.lots : (Array.isArray(data.rolls) ? data.rolls : [])));
         setDailyProduction(Array.isArray(data.daily_production) ? data.daily_production : (Array.isArray(data.daily_logs) ? data.daily_logs : []));
+        setUpcomingList(Array.isArray(data.upcoming) ? data.upcoming : []);
       } catch (err) {
         console.warn('Backend API /api/v1/dashboard/lining notice:', err.message);
         if (isMounted) setApiError(err.message);
@@ -433,25 +435,19 @@ function DashboardInner() {
           (p.style && p.style.toLowerCase().includes(q)) ||
           (p.employee && p.employee.toLowerCase().includes(q)) ||
           (p.order_number && p.order_number.toLowerCase().includes(q)) ||
-          (p.lining_type && p.lining_type.toLowerCase().includes(q)) ||
+          (p.leather_article && p.leather_article.toLowerCase().includes(q)) ||
           (p.colour && p.colour.toLowerCase().includes(q));
         if (!matchesQuery) return false;
       }
       if (filterStyle !== 'all' && p.style !== filterStyle) return false;
-      if (filterLot !== 'all') {
-        const selectedLotObj = lotsList.find((l) => (l.lot_id === filterLot || l.lot_number === filterLot));
-        if (selectedLotObj) {
-          const matchLotNumber = p.lot_number === selectedLotObj.lot_number;
-          const matchType = p.lining_type === selectedLotObj.lining_type;
-          const matchArticle = p.lining_article === selectedLotObj.article || p.article === selectedLotObj.article;
-          if (!matchLotNumber && !matchType && !matchArticle) return false;
-        }
-      }
+      // Note: the consumption log carries no lot_id / lining-lot identity per piece
+      // (see meta.unsupported.lining_allocation) — the Lot filter only narrows the
+      // Inventory tab (visibleLots / filteredLotChartData), not this piece list.
       if (filterStage !== 'all' && (p.stage !== filterStage && p.current_stage !== filterStage && p.status !== filterStage)) return false;
       if (filterSize !== 'all' && p.size !== filterSize) return false;
       return true;
     });
-  }, [piecesList, lotsList, searchQuery, filterStyle, filterLot, filterStage, filterSize]);
+  }, [piecesList, searchQuery, filterStyle, filterStage, filterSize]);
 
   // Paginated pieces
   const paginatedPieces = useMemo(() => {
@@ -557,33 +553,39 @@ function DashboardInner() {
     return { rows, stageKeys };
   }, [currentOrder]);
 
+  // Pieces that have finished cutting and are queued for lining — from data.upcoming
+  const filteredUpcoming = useMemo(() => {
+    return upcomingList.filter((u) => filterOrder === 'all' || u.order_id === filterOrder);
+  }, [upcomingList, filterOrder]);
+
+  const upcomingStatusCls = (status) => {
+    const s = String(status || '').toUpperCase();
+    if (s === 'DONE') return 'bg-emerald-100 text-emerald-800';
+    if (s === 'PENDING') return 'bg-amber-100 text-amber-800';
+    return 'bg-slate-100 text-slate-500';
+  };
+
   const anyPieceFilterActive =
     filterStyle !== 'all' || filterStage !== 'all' || filterSize !== 'all' || searchQuery !== '' ||
     filterEmployee !== 'all' || filterDate !== 'all';
 
+  // Lots carry no per-piece linkage in the consumption log, so the Lot filter can
+  // only select a specific lot directly — it cannot be inferred from piece filters.
   const visibleLots = useMemo(() => {
     if (filterLot !== 'all') return lotsList.filter((l) => (l.lot_id === filterLot || l.lot_number === filterLot));
-    if (!anyPieceFilterActive) return lotsList;
-    const touched = new Set(filteredPieces.map((p) => `${p.lining_type}::${p.colour || p.color || ''}`));
-    return lotsList.filter((l) => touched.has(`${l.lining_type}::${l.colour || l.color || ''}`) || touched.has(`${l.article}::${l.colour || l.color || ''}`));
-  }, [lotsList, filterLot, anyPieceFilterActive, filteredPieces]);
+    return lotsList;
+  }, [lotsList, filterLot]);
 
   const filteredLotChartData = useMemo(() => {
-    const consumedInFilter = new Map();
-    filteredPieces.forEach((p) => {
-      const key = `${p.lining_type || p.article || 'Lining'} · ${p.colour || p.color || 'Standard'}`;
-      if (typeof p.actual_consumption !== 'number') return;
-      consumedInFilter.set(key, (consumedInFilter.get(key) || 0) + p.actual_consumption);
-    });
     return visibleLots.map((l) => {
       const label = `${l.lining_type || l.article || 'Lining'} · ${l.colour || l.color || 'Standard'}`;
       return {
         label,
         available: l.available || l.total_stock_meters || l.total_stock_dcm || 0,
-        consumed_in_filter: consumedInFilter.get(label) || l.used || 0,
+        used: l.used || 0,
       };
     });
-  }, [visibleLots, filteredPieces]);
+  }, [visibleLots]);
 
   const visibleEmployees = useMemo(() => {
     if (filterEmployee === 'all') return employeesList;
@@ -618,13 +620,13 @@ function DashboardInner() {
   const handleExportCSV = () => {
     const headers = [
       'Piece Code', 'Work Date', 'Order #', 'Style', 'Size', 'Colour',
-      'Lining Type', 'Thickness', 'Operator', 'Stage',
+      'Leather Article', 'Thickness', 'Operator', 'Stage',
       'Actual DCM', 'Expected DCM', 'Variance DCM',
     ];
 
     const rows = filteredPieces.map((p) => [
       p.piece_code, p.work_date || p.last_worked, p.order_number, p.style, p.size, p.colour || p.color,
-      p.lining_type || p.lining_article, p.thickness, p.employee, p.stage || p.current_stage || p.status,
+      p.leather_article, p.thickness, p.employee, p.stage || p.current_stage || p.status,
       p.actual_consumption, p.expected_consumption, p.variance,
     ]);
 
@@ -646,7 +648,13 @@ function DashboardInner() {
   const totalOrderPieces = productionKpis?.total_order_pieces ?? currentOrder?.total_pieces ?? 0;
   const overallCompleted = productionKpis?.overall_completed ?? 0;
   const overallPending = productionKpis?.overall_pending ?? 0;
-  const mintedPieces = productionKpis?.minted_pieces ?? 0;
+  // production_kpis has no top-level minted_pieces field — derive it from the
+  // per-style minted counts on current_order, which the backend does return.
+  const mintedPieces = useMemo(
+    () => (currentOrder?.styles || []).reduce((acc, s) => acc + (s.minted || 0), 0),
+    [currentOrder]
+  );
+  const liningRequiredPieces = productionKpis?.lining_required_pieces ?? null;
   const damagePieces = productionKpis?.damage_pieces ?? 0;
   const reworkPieces = productionKpis?.rework_pieces ?? 0;
 
@@ -909,7 +917,7 @@ function DashboardInner() {
                   {currentOrder?.total_pieces ?? totalOrderPieces} pcs ordered
                 </h2>
                 <p className="text-xs font-semibold text-slate-600 mt-0.5">
-                  {(currentOrder?.styles || []).length} styles in this order
+                  {(currentOrder?.styles || []).length} styles &bull; <span className="text-emerald-600">{currentOrder?.completed ?? 0} completed</span> &bull; <span className="text-amber-600">{currentOrder?.pending ?? 0} pending</span> in this order
                 </p>
               </div>
 
@@ -1017,6 +1025,12 @@ function DashboardInner() {
                 <span>Completed: <strong className="text-emerald-600">{overallCompleted}</strong></span>
                 <span>Pending: <strong className="text-amber-600">{overallPending}</strong></span>
               </div>
+              {liningRequiredPieces !== null && (
+                <div className="mt-1.5 flex justify-between text-[11px] text-slate-500 font-semibold">
+                  <span>Lining-Required Pieces:</span>
+                  <strong className="text-rose-600">{liningRequiredPieces}</strong>
+                </div>
+              )}
             </div>
 
             {/* KPI 2: Avg DCM / piece */}
@@ -1044,12 +1058,16 @@ function DashboardInner() {
               <span className="text-xs font-semibold text-slate-500">Lining Consumed vs Stock</span>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-2xl font-black text-slate-900">
-                  {typeof liningKpis?.consumed_lining === 'number' ? `${liningKpis.consumed_lining.toLocaleString()} DCM` : `${(liningKpis?.consumed_leather ?? 0).toLocaleString()} DCM`}
+                  {(liningKpis?.used_lining ?? 0).toLocaleString()} DCM
                 </span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
                 <span>Total Stock: <strong>{(liningKpis?.total_available_lining ?? liningKpis?.total_available_leather ?? 0).toLocaleString()}</strong></span>
                 <span>Remaining: <strong className="text-emerald-600">{(liningKpis?.remaining_lining ?? liningKpis?.remaining_leather ?? 0).toLocaleString()}</strong></span>
+              </div>
+              <div className="mt-1.5 flex justify-between items-center text-[11px] text-slate-500 font-semibold">
+                <span>Allocated:</span>
+                {typeof liningKpis?.allocated_lining === 'number' ? <strong className="text-blue-700">{liningKpis.allocated_lining.toLocaleString()}</strong> : <NotAvailableBadge label="N/A" />}
               </div>
             </div>
 
@@ -1064,7 +1082,7 @@ function DashboardInner() {
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between items-center text-xs text-slate-600 font-semibold">
                 <span>Waste:</span>
-                <NotAvailableBadge />
+                {typeof liningKpis?.total_lining_waste === 'number' ? <strong className="text-red-600">{liningKpis.total_lining_waste.toLocaleString()} DCM</strong> : <NotAvailableBadge />}
               </div>
             </div>
           </div>
@@ -1120,6 +1138,64 @@ function DashboardInner() {
               </div>
             </div>
           </div>
+
+          {/* CUTTING → LINING HANDOFF QUEUE (from data.upcoming) */}
+          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-extrabold text-slate-900">Upcoming: Awaiting Lining</h3>
+                <p className="text-xs text-slate-500">Size/colour groups where cutting is complete but lining hasn&rsquo;t started yet, straight from the backend queue</p>
+              </div>
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-rose-50 text-[#e11d48] border border-rose-200">
+                {filteredUpcoming.length} groups queued
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
+                    <th className="py-3 px-4">Order #</th>
+                    <th className="py-3 px-4">Style</th>
+                    <th className="py-3 px-4">Article</th>
+                    <th className="py-3 px-4">Colour</th>
+                    <th className="py-3 px-4">Thickness</th>
+                    <th className="py-3 px-4">Size</th>
+                    <th className="py-3 px-4 text-right">Expected Qty</th>
+                    <th className="py-3 px-4">Target Date</th>
+                    <th className="py-3 px-4 text-center">Cutting</th>
+                    <th className="py-3 px-4 text-center">Lining</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {filteredUpcoming.map((u, idx) => (
+                    <tr key={`${u.order_id}-${u.style_id}-${u.colour}-${u.size}-${idx}`} className="hover:bg-rose-50/70 transition-all">
+                      <td className="py-3 px-4 font-mono text-slate-600">{u.order_number}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900">{u.style}</td>
+                      <td className="py-3 px-4">{u.article || '—'}</td>
+                      <td className="py-3 px-4">{u.colour || '—'}</td>
+                      <td className="py-3 px-4 font-mono">{u.thickness || '—'}</td>
+                      <td className="py-3 px-4 font-bold">{u.size}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-800">{u.expected_qty ?? 0}</td>
+                      <td className="py-3 px-4">{u.target_date || '—'}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${upcomingStatusCls(u.cutting_status)}`}>{u.cutting_status || '—'}</span>
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${upcomingStatusCls(u.lining_status)}`}>{u.lining_status || '—'}</span>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredUpcoming.length === 0 && (
+                    <tr>
+                      <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">
+                        {upcomingList.length === 0 ? 'No pieces currently queued for lining.' : 'No queued pieces match the current order filter.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </motion.div>
       )}
 
@@ -1152,6 +1228,7 @@ function DashboardInner() {
                     <th className="py-3 px-4 text-right">Pending</th>
                     <th className="py-3 px-4 text-right">Completion %</th>
                     <th className="py-3 px-4 text-center">Delay Status</th>
+                    <th className="py-3 px-4">Order Date / Deadline</th>
                     <th className="py-3 px-4 text-right">Actual Avg (DCM)</th>
                     <th className="py-3 px-4 text-center">Action</th>
                   </tr>
@@ -1188,6 +1265,9 @@ function DashboardInner() {
                               {s.delay_status ? String(s.delay_status).replace(/_/g, ' ') : '—'}
                             </span>
                           </td>
+                          <td className="py-3.5 px-4 font-mono text-slate-600 text-[11px]">
+                            {s.order_date || '—'} / {s.delivery_deadline || '—'}
+                          </td>
                           <td className="py-3.5 px-4 text-right font-mono font-extrabold text-[#e11d48]">
                             {avgDcm !== null ? `${avgDcm.toFixed(1)} DCM` : '—'}
                           </td>
@@ -1204,7 +1284,7 @@ function DashboardInner() {
                     })}
                   {orderProgress.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="text-center py-8 text-slate-400 font-medium">No style/order progress data returned for this filter.</td>
+                      <td colSpan={12} className="text-center py-8 text-slate-400 font-medium">No style/order progress data returned for this filter.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1327,6 +1407,7 @@ function DashboardInner() {
                     <th className="py-3 px-4 text-right">Allocated</th>
                     <th className="py-3 px-4 text-right">Consumed</th>
                     <th className="py-3 px-4 text-right">Remaining</th>
+                    <th className="py-3 px-4 text-right">Pieces Lined</th>
                     <th className="py-3 px-4 text-center">Status</th>
                     <th className="py-3 px-4 text-center">Action</th>
                   </tr>
@@ -1343,11 +1424,12 @@ function DashboardInner() {
                         <td className="py-3.5 px-4 font-mono">{lot.thickness || '—'}</td>
                         <td className="py-3.5 px-4 uppercase text-slate-500">{lot.uom || 'MTRS'}</td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{(lot.available ?? lot.total_stock_meters ?? 0).toLocaleString()}</td>
-                        <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{lot.allocated !== undefined ? `${lot.allocated}` : <NotAvailableBadge />}</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{typeof lot.allocated === 'number' ? lot.allocated : <NotAvailableBadge />}</td>
                         <td className="py-3.5 px-4 text-right font-mono text-purple-700 font-bold">{(lot.used ?? lot.consumed ?? 0).toLocaleString()}</td>
                         <td className={`py-3.5 px-4 text-right font-mono font-black ${(lot.remaining ?? 0) < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                           {(lot.remaining ?? 0).toLocaleString()}
                         </td>
+                        <td className="py-3.5 px-4 text-right font-mono text-slate-600">{lot.pieces_lined ?? 0}</td>
                         <td className="py-3.5 px-4 text-center">
                           <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${status.cls}`}>{status.label}</span>
                         </td>
@@ -1364,7 +1446,7 @@ function DashboardInner() {
                   })}
                   {visibleLots.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="text-center py-8 text-slate-400 font-medium">
+                      <td colSpan={13} className="text-center py-8 text-slate-400 font-medium">
                         {lotsList.length === 0 ? 'No lining inventory lots recorded.' : 'No lots match the current filters.'}
                       </td>
                     </tr>
@@ -1380,8 +1462,8 @@ function DashboardInner() {
 
           {/* Lot Stock vs Consumption Chart */}
           <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <h3 className="text-sm font-extrabold text-slate-900 mb-1">Lot Stock vs Consumption (filtered)</h3>
-            <p className="text-xs text-slate-500 mb-4">Available stock vs consumed within active filter window</p>
+            <h3 className="text-sm font-extrabold text-slate-900 mb-1">Lot Stock vs Consumption</h3>
+            <p className="text-xs text-slate-500 mb-4">Available stock vs total consumed per lot, straight from the backend ledger</p>
             <div className="h-[280px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={filteredLotChartData}>
@@ -1391,7 +1473,7 @@ function DashboardInner() {
                   <Tooltip content={<CustomTooltip unit="DCM / MTRS" />} />
                   <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
                   <Bar dataKey="available" name="Available Stock" fill="#e11d48" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="consumed_in_filter" name="Consumed in Filter" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="used" name="Used" fill="#f59e0b" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -1413,7 +1495,7 @@ function DashboardInner() {
           <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5">
             {visibleEmployees.map((emp, idx) => {
               const inFilter = employeeFilteredStats.get(emp.name);
-              const dcmPerPiece = emp.assigned_pieces ? ((emp.consumed_lining || emp.consumed_leather || 0) / emp.assigned_pieces).toFixed(1) : '—';
+              const dcmPerPiece = emp.assigned_pieces ? ((emp.used_lining || 0) / emp.assigned_pieces).toFixed(1) : '—';
               return (
                 <div
                   key={emp.employee_id || emp.id || idx}
@@ -1422,9 +1504,13 @@ function DashboardInner() {
                 >
                   <div>
                     <div className="flex items-center gap-3 mb-4">
-                      <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#e11d48] to-[#be123c] flex items-center justify-center text-white font-black text-sm">
-                        {initials(emp.name)}
-                      </div>
+                      {emp.photo ? (
+                        <img src={emp.photo} alt={emp.name} className="w-12 h-12 rounded-full object-cover border border-slate-200" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#e11d48] to-[#be123c] flex items-center justify-center text-white font-black text-sm">
+                          {initials(emp.name)}
+                        </div>
+                      )}
                       <div>
                         <h4 className="text-sm font-extrabold text-slate-900">{emp.name}</h4>
                         <p className="text-xs text-slate-500">{emp.designation || emp.role || 'Lining Operator'}</p>
@@ -1437,8 +1523,12 @@ function DashboardInner() {
                         <div className="text-base font-black text-slate-900">{emp.assigned_today ?? emp.assigned_pieces ?? 0} pcs</div>
                       </div>
                       <div className="bg-[#f8fafc] p-2.5 rounded-xl">
+                        <span className="text-[10px] text-slate-500">Completed Today</span>
+                        <div className="text-base font-black text-emerald-700">{emp.completed_today ?? 0} pcs</div>
+                      </div>
+                      <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                         <span className="text-[10px] text-slate-500">DCM Consumed</span>
-                        <div className="text-base font-black text-[#e11d48]">{emp.consumed_lining ?? emp.consumed_leather ?? 0} DCM</div>
+                        <div className="text-base font-black text-[#e11d48]">{emp.used_lining ?? 0} DCM</div>
                       </div>
                       <div className="bg-[#f8fafc] p-2.5 rounded-xl">
                         <span className="text-[10px] text-slate-500">DCM / Piece</span>
@@ -1452,7 +1542,9 @@ function DashboardInner() {
 
                     <div className="flex items-center justify-between text-[11px] font-bold px-0.5">
                       <span className="text-slate-400">Daily Target</span>
-                      {typeof emp.daily_target === 'number' ? <span className="text-slate-800">{emp.daily_target} pcs</span> : <NotAvailableBadge label="N/A" />}
+                      {typeof emp.daily_target === 'number'
+                        ? <span className="text-slate-800">{emp.daily_target} pcs</span>
+                        : <span title={meta?.unsupported?.employee_target_photo}><NotAvailableBadge label="N/A" /></span>}
                     </div>
 
                     <div className="mt-1 p-2.5 rounded-xl bg-rose-50/70 border border-rose-100 flex items-center justify-between text-[11px] font-bold">
@@ -1511,6 +1603,9 @@ function DashboardInner() {
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Piece-Level Master Traceability Tracker</h3>
                 <p className="text-xs text-slate-500">Every logged lining cut event with actual consumption, operator, and current stage</p>
+                {meta?.unsupported?.lining_single_event && (
+                  <p className="text-[10px] text-slate-400 font-medium mt-1 flex items-center gap-1"><Info className="w-3 h-3" />{meta.unsupported.lining_single_event}</p>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-500">Rows per page:</span>
@@ -1534,7 +1629,7 @@ function DashboardInner() {
                     <th className="py-3 px-4">Order #</th>
                     <th className="py-3 px-4">Style</th>
                     <th className="py-3 px-4">Size</th>
-                    <th className="py-3 px-4">Lining Type</th>
+                    <th className="py-3 px-4">Leather Article</th>
                     <th className="py-3 px-4">Operator</th>
                     <th className="py-3 px-4">Stage</th>
                     <th className="py-3 px-4 text-right">Actual Consumed</th>
@@ -1550,7 +1645,10 @@ function DashboardInner() {
                       <td className="py-3.5 px-4 font-mono text-slate-600">{p.order_number}</td>
                       <td className="py-3.5 px-4 font-bold text-slate-800">{p.style}</td>
                       <td className="py-3.5 px-4 font-bold text-slate-700">{p.size}</td>
-                      <td className="py-3.5 px-4 font-semibold text-rose-700">{p.lining_type || '—'}</td>
+                      <td className="py-3.5 px-4 font-semibold text-rose-700">
+                        {p.leather_article || '—'}
+                        {p.thickness && <span className="block text-[10px] text-slate-400 font-mono font-normal">{p.thickness} mm</span>}
+                      </td>
                       <td className="py-3.5 px-4 text-slate-800">{p.employee}</td>
                       <td className="py-3.5 px-4 font-bold text-blue-700">{formatStage(p.stage || p.current_stage || p.status)}</td>
                       <td className="py-3.5 px-4 text-right font-mono font-bold text-[#e11d48]">
@@ -1686,12 +1784,19 @@ function DashboardInner() {
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
               <h3 className="text-sm font-extrabold text-slate-900 mb-1">Lining Waste Loss Breakdown (DCM)</h3>
               <p className="text-xs text-slate-500 mb-4">Total waste distribution across patterns, trimmings, and off-cuts</p>
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 py-10">
-                <NotAvailableBadge label="Waste tracking not available yet" />
-                <p className="text-[11px] text-slate-400 text-center max-w-xs">
-                  {meta?.unsupported?.expected_consumption || 'Consumption baseline is configured per style pattern.'}
-                </p>
-              </div>
+              {typeof liningKpis?.total_lining_waste === 'number' ? (
+                <div className="flex-1 flex flex-col items-center justify-center gap-2 py-10">
+                  <span className="text-3xl font-black text-red-600">{liningKpis.total_lining_waste.toLocaleString()} DCM</span>
+                  <span className="text-xs text-slate-500 font-semibold">Total lining waste (material_kpis)</span>
+                </div>
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center gap-3 py-10">
+                  <NotAvailableBadge label="Waste tracking not available yet" />
+                  <p className="text-[11px] text-slate-400 text-center max-w-xs">
+                    {meta?.unsupported?.expected_consumption || 'Consumption baseline is configured per style pattern.'}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
@@ -1731,7 +1836,7 @@ function DashboardInner() {
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             {[
               { title: '1. Order', desc: currentOrder ? `${currentOrder.order_number} / ${currentOrder.client || 'Client'}` : '—', icon: '📦', color: 'bg-blue-50 text-blue-700' },
-              { title: '2. Style', desc: currentOrder?.styles?.[0] ? `${currentOrder.styles[0].style_name || currentOrder.styles[0].name}` : '—', icon: '👗', color: 'bg-purple-50 text-purple-700' },
+              { title: '2. Style', desc: currentOrder?.styles?.[0] ? `${currentOrder.styles[0].style_name || currentOrder.styles[0].name}${currentOrder.styles[0].thickness ? ` (${currentOrder.styles[0].thickness})` : ''}` : '—', icon: '👗', color: 'bg-purple-50 text-purple-700' },
               { title: '3. Lining Roll', desc: lotsList[0] ? `${lotsList[0].lining_type || lotsList[0].article || 'Lining'} · ${lotsList[0].colour || 'Std'}` : '—', icon: '🧵', color: 'bg-rose-50 text-rose-700' },
               { title: '4. Lining Cut', desc: employeesList.length ? employeesList.slice(0, 2).map((c) => c.name).join(' / ') : '—', icon: '✂️', color: 'bg-amber-50 text-amber-700' },
               { title: '5. Completion', desc: `${overallCompleted} / ${totalOrderPieces} completed`, icon: '✅', color: 'bg-green-50 text-green-700' },
@@ -1799,7 +1904,7 @@ function DashboardInner() {
 
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold space-y-0.5">
                 <p>Order: <strong>{selectedPieceModal.order_number}</strong> &bull; Style: <strong>{selectedPieceModal.style}</strong> &bull; Size: <strong>{selectedPieceModal.size}</strong></p>
-                <p>Operator: <strong>{selectedPieceModal.employee}</strong> &bull; Lining: <strong>{selectedPieceModal.lining_type || selectedPieceModal.lining_article || '—'} / {selectedPieceModal.colour || selectedPieceModal.color || '—'}</strong></p>
+                <p>Operator: <strong>{selectedPieceModal.employee}</strong> &bull; Leather: <strong>{selectedPieceModal.leather_article || '—'} / {selectedPieceModal.colour || selectedPieceModal.color || '—'} / {selectedPieceModal.thickness || '—'} mm</strong></p>
               </div>
             </motion.div>
           </div>
@@ -1820,9 +1925,13 @@ function DashboardInner() {
             >
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#e11d48] to-[#be123c] flex items-center justify-center text-white font-black text-xs">
-                    {initials(selectedEmployeeModal.name)}
-                  </div>
+                  {selectedEmployeeModal.photo ? (
+                    <img src={selectedEmployeeModal.photo} alt={selectedEmployeeModal.name} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#e11d48] to-[#be123c] flex items-center justify-center text-white font-black text-xs">
+                      {initials(selectedEmployeeModal.name)}
+                    </div>
+                  )}
                   <div>
                     <h3 className="text-sm font-extrabold text-slate-900">{selectedEmployeeModal.name}</h3>
                     <p className="text-xs text-slate-500">{selectedEmployeeModal.designation || selectedEmployeeModal.role || 'Lining Operator'} &bull; Assigned: {selectedEmployeeModal.assigned_pieces ?? 0} pcs</p>
@@ -1902,9 +2011,10 @@ function DashboardInner() {
                   ['Thickness', selectedLotModal.thickness],
                   ['UOM', selectedLotModal.uom || 'MTRS'],
                   ['Available', `${selectedLotModal.available || selectedLotModal.total_stock_meters || 0} ${selectedLotModal.uom || 'MTRS'}`],
-                  ['Allocated', selectedLotModal.allocated !== undefined ? `${selectedLotModal.allocated} ${selectedLotModal.uom || 'MTRS'}` : '—'],
+                  ['Allocated', typeof selectedLotModal.allocated === 'number' ? `${selectedLotModal.allocated} ${selectedLotModal.uom || 'MTRS'}` : '—'],
                   ['Used', `${selectedLotModal.used || selectedLotModal.consumed || 0} ${selectedLotModal.uom || 'MTRS'}`],
                   ['Remaining', `${selectedLotModal.remaining || 0} ${selectedLotModal.uom || 'MTRS'}`],
+                  ['Pieces Lined', selectedLotModal.pieces_lined ?? '—'],
                   ['Supplier', selectedLotModal.supplier || '—'],
                 ].map(([label, value]) => (
                   <div key={label} className="flex justify-between py-1.5 border-b border-slate-100">
