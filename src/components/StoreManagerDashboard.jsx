@@ -688,8 +688,8 @@ function StoreDashboardContent() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
             >
               <option value="all">👗 All Styles</option>
-              {availableStyles.map((s) => (
-                <option key={s.id || s.name} value={s.name || s.id}>
+              {availableStyles.map((s, idx) => (
+                <option key={`store-style-${s.id || s.name}-${idx}`} value={s.name || s.id}>
                   {s.name}
                 </option>
               ))}
@@ -1672,8 +1672,8 @@ function StoreDashboardContent() {
                     required
                     className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
                   >
-                    {drawersList.slice(0, 15).map((d) => (
-                      <option key={d.drawer_code} value={d.drawer_code}>
+                    {drawersList.slice(0, 15).map((d, idx) => (
+                      <option key={`store-drw-opt-${d.drawer_code || d.id || idx}-${idx}`} value={d.drawer_code}>
                         {d.drawer_code} ({d.style} - {d.contents})
                       </option>
                     ))}

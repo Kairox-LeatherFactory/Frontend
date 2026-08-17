@@ -274,10 +274,6 @@ export default function DashboardLayout({ children }) {
         href: '/dashboard',
       },
       {
-        name: 'Direct Manager Flow',
-        href: '/dashboard/direct-manager',
-      },
-      {
         name: 'Analytics & Alerts',
         href: '/dashboard/analytics',
       },
@@ -333,13 +329,19 @@ export default function DashboardLayout({ children }) {
       },
     ];
 
+    // "Dashboard Home" (/dashboard) already routes Direct Manager/Managing
+    // Director/HR straight to DirectManagerDashboard (see dashboard/page.js)
+    // — the same component /dashboard/direct-manager rendered, so that
+    // second sidebar entry was a duplicate and has been removed above.
+    const scoped = links;
+
     if (user === 'security') {
-      return links.filter(
+      return scoped.filter(
         (link) => link.name === 'Attendance'
       );
     }
 
-    return links;
+    return scoped;
   }, [user]);
 
   // --------------------------------------------------

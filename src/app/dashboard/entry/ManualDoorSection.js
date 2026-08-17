@@ -243,6 +243,8 @@ export default function ManualDoorSection({
   const [showChecklistModal, setShowChecklistModal] = useState(false);
   const [checklistPieces, setChecklistPieces] = useState([]);
   const [selectedPieces, setSelectedPieces] = useState([]);
+  const [rangeFrom, setRangeFrom] = useState('');
+  const [rangeTo, setRangeTo] = useState('');
   const [loadingPieces, setLoadingPieces] = useState(false);
   const [piecesMeta, setPiecesMeta] = useState(null);
   const [checklistError, setChecklistError] = useState('');
@@ -749,6 +751,7 @@ export default function ManualDoorSection({
     const skuObj = fetchedSkus.find(s => s.code === skuCode);
     if (!opRecord || !skuObj) return setErrorMsg("Operation or SKU invalid");
     setLoadingPieces(true); setShowChecklistModal(true);
+    setRangeFrom(''); setRangeTo('');
     try {
       const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
       let piecesArr = Array.isArray(data) ? data : (data.pieces || []);
@@ -1560,9 +1563,21 @@ export default function ManualDoorSection({
                       return p.eligible !== undefined ? p.eligible : true;
                     };
 
+                    const handleSelectRange = () => {
+                      const from = parseInt(rangeFrom, 10);
+                      const to = parseInt(rangeTo, 10);
+                      if (isNaN(from) || isNaN(to)) return;
+                      const lo = Math.min(from, to);
+                      const hi = Math.max(from, to);
+                      const rangeSeqs = checklistPieces
+                        .filter(p => p.seq >= lo && p.seq <= hi && isPieceEligible(p))
+                        .map(p => p.seq);
+                      setSelectedPieces(prev => Array.from(new Set([...prev, ...rangeSeqs])));
+                    };
+
                     return (
                       <>
-                        <div className="col-span-2 sm:col-span-3 flex gap-2 mb-2">
+                        <div className="col-span-2 sm:col-span-3 flex flex-wrap items-center gap-2 mb-2">
                           <button
                             type="button"
                             onClick={() => {
@@ -1582,6 +1597,39 @@ export default function ManualDoorSection({
                           >
                             Deselect All
                           </button>
+
+                          {/* Range Select: e.g. 001 to 009 — picks every eligible piece
+                              in that seq range instead of tapping each one individually. */}
+                          <div className="flex items-center gap-1.5 ml-auto">
+                            <input
+                              type="number"
+                              min="1"
+                              inputMode="numeric"
+                              placeholder="001"
+                              value={rangeFrom}
+                              onChange={(e) => setRangeFrom(e.target.value)}
+                              className="w-14 h-7 px-2 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700 text-center focus:outline-none focus:border-[#c8834a]"
+                            />
+                            <span className="text-[10px] font-bold text-slate-400">to</span>
+                            <input
+                              type="number"
+                              min="1"
+                              inputMode="numeric"
+                              placeholder="009"
+                              value={rangeTo}
+                              onChange={(e) => setRangeTo(e.target.value)}
+                              className="w-14 h-7 px-2 rounded-lg border border-slate-200 text-[11px] font-bold text-slate-700 text-center focus:outline-none focus:border-[#c8834a]"
+                            />
+                            <button
+                              type="button"
+                              onClick={handleSelectRange}
+                              disabled={rangeFrom === '' || rangeTo === ''}
+                              className="text-[10px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                              style={{ background: 'rgba(99,102,241,0.12)', color: '#4f46e5' }}
+                            >
+                              Select Range
+                            </button>
+                          </div>
                         </div>
 
                         {checklistPieces.map((piece) => {

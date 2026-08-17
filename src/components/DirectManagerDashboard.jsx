@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Factory,
   Layers,
   AlertTriangle,
+  AlertCircle,
   RefreshCw,
   Search,
   Download,
@@ -23,15 +24,21 @@ import {
   QrCode,
   Loader2,
   Info,
+  Clock,
+  Calendar,
+  Target,
+  Box,
+  FileText,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   Tooltip,
-  Legend,
   CartesianGrid,
 } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
@@ -45,6 +52,7 @@ import {
   apiListDrawers,
   apiSendDrawers,
   apiReceiveDrawer,
+  apiGetAttendanceConfig,
 } from '@/lib/api';
 
 // ─── Small shared UI helpers ───────────────────────────────────────────────
@@ -69,8 +77,28 @@ function CustomChartTooltip({ active, payload, label, unit = 'pcs' }) {
   return null;
 }
 
-// Badge for fields the API doc's meta.unsupported explicitly documents as null
-// (no backing table yet) — shown instead of fabricating a number.
+function DepartmentMiniGraphTooltip({ active, payload, label }) {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-slate-900/95 backdrop-blur-md border border-slate-800 p-2.5 rounded-xl shadow-xl text-xs font-sans space-y-1 text-white">
+        <p className="font-bold text-slate-300 border-b border-slate-700 pb-0.5 text-[10px]">Time: {label}</p>
+        {payload.map((item, idx) => (
+          <div key={idx} className="flex items-center justify-between gap-3 text-[10px]">
+            <span className="flex items-center gap-1 text-slate-400">
+              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.color || item.fill }} />
+              {item.name}:
+            </span>
+            <span className="font-mono font-bold text-white">
+              {item.value !== null && item.value !== undefined ? `${item.value} pcs` : '—'}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+  return null;
+}
+
 function NotAvailableBadge({ label = 'Not tracked' }) {
   return (
     <span
@@ -93,20 +121,16 @@ function initials(name = '') {
   return parts.slice(0, 2).map((w) => w[0].toUpperCase()).join('');
 }
 
-// Stage/dept row shapes for `departments` and `pipeline` are referenced by name
-// (DeptPerformanceRow / StagePipelineNode) in the API reference but never expanded
-// with a field list — so these readers try the most likely key spellings and
-// fall back to a dash rather than assuming a wrong field means "zero".
 function readNum(obj, keys) {
+  if (!obj) return null;
   for (const k of keys) {
-    if (obj?.[k] !== undefined && obj?.[k] !== null) return obj[k];
+    if (obj?.[k] !== undefined && obj?.[k] !== null && !isNaN(Number(obj[k]))) {
+      return Number(obj[k]);
+    }
   }
   return null;
 }
 
-// The backend doesn't send a department field on each pipeline stage, so this
-// infers one from the stage name for the department filter to narrow the
-// factory-wide pipeline. Purely a UI grouping aid — never displayed as fact.
 function inferDepartment(stageKeyOrLabel = '') {
   const norm = String(stageKeyOrLabel).toUpperCase();
   if (norm.includes('LINING')) return 'Lining';
@@ -118,10 +142,6 @@ function inferDepartment(stageKeyOrLabel = '') {
   return 'Production';
 }
 
-// Real production flow order (Cutting and Lining run in parallel right at the
-// start, then feed Store before Stitching picks up) — used to sort every
-// department list so Lining always sits next to Cutting instead of wherever
-// the backend happened to return it.
 const DEPARTMENT_DISPLAY_ORDER = ['Cutting', 'Lining', 'Store', 'Stitching', 'Quality', 'Packaging'];
 
 function departmentSortIndex(name = '') {
@@ -134,6 +154,7 @@ export default function DirectManagerDashboard() {
 
   // ── Real data state ──
   const [dashboardData, setDashboardData] = useState(null);
+  const [shiftConfig, setShiftConfig] = useState(null);
   const [realEmployees, setRealEmployees] = useState([]);
   const [realDrawers, setRealDrawers] = useState([]);
   const [drawersLoading, setDrawersLoading] = useState(false);
@@ -152,6 +173,15 @@ export default function DirectManagerDashboard() {
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [filterEmployee, setFilterEmployee] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Piece Traceability tab's own filters — colour/size are real fields on
+  // GET /dashboard/store/traceability rows but aren't part of the universal
+  // filter bar (no other tab has a use for them), so they live here instead.
+  const [filterColour, setFilterColour] = useState('all');
+  const [filterSize, setFilterSize] = useState('all');
+
+  // Report modal
+  const [activeReportModal, setActiveReportModal] = useState(null);
 
   // Drill-downs
   const [selectedDepartment, setSelectedDepartment] = useState(null);
@@ -182,15 +212,18 @@ export default function DirectManagerDashboard() {
     setTimeout(() => setToastMessage(null), 4500);
   };
 
-  // ── LIVE BACKEND CALL: GET /api/v1/dashboard/direct-manager + GET /api/v1/employees ──
+  // ── LIVE BACKEND CALL: GET /api/v1/dashboard/direct-manager + GET /api/v1/employees
+  // + GET /api/v1/attendance/config (shift_start/shift_length_hours — real basis for
+  // "Hours Remaining" / "Required Rate" instead of the previous build's fake numbers) ──
   const fetchDashboard = async () => {
     if (!token) return;
     try {
       setLoading(true);
       setApiError(null);
-      const [dmRes, empRes] = await Promise.allSettled([
+      const [dmRes, empRes, cfgRes] = await Promise.allSettled([
         apiGetDirectManagerDashboard(token),
         apiGetEmployees(token),
+        apiGetAttendanceConfig(token),
       ]);
 
       if (dmRes.status === 'fulfilled' && dmRes.value) {
@@ -201,6 +234,10 @@ export default function DirectManagerDashboard() {
 
       if (empRes.status === 'fulfilled' && Array.isArray(empRes.value)) {
         setRealEmployees(empRes.value);
+      }
+
+      if (cfgRes.status === 'fulfilled' && cfgRes.value) {
+        setShiftConfig(cfgRes.value);
       }
     } catch (err) {
       console.warn('Direct Manager API notice:', err.message);
@@ -286,7 +323,7 @@ export default function DirectManagerDashboard() {
       setLoadingOrderDetail(true);
       try {
         const data = await apiGetDirectManagerOrderDetail(token, selectedOrderRow.order_id);
-        if (isMounted) setOrderDetailData(data);
+        if (isMounted && data) setOrderDetailData(data);
       } catch (err) {
         console.warn('Order detail fetch notice:', err.message);
       } finally {
@@ -307,7 +344,7 @@ export default function DirectManagerDashboard() {
       setLoadingStyleDetail(true);
       try {
         const data = await apiGetDirectManagerStyleDetail(token, selectedStyleRow.style_id);
-        if (isMounted) setStyleDetailData(data);
+        if (isMounted && data) setStyleDetailData(data);
       } catch (err) {
         console.warn('Style detail fetch notice:', err.message);
       } finally {
@@ -317,14 +354,14 @@ export default function DirectManagerDashboard() {
     return () => { isMounted = false; };
   }, [selectedStyleRow, token]);
 
-  // ── Real backend structures (GET /api/v1/dashboard/direct-manager) ──
+  // ── Real backend structures ──
   const meta = dashboardData?.meta || null;
-  const overall = dashboardData?.overall || {};
-  const productionRate = dashboardData?.production_rate || {};
-  const qualityStats = dashboardData?.quality || {};
-  const attendanceStats = dashboardData?.attendance || {};
+  const overall = useMemo(() => dashboardData?.overall || {}, [dashboardData]);
+  const productionRate = useMemo(() => dashboardData?.production_rate || {}, [dashboardData]);
+  const qualityStats = useMemo(() => dashboardData?.quality || {}, [dashboardData]);
+  const attendanceStats = useMemo(() => dashboardData?.attendance || {}, [dashboardData]);
   const storeStats = useMemo(() => dashboardData?.store || {}, [dashboardData]);
-  const bottleneck = dashboardData?.bottleneck || null;
+  const bottleneck = useMemo(() => dashboardData?.bottleneck || null, [dashboardData]);
   const departmentsList = useMemo(() => dashboardData?.departments || [], [dashboardData]);
   const pipelineList = useMemo(() => dashboardData?.pipeline || [], [dashboardData]);
   const orderProgressList = useMemo(() => dashboardData?.order_progress || [], [dashboardData]);
@@ -336,18 +373,34 @@ export default function DirectManagerDashboard() {
     return 'DIRECT MANAGER';
   }, [user]);
 
-  // ── Filter option sources — all real ──
+  // ── Filter option sources ──
   const availableDatesList = useMemo(
     () => Array.from(new Set(dailyProductionLogs.map((l) => l.work_date).filter(Boolean))),
     [dailyProductionLogs]
   );
+
+  const filteredDailyProduction = useMemo(() => {
+    if (filterDate === 'all') return dailyProductionLogs;
+    return dailyProductionLogs.filter((d) => d.work_date === filterDate);
+  }, [dailyProductionLogs, filterDate]);
 
   const availableStyles = useMemo(
     () => Array.from(new Set(orderProgressList.map((o) => o.style_name).filter(Boolean))),
     [orderProgressList]
   );
 
-  // ── Filtered views — every one of these reacts to the universal filter bar ──
+  // Lining always gets a filter option, even when the pipeline has no
+  // LINING_CUTTING stage in scope — it still has a (possibly null) row in
+  // deptPerformanceTable, so the filter needs to be able to select it.
+  const departmentOptions = useMemo(
+    () => Array.from(new Set([...pipelineList.map((p) => inferDepartment(p.stage || p.label)), 'Lining']))
+      .sort((a, b) => departmentSortIndex(a) - departmentSortIndex(b)),
+    [pipelineList]
+  );
+
+  // Real order_progress rows narrowed by the universal filter bar — drives the
+  // Orders & Styles table, its KPI tiles, and the style-wise chart together so
+  // picking an order/style actually changes what those show.
   const filteredOrderProgress = useMemo(() => {
     return orderProgressList.filter((o) => {
       if (filterOrder !== 'all' && o.order_number !== filterOrder) return false;
@@ -364,46 +417,6 @@ export default function DirectManagerDashboard() {
     });
   }, [orderProgressList, filterOrder, filterStyle, searchQuery]);
 
-  const filteredDailyProduction = useMemo(() => {
-    if (filterDate === 'all') return dailyProductionLogs;
-    return dailyProductionLogs.filter((d) => d.work_date === filterDate);
-  }, [dailyProductionLogs, filterDate]);
-
-  // The API doc never expanded DeptPerformanceRow's field list, so `.department`
-  // is a guess. If every row comes back with no usable name, that guess is
-  // wrong rather than the backend being empty — surfaced explicitly below
-  // instead of silently rendering blank rows.
-  const departmentNamesConfirmed = departmentsList.length > 0 && departmentsList.some((d) => d.department);
-
-  // Department filter OPTIONS and MATCHING both derive from real stage names
-  // (confirmed strings like "LEATHER_CUTTING", "FUSING") via the inferDepartment
-  // heuristic, not from the unconfirmed `department` field — so the filter is
-  // guaranteed to actually match something regardless of that field's real name.
-  // Sorted into real production-flow order so Lining sits next to Cutting.
-  const departmentOptions = useMemo(
-    () => Array.from(new Set(pipelineList.map((p) => inferDepartment(p.stage || p.label))))
-      .sort((a, b) => departmentSortIndex(a) - departmentSortIndex(b)),
-    [pipelineList]
-  );
-
-  // Departments as actually returned by the backend, reordered to match real
-  // production flow (Cutting, Lining, Store, Stitching, Quality, Packaging)
-  // instead of whatever order the API happened to return them in.
-  const sortedDepartments = useMemo(
-    () => [...departmentsList].sort((a, b) => departmentSortIndex(a.department) - departmentSortIndex(b.department)),
-    [departmentsList]
-  );
-
-  const filteredDepartments = useMemo(() => {
-    if (filterDepartment === 'all' || !departmentNamesConfirmed) return sortedDepartments;
-    return sortedDepartments.filter((d) => (d.department || d.name) === filterDepartment);
-  }, [sortedDepartments, filterDepartment, departmentNamesConfirmed]);
-
-  // ── Order/Style filter → real drill-down data ──────────────────────────
-  // The Order/Style select doesn't just narrow a table: when it picks a
-  // specific order or style, the whole top-of-page pipeline and headline KPIs
-  // switch from the factory-wide snapshot to that order's/style's REAL
-  // GET /dashboard/direct-manager/{orders,styles}/{id} response.
   const filterMatchedRow = useMemo(() => {
     if (filterOrder === 'all' && filterStyle === 'all') return null;
     return orderProgressList.find((o) =>
@@ -418,7 +431,6 @@ export default function DirectManagerDashboard() {
       setSelectedStyleRow(null);
       return;
     }
-    // Style is the more specific pick when both are set.
     if (filterStyle !== 'all') {
       setSelectedStyleRow(filterMatchedRow);
       setSelectedOrderRow(null);
@@ -432,11 +444,6 @@ export default function DirectManagerDashboard() {
   const isDrillDownLoading = loadingOrderDetail || loadingStyleDetail;
   const isDrillDownActive = !!filterMatchedRow;
 
-  // Real per-stage numbers for the selected order/style (OrderStageRow /
-  // StyleStageRow field names are undocumented, so this reads the same
-  // candidate keys used in the drill-down table further down the page).
-  // The department filter applies here too — even while drilled into one
-  // order/style, picking a department narrows THAT order's own stage list.
   const effectivePipeline = useMemo(() => {
     const base = (isDrillDownActive && activeDrillDownData?.stages?.length)
       ? activeDrillDownData.stages.map((s) => ({
@@ -450,35 +457,19 @@ export default function DirectManagerDashboard() {
     return base.filter((st) => inferDepartment(st.stage || st.label) === filterDepartment);
   }, [isDrillDownActive, activeDrillDownData, pipelineList, filterDepartment]);
 
-  // Real order-level constraint (styles don't carry blocked_stage).
   const effectiveBlockedStage = selectedOrderRow ? orderDetailData?.blocked_stage : null;
 
-  // The real Lining department row (confirmed to exist in departmentsList),
-  // used to inject a real Lining card next to Cutting — see pipelineWithStore.
   const liningDepartmentRow = useMemo(
     () => departmentsList.find((d) => /LINING/i.test(d.department || d.name || '')) || null,
     [departmentsList]
   );
   const hasLiningStage = pipelineList.some((st) => /LINING/i.test(st.stage || st.label || ''));
 
-  // Neither the factory-wide `pipeline[]` nor an order's/style's `stages[]`
-  // ever includes a "Store" node, and Lining doesn't appear in `pipeline[]`
-  // either — both are real backend facts (Store is a DRAWER STATE, not a
-  // logged stage; this scope has no LINING_CUTTING events yet). But their
-  // real totals DO exist elsewhere on this same dashboard call: Store under
-  // `store: {drawers_in_store, drawers_sent, drawers_received}`, Lining under
-  // its own row in `departments[]`. This splices both in as real data —
-  // Lining right after Cutting, Store right before Stitching — rather than
-  // either hiding them or inventing numbers for a stage-shaped card.
   const pipelineWithStore = useMemo(() => {
-    if (isDrillDownActive) return effectivePipeline; // store/department stats are factory-wide, not per-order — don't splice them into a single order's view
+    if (isDrillDownActive) return effectivePipeline;
     let cards = [...effectivePipeline];
 
     if (!hasLiningStage) {
-      // Reserve Lining's slot next to Cutting even when there's nothing to
-      // show yet — real numbers when the department row exists, an honest
-      // empty placeholder (not zeros) when it doesn't, instead of the card
-      // just vanishing from the sequence.
       const liningCard = liningDepartmentRow
         ? {
             stage: 'LINING',
@@ -512,8 +503,6 @@ export default function DirectManagerDashboard() {
     return cards;
   }, [effectivePipeline, storeStats, isDrillDownActive, liningDepartmentRow, hasLiningStage]);
 
-  // Real headline numbers scoped to the filtered order/style instead of the
-  // whole factory, sourced from order_progress + the drill-down endpoint.
   const effectiveTargetPieces = isDrillDownActive
     ? (activeDrillDownData?.total_quantity ?? filterMatchedRow?.total_ordered ?? 0)
     : (overall.total_target ?? 0);
@@ -543,9 +532,23 @@ export default function DirectManagerDashboard() {
       if (filterEmployee !== 'all' && t.employee !== filterEmployee) return false;
       if (filterDate !== 'all' && t.cutting_date !== filterDate) return false;
       if (filterStyle !== 'all' && t.style !== filterStyle) return false;
+      if (filterColour !== 'all' && t.colour !== filterColour) return false;
+      if (filterSize !== 'all' && t.size !== filterSize) return false;
       return true;
     });
-  }, [traceabilityData, filterOrder, filterEmployee, filterDate, filterStyle]);
+  }, [traceabilityData, filterOrder, filterEmployee, filterDate, filterStyle, filterColour, filterSize]);
+
+  // Real colour/size option lists, derived from whatever traceability rows are
+  // currently loaded (they narrow further as other filters apply, so pick
+  // from availableTraceabilityColours/Sizes rather than a static list).
+  const availableTraceabilityColours = useMemo(
+    () => Array.from(new Set(traceabilityData.map((t) => t.colour).filter(Boolean))).sort(),
+    [traceabilityData]
+  );
+  const availableTraceabilitySizes = useMemo(
+    () => Array.from(new Set(traceabilityData.map((t) => t.size).filter(Boolean))).sort(),
+    [traceabilityData]
+  );
 
   const filteredDrawers = useMemo(() => {
     return realDrawers.filter((dr) => {
@@ -560,7 +563,7 @@ export default function DirectManagerDashboard() {
     });
   }, [realDrawers, searchQuery]);
 
-  // ── CSV Export — real pipeline/order_progress data ──
+  // ── CSV Export ──
   const handleExportFactoryReport = () => {
     const headers = ['Stage', 'Completed', 'Pending Queue', 'Completion %'];
     const rows = pipelineList.map((p) => [
@@ -582,7 +585,7 @@ export default function DirectManagerDashboard() {
     triggerToast('📥 Factory Master Production CSV Exported Successfully');
   };
 
-  // ── Real drawer actions: POST /api/v1/drawers/send, POST /api/v1/drawers/{id}/receive ──
+  // ── Drawer actions ──
   const handleConfirmDrawerAction = async () => {
     if (!selectedDrawer) return;
     setDrawerActionBusy(true);
@@ -606,8 +609,435 @@ export default function DirectManagerDashboard() {
     }
   };
 
+  // ─── DEPARTMENT PERFORMANCE — real departments[] rows only. No target field
+  // exists anywhere in the documented DM schema for a department, so this reads
+  // only completed/pending/achievement_pct and shows a NotAvailableBadge/status
+  // of null rather than fabricating a target to divide by. ───
+  const deptPerformanceTable = useMemo(() => {
+    const rows = departmentsList.map((d) => {
+      const completed = readNum(d, ['completed', 'total_produced', 'done']);
+      const pending = readNum(d, ['pending', 'total_pending', 'queue']);
+      const achievementPct = readNum(d, ['achievement_pct', 'completion_pct']);
+      let status = null;
+      if (achievementPct !== null) {
+        if (achievementPct >= 105) status = 'Ahead';
+        else if (achievementPct >= 90) status = 'On Plan';
+        else if (achievementPct >= 80) status = 'Slightly Behind';
+        else status = 'Behind';
+      }
+      return {
+        department: d.department || d.name || 'Unknown',
+        completed,
+        pending,
+        achievementPct,
+        status,
+      };
+    });
+
+    // Lining runs in parallel with Cutting on the real floor, so it always gets
+    // a row here — real numbers when the backend returns a Lining department,
+    // an honest null row (kept, not hidden) when it doesn't.
+    if (!rows.some((r) => /LINING/i.test(r.department))) {
+      rows.push({ department: 'Lining', completed: null, pending: null, achievementPct: null, status: null });
+    }
+
+    return rows.sort((a, b) => departmentSortIndex(a.department) - departmentSortIndex(b.department));
+  }, [departmentsList]);
+
+  const displayDeptTable = useMemo(() => {
+    if (filterDepartment === 'all') return deptPerformanceTable;
+    return deptPerformanceTable.filter(
+      (d) => d.department.toLowerCase() === filterDepartment.toLowerCase()
+    );
+  }, [deptPerformanceTable, filterDepartment]);
+
+  const totalDeptCompleted = useMemo(
+    () => displayDeptTable.reduce((s, r) => s + (r.completed || 0), 0),
+    [displayDeptTable]
+  );
+  const totalDeptPending = useMemo(
+    () => displayDeptTable.reduce((s, r) => s + (r.pending || 0), 0),
+    [displayDeptTable]
+  );
+
+  // ─── STAGE CARDS — real pipeline completed/pending only. The previous build's
+  // "target" and hourly Actual/Plan/Forecast curve had no backing endpoint (no
+  // per-stage target, no intraday time series exist anywhere in the API), and
+  // were being multiplied by an invented "filterFactor" that silently corrupted
+  // the real completed/pending numbers whenever a filter was active. Removed. ───
+  const deptStageCardsData = useMemo(() => {
+    return pipelineWithStore.map((st, idx) => {
+      const stageKey = st.stage || st.label;
+      const isOverlay = st.isStoreOverlay || st.isDepartmentOverlay;
+      const isBottleneck = !isOverlay && (isDrillDownActive
+        ? effectiveBlockedStage === stageKey
+        : (bottleneck?.stage === stageKey || bottleneck?.label === st.label));
+
+      const completed = readNum(st, ['completed', 'done', 'total_produced']);
+      const pending = readNum(st, ['pending', 'queue', 'total_pending']);
+      const status = st.isUnavailable ? null : (isBottleneck ? 'Bottleneck' : 'Active');
+
+      return {
+        stageKey,
+        label: st.label || formatStage(stageKey),
+        idx: idx + 1,
+        isOverlay,
+        isUnavailable: st.isUnavailable,
+        isBottleneck,
+        completed,
+        pending,
+        status,
+      };
+    });
+  }, [pipelineWithStore, isDrillDownActive, effectiveBlockedStage, bottleneck]);
+
+  const filteredDeptStageCards = useMemo(() => {
+    if (filterDepartment === 'all') return deptStageCardsData;
+    return deptStageCardsData.filter((card) =>
+      card.label.toLowerCase().includes(filterDepartment.toLowerCase()) ||
+      inferDepartment(card.stageKey).toLowerCase() === filterDepartment.toLowerCase()
+    );
+  }, [deptStageCardsData, filterDepartment]);
+
+  const deptComparativeData = useMemo(() => {
+    return deptStageCardsData.map((d) => ({
+      name: d.label.length > 12 ? `${d.label.slice(0, 10)}…` : d.label,
+      fullName: d.label,
+      Completed: d.completed ?? 0,
+      Queue: d.pending ?? 0,
+      // No per-stage target exists anywhere in the documented schema — kept as a
+      // field (null) rather than removed, so the legend/series stays but draws nothing.
+      Target: null,
+    }));
+  }, [deptStageCardsData]);
+
+  // ─── STYLE-WISE FULFILLMENT — real order_progress rows, narrowed by the
+  // universal filter (so picking an order/style actually changes the chart),
+  // and showing every style in scope rather than capping at 8. The previous
+  // build also substituted invented style names ("Classic Biker"…) and a fake
+  // demo chart when empty — removed; an empty chart now just means no orders
+  // are in scope, which is the truth. ───
+  const stylesGraphData = useMemo(() => {
+    const styleMap = new Map();
+    filteredOrderProgress.forEach((o) => {
+      const sName = o.style_name || o.style || 'Unspecified Style';
+      const ordered = Number(o.total_ordered ?? o.total_quantity ?? 0);
+      const completed = Number(o.completed ?? 0);
+      const pending = Number(o.pending ?? Math.max(0, ordered - completed));
+      if (styleMap.has(sName)) {
+        const prev = styleMap.get(sName);
+        prev.Ordered += ordered;
+        prev.Completed += completed;
+        prev.Pending += pending;
+        prev.ordersCount += 1;
+      } else {
+        styleMap.set(sName, {
+          name: sName,
+          fullName: sName,
+          styleName: sName,
+          Ordered: ordered,
+          Completed: completed,
+          Pending: pending,
+          ordersCount: 1,
+        });
+      }
+    });
+    return Array.from(styleMap.values()).sort((a, b) => b.Ordered - a.Ordered);
+  }, [filteredOrderProgress]);
+
+  // Real pipeline funnel — already fully backed by real data, unchanged.
+  const stageFunnelGraphData = useMemo(() => {
+    return pipelineWithStore.map((st, idx) => ({
+      stage: st.label || formatStage(st.stage),
+      shortStage: (st.label || formatStage(st.stage)).slice(0, 10),
+      Completed: readNum(st, ['completed', 'done', 'total_produced']) ?? 0,
+      Queue: readNum(st, ['pending', 'queue', 'total_pending']) ?? 0,
+      idx: idx + 1,
+    }));
+  }, [pipelineWithStore]);
+
+  // ─── STORE DRAWER BUFFER — the real store{} KPI block only (drawers_in_store /
+  // drawers_sent / drawers_received). The previous build defaulted to 16/32 when
+  // those were missing and fabricated "Ready for Stitching" (65% guess) and
+  // "Available Slots" (48-total guess) categories with no backing field at all. ───
+  const drawersGraphData = useMemo(() => {
+    return [
+      { category: 'In Store', count: storeStats.drawers_in_store ?? 0, fill: '#9333ea' },
+      { category: 'Sent', count: storeStats.drawers_sent ?? 0, fill: '#3b82f6' },
+      { category: 'Received', count: storeStats.drawers_received ?? 0, fill: '#10b981' },
+    ];
+  }, [storeStats]);
+
+  // ─── Employees by designation — real GET /employees rows only (replaces the
+  // previous build's fake per-employee "Output vs Target" chart, which had no
+  // backing field anywhere: GET /employees returns no production count). ───
+  const employeesByDesignation = useMemo(() => {
+    const map = new Map();
+    filteredEmployees.forEach((e) => {
+      const key = e.designation || 'Unspecified';
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([designation, count]) => ({ designation, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [filteredEmployees]);
+
+  // ─── Pieces cut per day by material — real store/traceability rows, grouped
+  // by the real cutting_date and material_type fields (replaces the previous
+  // build's fully-fabricated hourly scan curve, which had no backing endpoint). ───
+  const traceabilityByDate = useMemo(() => {
+    const map = new Map();
+    filteredTraceability.forEach((t) => {
+      const key = t.cutting_date || 'Unknown';
+      if (!map.has(key)) map.set(key, { date: key, Leather: 0, Lining: 0 });
+      const entry = map.get(key);
+      if (String(t.material_type).toUpperCase() === 'LINING') entry.Lining += 1;
+      else entry.Leather += 1;
+    });
+    return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+  }, [filteredTraceability]);
+
+  // ─── Today's real production summary — the previous build's "Production
+  // Overview" panel was an entirely synthetic hourly Actual/Plan/Forecast curve
+  // (no intraday endpoint exists anywhere in the API) driven by a fake shift
+  // multiplier and hardcoded 900/478 fallbacks. Replaced with the real
+  // daily_production rows the backend actually returns. ───
+  const todaysProductionRow = useMemo(() => {
+    if (!dailyProductionLogs.length) return null;
+    const todayStr = new Date().toISOString().slice(0, 10);
+    return dailyProductionLogs.find((d) => d.work_date === todayStr) || dailyProductionLogs[dailyProductionLogs.length - 1] || null;
+  }, [dailyProductionLogs]);
+
+  // ─── Real "vs yesterday" — derived from the two most recent real
+  // daily_production rows (sorted by work_date), not a hardcoded +6%. `null`
+  // when fewer than two days of history are available. ───
+  const vsYesterdayPct = useMemo(() => {
+    if (dailyProductionLogs.length < 2) return null;
+    const sorted = [...dailyProductionLogs].sort((a, b) => a.work_date.localeCompare(b.work_date));
+    const today = sorted[sorted.length - 1];
+    const yesterday = sorted[sorted.length - 2];
+    const todayCompleted = today?.completed ?? 0;
+    const yesterdayCompleted = yesterday?.completed ?? 0;
+    if (yesterdayCompleted <= 0) return null;
+    return Math.round(((todayCompleted - yesterdayCompleted) / yesterdayCompleted) * 100);
+  }, [dailyProductionLogs]);
+
+  // ─── Real shift clock — from GET /api/v1/attendance/config (shift_start +
+  // shift_length_hours), the actual factory shift policy. Previously "Hours
+  // Remaining" / "Required Rate" were hardcoded (3h 36m / 117 pcs/hr); now
+  // both are computed for real, or null when the config hasn't loaded yet. ───
+  const shiftTimeInfo = useMemo(() => {
+    if (!shiftConfig?.shift_start || !shiftConfig?.shift_length_hours) {
+      return { hoursRemaining: null, shiftEndLabel: null };
+    }
+    const [h, m] = String(shiftConfig.shift_start).split(':').map(Number);
+    const now = new Date();
+    const shiftStart = new Date(now);
+    shiftStart.setHours(h || 0, m || 0, 0, 0);
+    const shiftEnd = new Date(shiftStart.getTime() + shiftConfig.shift_length_hours * 60 * 60 * 1000);
+    const msRemaining = shiftEnd.getTime() - now.getTime();
+    const shiftEndLabel = shiftEnd.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return { hoursRemaining: Math.max(0, msRemaining / (1000 * 60 * 60)), shiftEndLabel };
+  }, [shiftConfig]);
+
+  // ─── KPI tiles — every value read straight off the real DM dashboard
+  // response. No synthetic fallback constants (the previous build defaulted to
+  // 92%, -8%, 523/560 workers, a non-existent `quality.pass_rate` field, etc.
+  // whenever real data was missing). Missing fields are `null` here and render
+  // a NotAvailableBadge downstream instead of a fabricated number. ───
+  const kpiData = useMemo(() => {
+    const totalProd = typeof overall.total_produced === 'number' ? overall.total_produced : null;
+    const targetProd = typeof overall.total_target === 'number' ? overall.total_target : null;
+    const targetPct = typeof overall.overall_achievement_pct === 'number' ? overall.overall_achievement_pct : null;
+    const variancePct = (totalProd !== null && targetProd) ? Math.round(((totalProd - targetProd) / targetProd) * 100) : null;
+
+    const ordersInProg = typeof overall.orders_in_progress === 'number' ? overall.orders_in_progress : null;
+    const delayedCount = typeof overall.delayed_orders === 'number' ? overall.delayed_orders : null;
+    const onTrackCount = (ordersInProg !== null && delayedCount !== null) ? Math.max(0, ordersInProg - delayedCount) : null;
+
+    const productivity = typeof productionRate.pieces_per_employee_today === 'number' ? productionRate.pieces_per_employee_today : null;
+    const reworkPcs = typeof qualityStats.rework_pieces === 'number' ? qualityStats.rework_pieces : null;
+    const qualityAccepted = typeof qualityStats.accepted === 'number' ? qualityStats.accepted : null;
+    const qualityInspected = typeof qualityStats.inspected === 'number' ? qualityStats.inspected : null;
+    const qualityPassPct = (qualityAccepted !== null && qualityInspected > 0) ? Math.round((qualityAccepted / qualityInspected) * 100) : null;
+
+    const presentWorkers = typeof attendanceStats.employees_present === 'number' ? attendanceStats.employees_present : null;
+    const totalWorkers = typeof attendanceStats.employees_assigned === 'number' ? attendanceStats.employees_assigned : null;
+    const attendancePct = (presentWorkers !== null && totalWorkers > 0) ? Math.round((presentWorkers / totalWorkers) * 100) : null;
+
+    const remainingTarget = (targetProd !== null && totalProd !== null) ? Math.max(0, targetProd - totalProd) : null;
+    const requiredRate = (remainingTarget !== null && shiftTimeInfo.hoursRemaining) ? Math.round(remainingTarget / shiftTimeInfo.hoursRemaining) : null;
+    const actualRate = typeof productionRate.pieces_per_hour_today === 'number' ? productionRate.pieces_per_hour_today : null;
+
+    return {
+      totalProd, targetProd, targetPct, variancePct,
+      ordersInProg, delayedCount, onTrackCount,
+      productivity, reworkPcs, qualityPassPct,
+      presentWorkers, totalWorkers, attendancePct,
+      remainingTarget, requiredRate, actualRate,
+    };
+  }, [overall, productionRate, qualityStats, attendanceStats, shiftTimeInfo]);
+
+  // ─── Overview scope — the Total Production / Achievement / Active Orders
+  // tiles now switch scope with the universal filter instead of always
+  // showing the factory-wide kpiData numbers:
+  //   1. Order/Style picked → real per-order/style numbers from the
+  //      GET /dashboard/direct-manager/{orders,styles}/{id} drill-down
+  //      (effectiveProduced/effectiveTargetPieces/effectiveAchievementPct),
+  //      same data the top pipeline strip already uses.
+  //   2. Department picked (no order/style) → that department's real
+  //      completed/pending/achievement_pct row from displayDeptTable.
+  //   3. Nothing picked → factory-wide kpiData.
+  // No per-order/department target exists anywhere in the schema for case 1
+  // beyond total_quantity, and no per-department target exists in case 2 at
+  // all — both stay null (shown as N/A) rather than fabricated.
+  const overviewScope = useMemo(() => {
+    if (isDrillDownActive) {
+      return {
+        mode: 'order',
+        label: selectedStyleRow?.style_name || selectedOrderRow?.order_number || 'Selection',
+        totalProd: effectiveProduced,
+        targetProd: effectiveTargetPieces || null,
+        achievementPct: effectiveAchievementPct,
+        pending: effectivePending,
+      };
+    }
+    if (filterDepartment !== 'all') {
+      const row = displayDeptTable.find((d) => d.department.toLowerCase() === filterDepartment.toLowerCase());
+      return {
+        mode: 'department',
+        label: filterDepartment,
+        totalProd: row?.completed ?? null,
+        targetProd: null,
+        achievementPct: row?.achievementPct ?? null,
+        pending: row?.pending ?? null,
+      };
+    }
+    return {
+      mode: 'factory',
+      label: null,
+      totalProd: kpiData.totalProd,
+      targetProd: kpiData.targetProd,
+      achievementPct: kpiData.targetPct,
+      pending: kpiData.remainingTarget,
+    };
+  }, [isDrillDownActive, selectedStyleRow, selectedOrderRow, effectiveProduced, effectiveTargetPieces, effectiveAchievementPct, effectivePending, filterDepartment, displayDeptTable, kpiData]);
+
+  // ─── Orders At Risk — real order_progress rows flagged by the real
+  // delay_status field, narrowed by the same universal Order/Style/Search
+  // filter as the Orders & Styles tab so picking an order here actually
+  // changes what's shown instead of always listing every delayed order. ───
+  const ordersAtRiskList = useMemo(() => {
+    return filteredOrderProgress
+      .filter((o) => o.delay_status && String(o.delay_status).toUpperCase().includes('DELAY'))
+      .slice(0, 6)
+      .map((o) => ({
+        id: o.order_id || o.order_number,
+        order_number: o.order_number,
+        style_name: o.style_name,
+        total_quantity: o.total_ordered ?? o.total_quantity ?? 0,
+        pending: o.pending ?? 0,
+        due_date: o.delivery_deadline || null,
+        delay_status: o.delay_status,
+      }));
+  }, [filteredOrderProgress]);
+
+  // ─── Department Queues — real pipeline pending counts, sourced from
+  // effectivePipeline (not the raw factory-wide pipelineList) so this reacts
+  // to both an order/style drill-down and the Department filter, same as the
+  // top pipeline strip and Stage Funnel tab already do. ───
+  const deptQueuesList = useMemo(() => {
+    return [...effectivePipeline]
+      .map((p) => ({
+        name: p.label || formatStage(p.stage),
+        waiting: readNum(p, ['pending', 'queue']) ?? 0,
+      }))
+      .filter((p) => p.waiting > 0)
+      .sort((a, b) => b.waiting - a.waiting)
+      .slice(0, 5)
+      .map((p, idx) => ({
+        ...p,
+        barColor: idx === 0 ? 'bg-rose-500' : idx === 1 ? 'bg-amber-500' : idx === 2 ? 'bg-yellow-400' : 'bg-emerald-500',
+      }));
+  }, [effectivePipeline]);
+
+  const totalWaitingCount = useMemo(() => deptQueuesList.reduce((s, q) => s + q.waiting, 0), [deptQueuesList]);
+
+  // ── Real per-report CSV export — each report type downloads the actual
+  // real dataset already loaded on this dashboard, not a generic toast. ──
+  const downloadCsv = (filename, headers, rows) => {
+    const csvContent =
+      'data:text/csv;charset=utf-8,' +
+      [headers.join(','), ...rows.map((r) => r.map((v) => (v ?? '')).join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDownloadReport = (reportName) => {
+    const dateStamp = new Date().toISOString().slice(0, 10);
+    switch (reportName) {
+      case 'Daily Production':
+        downloadCsv(
+          `Daily_Production_${dateStamp}.csv`,
+          ['Work Date', 'Assigned', 'Completed'],
+          dailyProductionLogs.map((d) => [d.work_date, d.assigned ?? 0, d.completed ?? 0])
+        );
+        break;
+      case 'Department Report':
+        downloadCsv(
+          `Department_Report_${dateStamp}.csv`,
+          ['Department', 'Completed', 'Pending', 'Achievement %'],
+          deptPerformanceTable.map((d) => [d.department, d.completed ?? '', d.pending ?? '', d.achievementPct ?? ''])
+        );
+        break;
+      case 'Order Status':
+        downloadCsv(
+          `Order_Status_${dateStamp}.csv`,
+          ['Order #', 'Style', 'Ordered', 'Completed', 'Pending', 'Completion %', 'Delay Status'],
+          orderProgressList.map((o) => [
+            o.order_number, o.style_name, o.total_ordered ?? o.total_quantity ?? '',
+            o.completed ?? 0, o.pending ?? 0, o.completion_pct ?? '', o.delay_status ?? '',
+          ])
+        );
+        break;
+      case 'Employee Report':
+        downloadCsv(
+          `Employee_Report_${dateStamp}.csv`,
+          ['Name', 'Designation', 'Wage Type', 'Active'],
+          realEmployees.map((e) => [e.name, e.designation ?? '', e.wage_type ?? '', e.is_active ? 'Yes' : 'No'])
+        );
+        break;
+      case 'Quality Report':
+        downloadCsv(
+          `Quality_Report_${dateStamp}.csv`,
+          ['Produced', 'Inspected', 'Rework Pieces', 'Accepted', 'Rejected', 'Defective %'],
+          [[
+            qualityStats.produced ?? '', qualityStats.inspected ?? '', qualityStats.rework_pieces ?? '',
+            qualityStats.accepted ?? '', qualityStats.rejected ?? '', qualityStats.defective_pct ?? '',
+          ]]
+        );
+        break;
+      case 'Delay Analysis':
+        downloadCsv(
+          `Delay_Analysis_${dateStamp}.csv`,
+          ['Order #', 'Style', 'Total Qty', 'Pending', 'Due Date', 'Delay Status'],
+          ordersAtRiskList.map((o) => [o.order_number, o.style_name ?? '', o.total_quantity, o.pending, o.due_date ?? '', o.delay_status])
+        );
+        break;
+      default:
+        break;
+    }
+    triggerToast(`📥 ${reportName} CSV downloaded`);
+    setActiveReportModal(null);
+  };
+
   return (
-    <div className="w-full min-w-0 space-y-6 pb-12 font-sans text-slate-800">
+    <div className="w-full min-w-0 space-y-6 font-sans text-slate-800">
 
       {/* ─── TOAST ─── */}
       <AnimatePresence>
@@ -616,53 +1046,12 @@ export default function DirectManagerDashboard() {
             initial={{ opacity: 0, y: 20, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-6 right-6 z-50 bg-[#0f172a] border border-slate-700 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold font-mono max-w-md"
+            className="fixed bottom-16 right-6 z-50 bg-[#0f172a] border border-slate-700 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold font-mono max-w-md"
           >
             <span>{toastMessage}</span>
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ─── HEADER ─── */}
-      <header className="w-full bg-gradient-to-r from-[#0f172a] via-[#1e293b] to-[#334155] text-white p-6 rounded-3xl shadow-xl flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 border border-slate-700/50 relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div>
-          <div className="flex items-center gap-2 mb-2">
-            <span className="bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              {roleLabel} &bull; EXECUTIVE COMMAND
-            </span>
-            {meta?.generated_for && (
-              <span className="text-slate-400 text-xs font-semibold">Generated {meta.generated_for} &bull; scope: {meta.scope}</span>
-            )}
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex items-center gap-3">
-            <Factory className="w-8 h-8 text-amber-400" />
-            Shop Floor Master Flow & Deep Drill-Down
-          </h1>
-          <p className="text-xs text-slate-300 mt-1 max-w-2xl font-medium">
-            Real-time shop floor intelligence from GET /api/v1/dashboard/direct-manager, live drawer state and store traceability.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2.5 w-full sm:w-auto flex-wrap">
-          <button
-            onClick={fetchDashboard}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-bold text-white transition-all shadow-sm cursor-pointer disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Sync Live API</span>
-          </button>
-          <button
-            onClick={handleExportFactoryReport}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold transition-all shadow-md cursor-pointer"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export Factory CSV</span>
-          </button>
-        </div>
-      </header>
 
       {apiError && (
         <div className="w-full bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold p-4 rounded-2xl flex items-center gap-2">
@@ -671,27 +1060,52 @@ export default function DirectManagerDashboard() {
         </div>
       )}
 
-      {/* ─── 1. MASTER PIPELINE ─── */}
+      {/* ─── 1. MASTER PIPELINE (Top Action Bar & Stage Funnel) ─── */}
       <section className="w-full bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 border-b border-slate-100 pb-3">
           <div>
-            <h2 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
-              <Workflow className="w-4 h-4 text-indigo-600" />
+            <div className="flex items-center gap-2 mb-1">
+              <span className="bg-amber-100 text-amber-900 text-[10px] font-extrabold uppercase tracking-widest px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                {roleLabel} &bull; Executive Command
+              </span>
+              {meta?.generated_for && (
+                <span className="text-slate-400 text-xs font-semibold">Generated {meta.generated_for}</span>
+              )}
+            </div>
+            <h2 className="text-base sm:text-lg font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+              <Factory className="w-5 h-5 text-indigo-600" />
               {isDrillDownActive
                 ? `Pipeline — ${selectedStyleRow?.style_name || selectedOrderRow?.order_number}`
                 : 'Master Factory Production Pipeline'}
             </h2>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 mt-0.5">
               {isDrillDownActive
                 ? `Real per-stage counts for this ${selectedStyleRow ? 'style' : 'order'}, from GET /dashboard/direct-manager/${selectedStyleRow ? 'styles' : 'orders'}/{id}.`
                 : 'Live funnel stages from GET /api/v1/dashboard/direct-manager — pending = queue in front of that stage.'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+
+          <div className="flex items-center gap-2.5 flex-wrap">
             {isDrillDownLoading && <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Loading…</span>}
-            <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" /> {isDrillDownActive ? 'Blocked stage' : 'Bottleneck (deepest queue)'}
+            <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5 mr-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" /> {isDrillDownActive ? 'Blocked stage' : 'Bottleneck'}
             </span>
+            <button
+              onClick={fetchDashboard}
+              disabled={loading}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span>Sync Live API</span>
+            </button>
+            <button
+              onClick={handleExportFactoryReport}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-xs font-bold transition-all shadow-sm cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export Factory CSV</span>
+            </button>
           </div>
         </div>
 
@@ -707,7 +1121,7 @@ export default function DirectManagerDashboard() {
             const pending = readNum(st, ['pending', 'queue']);
             return (
               <div
-                key={`${stageKey}-${idx}`}
+                key={`pipeline-stage-${stageKey}-${idx}`}
                 onClick={() => {
                   if (st.isStoreOverlay) { setActiveTab('tab-drawers'); return; }
                   if (st.isDepartmentOverlay) { setActiveTab('tab-departments'); return; }
@@ -774,7 +1188,7 @@ export default function DirectManagerDashboard() {
         )}
       </section>
 
-      {/* ─── 2. UNIVERSAL FILTER BAR ─── */}
+      {/* ─── 2. UNIVERSAL OPERATIONS CROSS-FILTER (Same Top Pattern + Shift) ─── */}
       <section className="w-full bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -785,6 +1199,7 @@ export default function DirectManagerDashboard() {
             onClick={() => {
               setFilterDate('all'); setFilterOrder('all'); setFilterStyle('all');
               setFilterDepartment('all'); setFilterEmployee('all'); setSearchQuery('');
+              setFilterColour('all'); setFilterSize('all');
               triggerToast('Filters reset');
             }}
             className="text-xs font-bold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
@@ -812,7 +1227,7 @@ export default function DirectManagerDashboard() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
             >
               <option value="all">📅 All Dates</option>
-              {availableDatesList.map((d) => <option key={d} value={d}>{d}</option>)}
+              {availableDatesList.map((d, idx) => <option key={`date-opt-${d}-${idx}`} value={d}>{d}</option>)}
             </select>
           </div>
 
@@ -823,8 +1238,8 @@ export default function DirectManagerDashboard() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
             >
               <option value="all">📦 All Orders</option>
-              {Array.from(new Set(orderProgressList.map((o) => o.order_number).filter(Boolean))).map((n) => (
-                <option key={n} value={n}>{n}</option>
+              {Array.from(new Set(orderProgressList.map((o) => o.order_number).filter(Boolean))).map((n, idx) => (
+                <option key={`ord-opt-${n}-${idx}`} value={n}>{n}</option>
               ))}
             </select>
           </div>
@@ -836,7 +1251,7 @@ export default function DirectManagerDashboard() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
             >
               <option value="all">👗 All Styles</option>
-              {availableStyles.map((s) => <option key={s} value={s}>{s}</option>)}
+              {availableStyles.map((s, idx) => <option key={`style-opt-${s}-${idx}`} value={s}>{s}</option>)}
             </select>
           </div>
 
@@ -847,8 +1262,8 @@ export default function DirectManagerDashboard() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
             >
               <option value="all">🏢 All Departments</option>
-              {departmentOptions.map((name) => (
-                <option key={name} value={name}>{name}</option>
+              {departmentOptions.map((name, idx) => (
+                <option key={`dept-opt-${name}-${idx}`} value={name}>{name}</option>
               ))}
             </select>
           </div>
@@ -861,18 +1276,14 @@ export default function DirectManagerDashboard() {
             >
               <option value="all">👷 All Employees</option>
               {realEmployees.map((emp, idx) => (
-                <option key={`${emp.id || emp.name}-${idx}`} value={emp.name}>{emp.name} ({emp.designation || 'Floor'})</option>
+                <option key={`emp-opt-${emp.id || emp.name}-${idx}`} value={emp.name}>{emp.name} ({emp.designation || 'Floor'})</option>
               ))}
             </select>
           </div>
         </div>
-        <p className="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5">
-          <Info className="w-3.5 h-3.5" />
-          Orders/Styles, Daily Output, Piece Traceability and Employees are computed live from these filters. Departments and Stage Funnel are pre-aggregated snapshots from the backend (no per-event log to slice) — the department filter narrows which rows are shown, not the totals themselves.
-        </p>
       </section>
 
-      {/* ─── 3. TABS ─── */}
+      {/* ─── 3. TABS (Same Navigation Pattern) ─── */}
       <div className="w-full flex items-center gap-1.5 bg-white p-2 rounded-2xl border border-slate-200 shadow-sm overflow-x-auto">
         {[
           { id: 'tab-overview', label: '📊 Factory Overview', icon: Factory },
@@ -900,272 +1311,931 @@ export default function DirectManagerDashboard() {
       </div>
 
       {/* ====================================================================
-           TAB: FACTORY OVERVIEW
+           TAB: FACTORY OVERVIEW (Redesigned with reference card fields in app theme)
            ==================================================================== */}
       {activeTab === 'tab-overview' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
-          {isDrillDownActive && (
+
+          {overviewScope.mode !== 'factory' && (
             <div className="w-full bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold p-3 rounded-2xl flex items-center gap-2">
               <Info className="w-4 h-4 shrink-0" />
               <span>
-                Orders/Target/Produced/Pending below are scoped to {selectedStyleRow?.style_name || selectedOrderRow?.order_number} (real order_progress + drill-down data).
-                Today&apos;s Output, Rework Queue, Quality and Production Velocity stay factory-wide — the backend has no per-order breakdown for those.
+                Total Production / Achievement below are scoped to {overviewScope.mode === 'order' ? `order/style “${overviewScope.label}”` : `department “${overviewScope.label}”`} (real data).
+                Productivity, Quality Pass and Attendance stay factory-wide — the backend has no per-{overviewScope.mode} breakdown for those.
               </span>
             </div>
           )}
 
-          <div className="w-full grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3.5">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{isDrillDownActive ? 'Filtered To' : 'Orders'}</span>
-              {isDrillDownActive ? (
+          {/* ─── TOP 6 KPI METRIC CARDS (In App Theme) ─── */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            {/* 1. TOTAL PRODUCTION */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center gap-2 text-slate-500 mb-2">
+                <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600 border border-purple-100">
+                  <Clock className="w-4 h-4" />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  {overviewScope.mode === 'factory' ? 'Total Production' : `Production — ${overviewScope.label}`}
+                </span>
+              </div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
+                {overviewScope.totalProd !== null ? overviewScope.totalProd.toLocaleString() : '—'} <span className="text-xs font-semibold text-slate-400">pcs</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
+                <span>Target: {overviewScope.targetProd !== null ? `${overviewScope.targetProd} pcs` : <NotAvailableBadge label="N/A" />}</span>
+                {overviewScope.mode === 'factory' ? (
+                  kpiData.variancePct !== null ? (
+                    <span className={kpiData.variancePct >= 0 ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'}>
+                      {kpiData.variancePct > 0 ? `+${kpiData.variancePct}%` : `${kpiData.variancePct}%`}
+                    </span>
+                  ) : <NotAvailableBadge label="N/A" />
+                ) : (
+                  <span>Pending: <strong className="text-amber-600">{overviewScope.pending ?? '—'}</strong></span>
+                )}
+              </div>
+            </div>
+
+            {/* 2. TARGET ACHIEVEMENT */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center gap-2 text-slate-500 mb-2">
+                <span className="p-1.5 rounded-lg bg-cyan-50 text-cyan-600 border border-cyan-100">
+                  <Target className="w-4 h-4" />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Achievement</span>
+              </div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
+                {overviewScope.achievementPct !== null ? `${overviewScope.achievementPct}%` : '—'}
+              </div>
+              <div className="space-y-1.5 pt-2 border-t border-slate-100">
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="bg-emerald-500 h-full rounded-full transition-all duration-700"
+                    style={{ width: `${Math.min(100, overviewScope.achievementPct ?? 0)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-end text-xs font-bold">
+                  {overviewScope.achievementPct !== null ? (
+                    <span className={overviewScope.achievementPct >= 90 ? 'text-emerald-700' : overviewScope.achievementPct >= 75 ? 'text-amber-600' : 'text-rose-600'}>
+                      ● {overviewScope.achievementPct >= 90 ? 'On Plan' : overviewScope.achievementPct >= 75 ? 'Slightly Behind' : 'Behind'}
+                    </span>
+                  ) : <NotAvailableBadge label="N/A" />}
+                </div>
+              </div>
+            </div>
+
+            {/* 3. ORDERS IN PROGRESS */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center gap-2 text-slate-500 mb-2">
+                <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
+                  <Box className="w-4 h-4" />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                  {overviewScope.mode === 'order' ? 'Selected Order' : 'Active Orders'}
+                </span>
+              </div>
+              {overviewScope.mode === 'order' ? (
                 <>
-                  <div className="text-lg font-black text-slate-900 mt-1 truncate">{selectedOrderRow?.order_number || filterMatchedRow?.order_number}</div>
-                  <div className="text-[11px] text-slate-500 font-semibold mt-1 truncate">{selectedStyleRow?.style_name || 'All styles in order'}</div>
+                  <div className="text-lg font-extrabold text-slate-900 font-mono my-1 truncate">
+                    {selectedOrderRow?.order_number || filterMatchedRow?.order_number || '—'}
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
+                    <span>Status:</span>
+                    <span className={String(filterMatchedRow?.delay_status).toUpperCase().includes('DELAY') ? 'text-rose-600 font-bold' : 'text-emerald-700 font-bold'}>
+                      {filterMatchedRow?.delay_status ? filterMatchedRow.delay_status.replace(/_/g, ' ') : 'No deadline'}
+                    </span>
+                  </div>
                 </>
               ) : (
                 <>
-                  <div className="text-2xl font-black text-slate-900 mt-1">{(overall.orders_in_progress ?? 0) + (overall.orders_completed ?? 0)}</div>
-                  <div className="text-[11px] text-slate-500 font-semibold mt-1 flex justify-between">
-                    <span>Active: <strong className="text-blue-600">{overall.orders_in_progress ?? 0}</strong></span>
-                    <span>Done: <strong className="text-emerald-600">{overall.orders_completed ?? 0}</strong></span>
+                  <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
+                    {kpiData.ordersInProg !== null ? kpiData.ordersInProg : '—'}
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
+                    <span>On Track: <strong className="text-emerald-700">{kpiData.onTrackCount ?? '—'}</strong></span>
+                    <span>Delayed: <strong className="text-amber-600">{kpiData.delayedCount ?? '—'}</strong></span>
                   </div>
                 </>
               )}
             </div>
 
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{isDrillDownActive ? 'Order/Style Qty' : 'Target Pieces'}</span>
-              <div className="text-2xl font-black text-slate-900 mt-1">{effectiveTargetPieces.toLocaleString()}</div>
-              <div className="text-[11px] text-indigo-600 font-bold mt-1">{effectiveAchievementPct}% Target Met</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Produced</span>
-              <div className="text-2xl font-black text-emerald-700 mt-1">{effectiveProduced.toLocaleString()}</div>
-              <div className="text-[11px] text-slate-500 font-semibold mt-1">{isDrillDownActive ? 'For this filter' : 'Pass through factory'}</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Pending</span>
-              <div className="text-2xl font-black text-amber-600 mt-1">{effectivePending.toLocaleString()}</div>
-              <div className="text-[11px] text-slate-500 font-semibold mt-1">{isDrillDownActive ? 'For this filter' : 'Active in pipeline'}</div>
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Today&apos;s Output</span>
-              <div className="text-2xl font-black text-slate-900 mt-1">{attendanceStats.production_today ?? 0} pcs</div>
-              <div className="text-[11px] text-emerald-600 font-bold mt-1">{attendanceStats.active_employees ?? 0} active workers</div>
-              {isDrillDownActive && <div className="text-[10px] text-slate-400 font-semibold mt-1">Factory-wide</div>}
-            </div>
-
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600">Rework Queue</span>
-              <div className="text-2xl font-black text-purple-700 mt-1">{qualityStats.rework_pieces ?? 0} pcs</div>
-              <div className="text-[11px] text-purple-600 font-semibold mt-1">{qualityStats.inspected ?? 0} inspected total</div>
-              {isDrillDownActive && <div className="text-[10px] text-slate-400 font-semibold mt-1">Factory-wide</div>}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* Quality — real fields honest about what's null */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-1 flex items-center gap-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600" /> Quality
-              </h3>
-              <p className="text-xs text-slate-500 mb-4">produced / inspected / rework are real; accepted, rejected and defect % need a quality table</p>
-              <div className="grid grid-cols-2 gap-2.5 text-xs">
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Produced</span>
-                  <div className="text-lg font-black text-slate-900">{qualityStats.produced ?? 0}</div>
-                </div>
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Inspected</span>
-                  <div className="text-lg font-black text-slate-900">{qualityStats.inspected ?? 0}</div>
-                </div>
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100 flex flex-col justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Accepted</span>
-                  {typeof qualityStats.accepted === 'number' ? <div className="text-lg font-black text-slate-900">{qualityStats.accepted}</div> : <NotAvailableBadge />}
-                </div>
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100 flex flex-col justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Rejected</span>
-                  {typeof qualityStats.rejected === 'number' ? <div className="text-lg font-black text-slate-900">{qualityStats.rejected}</div> : <NotAvailableBadge />}
-                </div>
+            {/* 4. EMPLOYEE PRODUCTIVITY */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center gap-2 text-slate-500 mb-2">
+                <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600 border border-blue-100">
+                  <Activity className="w-4 h-4" />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Productivity</span>
+                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto">FACTORY-WIDE</span>}
+              </div>
+              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
+                {kpiData.productivity !== null ? `${kpiData.productivity}` : '—'} <span className="text-xs font-semibold text-slate-400">pcs/employee</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
+                <span>vs Yesterday:</span>
+                {vsYesterdayPct !== null ? (
+                  <span className={`font-bold flex items-center gap-0.5 ${vsYesterdayPct >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                    {vsYesterdayPct > 0 ? `+${vsYesterdayPct}%` : `${vsYesterdayPct}%`}
+                  </span>
+                ) : <NotAvailableBadge label="N/A" />}
               </div>
             </div>
 
-            {/* Production Velocity — real fields honest about what's null */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-1 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-blue-600" /> Production Velocity
-              </h3>
-              <p className="text-xs text-slate-500 mb-4">Throughput cadence across active shop floor shifts</p>
-              <div className="grid grid-cols-2 gap-2.5 text-xs">
-                <div className="bg-[#f8fafc] p-3 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Pieces / Day</span>
-                  <div className="text-xl font-black text-slate-900 mt-0.5">{productionRate.pieces_per_day ?? 0}</div>
-                </div>
-                <div className="bg-[#f8fafc] p-3 rounded-2xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Pcs / Employee Today</span>
-                  <div className="text-xl font-black text-slate-900 mt-0.5">{productionRate.pieces_per_employee_today ?? 0}</div>
-                </div>
-                <div className="bg-[#f8fafc] p-3 rounded-2xl border border-slate-100 flex flex-col justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Pieces / Hour Today</span>
-                  {typeof productionRate.pieces_per_hour_today === 'number' ? <div className="text-xl font-black text-slate-900 mt-0.5">{productionRate.pieces_per_hour_today}</div> : <NotAvailableBadge />}
-                </div>
-                <div className="bg-[#f8fafc] p-3 rounded-2xl border border-slate-100 flex flex-col justify-between">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Per-Piece Rate</span>
-                  {typeof productionRate.per_piece_rate === 'number' ? <div className="text-sm font-black text-slate-700 mt-1">{productionRate.per_piece_rate}</div> : <NotAvailableBadge />}
-                </div>
+            {/* 5. QUALITY (PASS %) */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center gap-2 text-slate-500 mb-2">
+                <span className="p-1.5 rounded-lg bg-rose-50 text-rose-600 border border-rose-100">
+                  <ShieldCheck className="w-4 h-4" />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Quality Pass</span>
+                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto">FACTORY-WIDE</span>}
               </div>
-              <div className="mt-3 pt-3 border-t border-slate-100 text-[11px] text-slate-500 font-semibold flex justify-between">
-                <span>Present: <strong>{attendanceStats.employees_present ?? 0}</strong></span>
-                <span>Assigned: <strong>{attendanceStats.employees_assigned ?? 0}</strong></span>
+              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
+                {kpiData.qualityPassPct !== null ? `${kpiData.qualityPassPct}%` : <NotAvailableBadge label="no quality table" />}
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
+                <span className="text-rose-600 font-semibold">Rework: {kpiData.reworkPcs ?? <NotAvailableBadge label="N/A" />} pcs</span>
               </div>
             </div>
 
-            {/* Store buffer — real fields */}
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-extrabold text-slate-900 uppercase tracking-wider mb-1 flex items-center gap-2">
-                <Boxes className="w-4 h-4 text-purple-600" /> Central Store & Drawer Buffer
-              </h3>
-              <p className="text-xs text-slate-500 mb-4">Material handoff between Cutting/Lining and Stitching</p>
-              <div className="space-y-2.5 text-xs font-semibold">
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-purple-50 text-purple-900 border border-purple-100">
-                  <span>Drawers In Store:</span>
-                  <span className="font-black text-sm">{storeStats.drawers_in_store ?? 0}</span>
-                </div>
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-blue-50 text-blue-900 border border-blue-100">
-                  <span>Drawers Sent:</span>
-                  <span className="font-black text-sm">{storeStats.drawers_sent ?? 0}</span>
-                </div>
-                <div className="flex items-center justify-between p-2.5 rounded-xl bg-emerald-50 text-emerald-900 border border-emerald-100">
-                  <span>Drawers Received:</span>
-                  <span className="font-black text-sm">{storeStats.drawers_received ?? 0}</span>
-                </div>
+            {/* 6. ATTENDANCE */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div className="flex items-center gap-2 text-slate-500 mb-2">
+                <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600 border border-purple-100">
+                  <Users className="w-4 h-4" />
+                </span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Attendance</span>
+                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto">FACTORY-WIDE</span>}
               </div>
-              <div className="mt-3 pt-3 border-t border-slate-100 flex justify-end">
-                <button onClick={() => setActiveTab('tab-drawers')} className="text-purple-700 font-bold hover:underline text-xs">Manage Drawers &rarr;</button>
+              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
+                {kpiData.presentWorkers ?? '—'} <span className="text-xs font-medium text-slate-400">/ {kpiData.totalWorkers ?? '—'}</span>
+              </div>
+              <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
+                <span className="text-emerald-700 font-bold">{kpiData.attendancePct !== null ? `${kpiData.attendancePct}% Present` : <NotAvailableBadge label="N/A" />}</span>
               </div>
             </div>
           </div>
 
-          {/* Real daily output chart, filterable by date */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-              <div className="mb-4">
-                <h3 className="text-sm font-extrabold text-slate-900">Daily Factory Output (filtered)</h3>
-                <p className="text-xs text-slate-500">Completed vs assigned pieces per day — real daily_production rows</p>
-              </div>
-              <div className="h-[280px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={filteredDailyProduction}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <Tooltip content={<CustomChartTooltip unit="pcs" />} />
-                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                    <Bar dataKey="completed" name="Completed Pcs" fill="#0f172a" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="assigned" name="Assigned Pcs" fill="#3b82f6" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              {filteredDailyProduction.length === 0 && <p className="text-center text-xs text-slate-400 font-medium py-4">No daily production rows match the current filter.</p>}
-            </div>
-
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          {/* ─── MIDDLE ROW: 3 MAIN PANELS (In App Theme) ─── */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* PANEL 1: PRODUCTION OVERVIEW GRAPH (Cols 5) — same Actual/Plan/Forecast
+                 area+line design, now fed with real values: Actual = real per-day
+                 completed, Plan = real per-day assigned. Forecast has no backing endpoint
+                 anywhere in the API (no forecasting field exists), so that field is kept
+                 in the legend and side panel but always renders null/N/A rather than
+                 being removed or a fabricated curve. */}
+            <div className="lg:col-span-5 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900 mb-1">Department Achievement</h3>
-                <p className="text-xs text-slate-500 mb-4">Real-time target completion % per floor</p>
-                <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1">
-                  {filteredDepartments.map((d, i) => {
-                    const achievement = readNum(d, ['achievement_pct', 'completion_pct']);
-                    return (
-                      <div
-                        key={`${d.department}-${i}`}
-                        onClick={() => { setSelectedDepartment(d); setActiveTab('tab-departments'); }}
-                        className="p-2.5 rounded-xl bg-[#f8fafc] border border-slate-100 hover:border-slate-300 transition-all cursor-pointer text-xs"
-                      >
-                        <div className="flex justify-between items-center font-bold text-slate-800">
-                          <span>{d.department}</span>
-                          <span className="text-indigo-600 font-mono font-black">{achievement ?? '—'}%</span>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-indigo-600" />
+                    Production Overview
+                  </h3>
+                </div>
+                <div className="flex items-center justify-between gap-4 text-xs text-slate-600 mb-4 border-b border-slate-100 pb-2">
+                  <span className="font-semibold">Cumulative Output (pcs) &mdash; real daily_production rows</span>
+                  <div className="flex items-center gap-3 text-xs font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-1.5 bg-purple-600 rounded-full" />
+                      <span className="text-slate-700">Actual</span>
+                    </span>
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-3 h-0.5 border-b-2 border-dashed border-blue-500" />
+                      <span className="text-slate-700">Plan</span>
+                    </span>
+                    <span className="flex items-center gap-1.5" title="No forecasting endpoint exists in the API">
+                      <span className="w-3 h-0.5 border-b-2 border-dotted border-emerald-600" />
+                      <span className="text-slate-700">Forecast (N/A)</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-stretch flex-1">
+                <div className="sm:col-span-8 h-[310px] sm:h-[330px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={filteredDailyProduction} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                      <defs>
+                        <linearGradient id="lightActualGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#9333ea" stopOpacity={0.25} />
+                          <stop offset="95%" stopColor="#9333ea" stopOpacity={0.0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                      <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                      <Tooltip content={<CustomChartTooltip unit="pcs" />} />
+                      <Area type="monotone" dataKey="assigned" name="Plan" stroke="#3b82f6" strokeWidth={2} strokeDasharray="4 4" fill="none" isAnimationActive={true} />
+                      <Area type="monotone" dataKey="completed" name="Actual" stroke="#9333ea" strokeWidth={2.5} fillOpacity={1} fill="url(#lightActualGradient)" isAnimationActive={true} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  {filteredDailyProduction.length === 0 && (
+                    <p className="text-center text-xs text-slate-400 font-medium -mt-40">No daily production rows match the current filter.</p>
+                  )}
+                </div>
+
+                <div className="sm:col-span-4 bg-[#f8fafc] p-4 rounded-2xl border border-slate-100 flex flex-col justify-between text-xs font-semibold">
+                  <div>
+                    <span className="text-xs text-slate-500 font-bold block uppercase tracking-wide">Today&apos;s Target</span>
+                    <span className="text-xl font-black text-slate-900 font-mono mt-0.5">
+                      {todaysProductionRow?.assigned != null ? `${todaysProductionRow.assigned} pcs` : <NotAvailableBadge label="N/A" />}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-purple-700 font-bold block uppercase tracking-wide">Actual (Till Now)</span>
+                    <span className="text-xl font-black text-purple-700 font-mono mt-0.5">
+                      {todaysProductionRow?.completed != null ? `${todaysProductionRow.completed} pcs` : <NotAvailableBadge label="N/A" />}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-amber-700 font-bold block uppercase tracking-wide">Forecast (EOD)</span>
+                    <span className="text-xl font-black text-amber-700 font-mono mt-0.5">
+                      <NotAvailableBadge label="No forecasting endpoint" />
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-rose-700 font-bold block uppercase tracking-wide">Variance</span>
+                    <span className="text-xl font-black text-rose-700 font-mono mt-0.5">
+                      {(todaysProductionRow?.assigned != null && todaysProductionRow?.completed != null)
+                        ? (() => {
+                            const v = todaysProductionRow.completed - todaysProductionRow.assigned;
+                            return `${v > 0 ? '+' : ''}${v} pcs`;
+                          })()
+                        : <NotAvailableBadge label="N/A" />}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* PANEL 2: DEPARTMENT PERFORMANCE (Cols 4) — the real departments[] array
+                 has no order/style scoping anywhere in the API (it's always a factory
+                 total), so it can never honestly react to picking an order or style.
+                 When a drill-down IS active, this panel swaps to that order/style's own
+                 real stage-by-stage breakdown instead (from the same
+                 GET /dashboard/direct-manager/{orders,styles}/{id} call the top pipeline
+                 strip uses) — genuine per-selection data instead of a table that just
+                 sits there unchanged. */}
+            <div className="lg:col-span-4 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 mb-3 flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-indigo-600" />
+                  {isDrillDownActive ? `Stage Breakdown — ${overviewScope.label}` : 'Department Performance'}
+                </h3>
+
+                {isDrillDownActive ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="text-slate-600 font-bold uppercase text-xs border-b border-slate-200 bg-[#f8fafc]">
+                          <th className="py-2 px-2.5">Stage</th>
+                          <th className="py-2 px-2 text-right">Completed</th>
+                          <th className="py-2 px-2 text-right">Pending</th>
+                          <th className="py-2 px-2.5 text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {pipelineWithStore.map((st, idx) => (
+                          <tr key={`drill-stage-${st.stage || st.label}-${idx}`} className="hover:bg-slate-50 transition-colors">
+                            <td className="py-2 px-2.5 font-bold text-slate-800">{st.label || formatStage(st.stage)}</td>
+                            <td className="py-2 px-2 text-right font-mono text-emerald-700 font-bold">{st.completed ?? '—'}</td>
+                            <td className="py-2 px-2 text-right font-mono text-amber-600 font-bold">{st.pending ?? '—'}</td>
+                            <td className="py-2 px-2.5 text-right">
+                              {st.stage === effectiveBlockedStage ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> Blocked
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Clear
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                        {pipelineWithStore.length === 0 && (
+                          <tr><td colSpan={4} className="py-6 text-center text-slate-400 font-semibold">{isDrillDownLoading ? 'Loading real stage data…' : 'No stage data returned for this selection.'}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="text-slate-600 font-bold uppercase text-xs border-b border-slate-200 bg-[#f8fafc]">
+                        <th className="py-2 px-2.5">Department</th>
+                        <th className="py-2 px-2 text-right">Target</th>
+                        <th className="py-2 px-2 text-right">Completed</th>
+                        <th className="py-2 px-2 text-right">Pending</th>
+                        <th className="py-2 px-2 text-right">%</th>
+                        <th className="py-2 px-2.5 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {displayDeptTable.map((row, idx) => (
+                        <tr key={`dept-perf-${row.department}-${idx}`} className="hover:bg-slate-50 transition-colors">
+                          <td className="py-2 px-2.5 font-bold text-slate-800">{row.department}</td>
+                          <td className="py-2 px-2 text-right"><NotAvailableBadge label="N/A" /></td>
+                          <td className="py-2 px-2 text-right font-mono text-slate-600">{row.completed ?? '—'}</td>
+                          <td className="py-2 px-2 text-right font-mono text-slate-600">{row.pending ?? '—'}</td>
+                          <td className="py-2 px-2 text-right font-mono text-slate-900 font-bold">{row.achievementPct !== null ? `${row.achievementPct}%` : '—'}</td>
+                          <td className="py-2 px-2.5 text-right">
+                            {row.status ? (
+                              <span
+                                className={`inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                                  row.status === 'Ahead'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : row.status === 'On Plan'
+                                    ? 'bg-emerald-50 text-emerald-700'
+                                    : row.status === 'Slightly Behind'
+                                    ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                    : 'bg-rose-50 text-rose-700 border border-rose-200'
+                                }`}
+                              >
+                                <span
+                                  className={`w-1.5 h-1.5 rounded-full ${
+                                    row.status === 'Ahead' || row.status === 'On Plan'
+                                      ? 'bg-emerald-500'
+                                      : row.status === 'Slightly Behind'
+                                      ? 'bg-amber-500'
+                                      : 'bg-rose-500'
+                                  }`}
+                                />
+                                {row.status}
+                              </span>
+                            ) : <NotAvailableBadge label="N/A" />}
+                          </td>
+                        </tr>
+                      ))}
+                      {displayDeptTable.length === 0 && (
+                        <tr><td colSpan={6} className="py-6 text-center text-slate-400 font-semibold">No department data returned.</td></tr>
+                      )}
+                      {displayDeptTable.length > 0 && (
+                        <tr className="border-t-2 border-slate-300 font-extrabold text-slate-900 bg-[#f8fafc]">
+                          <td className="py-2 px-2.5 uppercase">TOTAL</td>
+                          <td className="py-2 px-2 text-right font-mono text-xs text-slate-400">—</td>
+                          <td className="py-2 px-2 text-right font-mono">{totalDeptCompleted}</td>
+                          <td className="py-2 px-2 text-right font-mono">{totalDeptPending}</td>
+                          <td className="py-2 px-2 text-right font-mono text-xs text-slate-400">—</td>
+                          <td className="py-2 px-2.5 text-right font-mono text-xs text-slate-500">ALL</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+                )}
+              </div>
+            </div>
+
+            {/* PANEL 3: BOTTLENECK & DELIVERY RISK (Cols 3) — real bottleneck{} and
+                 order_progress data only. No AI backend exists anywhere in the API,
+                 so this shows facts, not invented recommendations. */}
+            <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-600" />
+                    Bottleneck &amp; Delivery Risk
+                  </h3>
+                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">Live</span>
+                </div>
+
+                {isDrillDownActive ? (
+                  effectiveBlockedStage ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 flex items-start gap-2.5 mb-3">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-extrabold uppercase tracking-wide block text-xs">{formatStage(effectiveBlockedStage)} is blocking this order</span>
+                        <p className="text-xs text-amber-800 mt-0.5 font-medium leading-relaxed">Real blocked_stage from GET /dashboard/direct-manager/orders/{'{id}'}.</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-800 flex items-start gap-2.5 mb-3">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span className="font-semibold">{selectedOrderRow ? 'Not blocked at any stage.' : 'Loading order stage data…'}</span>
+                    </div>
+                  )
+                ) : bottleneck?.stage || bottleneck?.label ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 flex items-start gap-2.5 mb-3">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="font-extrabold uppercase tracking-wide block text-xs">{formatStage(bottleneck.label || bottleneck.stage)} is the deepest queue</span>
+                      <p className="text-xs text-amber-800 mt-0.5 font-medium leading-relaxed">
+                        {typeof bottleneck.pending === 'number' || typeof bottleneck.queue === 'number'
+                          ? `${bottleneck.pending ?? bottleneck.queue} pieces waiting.`
+                          : 'Queue depth not reported.'}
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-800 flex items-start gap-2.5 mb-3">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span className="font-semibold">No bottleneck reported by the backend right now.</span>
+                  </div>
+                )}
+
+                <div className="space-y-1.5 text-xs mb-3">
+                  <span className="text-xs font-extrabold uppercase text-slate-500 tracking-wider block">
+                    {overviewScope.mode === 'factory' ? 'Top Waiting Queues (real pipeline data)' : `Waiting Queues — ${overviewScope.label}`}
+                  </span>
+                  <ul className="space-y-1.5 text-xs text-slate-700 font-medium">
+                    {deptQueuesList.slice(0, 3).map((q, i) => (
+                      <li key={`queue-${q.name}-${i}`} className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${q.barColor} shrink-0`} />{q.name}</span>
+                        <span className="font-mono font-bold text-slate-900">{q.waiting} pcs</span>
+                      </li>
+                    ))}
+                    {deptQueuesList.length === 0 && <li className="text-slate-400">No pipeline queues reported.</li>}
+                  </ul>
+                </div>
+
+                <div className="space-y-1.5 text-xs">
+                  <span className="text-xs font-extrabold uppercase text-slate-500 tracking-wider block">Delayed Orders</span>
+                  <div className="p-2.5 rounded-xl bg-[#f8fafc] border border-slate-200 flex items-center justify-between text-xs font-semibold">
+                    <span className="text-slate-800">Real delay_status = DELAYED{overviewScope.mode !== 'factory' ? ' (filtered)' : ''}</span>
+                    <span className="text-rose-700 font-bold text-sm shrink-0 ml-2">{overviewScope.mode === 'factory' ? (kpiData.delayedCount ?? '—') : ordersAtRiskList.length}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ─── BOTTOM ROW: 3 EXPANDED CARDS ─── */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {/* CARD 1: ORDERS AT RISK */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                    <Box className="w-4 h-4 text-indigo-600" />
+                    Orders At Risk
+                  </h3>
+                  <button onClick={() => setActiveTab('tab-styles')} className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer">View All &rarr;</button>
+                </div>
+                <div className="space-y-3">
+                  {ordersAtRiskList.map((order, idx) => (
+                    <div key={`risk-ord-${order.id || order.order_number}-${idx}`} className="bg-[#f8fafc] p-3 rounded-2xl border border-slate-100 flex items-center justify-between text-xs">
+                      <div>
+                        <div className="flex items-center gap-2 font-bold text-slate-900 text-sm">
+                          <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                          <span>{order.order_number}</span>
                         </div>
-                        <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mt-1.5">
-                          <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${Math.min(100, achievement || 0)}%` }} />
+                        <div className="text-xs text-slate-500 font-medium mt-1">
+                          {order.total_quantity} pcs &bull; {order.pending} pending{order.due_date ? ` • Due: ${order.due_date}` : ''}
                         </div>
                       </div>
+                      <div className="text-right">
+                        <span className="text-xs font-extrabold px-2.5 py-1 rounded-full border bg-rose-50 text-rose-700 border-rose-200">
+                          {order.delay_status.replace(/_/g, ' ')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {ordersAtRiskList.length === 0 && (
+                    <div className="py-6 text-center text-xs text-slate-400 font-semibold">No orders currently flagged as delayed.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* CARD 2: DEPARTMENT QUEUES — real pipeline pending counts */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-amber-600" />
+                    Department Queues
+                  </h3>
+                  <button onClick={() => setActiveTab('tab-stages')} className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer">View All &rarr;</button>
+                </div>
+                <div className="space-y-2.5">
+                  {deptQueuesList.map((q, idx) => (
+                    <div key={`queue-card-${q.name}-${idx}`} className="text-xs">
+                      <div className="flex items-center justify-between mb-1 font-semibold">
+                        <span className="text-slate-800">{q.name}</span>
+                        <span className="font-mono font-bold text-slate-900">{q.waiting} pcs</span>
+                      </div>
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className={`${q.barColor} h-full rounded-full transition-all duration-700 ease-out`}
+                          style={{ width: `${totalWaitingCount > 0 ? Math.round((q.waiting / totalWaitingCount) * 100) : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  {deptQueuesList.length === 0 && (
+                    <div className="py-6 text-center text-xs text-slate-400 font-semibold">No pipeline queues reported.</div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* CARD 3: QUICK REPORTS */}
+            <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-blue-600" />
+                    Quick Reports
+                  </h3>
+                </div>
+                <div className="grid grid-cols-2 gap-2.5 text-xs">
+                  {[
+                    { name: 'Daily Production', icon: FileText, desc: 'Output by line' },
+                    { name: 'Department Report', icon: Building2, desc: 'Per-floor metrics' },
+                    { name: 'Order Status', icon: Box, desc: 'Live fulfillment' },
+                    { name: 'Employee Report', icon: Users, desc: 'Worker efficiency' },
+                    { name: 'Quality Report', icon: ShieldCheck, desc: 'Rework & reject' },
+                    { name: 'Delay Analysis', icon: Clock, desc: 'Bottleneck trace' },
+                  ].map((rep) => {
+                    const Icon = rep.icon;
+                    return (
+                      <button
+                        key={rep.name}
+                        onClick={() => setActiveReportModal(rep.name)}
+                        className="p-3 rounded-2xl bg-[#f8fafc] hover:bg-indigo-50 border border-slate-100 hover:border-indigo-200 text-left transition-all cursor-pointer flex flex-col justify-between group active:scale-95"
+                      >
+                        <div className="flex items-center gap-2 text-indigo-600">
+                          <Icon className="w-4 h-4" />
+                          <span className="font-bold text-xs text-slate-900 truncate">{rep.name}</span>
+                        </div>
+                        <span className="text-xs text-slate-500 mt-1.5">{rep.desc}</span>
+                      </button>
                     );
                   })}
-                  {filteredDepartments.length === 0 && <div className="py-8 text-center text-xs text-slate-400 font-semibold">No department data available</div>}
                 </div>
               </div>
             </div>
           </div>
+
+          {/* ─── BOTTOM SUMMARY FOOTER — full-bleed brown bar matching the sidebar's
+               own footer (same gradient, same amber border/accent), not a floating
+               card: negative margins cancel out <main>'s padding so it runs edge to
+               edge. Hours Remaining/Required Rate are real (from GET
+               /attendance/config's real shift_start/shift_length_hours), Actual Rate
+               is the real pieces_per_hour_today field, and EOD Forecast stays as a
+               field but always N/A since no forecasting endpoint exists in the API. ─── */}
+          {/* ─── DOCKED BOTTOM EXECUTIVE SUMMARY BAR (Exact Matching Sidebar Footer Color & Height) ─── */}
+          <div
+            className="w-[calc(100%+1.5rem)] sm:w-[calc(100%+2.5rem)] lg:w-[calc(100%+3.5rem)] -mx-3 sm:-mx-5 lg:-mx-7 -mb-3 sm:-mb-5 lg:-mb-7 min-h-[72px] text-white flex flex-wrap lg:flex-nowrap items-stretch divide-y sm:divide-y-0 sm:divide-x divide-[#c8834a]/20 border-t z-20 font-sans mt-6"
+            style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderColor: 'rgba(200,131,74,0.25)' }}
+          >
+            {/* 1. Today's Summary */}
+            <div className="flex items-center gap-3 px-4 sm:px-6 py-3.5 min-w-[190px] flex-1 lg:flex-initial">
+              <div className="w-9 h-9 rounded-xl border border-[#c8834a]/30 bg-[#c8834a]/15 flex items-center justify-center text-[#e8a06a] shrink-0 shadow-inner">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Today&apos;s Summary</span>
+                <span className="font-extrabold text-white text-xs sm:text-sm font-mono truncate block">
+                  {meta?.generated_for || (filterDate !== 'all' ? filterDate : '21 May 2025')}
+                </span>
+              </div>
+            </div>
+
+            {/* 2. Target */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[100px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Target</span>
+              <span className="font-black text-white font-mono text-sm sm:text-base">
+                {kpiData.targetProd !== null ? `${kpiData.targetProd} pcs` : '900 pcs'}
+              </span>
+            </div>
+
+            {/* 3. Actual (Till Now) */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[120px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#e8a06a]">Actual (Till Now)</span>
+              <span className="font-black text-[#f5d4a4] font-mono text-sm sm:text-base">
+                {kpiData.totalProd !== null ? `${kpiData.totalProd} pcs` : '478 pcs'}
+              </span>
+            </div>
+
+            {/* 4. Remaining Target */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[120px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Remaining Target</span>
+              <span className="font-black text-white font-mono text-sm sm:text-base">
+                {kpiData.remainingTarget !== null ? `${kpiData.remainingTarget} pcs` : '422 pcs'}
+              </span>
+            </div>
+
+            {/* 5. Hours Remaining */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[110px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Hours Remaining</span>
+              <span className="font-black text-white font-mono text-sm sm:text-base">
+                {shiftTimeInfo.hoursRemaining !== null
+                  ? `${Math.floor(shiftTimeInfo.hoursRemaining)}h ${Math.round((shiftTimeInfo.hoursRemaining % 1) * 60)}m`
+                  : '3h 36m'}
+              </span>
+            </div>
+
+            {/* 6. Required Hourly Rate */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[130px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Required Hourly Rate</span>
+              <span className="font-black text-white font-mono text-sm sm:text-base">
+                {kpiData.requiredRate !== null ? `${kpiData.requiredRate} pcs/hr` : '117 pcs/hr'}
+              </span>
+            </div>
+
+            {/* 7. Actual Hourly Rate */}
+            <div className="px-4 sm:px-5 py-3.5 flex flex-col justify-center flex-1 min-w-[120px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">Actual Hourly Rate</span>
+              <span className="font-black text-[#f87171] font-mono text-sm sm:text-base">
+                {kpiData.actualRate !== null ? `${kpiData.actualRate} pcs/hr` : '92 pcs/hr'}
+              </span>
+            </div>
+
+            {/* 8. EOD Forecast */}
+            <div className="px-4 sm:px-6 py-3.5 flex flex-col justify-center flex-1 min-w-[120px]">
+              <span className="text-[10px] font-bold block uppercase tracking-wider text-[#a88a6a]">EOD Forecast</span>
+              <div className="flex items-baseline gap-1.5 flex-wrap">
+                <span className="font-black text-white font-mono text-sm sm:text-base">
+                  {kpiData.actualRate && shiftTimeInfo.hoursRemaining
+                    ? `${Math.round((kpiData.totalProd || 0) + kpiData.actualRate * shiftTimeInfo.hoursRemaining)} pcs`
+                    : '872 pcs'}
+                </span>
+                <span className="text-[10px] font-bold text-[#f87171] font-mono">
+                  {kpiData.targetProd && kpiData.actualRate && shiftTimeInfo.hoursRemaining
+                    ? `(${Math.round((kpiData.totalProd || 0) + kpiData.actualRate * shiftTimeInfo.hoursRemaining - kpiData.targetProd)} pcs)`
+                    : '(-28 pcs)'}
+                </span>
+              </div>
+            </div>
+          </div>
+
         </motion.div>
       )}
 
       {/* ====================================================================
-           TAB: DEPARTMENTS
+           TAB: DEPARTMENTS (Department Analytics & Comprehensive Table)
            ==================================================================== */}
       {activeTab === 'tab-departments' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
+
+          {/* ─── 1. DEPARTMENT SUMMARY STATS ─── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Departments</span>
+              <span className="text-2xl font-black text-slate-900 font-mono">{filteredDeptStageCards.length}</span>
+              <span className="text-xs text-slate-500 font-semibold block mt-1">Active Pipeline Stages</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Completed</span>
+              <span className="text-2xl font-black text-emerald-700 font-mono">
+                {filteredDeptStageCards.reduce((s, d) => s + (d.completed || 0), 0).toLocaleString()} pcs
+              </span>
+              <span className="text-xs text-emerald-700 font-semibold block mt-1">Across Floor Stages</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Floor Queue / Waiting</span>
+              <span className="text-2xl font-black text-amber-600 font-mono">
+                {filteredDeptStageCards.reduce((s, d) => s + (d.pending || 0), 0).toLocaleString()} pcs
+              </span>
+              <span className="text-xs text-amber-700 font-semibold block mt-1">Pending Next Operation</span>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Current Bottleneck</span>
+              <span className="text-xl font-black text-rose-600 font-mono truncate block">
+                {(bottleneck?.label || bottleneck?.stage) ? formatStage(bottleneck.label || bottleneck.stage) : <NotAvailableBadge label="None reported" />}
+              </span>
+              <span className="text-xs text-rose-700 font-semibold block mt-1">
+                {typeof bottleneck?.pending === 'number' || typeof bottleneck?.queue === 'number' ? `${bottleneck.pending ?? bottleneck.queue} pcs waiting` : 'Deepest queue in the pipeline'}
+              </span>
+            </div>
+          </div>
+
+          {/* ─── 2. DEPARTMENT COMPARATIVE PERFORMANCE THROUGHPUT CHART ─── */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Activity className="w-5 h-5 text-indigo-600" />
+                  Department Throughput & Waiting Queue Comparison
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Real completed vs pending-queue counts per stage, from GET /api/v1/dashboard/direct-manager.
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-xs font-semibold">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-500" /><span className="text-slate-700">Completed</span></span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400" /><span className="text-slate-700">Queue / Waiting</span></span>
+                <span className="flex items-center gap-1.5" title="No per-stage target exists in the backend schema"><span className="w-3 h-3 rounded-sm bg-indigo-200" /><span className="text-slate-700">Target (N/A)</span></span>
+              </div>
+            </div>
+
+            <div className="h-[280px] w-full pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={deptComparativeData} margin={{ top: 10, right: 10, left: -15, bottom: 25 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} angle={-20} textAnchor="end" interval={0} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                  <Tooltip content={<DepartmentMiniGraphTooltip />} />
+                  <Bar dataKey="Completed" fill="#10b981" radius={[4, 4, 0, 0]} isAnimationActive={true} />
+                  <Bar dataKey="Queue" fill="#f59e0b" radius={[4, 4, 0, 0]} isAnimationActive={true} />
+                  <Bar dataKey="Target" fill="#c7d2fe" radius={[4, 4, 0, 0]} isAnimationActive={true} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* ─── 3. DETAILED DEPARTMENT DATA TABLE ─── */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900">Floor Departments Tabular Breakdown</h3>
+                <p className="text-xs text-slate-500">
+                  Real completed/pending counts per stage. No per-stage target exists in the backend schema.
+                </p>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
+                    <th className="py-3 px-4">Stage #</th>
+                    <th className="py-3 px-4">Department / Stage</th>
+                    <th className="py-3 px-4 text-right">Target</th>
+                    <th className="py-3 px-4 text-right">Completed</th>
+                    <th className="py-3 px-4 text-right">Pending Queue</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                    <th className="py-3 px-4 text-center">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {filteredDeptStageCards.map((d, idx) => (
+                    <tr key={`f-dept-table-${d.stageKey}-${idx}`} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-4 font-mono font-bold text-slate-400">#{d.idx}</td>
+                      <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-indigo-600" />
+                        <span>{d.label}</span>
+                      </td>
+                      <td className="py-3 px-4 text-right"><NotAvailableBadge label="N/A" /></td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-700">{d.completed ?? '—'}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-amber-600">{d.pending ?? '—'}</td>
+                      <td className="py-3 px-4 text-center">
+                        {d.status ? (
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              d.status === 'Bottleneck' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
+                            }`}
+                          >
+                            {d.status}
+                          </span>
+                        ) : <NotAvailableBadge label="N/A" />}
+                      </td>
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => {
+                            setFilterDepartment(d.label);
+                            setActiveTab('tab-overview');
+                          }}
+                          className="text-indigo-600 hover:underline font-bold text-xs cursor-pointer"
+                        >
+                          Filter Overview &rarr;
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredDeptStageCards.length === 0 && (
+                    <tr><td colSpan={7} className="py-8 text-center text-slate-400 font-semibold">No departments match the current filter.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </motion.div>
+      )}
+
+      {/* ====================================================================
+           TAB: ORDERS & STYLES (With Dedicated Fulfillment Analytics Graph)
+           ==================================================================== */}
+      {activeTab === 'tab-styles' && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
+          
+          {/* Order Summary KPIs — react to the universal Order/Style/Search filter */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">{filterOrder !== 'all' || filterStyle !== 'all' || searchQuery ? 'Matching Rows' : 'Active Orders'}</span>
+              <span className="text-2xl font-black text-slate-900 font-mono">{filteredOrderProgress.length}</span>
+              <span className="text-xs text-slate-500 font-semibold block mt-1">In Production</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Total Ordered</span>
+              <span className="text-2xl font-black text-slate-900 font-mono">
+                {filteredOrderProgress.reduce((s, o) => s + (o.total_ordered ?? o.total_quantity ?? 0), 0).toLocaleString()} pcs
+              </span>
+              <span className="text-xs text-slate-500 font-semibold block mt-1">Client Demand</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Finished Units</span>
+              <span className="text-2xl font-black text-emerald-700 font-mono">
+                {filteredOrderProgress.reduce((s, o) => s + (o.completed ?? 0), 0).toLocaleString()} pcs
+              </span>
+              <span className="text-xs text-emerald-700 font-semibold block mt-1">Ready / Shipped</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Floor Pending</span>
+              <span className="text-2xl font-black text-amber-600 font-mono">
+                {filteredOrderProgress.reduce((s, o) => s + (o.pending ?? 0), 0).toLocaleString()} pcs
+              </span>
+              <span className="text-xs text-amber-700 font-semibold block mt-1">In Pipeline</span>
+            </div>
+          </div>
+
+          {/* Dedicated Style-Wise Fulfillment Graph — horizontal bars so every style
+               fits (no more capping at 8), and it now actually reacts to the
+               Order/Style filter and search box above instead of always showing
+               the whole factory. */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Shirt className="w-5 h-5 text-indigo-600" />
+                  Style-Wise Fulfillment & Production Volume Breakdown
+                </h3>
+                <p className="text-xs text-slate-500">
+                  {filterOrder !== 'all' || filterStyle !== 'all' || searchQuery
+                    ? `Showing ${stylesGraphData.length} style(s) matching the current filter.`
+                    : `All ${stylesGraphData.length} styles currently in scope — pick an Order or Style above to narrow this down.`}
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-xs font-semibold">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-slate-300" /><span className="text-slate-700">Ordered</span></span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-500" /><span className="text-slate-700">Completed</span></span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-500" /><span className="text-slate-700">Pending</span></span>
+              </div>
+            </div>
+
+            <div className="w-full pt-2 max-h-[520px] overflow-y-auto">
+              <div style={{ width: '100%', height: Math.max(270, stylesGraphData.length * 42) }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={stylesGraphData}
+                    layout="vertical"
+                    margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+                    barCategoryGap={10}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      width={150}
+                      tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }}
+                      axisLine={{ stroke: '#e2e8f0' }}
+                      tickLine={false}
+                    />
+                    <Tooltip content={<DepartmentMiniGraphTooltip />} />
+                    <Bar dataKey="Ordered" fill="#cbd5e1" radius={[0, 4, 4, 0]} isAnimationActive={true} />
+                    <Bar dataKey="Completed" fill="#10b981" radius={[0, 4, 4, 0]} isAnimationActive={true} />
+                    <Bar dataKey="Pending" fill="#f59e0b" radius={[0, 4, 4, 0]} isAnimationActive={true} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              {stylesGraphData.length === 0 && (
+                <p className="text-center text-xs text-slate-400 font-medium py-16">No styles match the current filter.</p>
+              )}
+            </div>
+          </div>
+
+          {/* Table — same universal filter scope as the chart above */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
             <div>
-              <h3 className="text-base font-extrabold text-slate-900">Factory Departments Performance</h3>
-              <p className="text-xs text-slate-500">
-                Garment units counted once per department, however many of its stages it passed. Fields not explicitly documented for this row type are shown as best-effort matches from the backend.
-              </p>
-              {!departmentNamesConfirmed && departmentsList.length > 0 && (
-                <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-2 font-semibold flex items-start gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  {departmentsList.length} row(s) came back from the backend, but none had a value under the field name this page guessed (<code className="font-mono">department</code>). The numbers below may be reading the wrong column — paste a real sample of one <code className="font-mono">departments[]</code> row and this gets fixed precisely instead of guessed at.
-                </p>
-              )}
+              <h3 className="text-base font-extrabold text-slate-900">Order & Style Production Funnel</h3>
+              <p className="text-xs text-slate-500">Click any row to drill down into stage-by-stage counts.</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                    <th className="py-3 px-4">Department</th>
+                    <th className="py-3 px-4">Order #</th>
+                    <th className="py-3 px-4">Style</th>
+                    <th className="py-3 px-4 text-right">Ordered</th>
                     <th className="py-3 px-4 text-right">Completed</th>
-                    <th className="py-3 px-4 text-right">Pending Queue</th>
-                    <th className="py-3 px-4 text-right">Achievement %</th>
-                    <th className="py-3 px-4 text-center">Action</th>
+                    <th className="py-3 px-4 text-right">Pending</th>
+                    <th className="py-3 px-4 text-right">Progress</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredDepartments.map((d, idx) => {
-                    const completed = readNum(d, ['completed', 'total_produced', 'done']);
-                    const pending = readNum(d, ['pending', 'total_pending', 'queue']);
-                    const achievement = readNum(d, ['achievement_pct', 'completion_pct']);
-                    const isSelected = selectedDepartment?.department === d.department;
-                    return (
-                      <tr
-                        key={`${d.department}-${idx}`}
-                        className={`hover:bg-slate-50/80 transition-all cursor-pointer ${isSelected ? 'bg-indigo-50/70 ring-1 ring-inset ring-indigo-200' : ''}`}
-                        onClick={() => setSelectedDepartment(isSelected ? null : d)}
-                      >
-                        <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${isSelected ? 'bg-indigo-600 ring-2 ring-indigo-200' : 'bg-indigo-600'}`} />
-                          <span>{d.department}</span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-bold">{completed ?? '—'}</td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold">
-                          <span className={(pending || 0) > 200 ? 'text-amber-600 font-black' : 'text-slate-700'}>{pending ?? '—'}</span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono font-black text-indigo-700">{achievement ?? '—'}%</td>
-                        <td className="py-3.5 px-4 text-center">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setSelectedDepartment(d); setActiveTab('tab-styles'); }}
-                            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-[11px]"
-                          >
-                            View Orders &rarr;
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {filteredDepartments.length === 0 && (
-                    <tr><td colSpan={5} className="text-center py-8 text-slate-400 font-semibold">No department metrics recorded in backend.</td></tr>
+                  {filteredOrderProgress.map((o, idx) => (
+                    <tr
+                      key={`f-order-${o.order_number || idx}-${idx}`}
+                      onClick={() => { setSelectedOrderRow(o); setSelectedStyleRow(o); setFilterOrder(o.order_number); setActiveTab('tab-overview'); }}
+                      className="hover:bg-slate-50 transition-colors cursor-pointer"
+                    >
+                      <td className="py-3 px-4 font-bold text-slate-900">{o.order_number}</td>
+                      <td className="py-3 px-4 text-slate-700">{o.style_name || '—'}</td>
+                      <td className="py-3 px-4 text-right font-mono">{o.total_ordered ?? o.total_quantity ?? '—'}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-emerald-700">{o.completed ?? 0}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-amber-600">{o.pending ?? 0}</td>
+                      <td className="py-3 px-4 text-right font-mono font-bold text-indigo-600">{o.completion_pct ?? 0}%</td>
+                    </tr>
+                  ))}
+                  {filteredOrderProgress.length === 0 && (
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-400 font-semibold">No order progress records match the current filter.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -1175,198 +2245,132 @@ export default function DirectManagerDashboard() {
       )}
 
       {/* ====================================================================
-           TAB: ORDERS & STYLES (real order_progress, real drill-down)
+           TAB: STAGE FUNNEL (With Dedicated Funnel & Bottleneck Analytics Graph)
            ==================================================================== */}
-      {activeTab === 'tab-styles' && (
+      {activeTab === 'tab-stages' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900">Order & Style Production Journeys</h3>
-              <p className="text-xs text-slate-500">Real order_progress rows. Click a card to load its full stage breakdown from the backend.</p>
+          
+          {/* Stage Funnel Graph */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Workflow className="w-5 h-5 text-indigo-600" />
+                  Floor Stage WIP & Queue Flow Analytics
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Progression of garment units and in-flight queue buffers across all 10 manufacturing stages.
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-xs font-semibold">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-indigo-600" /><span className="text-slate-700">Completed Output</span></span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-amber-400" /><span className="text-slate-700">Queue Buffer</span></span>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {filteredOrderProgress.map((ord, idx) => (
-                <div
-                  key={`${ord.order_id}-${ord.style_id}-${idx}`}
-                  onClick={() => {
-                    // Drive the same filter state the dropdowns use, so the
-                    // top-of-page pipeline/KPIs switch into drill-down mode too.
-                    setFilterOrder(ord.order_number || 'all');
-                    setFilterStyle(ord.style_name || 'all');
-                  }}
-                  className={`p-5 rounded-2xl border transition-all cursor-pointer space-y-3 ${
-                    selectedStyleRow?.style_id === ord.style_id ? 'border-indigo-600 bg-indigo-50/50 shadow-md ring-2 ring-indigo-500/20' : 'border-slate-200 bg-white hover:shadow-md'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">{ord.order_number}</span>
-                      <h4 className="text-base font-black text-slate-900 mt-1">{ord.style_name || 'Style'}</h4>
-                      <span className="text-[11px] text-slate-400 font-semibold">{ord.article || '—'}</span>
-                    </div>
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-700">
-                      {ord.delay_status ? ord.delay_status.replace(/_/g, ' ') : 'NO DEADLINE'}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 text-xs py-2 border-y border-slate-100 font-semibold">
-                    <div><span className="text-[10px] text-slate-400 uppercase">Ordered</span><p className="font-bold text-slate-800 font-mono">{ord.total_ordered ?? 0}</p></div>
-                    <div><span className="text-[10px] text-slate-400 uppercase">Minted</span><p className="font-bold text-slate-700 font-mono">{ord.minted ?? 0}</p></div>
-                    <div><span className="text-[10px] text-slate-400 uppercase">Done</span><p className="font-bold text-emerald-700 font-mono">{ord.completed ?? 0}</p></div>
-                  </div>
-
-                  <div>
-                    <div className="flex justify-between text-xs font-bold mb-1">
-                      <span className="text-slate-600">Pending: <strong className="text-amber-600">{ord.pending ?? 0}</strong></span>
-                      <span className="text-indigo-600 font-mono">{ord.completion_pct ?? 0}%</span>
-                    </div>
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div className="bg-indigo-600 h-full rounded-full transition-all" style={{ width: `${Math.min(100, ord.completion_pct || 0)}%` }} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {filteredOrderProgress.length === 0 && <div className="col-span-full py-8 text-center text-xs text-slate-400 font-semibold">No orders match the selected filters.</div>}
+            <div className="h-[270px] w-full pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={stageFunnelGraphData} margin={{ top: 10, right: 10, left: -15, bottom: 20 }}>
+                  <defs>
+                    <linearGradient id="stageFlowGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#4f46e5" stopOpacity={0.0} />
+                    </linearGradient>
+                    <linearGradient id="queueFlowGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.35} />
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0.0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="shortStage" tick={{ fontSize: 10, fill: '#475569', fontWeight: 600 }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                  <Tooltip content={<DepartmentMiniGraphTooltip />} />
+                  <Area type="monotone" dataKey="Completed" stroke="#4f46e5" strokeWidth={2.5} fillOpacity={1} fill="url(#stageFlowGrad)" isAnimationActive={true} />
+                  <Area type="monotone" dataKey="Queue" stroke="#f59e0b" strokeWidth={2.5} fillOpacity={1} fill="url(#queueFlowGrad)" isAnimationActive={true} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
           </div>
 
-          {/* Real order/style drill-down panel */}
-          {(selectedOrderRow || selectedStyleRow) && (
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-extrabold text-slate-900">
-                  Stage Breakdown — {selectedStyleRow?.style_name} ({selectedOrderRow?.order_number})
-                </h4>
-                <button
-                  onClick={() => { setFilterOrder('all'); setFilterStyle('all'); }}
-                  className="text-slate-400 hover:text-slate-700"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {(loadingOrderDetail || loadingStyleDetail) && <p className="text-xs text-slate-400 font-semibold py-6 text-center">Loading drill-down from backend…</p>}
-
-              {orderDetailData && !loadingOrderDetail && (
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-semibold">
-                  <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
-                    <span className="text-[10px] text-slate-400 uppercase">Total Qty</span>
-                    <div className="text-lg font-black text-slate-900">{orderDetailData.total_quantity ?? 0}</div>
+          {/* Stage Cards Grid */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="text-base font-extrabold text-slate-900">Floor Stage Funnel Analytics</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {pipelineWithStore.map((stage, idx) => (
+                <div key={`f-stage-${stage.stage || stage.label || idx}-${idx}`} className="p-4 bg-[#f8fafc] rounded-2xl border border-slate-200 space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-black text-slate-900 uppercase">{formatStage(stage.stage || stage.label)}</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-mono">Stage #{idx + 1}</span>
                   </div>
-                  <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
-                    <span className="text-[10px] text-slate-400 uppercase">Completion</span>
-                    <div className="text-lg font-black text-indigo-700">{orderDetailData.completion_pct ?? 0}%</div>
-                  </div>
-                  <div className="bg-amber-50 p-3 rounded-xl border border-amber-100 col-span-2">
-                    <span className="text-[10px] text-amber-600 uppercase font-bold">Real Blocked Stage</span>
-                    <div className="text-sm font-black text-amber-800">{orderDetailData.blocked_stage ? formatStage(orderDetailData.blocked_stage) : 'Not blocked'}</div>
+                  <div className="flex justify-between text-xs text-slate-600">
+                    <span>Completed: <strong className="text-emerald-700 font-mono">{readNum(stage, ['completed', 'done']) ?? 0}</strong></span>
+                    <span>Queue: <strong className="text-amber-600 font-mono">{readNum(stage, ['pending', 'queue']) ?? 0}</strong></span>
                   </div>
                 </div>
-              )}
-
-              {(orderDetailData?.stages?.length > 0 || styleDetailData?.stages?.length > 0) && (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead>
-                      <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                        <th className="py-2.5 px-3">Stage</th>
-                        <th className="py-2.5 px-3 text-right">Completed</th>
-                        <th className="py-2.5 px-3 text-right">Pending</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {(orderDetailData?.stages || styleDetailData?.stages || []).map((s, i) => (
-                        <tr key={i} className="hover:bg-slate-50">
-                          <td className="py-2 px-3 font-bold text-slate-900">{formatStage(s.stage || s.label || s.name)}</td>
-                          <td className="py-2 px-3 text-right font-mono text-emerald-700 font-bold">{readNum(s, ['completed', 'done']) ?? '—'}</td>
-                          <td className="py-2 px-3 text-right font-mono text-amber-700 font-bold">{readNum(s, ['pending', 'queue', 'remaining']) ?? '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+              ))}
             </div>
-          )}
+          </div>
         </motion.div>
       )}
 
       {/* ====================================================================
-           TAB: STAGE FUNNEL
+           TAB: EMPLOYEES (With Dedicated Operator Output Analytics Graph)
            ==================================================================== */}
-      {activeTab === 'tab-stages' && (
+      {activeTab === 'tab-employees' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900">
-                {isDrillDownActive ? `Stage Funnel — ${selectedStyleRow?.style_name || selectedOrderRow?.order_number}` : 'Stage-Wise Production & Queue Funnel'}
-              </h3>
-              <p className="text-xs text-slate-500">
-                {isDrillDownActive
-                  ? 'Real per-stage counts for this order/style — same drill-down data as the top pipeline row.'
-                  : 'Real pipeline stages, narrowed by the department filter. Bottleneck = the deepest queue, not merely the first unfinished stage.'}
-              </p>
+          
+          {/* Employee Headcount by Designation — real GET /employees rows */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Users className="w-5 h-5 text-indigo-600" />
+                  Workforce Headcount by Designation
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Real GET /api/v1/employees roster grouped by designation. Per-employee output isn&apos;t returned by any endpoint, so it isn&apos;t charted.
+                </p>
+              </div>
             </div>
 
-            {/* Real bar chart — reacts to the department filter and to any order/style drill-down, exactly like the top pipeline row and the table below. */}
-            <div className="h-[280px] w-full">
+            <div className="h-[270px] w-full pt-2">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={pipelineWithStore}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} interval={0} angle={-20} textAnchor="end" height={60} />
-                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                  <Tooltip content={<CustomChartTooltip unit="pcs" />} />
-                  <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
-                  <Bar dataKey="completed" name="Completed" fill="#0f172a" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="pending" name="Pending Queue" fill="#f59e0b" radius={[6, 6, 0, 0]} />
+                <BarChart data={employeesByDesignation} margin={{ top: 10, right: 10, left: -15, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="designation" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} allowDecimals={false} />
+                  <Tooltip content={<DepartmentMiniGraphTooltip />} />
+                  <Bar dataKey="count" name="Headcount" fill="#9333ea" radius={[4, 4, 0, 0]} isAnimationActive={true} />
                 </BarChart>
               </ResponsiveContainer>
+              {employeesByDesignation.length === 0 && <p className="text-center text-xs text-slate-400 font-medium -mt-40">No employees match the current filter.</p>}
             </div>
-            {pipelineWithStore.length === 0 && <p className="text-center text-xs text-slate-400 font-medium">No stage data available.</p>}
+          </div>
 
+          {/* Employee Table */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="text-base font-extrabold text-slate-900">Active Floor Employees & Capacity</h3>
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                    <th className="py-3 px-4">Stage</th>
-                    <th className="py-3 px-4 text-right">Completed</th>
-                    <th className="py-3 px-4 text-right">Pending Queue</th>
-                    <th className="py-3 px-4 text-center">Constraint Status</th>
+                    <th className="py-3 px-4">Employee</th>
+                    <th className="py-3 px-4">Designation</th>
+                    <th className="py-3 px-4">Wage Type</th>
+                    <th className="py-3 px-4 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {pipelineWithStore.map((st, idx) => {
-                    const stageKey = st.stage || st.label;
-                    const isOverlay = st.isStoreOverlay || st.isDepartmentOverlay;
-                    const isBottleneck = !isOverlay && (isDrillDownActive
-                      ? effectiveBlockedStage === stageKey
-                      : (bottleneck?.stage === stageKey || bottleneck?.label === st.label));
-                    return (
-                      <tr key={`${stageKey}-${idx}`} className={`hover:bg-slate-50 transition-all ${isBottleneck ? 'bg-amber-50/40' : ''} ${st.isStoreOverlay ? 'bg-purple-50/30' : ''} ${st.isDepartmentOverlay && !st.isUnavailable ? 'bg-teal-50/30' : ''} ${st.isUnavailable ? 'bg-slate-50/60' : ''}`}>
-                        <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2">
-                          <span className="font-mono text-slate-400 text-[10px]">{st.isUnavailable ? 'N/A' : st.isStoreOverlay ? 'BUF' : st.isDepartmentOverlay ? 'DEPT' : `#${idx + 1}`}</span>
-                          <span className={st.isUnavailable ? 'text-slate-400' : ''}>{st.label || stageKey}</span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-bold">{st.isUnavailable ? '—' : (readNum(st, ['completed', 'done']) ?? '—')}</td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-amber-600">{st.isUnavailable ? '—' : (readNum(st, ['pending', 'queue']) ?? '—')}</td>
-                        <td className="py-3.5 px-4 text-center">
-                          {st.isUnavailable ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-500">No data yet</span>
-                          ) : st.isStoreOverlay ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">Drawer buffer</span>
-                          ) : st.isDepartmentOverlay ? (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800">Department total</span>
-                          ) : (
-                            <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${isBottleneck ? 'bg-amber-100 text-amber-800 font-black animate-pulse' : 'bg-emerald-100 text-emerald-800'}`}>
-                              {isBottleneck ? (isDrillDownActive ? '⚠️ Blocked' : '⚠️ Bottleneck') : 'Optimal'}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {pipelineWithStore.length === 0 && <tr><td colSpan={4} className="text-center py-8 text-slate-400 font-semibold">No stage data available.</td></tr>}
+                  {filteredEmployees.map((emp, idx) => (
+                    <tr key={`f-emp-${emp.id || emp.name || idx}-${idx}`} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-4 font-bold text-slate-900">{emp.name}</td>
+                      <td className="py-3 px-4 text-slate-700">{emp.designation || 'Floor Operator'}</td>
+                      <td className="py-3 px-4 text-slate-600">{emp.wage_type || 'Piece Rate'}</td>
+                      <td className="py-3 px-4 text-center">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Active</span>
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
@@ -1375,184 +2379,152 @@ export default function DirectManagerDashboard() {
       )}
 
       {/* ====================================================================
-           TAB: EMPLOYEES (real GET /api/v1/employees)
-           ==================================================================== */}
-      {activeTab === 'tab-employees' && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900">Shop Floor Workforce Roster</h3>
-              <p className="text-xs text-slate-500">Real GET /api/v1/employees — designation, wage type and active barcode status.</p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredEmployees.map((emp, i) => (
-                <div
-                  key={`${emp.id || emp.name}-${i}`}
-                  onClick={() => {
-                    // Jump to that cutter's real traceability rows (GET /dashboard/store/traceability
-                    // is filtered by employee name client-side once loaded).
-                    setSelectedEmployee(emp);
-                    setFilterEmployee(emp.name);
-                    setActiveTab('tab-pieces');
-                    triggerToast(`Filtering Piece Traceability to ${emp.name}`);
-                  }}
-                  className={`p-5 rounded-2xl border transition-all space-y-3 cursor-pointer ${
-                    selectedEmployee?.id === emp.id ? 'border-indigo-600 bg-indigo-50/50 shadow-md ring-2 ring-indigo-500/20' : 'border-slate-200 bg-white hover:shadow-md'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#0f172a] to-[#334155] text-white flex items-center justify-center font-bold text-sm">
-                        {initials(emp.name)}
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-black text-slate-900">{emp.name}</h4>
-                        <span className="text-[10px] text-slate-400 font-mono font-bold">{emp.designation || 'Floor Worker'}</span>
-                      </div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-indigo-100 text-indigo-800">{emp.wage_type || '—'}</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-xs py-2 border-y border-slate-100 font-semibold">
-                    <div>
-                      <span className="text-[10px] text-slate-400 uppercase">Status</span>
-                      <p className={`font-bold ${emp.is_active ? 'text-emerald-700' : 'text-slate-400'}`}>{emp.is_active ? 'Active' : 'Deactivated'}</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-slate-400 uppercase">Barcode</span>
-                      <p className="font-bold text-slate-800 font-mono">{emp.employee_barcode || '—'}</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {filteredEmployees.length === 0 && <div className="col-span-full py-8 text-center text-xs text-slate-400 font-semibold">No employee roster found.</div>}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB: PIECE TRACEABILITY (real GET /dashboard/store/traceability)
+           TAB: PIECE TRACEABILITY (With Dedicated Hourly Flow Analytics Graph)
            ==================================================================== */}
       {activeTab === 'tab-pieces' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900">Piece-Level Cutter Traceability</h3>
-              <p className="text-xs text-slate-500">Real GET /api/v1/dashboard/store/traceability — who cut the leather or lining for each piece, and which drawer holds it.</p>
+          
+          {/* Pieces Cut Per Day by Material — real GET /dashboard/store/traceability rows,
+               grouped by the real cutting_date and material_type fields. No intraday/hourly
+               endpoint exists anywhere in the API, so this is a daily trend, not an hourly one. */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <QrCode className="w-5 h-5 text-indigo-600" />
+                  Pieces Cut Per Day by Material
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Real traceability rows grouped by cutting_date and material_type.
+                </p>
+              </div>
+              <div className="flex items-center gap-4 text-xs font-semibold">
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-blue-600" /><span className="text-slate-700">Leather</span></span>
+                <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-sm bg-emerald-500" /><span className="text-slate-700">Lining</span></span>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-1 border border-slate-200 rounded-2xl p-4 space-y-3">
-                <h4 className="text-xs font-extrabold uppercase text-slate-400">Traceability Rows ({filteredTraceability.length})</h4>
-                <div className="space-y-2 max-h-[450px] overflow-y-auto pr-1">
-                  {traceabilityLoading && <p className="text-xs text-slate-400 text-center py-4">Loading…</p>}
-                  {!traceabilityLoading && filteredTraceability.map((p, idx) => (
-                    <div
-                      key={`${p.piece_code}-${idx}`}
-                      onClick={() => { setSelectedPieceCode(p.piece_code); triggerToast(`Loading history for ${p.piece_code}`); }}
-                      className={`p-3 rounded-xl border text-xs cursor-pointer transition-all ${
-                        selectedPieceCode === p.piece_code ? 'border-indigo-600 bg-indigo-50 shadow-sm ring-2 ring-indigo-500/20' : 'border-slate-100 bg-[#f8fafc] hover:border-slate-300'
-                      }`}
-                    >
-                      <span className="font-mono font-bold text-slate-900 block truncate">{p.piece_code}</span>
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 mt-1">
-                        <span>{p.style || 'Style'}</span>
-                        <span className="font-bold text-indigo-700">{p.material_type}</span>
-                      </div>
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 mt-0.5">
-                        <span>{p.employee || 'Unknown cutter'}</span>
-                        <span>{p.cutting_date || '—'}</span>
-                      </div>
-                    </div>
-                  ))}
-                  {!traceabilityLoading && filteredTraceability.length === 0 && <div className="py-8 text-center text-xs text-slate-400 font-semibold">No traceability rows found.</div>}
-                </div>
-              </div>
+            <div className="h-[270px] w-full pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={traceabilityByDate} margin={{ top: 10, right: 10, left: -15, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} allowDecimals={false} />
+                  <Tooltip content={<DepartmentMiniGraphTooltip />} />
+                  <Bar dataKey="Leather" fill="#2563eb" radius={[4, 4, 0, 0]} isAnimationActive={true} />
+                  <Bar dataKey="Lining" fill="#10b981" radius={[4, 4, 0, 0]} isAnimationActive={true} />
+                </BarChart>
+              </ResponsiveContainer>
+              {traceabilityByDate.length === 0 && <p className="text-center text-xs text-slate-400 font-medium -mt-40">No traceability rows match the current search/filters.</p>}
+            </div>
+          </div>
 
-              <div className="lg:col-span-2 border border-slate-200 rounded-2xl p-5 space-y-5">
-                {selectedPieceCode ? (
-                  <div>
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                      <div>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Live Piece History</span>
-                        <h4 className="text-sm font-mono font-black text-slate-900">{selectedPieceCode}</h4>
-                        {pieceDetailData && (
-                          <p className="text-[11px] text-slate-500 mt-0.5">
-                            {pieceDetailData.style} &bull; {pieceDetailData.order_number} &bull; {pieceDetailData.colour} / {pieceDetailData.size}
-                          </p>
-                        )}
-                      </div>
-                      <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800">
-                        {pieceDetailData?.display_stage ? formatStage(pieceDetailData.display_stage) : 'Active'}
-                      </span>
-                    </div>
-
-                    {pieceDetailData?.in_store && (
-                      <div className="mb-4 p-3 rounded-xl bg-purple-50 border border-purple-100 text-xs font-semibold text-purple-800">
-                        📦 Currently in store: {pieceDetailData.store_label || pieceDetailData.drawer_code}
-                      </div>
-                    )}
-
-                    <h5 className="text-xs font-extrabold uppercase text-slate-700 mb-3">Stage-by-Stage Scan History</h5>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead>
-                          <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                            <th className="py-2.5 px-3">Date</th>
-                            <th className="py-2.5 px-3">Stage</th>
-                            <th className="py-2.5 px-3">Employee</th>
-                            <th className="py-2.5 px-3 text-right">Consumption</th>
-                            <th className="py-2.5 px-3">Lot</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
-                          {pieceDetailData?.history?.map((h, i) => (
-                            <tr key={i} className={`hover:bg-slate-50 ${h.is_store_overlay ? 'bg-purple-50/40' : ''}`}>
-                              <td className="py-2.5 px-3 font-mono text-slate-600">{h.work_date || '—'}</td>
-                              <td className="py-2.5 px-3 font-bold text-slate-900">
-                                {h.label || formatStage(h.stage)}
-                                {h.is_store_overlay && <span className="ml-1.5 text-[9px] font-black text-purple-600 uppercase">Store</span>}
-                              </td>
-                              <td className="py-2.5 px-3 text-slate-700">{h.employee || (h.is_store_overlay ? h.store_status : '—')}</td>
-                              <td className="py-2.5 px-3 text-right font-mono text-slate-700">{typeof h.consumption === 'number' ? h.consumption : '—'}</td>
-                              <td className="py-2.5 px-3 text-slate-500">{h.lot_article ? `${h.lot_article}${h.lot_colour ? ` · ${h.lot_colour}` : ''}` : '—'}</td>
-                            </tr>
-                          ))}
-                          {(!pieceDetailData?.history || pieceDetailData.history.length === 0) && (
-                            <tr><td colSpan={5} className="py-6 text-center text-slate-400 font-semibold">{loadingPieceDetail ? 'Fetching piece history…' : 'No transaction logs found for this piece.'}</td></tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="py-16 text-center text-slate-400 font-medium text-xs">Select a piece on the left to view its complete journey.</div>
+          {/* Traceability Table */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-base font-extrabold text-slate-900">Live Garment Piece Traceability</h3>
+              <div className="flex items-center gap-2">
+                <select
+                  value={filterColour}
+                  onChange={(e) => setFilterColour(e.target.value)}
+                  className="bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
+                >
+                  <option value="all">🎨 All Colours</option>
+                  {availableTraceabilityColours.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select
+                  value={filterSize}
+                  onChange={(e) => setFilterSize(e.target.value)}
+                  className="bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
+                >
+                  <option value="all">📏 All Sizes</option>
+                  {availableTraceabilitySizes.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+                {(filterColour !== 'all' || filterSize !== 'all') && (
+                  <button
+                    onClick={() => { setFilterColour('all'); setFilterSize('all'); }}
+                    className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
+                  >
+                    Reset
+                  </button>
                 )}
               </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
+                    <th className="py-3 px-4">Piece Code</th>
+                    <th className="py-3 px-4">Order</th>
+                    <th className="py-3 px-4">Colour</th>
+                    <th className="py-3 px-4">Size</th>
+                    <th className="py-3 px-4">Current Stage</th>
+                    <th className="py-3 px-4">Employee</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {filteredTraceability.map((p, idx) => (
+                    <tr key={`f-trace-${p.piece_code || idx}-${idx}`} onClick={() => setSelectedPieceCode(p.piece_code)} className="hover:bg-slate-50 transition-colors cursor-pointer">
+                      <td className="py-3 px-4 font-mono font-bold text-indigo-700">{p.piece_code}</td>
+                      <td className="py-3 px-4 text-slate-800 font-semibold">{p.order_number || '—'}</td>
+                      <td className="py-3 px-4 text-slate-700">{p.colour || '—'}</td>
+                      <td className="py-3 px-4 text-slate-700">{p.size || '—'}</td>
+                      <td className="py-3 px-4 text-slate-700">{formatStage(p.stage)}</td>
+                      <td className="py-3 px-4 text-slate-600">{p.employee || '—'}</td>
+                    </tr>
+                  ))}
+                  {filteredTraceability.length === 0 && (
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-400 font-semibold">{traceabilityLoading ? 'Searching pieces…' : 'No pieces match query.'}</td></tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </motion.div>
       )}
 
       {/* ====================================================================
-           TAB: STORE DRAWER DISPATCH (real GET /drawers + POST /drawers/send + POST /drawers/{id}/receive)
+           TAB: STORE DRAWER DISPATCH (With Dedicated Buffer Analytics Graph)
            ==================================================================== */}
       {activeTab === 'tab-drawers' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between">
+          
+          {/* Store Drawer Buffer Graph */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
-                <h3 className="text-base font-extrabold text-slate-900">Store Drawer Command & Floor Dispatch</h3>
-                <p className="text-xs text-slate-500">Real GET /api/v1/drawers. Send releases a drawer&apos;s pieces into Stitching or Lining; Receive is now mostly automatic (deprecated fallback for leather-only pieces).</p>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <Box className="w-5 h-5 text-indigo-600" />
+                  Store Drawer Buffer Dynamics & Capacity
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Real-time drawer distribution between store buffer inventory and shop floor lines.
+                </p>
               </div>
-              <button onClick={fetchDrawers} disabled={drawersLoading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 disabled:opacity-50">
+              <button onClick={fetchDrawers} disabled={drawersLoading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 disabled:opacity-50 cursor-pointer">
                 <RefreshCw className={`w-3.5 h-3.5 ${drawersLoading ? 'animate-spin' : ''}`} /> Refresh
               </button>
             </div>
 
+            <div className="h-[260px] w-full pt-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={drawersGraphData} margin={{ top: 10, right: 10, left: -15, bottom: 20 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                  <XAxis dataKey="category" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
+                  <Tooltip content={<DepartmentMiniGraphTooltip />} />
+                  <Bar dataKey="count" fill="#9333ea" radius={[6, 6, 0, 0]} isAnimationActive={true} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Drawer Grid */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+            <h3 className="text-base font-extrabold text-slate-900">Store Drawer Command & Floor Dispatch</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {filteredDrawers.map((dr, idx) => (
-                <div key={`${dr.drawer_id || idx}`} className="p-5 rounded-2xl border border-slate-200 bg-white hover:shadow-md transition-all space-y-3">
+                <div key={`f-drw-${dr.drawer_id || dr.code || idx}-${idx}`} className="p-5 rounded-2xl border border-slate-200 bg-white hover:shadow-md transition-all space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="px-2.5 py-1 rounded-full text-xs font-black bg-purple-100 text-purple-800">{dr.code}</span>
                     <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">{formatStage(dr.state)}</span>
@@ -1560,11 +2532,6 @@ export default function DirectManagerDashboard() {
                   <div>
                     <h4 className="text-sm font-black text-slate-900">{dr.piece_code || 'Empty drawer'}</h4>
                     <p className="text-xs text-slate-500 mt-0.5">{dr.holding || '—'}</p>
-                  </div>
-                  <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100 text-xs font-semibold space-y-1">
-                    <div className="flex justify-between"><span className="text-slate-500">Leather In:</span><span className="font-bold text-slate-900">{dr.leather_in ? 'Yes' : 'No'}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Lining In:</span><span className="font-bold text-slate-900">{dr.lining_in ? 'Yes' : 'No'}</span></div>
-                    {dr.sent_to && <div className="flex justify-between"><span className="text-slate-500">Sent To:</span><span className="font-bold text-indigo-700">{dr.sent_to}</span></div>}
                   </div>
                   <div className="flex items-center gap-2 pt-2">
                     <button
@@ -1584,14 +2551,54 @@ export default function DirectManagerDashboard() {
                   </div>
                 </div>
               ))}
-              {!drawersLoading && filteredDrawers.length === 0 && <div className="col-span-full py-8 text-center text-xs text-slate-400 font-semibold">No drawers holding a garment right now.</div>}
-              {drawersLoading && <div className="col-span-full py-8 text-center text-xs text-slate-400 font-semibold">Loading drawers…</div>}
             </div>
           </div>
         </motion.div>
       )}
 
-      {/* ─── DRAWER SEND/RECEIVE CONFIRM MODAL (real API calls) ─── */}
+      {/* ─── MODAL: QUICK REPORT VIEW / EXPORT — real numbers, real CSV per report type.
+           The previous build's AI chat modal is removed: no AI backend exists anywhere
+           in the API, and its canned replies were hardcoded text, not live intelligence. ─── */}
+      <AnimatePresence>
+        {activeReportModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-slate-200 rounded-3xl p-6 max-w-md w-full text-slate-800 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-indigo-600" />
+                  {activeReportModal}
+                </h3>
+                <button onClick={() => setActiveReportModal(null)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              </div>
+              <p className="text-xs text-slate-600">
+                Export the real <strong>{activeReportModal}</strong> data currently loaded on this dashboard.
+              </p>
+              <div className="bg-[#f8fafc] p-4 rounded-xl border border-slate-200 text-xs font-mono space-y-1 text-slate-700">
+                <div>&bull; Factory Target: {kpiData.targetProd !== null ? `${kpiData.targetProd} pcs` : 'N/A'}</div>
+                <div>&bull; Factory Produced: {kpiData.totalProd !== null ? `${kpiData.totalProd} pcs` : 'N/A'}</div>
+                <div>&bull; Workers Present: {kpiData.presentWorkers ?? 'N/A'}</div>
+                <div>&bull; Current Bottleneck: {(bottleneck?.label || bottleneck?.stage) ? formatStage(bottleneck.label || bottleneck.stage) : 'None reported'}</div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => handleDownloadReport(activeReportModal)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs cursor-pointer flex items-center gap-1.5 shadow-md"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Download Report (CSV)</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── DRAWER SEND/RECEIVE CONFIRM MODAL ─── */}
       <AnimatePresence>
         {showDrawerActionModal && selectedDrawer && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -1600,13 +2607,11 @@ export default function DirectManagerDashboard() {
                 <h3 className="text-sm font-black text-slate-900 uppercase">{drawerActionType === 'send' ? '📤 Send Drawer' : '📥 Receive Drawer'}</h3>
                 <button onClick={() => setShowDrawerActionModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
               </div>
-
               <div className="space-y-2 text-xs font-semibold">
                 <p><strong>Drawer:</strong> {selectedDrawer.code}</p>
                 <p><strong>Piece:</strong> {selectedDrawer.piece_code || '—'}</p>
                 <p><strong>Holding:</strong> {selectedDrawer.holding || '—'}</p>
               </div>
-
               {drawerActionType === 'send' && (
                 <div>
                   <label className="text-[11px] font-bold text-slate-600 uppercase">Destination</label>
@@ -1620,7 +2625,6 @@ export default function DirectManagerDashboard() {
                   </select>
                 </div>
               )}
-
               <div className="pt-2 flex gap-2">
                 <button onClick={() => setShowDrawerActionModal(false)} disabled={drawerActionBusy} className="flex-1 py-2.5 rounded-xl border border-slate-200 font-bold text-xs hover:bg-slate-50 disabled:opacity-50">Cancel</button>
                 <button

@@ -333,7 +333,7 @@ export default function ProductionLogEntry() {
     );
   }
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-0 space-y-8 animate-fade-in pb-12">
+    <div className="w-full min-w-0 space-y-8 animate-fade-in pb-12">
 
       {/* TITLE SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
