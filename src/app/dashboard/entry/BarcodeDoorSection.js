@@ -33,7 +33,7 @@ export default function BarcodeDoorSection({
   handleVerifyBarcodeWorker, barcodeNotCheckedInModal, setBarcodeNotCheckedInModal, workerInputRef,
   cameraScanTarget, setCameraScanTarget,
 }) {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const { workers } = useData();
   const { allowedOperations, isFullAccess, isStageAllowedForRole } = useRoleAccess();
   const [barcodeSkuInput, setBarcodeSkuInput] = useState('');
@@ -405,6 +405,10 @@ export default function BarcodeDoorSection({
         size: piece.size,
         order_number: piece.order_number,
       }]);
+      // Same "Assigned Drawer" indicator the pipeline (Fusing onward) flow
+      // already shows — piece-state already returns this here too, it was
+      // just never captured for Cutting/Lining scans.
+      setScannedPieceDrawerInfo(pieceState.drawer ? { code: pieceState.drawer.code, holding: pieceState.drawer.holding } : null);
       setCuttingPieceInput('');
       setSuccessMsg(`✅ Added piece ${piece.code} (${cuttingBatchPieces.length + 1} scanned)`);
     } catch (err) {
@@ -939,11 +943,27 @@ export default function BarcodeDoorSection({
             </div>
           </div>
 
+          {/* Stitching Manager works a 5-stage pipeline (Fusing through
+              Final Finish) on the same pieces the server already tracks
+              per-piece via GET /production/piece-state — per the API doc's
+              own rule ("the client never chooses a production stage...a
+              stage picker in the UI will disagree with the server
+              eventually"), manual tab-picking is switched off entirely for
+              this role. Scanning a piece auto-selects the right stage
+              (resolveWorkableStage, below). DM/MD keep full manual access;
+              Cutting/Lining Managers only ever have one stage each, so the
+              mismatch risk this guards against doesn't apply to them. */}
+          {user === 'stitching_manager' && (
+            <p className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-2.5">
+              ⚠️ Stage picking is automatic for your role — scan a piece and its correct stage selects itself.
+            </p>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
             {manualStages.map((stage) => {
               const isSelected = barcodeStage === stage;
               const isRoleAllowed = isStageAllowedForRole(stage);
               const roleLocked = !isRoleAllowed;
+              const autoOnly = user === 'stitching_manager';
               // Tab access is gated by ROLE only. Sequence completion is
               // inherently per-piece (many pieces sit at many different
               // stages at once), and completedStagesMap is only ever this
@@ -954,7 +974,7 @@ export default function BarcodeDoorSection({
               // runs correctly and session-independently at scan time via
               // GET /production/piece-state — that's the source of truth,
               // not this button.
-              const isDisabled = roleLocked;
+              const isDisabled = roleLocked || autoOnly;
 
               return (
                 <button
@@ -966,6 +986,7 @@ export default function BarcodeDoorSection({
                       setErrorMsg(`⚠️ Role Restricted: Your role cannot log the '${stage}' stage.`);
                       return;
                     }
+                    if (autoOnly) return;
                     setBarcodeStage(stage);
                   }}
                   className={`p-3.5 rounded-2xl text-xs transition-all text-center border shadow-sm relative ${isDisabled
@@ -974,7 +995,7 @@ export default function BarcodeDoorSection({
                       ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-pointer font-black'
                       : 'bg-white text-slate-800 border-slate-200 hover:border-[#c8834a] hover:bg-amber-50/50 cursor-pointer font-bold'
                     }`}
-                  title={roleLocked ? '🔒 Not permitted for your role' : stage}
+                  title={roleLocked ? '🔒 Not permitted for your role' : autoOnly ? 'Auto-selected from the scanned piece' : stage}
                 >
                   {!isFullAccess && isStageAllowedForRole(stage) && (
                     <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
@@ -1072,6 +1093,15 @@ export default function BarcodeDoorSection({
                       )}
                       {barcodeSelectedSku.serial && (
                         <span>Serial/Qty: <span className="text-[#2d1f0e]">{barcodeSelectedSku.serial}</span></span>
+                      )}
+                      {barcodeSelectedSku.drawer?.code && (
+                        <span className="flex items-center gap-1">
+                          <PackageCheck className="w-3 h-3 text-[#c8834a]" />
+                          Assigned Drawer: <span className="font-mono text-[#2d1f0e]">{barcodeSelectedSku.drawer.code}</span>
+                          {barcodeSelectedSku.drawer.holding && (
+                            <span className="text-[9px] uppercase tracking-wider text-[#9a7a5a]">({barcodeSelectedSku.drawer.holding})</span>
+                          )}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -1243,6 +1273,16 @@ export default function BarcodeDoorSection({
                         Add Piece
                       </button>
                     </div>
+
+                    {scannedPieceDrawerInfo && (
+                      <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-[#c8834a]/25 text-xs font-bold text-[#7a5a34] w-fit animate-fade-in">
+                        <PackageCheck className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
+                        Assigned Drawer: <span className="font-mono font-black text-[#4a3a2a]">{scannedPieceDrawerInfo.code || '—'}</span>
+                        {scannedPieceDrawerInfo.holding && (
+                          <span className="text-[10px] uppercase tracking-wider text-[#9a7a5a]">({scannedPieceDrawerInfo.holding})</span>
+                        )}
+                      </div>
+                    )}
 
                     {cuttingBatchPieces.length > 0 && (
                       <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
