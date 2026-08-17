@@ -687,7 +687,7 @@ export default function ProductionLogEntry() {
                 </div>
                 <div>
                   <h3 className="font-black text-base">Production Logging Response</h3>
-                  <p className="text-xs text-slate-400 font-semibold">Stage: {bucketResult.stage || selectedStage}</p>
+                  <p className="text-xs text-slate-400 font-semibold">Stage: {bucketResult.stage || bucketResult.stages?.[0] || 'N/A'}</p>
                 </div>
               </div>
               <button

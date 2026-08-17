@@ -226,7 +226,6 @@ export default function ManualDoorSection({
   const [cuttingPieces, setCuttingPieces] = useState([]);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isSavingCutting, setIsSavingCutting] = useState(false);
-  const [submittedStageMap, setSubmittedStageMap] = useState({});
   const [mintedCountMap, setMintedCountMap] = useState({});
   const [showCheckInWarning, setShowCheckInWarning] = useState(false);
   const [showCheckOutWarning, setShowCheckOutWarning] = useState(false);
@@ -252,6 +251,13 @@ export default function ManualDoorSection({
   const [scannedBarcodes, setScannedBarcodes] = useState([]);
   const [isResolvingScan, setIsResolvingScan] = useState(false);
   const [scanResolutionResult, setScanResolutionResult] = useState(null);
+  const [workerVerifying, setWorkerVerifying] = useState(false);
+  // Already-logged count for the selected SKU at the current stage — parity
+  // with the duplicate-submit guard we added for Barcode Gun Scanner.
+  // apiProductionCutting always targets piece_seqs [1..count], so re-submitting
+  // the same (or lower) count re-logs the SAME pieces as backend "rework"
+  // instead of adding anything new.
+  const [alreadyCutCount, setAlreadyCutCount] = useState(0);
 
   const handleResolveBarcode = async (codeToResolve) => {
     const targetCode = (codeToResolve || scanInput).trim();
@@ -360,6 +366,31 @@ export default function ManualDoorSection({
     }
   }, [skuCode, fetchedSkus]);
 
+  // Barcode Gun Scanner parity: know how many pieces are already logged for
+  // this SKU at this stage BEFORE the operator submits, so a duplicate
+  // Cutting/Lining run can be caught instead of silently re-logging as rework.
+  useEffect(() => {
+    if (!skuCode || (selectedStage !== 'Cutting' && selectedStage !== 'Lining')) {
+      setAlreadyCutCount(0);
+      return;
+    }
+    const skuObj = fetchedSkus.find(s => s.code === skuCode);
+    const searchOp = String(selectedStage || '').toLowerCase().replace(/[^a-z]/g, '');
+    const opRecord = operations.find(o => {
+      const opLabel = String(o.label || '').toLowerCase().replace(/[^a-z]/g, '');
+      return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
+    }) || operations[0];
+    if (!skuObj || !opRecord) { setAlreadyCutCount(0); return; }
+
+    let isMounted = true;
+    apiGetSkuPieces(token, skuObj.sku_id, opRecord.id).then(data => {
+      if (!isMounted) return;
+      const arr = Array.isArray(data) ? data : (data.pieces || []);
+      setAlreadyCutCount(arr.length);
+    }).catch(() => { if (isMounted) setAlreadyCutCount(0); });
+    return () => { isMounted = false; };
+  }, [skuCode, selectedStage, fetchedSkus, operations, token]);
+
   // Dynamic Material Lots Fetcher — Manual-door half. See the matching copy
   // in BarcodeDoorSection.js for why this was split into two door-local
   // effects instead of staying as one shared effect in page.js.
@@ -434,6 +465,40 @@ export default function ManualDoorSection({
   }, [workers, workerSearchQuery]);
 
   const currentSelectedWorker = workers.find(w => w.id === workerId);
+
+  // Barcode Gun Scanner parity: verify attendance check-in the moment a
+  // worker is picked, not only at submit time — same GET /attendance/today
+  // gate as handleVerifyBarcodeWorker, just triggered earlier so the operator
+  // finds out before filling out the rest of the form. Kept alongside (not
+  // instead of) the existing submit-time checks below, since a worker could
+  // still check out in the gap between selecting them and hitting submit.
+  const handleSelectWorker = async (w) => {
+    setIsWorkerOpen(false);
+    setWorkerVerifying(true);
+    try {
+      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+      const rosterData = await response.json();
+      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const workerRoster = rosterArray.find(r => String(r.employee_id) === String(w.id));
+      if (!workerRoster) {
+        setWarningWorkerName(w.name || 'Unknown');
+        setShowCheckInWarning(true);
+        setTimeout(() => setShowCheckInWarning(false), 2000);
+        return;
+      }
+      if (workerRoster.check_out_at) {
+        setWarningWorkerName(w.name || 'Unknown');
+        setShowCheckOutWarning(true);
+        setTimeout(() => setShowCheckOutWarning(false), 2000);
+        return;
+      }
+    } catch (e) {
+      console.warn("Failed to verify attendance", e);
+    } finally {
+      setWorkerVerifying(false);
+    }
+    setWorkerId(w.id);
+  };
 
   // SUBMIT HANDLER: Shows Traveler Card Modal FIRST for Cutting
   const handleSubmit = async (e) => {
@@ -568,6 +633,16 @@ export default function ManualDoorSection({
       const skuObj = fetchedSkus.find(s => s.code === skuCode);
       const parsedCount = parseInt(cuttingCount, 10);
 
+      // Duplicate-submit guard (Barcode Gun Scanner parity): apiProductionCutting
+      // always targets piece_seqs [1..count], so submitting a count that's
+      // already covered just re-logs the SAME pieces as backend "rework" —
+      // nothing new gets created. Block it here instead of letting the
+      // operator find out only from a misleading success message.
+      if (alreadyCutCount > 0 && parsedCount <= alreadyCutCount) {
+        setErrorMsg(`⚠️ This SKU already has ${alreadyCutCount} piece(s) logged for ${selectedStage}. Enter a count higher than ${alreadyCutCount} to add new pieces.`);
+        return;
+      }
+
       const result = await apiProductionCutting(token, {
         sku_id: skuObj.sku_id,
         employee_id: workerId,
@@ -578,8 +653,24 @@ export default function ManualDoorSection({
         lot_id: lotResults.length === 1 ? lotResults[0].lot_id : null
       });
 
-      setSuccessMsg(`✅ Cut ${result.count || parsedCount} pieces successfully saved.`);
-      setLastSubmittedPieceSeqs(result.pieces ? result.pieces.map(p => p.seq) : []);
+      // Bug fix: the real response field is `count_logged`/`logged` (piece
+      // code strings) — `result.count`/`result.pieces` never existed, so this
+      // always silently fell back to the requested count even when nothing
+      // was actually logged (e.g. all pieces already recorded as rework).
+      if (result.count_logged > 0) {
+        setSuccessMsg(`✅ Cut ${result.count_logged} pieces successfully saved.`);
+        setAlreadyCutCount(parsedCount);
+      } else {
+        setErrorMsg(`⚠️ ${result.message || 'Nothing new was logged — pieces may already be recorded at this stage.'}`);
+      }
+      if (result.skill_warnings?.length) {
+        setErrorMsg(prev => `${prev ? prev + ' ' : ''}${result.skill_warnings[0].note}`);
+      }
+      const extractSeq = (code) => {
+        const n = parseInt(String(code).split('-').pop(), 10);
+        return isNaN(n) ? null : n;
+      };
+      setLastSubmittedPieceSeqs((result.logged || []).map(extractSeq).filter(n => n !== null));
       setMintedCountMap(prev => ({
         ...prev,
         [skuObj.sku_id]: Math.max(prev[skuObj.sku_id] || 0, parsedCount)
@@ -677,13 +768,15 @@ export default function ManualDoorSection({
         });
       }
 
-      // Store Gate Check: Line Stitching / Shell Stitching REQUIRES Store Hub SENDED status!
-      if (searchOp.includes('line') || searchOp.includes('shell') || searchOp.includes('stitch')) {
-        const isSended = storeReceiveStatus === 'sended' || storeSendedSkus.includes(skuCode) || (data && data.store_sended);
-        if (!isSended) {
-          piecesArr = piecesArr.filter(p => p.store_sended || p.current_stage_label === 'SENDED');
-        }
-      }
+      // Store Gate Check removed: it filtered on `p.store_sended` and
+      // `current_stage_label === 'SENDED'` — fields that don't match the
+      // real API shape (the actual fields are `store_status: "sended"` and a
+      // free-text current_stage_label like "In store · sent · moved to
+      // line-stitching..."), so it silently dropped every real piece for
+      // Line/Shell Stitching, even ones the backend had already marked
+      // `eligible: true`. The per-piece `eligible`/`blocked_reason` fields
+      // (used below when rendering the checklist) already correctly reflect
+      // Store Hub gating — no separate check needed here.
 
       setChecklistPieces(piecesArr);
       const total = piecesArr.length;
@@ -759,10 +852,6 @@ export default function ManualDoorSection({
 
       setSuccessMsg("Success!");
       setLastSubmittedPieceSeqs([...selectedPieces]);
-      setSubmittedStageMap(prev => ({
-        ...prev,
-        [selectedStage]: Array.from(new Set([...(prev[selectedStage] || []), ...selectedPieces]))
-      }));
       setShowChecklistModal(false);
       setSelectedPieces([]);
       setScannedBarcodes([]);
@@ -836,14 +925,13 @@ export default function ManualDoorSection({
                               <button
                                 key={w.id}
                                 type="button"
-                                onClick={() => {
-                                  setWorkerId(w.id);
-                                  setIsWorkerOpen(false);
-                                }}
-                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+                                disabled={workerVerifying}
+                                onClick={() => handleSelectWorker(w)}
+                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-0.5 cursor-pointer disabled:opacity-50 ${isSelected ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
                               >
                                 <span>{w.name}</span>
                                 {isSelected && <span className="font-black text-sm">✓</span>}
+                                {workerVerifying && !isSelected && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                               </button>
                             );
                           })
@@ -879,12 +967,12 @@ export default function ManualDoorSection({
                     const isSelected = selectedStage === stage;
                     const isRoleAllowed = isStageAllowedForRole(stage);
                     const roleLocked = !isRoleAllowed;
-                    // Tab access is gated by ROLE only — see matching comment
-                    // in the Barcode Gun door's stage buttons. Sequence
-                    // completion is per-piece and session-independent
-                    // enforcement already happens correctly at scan time via
-                    // GET /production/piece-state.
-                    const isDisabled = roleLocked;
+                    // Barcode Gun Scanner parity: worker must be verified
+                    // before the stage step unlocks. Sequence completion is
+                    // per-piece and session-independent enforcement already
+                    // happens correctly at scan time via GET /production/piece-state.
+                    const noWorker = !workerId;
+                    const isDisabled = roleLocked || noWorker;
 
                     return (
                       <button
@@ -892,6 +980,10 @@ export default function ManualDoorSection({
                         type="button"
                         disabled={isDisabled}
                         onClick={() => {
+                          if (noWorker) {
+                            setErrorMsg('⚠️ Please select a Worker first!');
+                            return;
+                          }
                           if (roleLocked) {
                             setErrorMsg(`⚠️ Role Restricted: Your role cannot log the '${stage}' stage.`);
                             return;
@@ -905,12 +997,12 @@ export default function ManualDoorSection({
                               ? 'bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02] cursor-pointer'
                               : 'bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50 cursor-pointer'
                           }`}
-                        title={roleLocked ? '🔒 Not permitted for your role' : stage}
+                        title={noWorker ? '🔒 Select a worker first' : roleLocked ? '🔒 Not permitted for your role' : stage}
                       >
                         {!isFullAccess && isStageAllowedForRole(stage) && (
                           <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>
                         )}
-                        {roleLocked && <span className="mr-0.5 text-[9px]">🔒</span>}
+                        {(roleLocked || noWorker) && <span className="mr-0.5 text-[9px]">🔒</span>}
                         {stage}
                       </button>
                     );
@@ -1027,6 +1119,16 @@ export default function ManualDoorSection({
                         Target Quantity
                       </span>
                       <span className="text-sm font-black text-[#c8834a]">{currentSelectedSku.qty_ordered || 0} pcs</span>
+                    </div>
+                  )}
+
+                  {/* Duplicate-submit guard visual cue (Barcode Gun Scanner parity) */}
+                  {(selectedStage === 'Cutting' || selectedStage === 'Lining') && alreadyCutCount > 0 && (
+                    <div className="mt-1 px-4 py-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between shadow-sm animate-fade-in">
+                      <span className="text-xs font-bold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Already Logged ({selectedStage})
+                      </span>
+                      <span className="text-sm font-black text-amber-700">{alreadyCutCount} pcs</span>
                     </div>
                   )}
                 </div>
@@ -1442,40 +1544,20 @@ export default function ManualDoorSection({
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {(() => {
-                    const stageOrder = ['cut', 'fusing', 'pasting', 'linestitch', 'shellstitch', 'finalfinish'];
-                    const normalizeStageName = (str) => {
-                      const s = String(str || '').toLowerCase().replace(/[^a-z]/g, '');
-                      if (s.includes('cut')) return 'cut';
-                      if (s.includes('fuse')) return 'fusing';
-                      if (s.includes('paste')) return 'pasting';
-                      if (s.includes('line') || s.includes('lining')) return 'linestitch';
-                      if (s.includes('shell') || s.includes('stitch') || s.includes('sew')) return 'shellstitch';
-                      if (s.includes('finish') || s.includes('final')) return 'finalfinish';
-                      return s;
-                    };
-
+                    // Trust the backend's own eligibility computation
+                    // (`piece.eligible` / `piece.blocked_reason`, returned by
+                    // GET /production/skus/{id}/pieces) instead of guessing.
+                    // Two local heuristics used to be OR'd in here and both
+                    // caused real false-positives: `piece.fusing_done`/
+                    // `piece.pasting_done` never existed in the real API
+                    // response, and a local `submittedStageMap` optimistically
+                    // marked every *selected* piece as done at submit time
+                    // even when the backend actually rejected/reworked it —
+                    // openChecklistModal re-fetches fresh piece data on every
+                    // open, so `piece.done_at_op` alone is always current.
                     const isPieceEligible = (p) => {
-                      const activeNorm = normalizeStageName(selectedStage);
-                      const isFusingDone = submittedStageMap['Fusing']?.includes(p.seq) || p.fusing_done;
-                      const isPastingDone = submittedStageMap['Pasting']?.includes(p.seq) || p.pasting_done;
-                      const isThisStageDone = submittedStageMap[selectedStage]?.includes(p.seq) || p.done_at_op;
-
-                      if (isThisStageDone) return false;
-
-                      if (activeNorm === 'fusing') {
-                        return !isFusingDone;
-                      }
-
-                      if (activeNorm === 'pasting') {
-                        return isFusingDone && !isPastingDone;
-                      }
-
-                      if (activeNorm === 'linestitch' || activeNorm === 'shellstitch') {
-                        const isSended = storeReceiveStatus === 'sended' || storeSendedSkus.includes(skuCode) || p.store_sended;
-                        return isSended && !isThisStageDone;
-                      }
-
-                      return !isThisStageDone;
+                      if (p.done_at_op) return false;
+                      return p.eligible !== undefined ? p.eligible : true;
                     };
 
                     return (
@@ -1504,63 +1586,15 @@ export default function ManualDoorSection({
 
                         {checklistPieces.map((piece) => {
                           const isSelected = selectedPieces.includes(piece.seq);
-                          const activeNorm = normalizeStageName(selectedStage);
 
-                          const isFusingDone = submittedStageMap['Fusing']?.includes(piece.seq) || piece.fusing_done;
-                          const isPastingDone = submittedStageMap['Pasting']?.includes(piece.seq) || piece.pasting_done;
-                          const isThisStageDone = submittedStageMap[selectedStage]?.includes(piece.seq) || piece.done_at_op;
-
-                          let isDone = false;
-                          let isEligible = true;
-                          let stageBadgeText = 'Cutting';
-
-                          if (activeNorm === 'fusing') {
-                            if (isFusingDone) {
-                              isDone = true;
-                              isEligible = false;
-                              stageBadgeText = 'Fusing Done';
-                            } else {
-                              isDone = false;
-                              isEligible = true;
-                              stageBadgeText = 'Cutting';
-                            }
-                          } else if (activeNorm === 'pasting') {
-                            if (isPastingDone) {
-                              isDone = true;
-                              isEligible = false;
-                              stageBadgeText = 'Pasting Done';
-                            } else if (!isFusingDone) {
-                              isDone = false;
-                              isEligible = false;
-                              stageBadgeText = 'Needs Fusing';
-                            } else {
-                              isDone = false;
-                              isEligible = true;
-                              stageBadgeText = 'Fusing';
-                            }
-                          } else if (activeNorm === 'linestitch' || activeNorm === 'shellstitch') {
-                            if (isThisStageDone) {
-                              isDone = true;
-                              isEligible = false;
-                              stageBadgeText = `${selectedStage} Done`;
-                            } else if (!isPastingDone) {
-                              isDone = false;
-                              isEligible = false;
-                              stageBadgeText = 'Needs Pasting';
-                            } else {
-                              isDone = false;
-                              isEligible = true;
-                              stageBadgeText = 'Store Sended';
-                            }
-                          } else {
-                            if (isThisStageDone) {
-                              isDone = true;
-                              isEligible = false;
-                              stageBadgeText = `${selectedStage} Done`;
-                            }
-                          }
-
+                          const isDone = Boolean(piece.done_at_op);
+                          const isEligible = !isDone && (piece.eligible !== undefined ? piece.eligible : true);
                           const isDisabled = isDone || !isEligible;
+                          const stageBadgeText = isDone
+                            ? `${selectedStage} Done`
+                            : !isEligible
+                              ? (piece.blocked_reason || 'Not Ready')
+                              : (piece.event_stage_label || 'Ready');
 
                           return (
                             <button

@@ -822,11 +822,18 @@ export async function apiGetWageRuns(token, limit = 50, offset = 0) {
 }
 
 /**
- * 7. POST /wages/runs - Compute & Freeze payroll
+ * 7. POST /wages/runs - Compute a wage run.
+ * `freeze: false` creates an OPEN draft (recompute freely); `freeze: true`
+ * (the default, matching every existing caller) creates a CLOSED/frozen
+ * run — reopening it afterwards requires apiReopenWageRun with a reason.
+ * `orderNumber`/`styleCode` are mutually exclusive (backend 422s both) —
+ * a scoped run only pays PIECE_RATE work (piece_rate_only: true).
  */
-export async function apiComputeWageRun(token, period_start, period_end, styleId = null) {
-  const payload = { period_start, period_end };
-  if (styleId) payload.style_code = styleId;
+export async function apiComputeWageRun(token, { periodStart, periodEnd, freeze, orderNumber, styleCode } = {}) {
+  const payload = { period_start: periodStart, period_end: periodEnd };
+  if (freeze !== undefined) payload.freeze = freeze;
+  if (orderNumber) payload.order_number = orderNumber;
+  else if (styleCode) payload.style_code = styleCode;
 
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
     method: 'POST',
@@ -840,6 +847,139 @@ export async function apiComputeWageRun(token, period_start, period_end, styleId
     const errText = await res.text().catch(() => 'Failed to compute wage run');
     throw new Error(errText || `Failed to compute wage run (${res.status})`);
   }
+  return res.json();
+}
+
+/**
+ * GET /wages/orders — order cards for the payroll landing screen
+ * (order -> style -> rate). @returns {order_number, styles, styles_priced,
+ * fully_priced, sku_count, qty_ordered, style_codes[]}[]
+ */
+export async function apiGetWageOrders(token, { on, unpricedOnly } = {}) {
+  const params = new URLSearchParams();
+  if (on) params.set('on', on);
+  if (unpricedOnly !== undefined) params.set('unpriced_only', unpricedOnly);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/orders${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage orders (${res.status})`);
+  return res.json();
+}
+
+/**
+ * POST /wages/runs/{run_id}/close — freezes a draft (idempotent; 409 on
+ * an empty run).
+ */
+export async function apiCloseWageRun(token, runId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/close`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to close wage run');
+    throw new Error(errText || `Failed to close wage run (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /wages/runs/{run_id}/reopen — the only door out of CLOSED.
+ * `reason` is mandatory (5-500 chars), stored and audited.
+ */
+export async function apiReopenWageRun(token, runId, reason) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/reopen`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to reopen wage run');
+    throw new Error(errText || `Failed to reopen wage run (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /wages/runs/{run_id}/recompute — recomputes an OPEN run freely.
+ * On a CLOSED run this 409s unless `confirmClosed: true` is sent (a
+ * one-call escape hatch that records no reason — prefer apiReopenWageRun
+ * for anything that needs an audit trail).
+ */
+export async function apiRecomputeWageRun(token, runId, confirmClosed = false) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/recompute`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ confirm_closed: confirmClosed }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to recompute wage run');
+    throw new Error(errText || `Failed to recompute wage run (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /wages/runs/{run_id}/breakdown — the Run Engine result screen.
+ * One frozen row set folded three ways — by_style[], by_stage[],
+ * by_employee[] — never re-sum these client-side, they're server folds
+ * of the same rows so they can't disagree with each other or the total.
+ */
+export async function apiGetWageRunBreakdown(token, runId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/breakdown`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage run breakdown (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /wages/runs/{run_id}/pieces — per-piece payroll detail: garment,
+ * stage, worker, employee barcode, amount. `rate`/`amount` come back
+ * null (never 0) when that cell wasn't priced in this run.
+ */
+export async function apiGetWageRunPieces(token, runId, { styleCode, limit, offset } = {}) {
+  const params = new URLSearchParams();
+  if (styleCode) params.set('style_code', styleCode);
+  if (limit) params.set('limit', limit);
+  if (offset) params.set('offset', offset);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/pieces${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage run pieces (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /wages/ledger — every run, latest computed first, searchable by
+ * order/style/window/status. Each row carries recompute_count and
+ * reopen_count.
+ */
+export async function apiGetWageLedger(token, { orderNumber, styleCode, dateFrom, dateTo, status, limit, offset } = {}) {
+  const params = new URLSearchParams();
+  if (orderNumber) params.set('order_number', orderNumber);
+  if (styleCode) params.set('style_code', styleCode);
+  if (dateFrom) params.set('date_from', dateFrom);
+  if (dateTo) params.set('date_to', dateTo);
+  if (status) params.set('status', status);
+  if (limit) params.set('limit', limit);
+  if (offset) params.set('offset', offset);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/ledger${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage ledger (${res.status})`);
   return res.json();
 }
 

@@ -169,7 +169,7 @@ export const PREREQUISITE_MAP = {
   'Lining': [], // Independent parallel stream
   'Fusing': ['Cutting'],
   'Pasting': ['Fusing'], // Requires Fusing to be completed first!
-  'Line Stitching': ['Pasting', 'Store'], // Requires Pasting completed AND Store Transfer release
+  'Line Stitching': ['Lining','Pasting', 'Store'], // Requires Pasting completed AND Store Transfer release
   'Shell Stitching': ['Line Stitching'],
   'Final Finish': ['Shell Stitching'],
   'Final Inspection': ['Final Finish'],

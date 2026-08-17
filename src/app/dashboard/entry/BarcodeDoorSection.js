@@ -112,44 +112,13 @@ export default function BarcodeDoorSection({
     };
   };
 
-  // Real-backend stage check for the Barcode Gun Scanner pipeline flow.
-  // `validateStageSequence` above only knows about stages completed in THIS
-  // browser session (completedStagesMap resets on reload and never sees work
-  // done by other operators/sessions) — so it can wrongly block or wrongly pass
-  // a piece. This calls /api/v1/barcode/resolve to read the piece's actual
-  // current_stage and validates against that instead.
-  const normalizeStage = (label) => String(label || '').toUpperCase().trim().replace(/\s+/g, '_');
-  const STAGE_LABEL_BY_NORMALIZED = Object.fromEntries(manualStages.map((s) => [normalizeStage(s), s]));
-
-  const checkRealPieceStage = async (targetStage, code) => {
-    if (!targetStage || targetStage === 'Cutting' || targetStage === 'Lining') return { valid: true };
-    const requiredPrereqs = PREREQUISITE_MAP[targetStage] || [];
-    if (requiredPrereqs.length === 0) return { valid: true };
-
-    try {
-      const res = await apiBarcodeResolve(token, code);
-      if (res?.type && res.type !== 'PIECE') {
-        return { valid: false, error: `⚠️ '${code}' is not a piece barcode (resolved as ${res.type}).` };
-      }
-      const realStageRaw = res?.piece?.current_stage;
-      if (!realStageRaw) {
-        return { valid: false, error: `⚠️ Could not determine the current stage for '${code}'.` };
-      }
-      const realStageLabel = STAGE_LABEL_BY_NORMALIZED[normalizeStage(realStageRaw)] || realStageRaw;
-      if (requiredPrereqs.includes(realStageLabel)) {
-        return { valid: true, realStageLabel, piece: res.piece };
-      }
-      return {
-        valid: false,
-        error: `⚠️ '${code}' is currently at ${realStageLabel} — '${targetStage}' requires ${requiredPrereqs.join(' or ')} to be completed first.`
-      };
-    } catch (err) {
-      // Backend lookup failed (offline / code not found) — fall back to the
-      // local session heuristic instead of hard-blocking the operator.
-      console.warn('Real piece-stage lookup failed, falling back to local check:', err.message);
-      return validateStageSequence(targetStage, code);
-    }
-  };
+  // A `checkRealPieceStage` helper used to live here (real-backend prerequisite
+  // check via /api/v1/barcode/resolve's single current_stage field). Removed:
+  // it was never actually called anywhere — the live scan flow already asks
+  // the backend directly "is THIS target stage ready for this piece?" via
+  // stages[]/state (see the SKU-verify and pipeline-scan checks below), which
+  // handles multi-prerequisite stages (e.g. Line Stitching needing both
+  // Lining and Pasting done) correctly without reconstructing it client-side.
 
 
   const skuInputRef = useRef(null);
