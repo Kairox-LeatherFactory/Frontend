@@ -392,6 +392,151 @@ export async function apiImportCommit(token, file, orderNumber) {
 }
 
 /**
+ * GET /api/v1/imports/breakdown/{order_number} — the CRUD-able breakdown
+ * table (styles[], each with production_status DRAFT|RELEASED|CANCELLED
+ * and skus[]). The screen between upload and production.
+ */
+export async function apiGetBreakdown(token, orderNumber) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch breakdown (${res.status})`);
+  return res.json();
+}
+
+/**
+ * PATCH /api/v1/imports/breakdown/skus/{sku_id} — correct one DRAFT line.
+ * Send only what changes: { qty_ordered?, color_name?, color_code?, size?,
+ * knit_color?, nylon_color? }. 409 once the style is RELEASED.
+ */
+export async function apiPatchBreakdownSku(token, skuId, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/skus/${encodeURIComponent(skuId)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to update breakdown line');
+    throw new Error(errText || `Failed to update breakdown line (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * DELETE /api/v1/imports/breakdown/skus/{sku_id} — drop a DRAFT line with
+ * zero minted pieces. 409 otherwise (that's the safety check).
+ */
+export async function apiDeleteBreakdownSku(token, skuId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/skus/${encodeURIComponent(skuId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to delete breakdown line');
+    throw new Error(errText || `Failed to delete breakdown line (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /api/v1/imports/breakdown/{order_number}/cancel — withdraw DRAFT
+ * styles from the release screen. @param {string[]} styleIds
+ */
+export async function apiCancelBreakdownStyles(token, orderNumber, styleIds) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}/cancel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ style_ids: styleIds }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to cancel styles');
+    throw new Error(errText || `Failed to cancel styles (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /api/v1/imports/breakdown/{order_number}/release — THE MINT. Creates
+ * per-piece barcodes and merges drawers for the named styles, atomically.
+ * Idempotent (release tops up, never rewrites). Read
+ * `minted.pieces_waiting_for_drawer`, not the HTTP status — non-zero means
+ * those pieces have barcodes but no drawer until the pool grows.
+ * @param {string[]} styleIds
+ * @param {boolean} growDrawerPool default false — opt-in only.
+ */
+export async function apiReleaseBreakdownStyles(token, orderNumber, styleIds, growDrawerPool = false) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}/release`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ style_ids: styleIds, grow_drawer_pool: growDrawerPool }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to release styles');
+    throw new Error(errText || `Failed to release styles (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/drawers/pool — { pool_size, initial_pool_size, free_drawers,
+ * occupied_drawers, pieces_waiting_for_drawer, shortfall }.
+ */
+export async function apiGetDrawerPool(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/pool`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch drawer pool (${res.status})`);
+  return res.json();
+}
+
+/**
+ * POST /api/v1/drawers/pool — DM/MD only, one-way. Adds `add` permanent
+ * barcoded drawers and drains the waiting list into them (max 1000/call).
+ */
+export async function apiGrowDrawerPool(token, add) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/pool`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ add }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to grow drawer pool');
+    throw new Error(errText || `Failed to grow drawer pool (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /api/v1/drawers/allocate-waiting — drains the waiting list into
+ * whatever drawers are currently free, without growing the pool.
+ */
+export async function apiAllocateWaitingDrawers(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/allocate-waiting`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to allocate waiting pieces');
+    throw new Error(errText || `Failed to allocate waiting pieces (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
  * Preview an Excel import for Inventory (dry-run)
  */
 export async function apiInventoryPreview(token, file) {
