@@ -244,7 +244,10 @@ export default function Home() {
 
       setIsSuccess(true);
       login(backendRole, data.access_token);
-      router.push('/dashboard');
+      // Real page navigation (not router.push's client-side SPA transition) —
+      // browsers key their "Save password?" prompt off a genuine navigation
+      // following the form submit, so this is what reliably triggers it.
+      window.location.href = '/dashboard';
 
     } catch (err) {
       setIsSubmitting(false);
@@ -529,10 +532,12 @@ export default function Home() {
                       <label className="text-[10px] text-white/50 tracking-[0.2em] uppercase">Phone / Username</label>
                       <input
                         type="text"
+                        name="username"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
                         required
                         placeholder="Enter username"
+                        autoComplete="username"
                         className="w-full bg-[#111] border border-[#222] text-white p-4 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
                       />
                     </div>
@@ -542,10 +547,12 @@ export default function Home() {
                       <div className="relative">
                         <input
                           type={showPassword ? 'text' : 'password'}
+                          name="password"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
                           required
                           placeholder="Enter password"
+                          autoComplete="current-password"
                           className="w-full bg-[#111] border border-[#222] text-white p-4 pr-12 focus:outline-none focus:border-[#c8b09b] transition-colors font-mono tracking-widest text-sm"
                         />
                         <button

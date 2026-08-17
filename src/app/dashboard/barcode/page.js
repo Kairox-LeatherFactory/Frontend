@@ -251,13 +251,31 @@ const TICKET = { black: '#000000', gray: '#6b6b6b', line: '#d8d8d8', bg: '#fffff
 
 // Company logo — public/images/company-logo.svg. Vector, so it stays sharp
 // at any size (no more raster blur from a PNG being scaled up/down).
+// The asset isn't in the repo yet; falls back to an initials badge instead
+// of a broken-image icon (and a console error on every render) until it is.
 function CompanyMark({ size = 56 }) {
+ const [failed, setFailed] = useState(false);
+ if (failed) {
+ return (
+ <div
+ style={{
+ width: size, height: size, flexShrink: 0, borderRadius: '50%',
+ display: 'flex', alignItems: 'center', justifyContent: 'center',
+ background: 'rgba(255,255,255,0.12)', color: '#fff',
+ fontSize: size * 0.36, fontWeight: 800, letterSpacing: '0.02em',
+ }}
+ >
+ PT
+ </div>
+ );
+ }
  return (
  <div style={{ width: size, height: size, flexShrink: 0 }}>
  {/* eslint-disable-next-line @next/next/no-img-element */}
  <img
  src="/images/company-logo.svg"
  alt="Company logo"
+ onError={() => setFailed(true)}
  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
  />
  </div>
@@ -637,14 +655,30 @@ function BarcodePagination({ page, pages, setPage }) {
 // ─── STYLE: Batch Generation sub-view — card grid of the order's registered barcodes ──
 function StyleGenerationGrid({
  rows, historyLoading, historyError, search, setSearch,
- selectedCodes, toggleCode, selectAllVisible, clearSelection,
+ selectedCodes, toggleCode, selectAllVisible, clearSelection, addCodes,
  page, setPage, pages, total, onOpenDetail, onPrintSingle, onPrintSelected, onPrintOrder, printing,
 }) {
+ const [rangeFrom, setRangeFrom] = useState('');
+ const [rangeTo, setRangeTo] = useState('');
  const filteredRows = useMemo(() => {
  const q = search.trim().toLowerCase();
  if (!q) return rows;
  return rows.filter((r) => r.code.toLowerCase().includes(q));
  }, [rows, search]);
+
+ // Range select picks by POSITION in this displayed grid (1st card, 2nd
+ // card, ...), not by the `seq` field — seq restarts at 1 for every
+ // style/size group, so a seq-based "1 to 8" match could span multiple
+ // groups and select more cards than the range implies.
+ const handleSelectRange = () => {
+ const from = parseInt(rangeFrom, 10);
+ const to = parseInt(rangeTo, 10);
+ if (isNaN(from) || isNaN(to)) return;
+ const lo = Math.max(1, Math.min(from, to));
+ const hi = Math.min(filteredRows.length, Math.max(from, to));
+ const codes = filteredRows.slice(lo - 1, hi).map((r) => r.code);
+ addCodes(codes);
+ };
 
  return (
  <div>
@@ -660,6 +694,30 @@ function StyleGenerationGrid({
  </div>
  <button onClick={selectAllVisible} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Select Page</button>
  <button onClick={clearSelection} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Clear</button>
+ <div className="flex items-center gap-1.5">
+ <input
+ type="number"
+ min="1"
+ inputMode="numeric"
+ placeholder="From"
+ value={rangeFrom}
+ onChange={(e) => setRangeFrom(e.target.value)}
+ className={`${inputCls} !w-16 !py-1.5 text-xs`}
+ style={fieldStyle}
+ />
+ <span className="text-xs font-bold" style={{ color: BRAND.textMuted }}>to</span>
+ <input
+ type="number"
+ min="1"
+ inputMode="numeric"
+ placeholder="To"
+ value={rangeTo}
+ onChange={(e) => setRangeTo(e.target.value)}
+ className={`${inputCls} !w-16 !py-1.5 text-xs`}
+ style={fieldStyle}
+ />
+ <button onClick={handleSelectRange} disabled={rangeFrom === '' || rangeTo === ''} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-50">Select Range</button>
+ </div>
  <button onClick={onPrintSelected} disabled={printing || selectedCodes.size === 0} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-50">
  <Printer className="w-3.5 h-3.5" /> Print Selected ({selectedCodes.size})
  </button>
@@ -688,13 +746,15 @@ function StyleGenerationGrid({
  return (
  <motion.div
  key={r.code}
- 
+ onClick={() => toggleCode(r.code)}
  whileHover={{ y: -6, scale: 1.02 }}
  transition={{ type: 'spring', stiffness: 320, damping: 22 }}
- className="rounded-xl p-4 flex flex-col items-center gap-3 relative"
+ className="rounded-xl p-4 flex flex-col items-center gap-3 relative cursor-pointer"
  style={{ background: checked ? '#faf3ea' : '#fff', border: `1.5px solid ${checked ? BRAND.accent : BRAND.border}` }}
  >
- <input type="checkbox" checked={checked} onChange={() => toggleCode(r.code)} className="absolute top-3 left-3 w-4 h-4 accent-[#c8834a] cursor-pointer" />
+ {/* Checkbox mirrors the card's own toggle — stopPropagation so tapping it
+ directly doesn't also fire the card's onClick and toggle twice (net no-op). */}
+ <input type="checkbox" checked={checked} onChange={() => toggleCode(r.code)} onClick={(e) => e.stopPropagation()} className="absolute top-3 left-3 w-4 h-4 accent-[#c8834a] cursor-pointer" />
  <div className="w-full bg-white rounded-lg p-2 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
  <BarcodeCanvas code={r.code} displayWidth={190} />
  </div>
@@ -707,8 +767,8 @@ function StyleGenerationGrid({
  </div>
  </div>
  <div className="flex gap-2 w-full">
- <button onClick={() => onOpenDetail(r.code)} className="flex-1 btn-warm-secondary !min-h-0 !py-1.5 text-xs">View</button>
- <button onClick={() => onPrintSingle(r.code)} className="flex-1 btn-warm-primary !min-h-0 !py-1.5 text-xs">Print</button>
+ <button onClick={(e) => { e.stopPropagation(); onOpenDetail(r.code); }} className="flex-1 btn-warm-secondary !min-h-0 !py-1.5 text-xs">View</button>
+ <button onClick={(e) => { e.stopPropagation(); onPrintSingle(r.code); }} className="flex-1 btn-warm-primary !min-h-0 !py-1.5 text-xs">Print</button>
  </div>
  </motion.div>
  );
@@ -824,7 +884,7 @@ function StyleHistoryTable({ rows, historyLoading, historyError, page, setPage, 
 }
 
 const STYLE_HISTORY_PAGE_SIZE = 24;
-const DEFAULT_STYLE_FILTERS = { styleId: 'ALL', size: 'ALL', status: 'ALL', dateFrom: '', dateTo: '' };
+const DEFAULT_STYLE_FILTERS = { styleId: 'ALL', size: 'ALL', status: 'ALL' };
 
 // ─── STYLE: Registry Panel — one always-mounted component covering all three
 // tabs (Batch Generation / Print Center / Batch History) so the selected
@@ -910,8 +970,6 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  styleId: filters.styleId !== 'ALL' ? filters.styleId : undefined,
  size: filters.size !== 'ALL' ? filters.size : undefined,
  status: filters.status !== 'ALL' ? filters.status : undefined,
- dateFrom: filters.dateFrom || undefined,
- dateTo: filters.dateTo || undefined,
  page,
  pageSize: STYLE_HISTORY_PAGE_SIZE,
  });
@@ -944,6 +1002,9 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  const toggleCode = (code) => setSelectedCodes((prev) => { const next = new Set(prev); next.has(code) ? next.delete(code) : next.add(code); return next; });
  const selectAllVisible = () => setSelectedCodes((prev) => { const next = new Set(prev); rows.forEach((r) => next.add(r.code)); return next; });
  const clearSelection = () => setSelectedCodes(new Set());
+ // Bulk-add codes to the selection (used by range select) without disturbing
+ // codes already checked elsewhere (e.g. from a previous page/range).
+ const addCodes = (codes) => setSelectedCodes((prev) => { const next = new Set(prev); codes.forEach((c) => next.add(c)); return next; });
 
  const openDetail = useCallback(async (code) => {
  setDetailOpen(true);
@@ -1114,14 +1175,6 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  <option value="retired">Retired</option>
  </select>
  </div>
- <div>
- <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Generated From</label>
- <input type="date" className={inputCls} style={fieldStyle} value={filters.dateFrom} onChange={(e) => setFilter('dateFrom', e.target.value)} />
- </div>
- <div>
- <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Generated To</label>
- <input type="date" className={inputCls} style={fieldStyle} value={filters.dateTo} onChange={(e) => setFilter('dateTo', e.target.value)} />
- </div>
  <button onClick={resetFilters} className="btn-warm-secondary !min-h-0 !py-2.5"><RotateCcw className="w-4 h-4" /> Reset</button>
  </div>
 
@@ -1130,7 +1183,7 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  <StyleGenerationGrid
  rows={rows} historyLoading={historyLoading} historyError={historyError}
  search={search} setSearch={setSearch}
- selectedCodes={selectedCodes} toggleCode={toggleCode} selectAllVisible={selectAllVisible} clearSelection={clearSelection}
+ selectedCodes={selectedCodes} toggleCode={toggleCode} selectAllVisible={selectAllVisible} clearSelection={clearSelection} addCodes={addCodes}
  page={page} setPage={setPage} pages={historyData?.pages || 1} total={historyData?.total || 0}
  onOpenDetail={openDetail} onPrintSingle={handlePrintSingleCode}
  onPrintSelected={handlePrintSelected} onPrintOrder={handlePrintEntireOrder} printing={printing}
@@ -1229,6 +1282,10 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
  <option value="ALL">All Designations</option>
  {designations.map((d) => <option key={d} value={d}>{d}</option>)}
  </select>
+ </div>
+ <div className="relative">
+ <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />
+ <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or employee ID..." className={`${inputCls} !pl-8 !w-56 !py-2`} style={fieldStyle} />
  </div>
  <p className="text-xs" style={{ color: BRAND.textMuted }}>{filteredEmployees.length} employee{filteredEmployees.length === 1 ? '' : 's'} match this filter</p>
  <div className="flex gap-2">
@@ -2507,19 +2564,35 @@ export default function BarcodeManagementPage() {
  scanner-safe bar width (0.25mm+) without the browser downscaling
  the canvas — which blurs adjacent bars together and is exactly
  why scans were failing. One column gives each barcode the full
- page width (~190mm) instead, so 8 per page now stack as 8 rows. */
+ page width (~190mm) instead, so 8 per page now stack as 8 rows.
+ Plain block/flex flow on purpose, NOT CSS grid: a fixed-height
+ grid track that overflows by even a fraction of a mm makes Chrome's
+ print engine fragment mid-row — it paints a sliver of the row at
+ the bottom of one page AND repaints the same item in full at the
+ top of the next, i.e. that item prints twice. Normal flow with
+ break-inside: avoid on each .print-card (below) just pushes the
+ whole card to the next page instead, no duplication. */
  .print-page-barcodes {
- display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(8, 1fr);
- gap: 3mm; width: 100%; height: 287mm; page-break-after: always; box-sizing: border-box;
+ display: flex; flex-direction: column;
+ gap: 3mm; width: 100%; page-break-after: always; box-sizing: border-box;
  }
  .print-page-barcodes:last-child { page-break-after: auto; }
+ .print-page-barcodes .print-card { width: 100%; }
  /* Bucket labels: 2 across × 4 down = 8 exact 100×70mm labels per A4.
- No gap — the dashed border doubles as the cut line. */
+ No gap — the dashed border doubles as the cut line. Two floated
+ single-column stacks, NOT a wrapping grid/flex container — grid
+ (grid-auto-rows) and flex-wrap both hit the same Chrome print bug:
+ a multi-row WRAPPING container that lands a fraction of a mm short
+ of the page gets its last row split across the break and reprinted
+ whole on page 2 (the DRW-0007/0008 row duplicating happened with
+ both). A float only ever flows top-to-bottom within its own column
+ — no wrapping row for Chrome to mis-fragment — so each column
+ paginates exactly like the barcode sheet's flex-column fix above. */
  .print-label-page {
- display: grid; grid-template-columns: 100mm 100mm; grid-auto-rows: 70mm;
- width: 200mm; page-break-after: always;
+ width: 200mm; page-break-after: always; overflow: hidden;
  }
  .print-label-page:last-child { page-break-after: auto; }
+ .print-label-col { float: left; width: 100mm; }
  .print-label-page .bucket-label {
  width: 100mm; height: 70mm; border: 1px dashed #bbb; break-inside: avoid;
  }
@@ -2708,7 +2781,14 @@ export default function BarcodeManagementPage() {
  {isBucketSheet
  ? chunkArray(printSheetItems, BUCKET_LABELS_PER_PAGE).map((group, pageIdx) => (
  <div className="print-label-page" key={pageIdx}>
- {group.map((b) => <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />)}
+ {/* Two floated single-column stacks (left = even index, right = odd),
+ not one wrapping container — see .print-label-page comment below. */}
+ <div className="print-label-col">
+ {group.filter((_, i) => i % 2 === 0).map((b) => <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />)}
+ </div>
+ <div className="print-label-col">
+ {group.filter((_, i) => i % 2 === 1).map((b) => <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />)}
+ </div>
  </div>
  ))
  : category === 'employee'
