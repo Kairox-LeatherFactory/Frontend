@@ -938,9 +938,11 @@ function ClientOrdersChart({ data, loading }) {
   );
 }
 
-/* ── Top Bottleneck Styles: real data already fetched for the Risk Alerts tab,
-   surfaced here too so the biggest production risks are visible at a glance. ── */
-function BottleneckStylesChart({ stageAlerts }) {
+/* ── Top Stage-Gap Styles: real data already fetched for the Risk Alerts tab,
+   surfaced here too so the biggest stage-completion gaps are visible at a glance.
+   This is a completion-gap trace per style/piece, not a real bottleneck detector —
+   a real bottleneck needs a time/pace comparison, which this data doesn't carry. ── */
+function StageGapStylesChart({ stageAlerts }) {
   const data = useMemo(() => {
     return [...stageAlerts]
       .map((a) => ({
@@ -956,7 +958,7 @@ function BottleneckStylesChart({ stageAlerts }) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center gap-2 text-center py-10">
         <CheckCircle2 className="w-8 h-8 text-emerald-300" />
-        <p className="text-slate-400 text-xs font-bold">No production bottlenecks right now.</p>
+        <p className="text-slate-400 text-xs font-bold">No stage-gap alerts right now.</p>
       </div>
     );
   }
@@ -1212,19 +1214,19 @@ export default function AnalyticsDashboard() {
                 </motion.div>
               </motion.div>
 
-              {/* TOP BOTTLENECK STYLES */}
+              {/* TOP STAGE-GAP STYLES */}
               <motion.div variants={tabFade} className="flex flex-col gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #f97316, #dc2626)', boxShadow: '0 6px 16px #dc262655' }}>
                     <AlertCircle className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="font-black text-[#1a120a] text-base">Top Bottleneck Styles</h3>
+                    <h3 className="font-black text-[#1a120a] text-base">Top Stage-Gap Styles</h3>
                     <p className="text-slate-500 text-[11px] font-medium">Styles with the biggest stage-completion gap right now.</p>
                   </div>
                 </div>
                 <div className="rounded-2xl overflow-hidden min-h-[260px] flex flex-col bg-white" style={{ boxShadow: '0 16px 32px -16px rgba(220,38,38,0.3), 0 2px 8px rgba(0,0,0,0.04)' }}>
-                  <BottleneckStylesChart stageAlerts={stageAlerts} />
+                  <StageGapStylesChart stageAlerts={stageAlerts} />
                 </div>
               </motion.div>
             </motion.div>
@@ -1311,7 +1313,7 @@ export default function AnalyticsDashboard() {
                     </div>
                     <div className="min-w-0">
                       <h3 className="font-black text-white text-base truncate">Stage Spread Alerts</h3>
-                      <p className="text-[11px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.8)' }}>Unbalanced production stages — bottlenecks detected.</p>
+                      <p className="text-[11px] font-medium truncate" style={{ color: 'rgba(255,255,255,0.8)' }}>Pieces lagging behind by stage — traced per style/piece.</p>
                     </div>
                   </div>
                   {stageAlerts.length > 0 && (
@@ -1334,7 +1336,7 @@ export default function AnalyticsDashboard() {
                                 <p className="text-slate-500 text-xs mt-0.5">Gap: <span className="text-[#c8834a] font-bold">{alert.gap || alert.pieces_gap || 0} pcs</span></p>
                               </div>
                               <span className="px-2.5 py-1 rounded-md text-[9px] font-black text-[#c8834a] bg-orange-50 border border-orange-100">
-                                Bottleneck
+                                Stage Gap
                               </span>
                             </div>
 

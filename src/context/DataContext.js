@@ -116,7 +116,7 @@ export function DataProvider({ children }) {
   };
 
   const addWageRun = async (period) => {
-    const newRun = await apiComputeWageRun(token, period.period_start, period.period_end);
+    const newRun = await apiComputeWageRun(token, { periodStart: period.period_start, periodEnd: period.period_end });
     setWageRuns((prev) => [newRun, ...prev]);
     return newRun;
   };

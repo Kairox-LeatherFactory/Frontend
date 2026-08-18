@@ -364,7 +364,7 @@ function MyAttendanceView({ token }) {
  <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
  <GpsWarning error={gps.error} />
 
- {/* Hero row — Managing Director-க்கு மட்டும் இந்த ஷீல்ட் / டைமர் பேனர்கள் மறைக்கப்படும் */}
+ {/* Hero row — Managing Director */}
  {!isManagingDirector && (
  <motion.div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
  {/* Shift Timer */}
@@ -969,7 +969,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  label={isPieceRate ? 'Daily Wage' : 'Monthly'}
  type={isPieceRate ? 'proxy' : 'active'}
  />
- {isSelected && isPieceRate && (
+ {isSelected &&  (
  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-20" onClick={(e) => e.stopPropagation()}>
  <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-in'); }} disabled={actionLoading || !!gps.error || checkedInIds.has(String(w.id))}
  className={`bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer ${checkedInIds.has(String(w.id)) ? 'opacity-50' : ''}`}>

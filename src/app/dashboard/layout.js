@@ -32,6 +32,7 @@ import {
   Shirt,
   Boxes,
   ChevronDown,
+  Package,
 } from 'lucide-react';
 
 // Raw hide → cut pattern pieces → stitched seam → finished jacket
@@ -122,6 +123,7 @@ const NAV_ICONS = {
   '/dashboard/progress': BarChart3,
   '/dashboard/orders': TreePine,
   '/dashboard/wages': Wallet,
+  '/dashboard/materials': Package,
   '/dashboard/simulator': Gamepad2,
   '/dashboard/tracer': ScanSearch,
   '/dashboard/chat': BotMessageSquare,
@@ -274,10 +276,6 @@ export default function DashboardLayout({ children }) {
         href: '/dashboard',
       },
       {
-        name: 'Direct Manager Flow',
-        href: '/dashboard/direct-manager',
-      },
-      {
         name: 'Analytics & Alerts',
         href: '/dashboard/analytics',
       },
@@ -296,6 +294,10 @@ export default function DashboardLayout({ children }) {
       {
         name: 'Payroll & Rates',
         href: '/dashboard/wages',
+      },
+      {
+        name: 'Material Stock',
+        href: '/dashboard/materials',
       },
       {
         name: 'Attendance',
@@ -333,13 +335,19 @@ export default function DashboardLayout({ children }) {
       },
     ];
 
+    // "Dashboard Home" (/dashboard) already routes Direct Manager/Managing
+    // Director/HR straight to DirectManagerDashboard (see dashboard/page.js)
+    // — the same component /dashboard/direct-manager rendered, so that
+    // second sidebar entry was a duplicate and has been removed above.
+    const scoped = links;
+
     if (user === 'security') {
-      return links.filter(
+      return scoped.filter(
         (link) => link.name === 'Attendance'
       );
     }
 
-    return links;
+    return scoped;
   }, [user]);
 
   // --------------------------------------------------

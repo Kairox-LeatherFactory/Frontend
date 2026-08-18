@@ -251,13 +251,31 @@ const TICKET = { black: '#000000', gray: '#6b6b6b', line: '#d8d8d8', bg: '#fffff
 
 // Company logo — public/images/company-logo.svg. Vector, so it stays sharp
 // at any size (no more raster blur from a PNG being scaled up/down).
+// The asset isn't in the repo yet; falls back to an initials badge instead
+// of a broken-image icon (and a console error on every render) until it is.
 function CompanyMark({ size = 56 }) {
+ const [failed, setFailed] = useState(false);
+ if (failed) {
+ return (
+ <div
+ style={{
+ width: size, height: size, flexShrink: 0, borderRadius: '50%',
+ display: 'flex', alignItems: 'center', justifyContent: 'center',
+ background: 'rgba(255,255,255,0.12)', color: '#fff',
+ fontSize: size * 0.36, fontWeight: 800, letterSpacing: '0.02em',
+ }}
+ >
+ PT
+ </div>
+ );
+ }
  return (
  <div style={{ width: size, height: size, flexShrink: 0 }}>
  {/* eslint-disable-next-line @next/next/no-img-element */}
  <img
  src="/images/company-logo.svg"
  alt="Company logo"
+ onError={() => setFailed(true)}
  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
  />
  </div>
@@ -325,15 +343,14 @@ function EmployeeTicketCard({ barcode, cardRef, width }) {
  );
 }
 
-// ─── BUCKET / DRAWER LABEL — 100mm × 70mm, barcode and nothing else ──────────
-// This one gets pasted on the bucket itself, so it carries no logo, no field
-// grid and no ticket header — just the symbol and the code printed under it.
-// The size is fixed in mm (see .bucket-label in the print CSS) rather than in
-// px, so the sheet comes off the printer at the bucket-face size regardless of
-// screen DPI. It only renders at label size when the print dialog is at 100%
-// scale — "fit to page" will shrink it like any other physical-size print.
-const BUCKET_LABEL = { widthMm: 100, heightMm: 70 };
-// 2 across × 4 down on A4 at a 5mm page margin.
+// ─── BUCKET / DRAWER LABEL — 98mm × 65.5mm, barcode and nothing else ──────────
+// Sized so exactly 8 labels (2 across × 4 down = 262mm height) fit completely
+// within 1 single A4 or Letter printed sheet with safe printer hardware margins.
+const BUCKET_LABEL = { widthMm: 98, heightMm: 65.5 };
+// 2 across × 4 down on A4 at a 5mm page margin — the full arithmetic max
+// (280mm of a 287mm printable area) is safe again now that each label is
+// absolutely positioned rather than flowed/wrapped by the browser; see the
+// .print-label-page comment below for why flow-based layouts kept failing.
 const BUCKET_LABELS_PER_PAGE = 8;
 // Style print sheet carries barcode + code only (no field grid), so it packs
 // 2 across × 4 down like the bucket sheet instead of the 2×2 card layout
@@ -343,9 +360,7 @@ const STYLE_LABELS_PER_PAGE = 8;
 function DrawerBarcodeLabel({ barcode, cardRef }) {
  return (
  <div ref={cardRef} className="bucket-label">
- {/* Tall bars + wide modules: the label has 100mm to spend, and a wider
- module is what a handheld scanner reads from a distance. */}
- <BarcodeCanvas code={barcode.pieceCode} height={160} moduleWidth={3} />
+  <BarcodeCanvas code={barcode.pieceCode} height={80} moduleWidth={2.4} margin={4} />
  </div>
  );
 }
@@ -637,14 +652,30 @@ function BarcodePagination({ page, pages, setPage }) {
 // ─── STYLE: Batch Generation sub-view — card grid of the order's registered barcodes ──
 function StyleGenerationGrid({
  rows, historyLoading, historyError, search, setSearch,
- selectedCodes, toggleCode, selectAllVisible, clearSelection,
+ selectedCodes, toggleCode, selectAllVisible, clearSelection, addCodes,
  page, setPage, pages, total, onOpenDetail, onPrintSingle, onPrintSelected, onPrintOrder, printing,
 }) {
+ const [rangeFrom, setRangeFrom] = useState('');
+ const [rangeTo, setRangeTo] = useState('');
  const filteredRows = useMemo(() => {
  const q = search.trim().toLowerCase();
  if (!q) return rows;
  return rows.filter((r) => r.code.toLowerCase().includes(q));
  }, [rows, search]);
+
+ // Range select picks by POSITION in this displayed grid (1st card, 2nd
+ // card, ...), not by the `seq` field — seq restarts at 1 for every
+ // style/size group, so a seq-based "1 to 8" match could span multiple
+ // groups and select more cards than the range implies.
+ const handleSelectRange = () => {
+ const from = parseInt(rangeFrom, 10);
+ const to = parseInt(rangeTo, 10);
+ if (isNaN(from) || isNaN(to)) return;
+ const lo = Math.max(1, Math.min(from, to));
+ const hi = Math.min(filteredRows.length, Math.max(from, to));
+ const codes = filteredRows.slice(lo - 1, hi).map((r) => r.code);
+ addCodes(codes);
+ };
 
  return (
  <div>
@@ -660,6 +691,30 @@ function StyleGenerationGrid({
  </div>
  <button onClick={selectAllVisible} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Select Page</button>
  <button onClick={clearSelection} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Clear</button>
+ <div className="flex items-center gap-1.5">
+ <input
+ type="number"
+ min="1"
+ inputMode="numeric"
+ placeholder="From"
+ value={rangeFrom}
+ onChange={(e) => setRangeFrom(e.target.value)}
+ className={`${inputCls} !w-16 !py-1.5 text-xs`}
+ style={fieldStyle}
+ />
+ <span className="text-xs font-bold" style={{ color: BRAND.textMuted }}>to</span>
+ <input
+ type="number"
+ min="1"
+ inputMode="numeric"
+ placeholder="To"
+ value={rangeTo}
+ onChange={(e) => setRangeTo(e.target.value)}
+ className={`${inputCls} !w-16 !py-1.5 text-xs`}
+ style={fieldStyle}
+ />
+ <button onClick={handleSelectRange} disabled={rangeFrom === '' || rangeTo === ''} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-50">Select Range</button>
+ </div>
  <button onClick={onPrintSelected} disabled={printing || selectedCodes.size === 0} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-50">
  <Printer className="w-3.5 h-3.5" /> Print Selected ({selectedCodes.size})
  </button>
@@ -688,13 +743,15 @@ function StyleGenerationGrid({
  return (
  <motion.div
  key={r.code}
- 
+ onClick={() => toggleCode(r.code)}
  whileHover={{ y: -6, scale: 1.02 }}
  transition={{ type: 'spring', stiffness: 320, damping: 22 }}
- className="rounded-xl p-4 flex flex-col items-center gap-3 relative"
+ className="rounded-xl p-4 flex flex-col items-center gap-3 relative cursor-pointer"
  style={{ background: checked ? '#faf3ea' : '#fff', border: `1.5px solid ${checked ? BRAND.accent : BRAND.border}` }}
  >
- <input type="checkbox" checked={checked} onChange={() => toggleCode(r.code)} className="absolute top-3 left-3 w-4 h-4 accent-[#c8834a] cursor-pointer" />
+ {/* Checkbox mirrors the card's own toggle — stopPropagation so tapping it
+ directly doesn't also fire the card's onClick and toggle twice (net no-op). */}
+ <input type="checkbox" checked={checked} onChange={() => toggleCode(r.code)} onClick={(e) => e.stopPropagation()} className="absolute top-3 left-3 w-4 h-4 accent-[#c8834a] cursor-pointer" />
  <div className="w-full bg-white rounded-lg p-2 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
  <BarcodeCanvas code={r.code} displayWidth={190} />
  </div>
@@ -707,8 +764,8 @@ function StyleGenerationGrid({
  </div>
  </div>
  <div className="flex gap-2 w-full">
- <button onClick={() => onOpenDetail(r.code)} className="flex-1 btn-warm-secondary !min-h-0 !py-1.5 text-xs">View</button>
- <button onClick={() => onPrintSingle(r.code)} className="flex-1 btn-warm-primary !min-h-0 !py-1.5 text-xs">Print</button>
+ <button onClick={(e) => { e.stopPropagation(); onOpenDetail(r.code); }} className="flex-1 btn-warm-secondary !min-h-0 !py-1.5 text-xs">View</button>
+ <button onClick={(e) => { e.stopPropagation(); onPrintSingle(r.code); }} className="flex-1 btn-warm-primary !min-h-0 !py-1.5 text-xs">Print</button>
  </div>
  </motion.div>
  );
@@ -824,7 +881,7 @@ function StyleHistoryTable({ rows, historyLoading, historyError, page, setPage, 
 }
 
 const STYLE_HISTORY_PAGE_SIZE = 24;
-const DEFAULT_STYLE_FILTERS = { styleId: 'ALL', size: 'ALL', status: 'ALL', dateFrom: '', dateTo: '' };
+const DEFAULT_STYLE_FILTERS = { styleId: 'ALL', size: 'ALL', status: 'ALL' };
 
 // ─── STYLE: Registry Panel — one always-mounted component covering all three
 // tabs (Batch Generation / Print Center / Batch History) so the selected
@@ -910,8 +967,6 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  styleId: filters.styleId !== 'ALL' ? filters.styleId : undefined,
  size: filters.size !== 'ALL' ? filters.size : undefined,
  status: filters.status !== 'ALL' ? filters.status : undefined,
- dateFrom: filters.dateFrom || undefined,
- dateTo: filters.dateTo || undefined,
  page,
  pageSize: STYLE_HISTORY_PAGE_SIZE,
  });
@@ -944,6 +999,9 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  const toggleCode = (code) => setSelectedCodes((prev) => { const next = new Set(prev); next.has(code) ? next.delete(code) : next.add(code); return next; });
  const selectAllVisible = () => setSelectedCodes((prev) => { const next = new Set(prev); rows.forEach((r) => next.add(r.code)); return next; });
  const clearSelection = () => setSelectedCodes(new Set());
+ // Bulk-add codes to the selection (used by range select) without disturbing
+ // codes already checked elsewhere (e.g. from a previous page/range).
+ const addCodes = (codes) => setSelectedCodes((prev) => { const next = new Set(prev); codes.forEach((c) => next.add(c)); return next; });
 
  const openDetail = useCallback(async (code) => {
  setDetailOpen(true);
@@ -1114,14 +1172,6 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  <option value="retired">Retired</option>
  </select>
  </div>
- <div>
- <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Generated From</label>
- <input type="date" className={inputCls} style={fieldStyle} value={filters.dateFrom} onChange={(e) => setFilter('dateFrom', e.target.value)} />
- </div>
- <div>
- <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Generated To</label>
- <input type="date" className={inputCls} style={fieldStyle} value={filters.dateTo} onChange={(e) => setFilter('dateTo', e.target.value)} />
- </div>
  <button onClick={resetFilters} className="btn-warm-secondary !min-h-0 !py-2.5"><RotateCcw className="w-4 h-4" /> Reset</button>
  </div>
 
@@ -1130,7 +1180,7 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  <StyleGenerationGrid
  rows={rows} historyLoading={historyLoading} historyError={historyError}
  search={search} setSearch={setSearch}
- selectedCodes={selectedCodes} toggleCode={toggleCode} selectAllVisible={selectAllVisible} clearSelection={clearSelection}
+ selectedCodes={selectedCodes} toggleCode={toggleCode} selectAllVisible={selectAllVisible} clearSelection={clearSelection} addCodes={addCodes}
  page={page} setPage={setPage} pages={historyData?.pages || 1} total={historyData?.total || 0}
  onOpenDetail={openDetail} onPrintSingle={handlePrintSingleCode}
  onPrintSelected={handlePrintSelected} onPrintOrder={handlePrintEntireOrder} printing={printing}
@@ -1229,6 +1279,10 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
  <option value="ALL">All Designations</option>
  {designations.map((d) => <option key={d} value={d}>{d}</option>)}
  </select>
+ </div>
+ <div className="relative">
+ <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />
+ <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or employee ID..." className={`${inputCls} !pl-8 !w-56 !py-2`} style={fieldStyle} />
  </div>
  <p className="text-xs" style={{ color: BRAND.textMuted }}>{filteredEmployees.length} employee{filteredEmployees.length === 1 ? '' : 's'} match this filter</p>
  <div className="flex gap-2">
@@ -2425,14 +2479,13 @@ export default function BarcodeManagementPage() {
  operators: Array.from(new Set(employeeStore.history.map((b) => b.generatedBy))),
  };
  }, [employeeDirectory, employeeStore.history]);
-
- const bucketHistoryOptions = useMemo(() => ({
- orderIds: Array.from(new Set(bucketStore.history.map((b) => b.orderId))),
- clients: Array.from(new Set(bucketStore.history.map((b) => b.client))),
- styles: Array.from(new Set(bucketStore.history.map((b) => b.style))),
- sizes: Array.from(new Set(bucketStore.history.map((b) => b.size))),
- operators: Array.from(new Set(bucketStore.history.map((b) => b.generatedBy))),
- }), [bucketStore.history]);
+const bucketHistoryOptions = useMemo(() => ({
+		orderIds: Array.from(new Set(bucketStore.history.map((b) => b.orderId))),
+		clients: Array.from(new Set(bucketStore.history.map((b) => b.client))),
+		styles: Array.from(new Set(bucketStore.history.map((b) => b.style))),
+		sizes: Array.from(new Set(bucketStore.history.map((b) => b.size))),
+		operators: Array.from(new Set(bucketStore.history.map((b) => b.generatedBy))),
+	}), [bucketStore.history]);
 
  const activeHistoryOptions = category === 'employee' ? employeeHistoryOptions : bucketHistoryOptions;
 
@@ -2479,51 +2532,59 @@ export default function BarcodeManagementPage() {
  cursor: pointer; min-height: 48px; transition: all 0.2s ease;
  }
  .btn-warm-secondary:hover { background: #fdf6ee; border-color: #c8834a; }
- /* Bucket label, 100×70mm. Sizes are written out rather than
- interpolated from BUCKET_LABEL so this whole block stays a static
- styled-jsx style; keep the two in step if the label size changes.
- Here in px (96dpi ≈ 378×265) for the PNG/PDF export and the modal —
- @media print below re-states the same label in mm for paper. */
  .bucket-label {
- width: 378px; height: 265px;
+ width: 360px; height: 240px;
  box-sizing: border-box; background: #fff; border: 1px dashed #999;
- display: flex; align-items: center; justify-content: center; overflow: hidden;
+ display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 4px;
  }
- .bucket-label svg { width: 92%; height: auto; }
+ .bucket-label canvas, .bucket-label svg { max-width: 95%; max-height: 95%; width: auto; height: auto; object-fit: contain; }
  @media print {
- /* 5mm so two 100mm labels fit across A4's 210mm. The other sheets
- size their page box off this, so it is shared deliberately. */
- @page { size: A4; margin: 5mm; }
+ /* 4mm margins so two 98mm labels fit across A4 (210mm) and Letter (215.9mm) */
+ @page { size: A4 portrait; margin: 4mm; }
  body * { visibility: hidden; }
  #thermalPrintSheet, #thermalPrintSheet * { visibility: visible; }
  #thermalPrintSheet { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: #fff !important; }
  .print-page {
  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
- gap: 8mm; width: 100%; height: 287mm; page-break-after: always; box-sizing: border-box;
+ gap: 8mm; width: 100%; height: 280mm; page-break-after: always; box-sizing: border-box;
  }
  .print-page:last-child { page-break-after: auto; }
- /* These codes run ~30+ characters, so CODE128 needs ~390 modules.
- A 2-column cell (~90mm) can't fit that many modules at a
- scanner-safe bar width (0.25mm+) without the browser downscaling
- the canvas — which blurs adjacent bars together and is exactly
- why scans were failing. One column gives each barcode the full
- page width (~190mm) instead, so 8 per page now stack as 8 rows. */
  .print-page-barcodes {
- display: grid; grid-template-columns: 1fr; grid-template-rows: repeat(8, 1fr);
- gap: 3mm; width: 100%; height: 287mm; page-break-after: always; box-sizing: border-box;
+ display: flex; flex-direction: column;
+ gap: 3mm; width: 100%; page-break-after: always; box-sizing: border-box;
  }
  .print-page-barcodes:last-child { page-break-after: auto; }
- /* Bucket labels: 2 across × 4 down = 8 exact 100×70mm labels per A4.
- No gap — the dashed border doubles as the cut line. */
+ .print-page-barcodes .print-card { width: 100%; }
+ /* Bucket labels: 2 across × 4 down = 8 exact 98×65.5mm labels per page.
+ Total page height is 262mm, fitting reliably within A4 (289mm printable)
+ and US Letter (271.4mm printable) without spilling to page 2. */
  .print-label-page {
- display: grid; grid-template-columns: 100mm 100mm; grid-auto-rows: 70mm;
- width: 200mm; page-break-after: always;
+ position: relative; width: 196mm; height: 262mm; max-height: 262mm;
+ page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid;
+ box-sizing: border-box; overflow: hidden; margin: 0 auto;
  }
- .print-label-page:last-child { page-break-after: auto; }
+ .print-label-page:last-child { page-break-after: auto; break-after: auto; }
+ .print-label-slot { position: absolute; width: 98mm; height: 65.5mm; box-sizing: border-box; }
  .print-label-page .bucket-label {
- width: 100mm; height: 70mm; border: 1px dashed #bbb; break-inside: avoid;
- }
- .print-label-page .bucket-label svg { width: 92mm; height: auto; }
+		width: 98mm;
+		height: 65.5mm;
+		border: 1px dashed #bbb;
+		box-sizing: border-box;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		padding: 2mm;
+	}
+	.print-label-page .bucket-label canvas,
+	.print-label-page .bucket-label svg {
+		max-width: 92mm;
+		max-height: 58mm;
+		width: auto;
+		height: auto;
+		object-fit: contain;
+		display: block;
+	}
  .print-card {
  border: 1px dashed #999; border-radius: 6px; padding: 2mm; box-sizing: border-box;
  display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -2708,7 +2769,17 @@ export default function BarcodeManagementPage() {
  {isBucketSheet
  ? chunkArray(printSheetItems, BUCKET_LABELS_PER_PAGE).map((group, pageIdx) => (
  <div className="print-label-page" key={pageIdx}>
- {group.map((b) => <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />)}
+ {/* Every label gets a pre-computed absolute coordinate instead of
+ flowing/wrapping — see .print-label-page comment below for why. */}
+ {group.map((b, i) => (
+ <div
+ key={b.pieceCode}
+ className="print-label-slot"
+ style={{ left: `${(i % 2) * BUCKET_LABEL.widthMm}mm`, top: `${Math.floor(i / 2) * BUCKET_LABEL.heightMm}mm` }}
+ >
+ <DrawerBarcodeLabel barcode={b} />
+ </div>
+ ))}
  </div>
  ))
  : category === 'employee'

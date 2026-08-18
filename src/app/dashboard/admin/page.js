@@ -552,9 +552,11 @@ export default function AdminDashboard() {
                     <option value="cutting_manager">Cutting Manager</option>
                     <option value="lining_manager">Lining Manager</option>
                     <option value="stitching_manager">Stitching Manager</option>
+                    <option value="store_manager">Store Manager</option>
                     <option value="hr">HR</option>
                     <option value="direct_manager">Direct Manager</option>
                     <option value="managing_director">Managing Director</option>
+                    <option value="merchandiser">Merchandiser</option>
                     <option value="client">Client</option>
                     <option value="security">Security</option>
                   </select>

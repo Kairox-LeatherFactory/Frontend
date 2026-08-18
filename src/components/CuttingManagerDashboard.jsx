@@ -770,8 +770,8 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">📦 All Orders</option>
-              {ordersList.map((ord) => (
-                <option key={ord.id} value={ord.id}>
+              {ordersList.map((ord, idx) => (
+                <option key={`ord-opt-${ord.id || ord.order_number}-${idx}`} value={ord.id}>
                   {ord.client ? `${ord.client} - ` : ''}PO: {ord.order_number}
                 </option>
               ))}
@@ -786,8 +786,8 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">👗 All Styles</option>
-              {availableStyles.map((s) => (
-                <option key={s.id} value={s.name}>{s.name}</option>
+              {availableStyles.map((s, idx) => (
+                <option key={`style-opt-${s.id || s.name}-${idx}`} value={s.name}>{s.name}</option>
               ))}
             </select>
           </div>
@@ -800,8 +800,8 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">🧵 All Lots</option>
-              {availableLots.map((lot) => (
-                <option key={lot.id} value={lot.id}>{lot.label}</option>
+              {availableLots.map((lot, idx) => (
+                <option key={`lot-opt-${lot.id || lot.label}-${idx}`} value={lot.id}>{lot.label}</option>
               ))}
             </select>
           </div>
@@ -814,8 +814,8 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">✂️ All Cutters</option>
-              {availableCutters.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+              {availableCutters.map((c, idx) => (
+                <option key={`cutter-opt-${c.id || c.name}-${idx}`} value={c.id}>{c.name}</option>
               ))}
             </select>
           </div>
@@ -828,8 +828,8 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">⚡ Stage</option>
-              {availableStages.map((st) => (
-                <option key={st} value={st}>{formatStage(st)}</option>
+              {availableStages.map((st, idx) => (
+                <option key={`stage-opt-${st}-${idx}`} value={st}>{formatStage(st)}</option>
               ))}
             </select>
           </div>
@@ -842,8 +842,8 @@ function DashboardInner() {
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#2563eb]"
             >
               <option value="all">📏 Size</option>
-              {availableSizes.map((sz) => (
-                <option key={sz} value={sz}>Size {sz}</option>
+              {availableSizes.map((sz, idx) => (
+                <option key={`size-opt-${sz}-${idx}`} value={sz}>Size {sz}</option>
               ))}
             </select>
           </div>
