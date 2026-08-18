@@ -294,6 +294,9 @@ export async function apiProductionCutting(token, payload) {
 }
 
 /**
+ * LEGACY — pre-17-Aug redesign, unused since the Ledger switched to
+ * apiGetWageRunBreakdown + apiGetWageRunPieces (richer per-run detail).
+ * Kept for reference only; not called anywhere.
  * Fetch a specific wage run by ID
  * NOTE: /api/v1/wages/runs has no GET (list) endpoint — only POST (create).
  * Use this to fetch a single run by ID after creation.
@@ -308,6 +311,9 @@ export async function apiGetWageRun(token, runId) {
 }
 
 /**
+ * LEGACY — exact duplicate of apiSetWageRateSingle (same POST /wages/rates
+ * endpoint, added under an earlier name). Kept for reference only; not
+ * called anywhere. Use apiSetWageRateSingle.
  * Set a wage rate for a style and operation
  */
 export async function apiSetWageRate(token, payload) {
@@ -968,6 +974,9 @@ export async function apiGetRateHistory(token, styleCode, operationCode) {
 }
 
 /**
+ * LEGACY — pre-17-Aug redesign, unused since the Ledger switched to
+ * apiGetWageLedger (latest-computed-first, carries recompute_count/
+ * reopen_count). Kept for reference only; not called anywhere.
  * 6. GET /wages/runs - Payroll history list
  */
 export async function apiGetWageRuns(token, limit = 50, offset = 0) {
@@ -1142,6 +1151,9 @@ export async function apiGetWageLedger(token, { orderNumber, styleCode, dateFrom
 }
 
 /**
+ * LEGACY — pre-17-Aug redesign, unused since the Ledger switched to
+ * apiGetWageRunBreakdown + apiGetWageRunPieces (richer per-run detail).
+ * Kept for reference only; not called anywhere.
  * 8. GET /wages/runs/{run_id} - Payslip details
  */
 export async function apiGetWageRunDetails(token, runId) {

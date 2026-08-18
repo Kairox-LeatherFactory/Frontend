@@ -3,166 +3,27 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
-  apiGetWageOrders as realApiGetWageOrders,
+  apiGetWageOrders,
   apiGetWageStyles,
-  apiComputeWageRun as realApiComputeWageRun,
-  apiCloseWageRun as realApiCloseWageRun,
-  apiReopenWageRun as realApiReopenWageRun,
-  apiRecomputeWageRun as realApiRecomputeWageRun,
-  apiGetWageRunBreakdown as realApiGetWageRunBreakdown,
-  apiGetWageRunPieces as realApiGetWageRunPieces,
-  apiGetWageLedger as realApiGetWageLedger,
+  apiComputeWageRun,
+  apiCloseWageRun,
+  apiReopenWageRun,
+  apiRecomputeWageRun,
+  apiGetWageRunBreakdown,
+  apiGetWageRunPieces,
+  apiGetWageLedger,
   apiGetRateSheet,
   apiSetWageRatesBulk,
   apiSetWageRateSingle,
   apiGetRateHistory,
 } from '@/lib/api';
-
-/**
- * TEMPORARY MOCK LAYER — the 17-Aug-2026 payroll change set (Item 3:
- * /wages/orders, /wages/ledger, /runs/{id}/close|reopen|breakdown|pieces,
- * and the new freeze/order_number/style_code fields on POST /wages/runs)
- * is documented but not yet deployed on the testing backend — every one
- * of these 404s right now. Backend team's instruction: build against
- * mock data for now, then delete this whole block (and switch the
- * `real*` imports above back to their plain names) once the real
- * endpoints are live. Nothing outside this block needs to change.
- */
-const MOCK_WAGES = true;
-
-let _mockRunSeq = 0;
-const _mockRuns = new Map(); // run_id -> run object, so close/reopen/recompute persist across calls in this session
-
-function _mockOrders() {
-  return [
-    { order_number: 'UM-1', styles: 9, styles_priced: 3, fully_priced: false, sku_count: 42, qty_ordered: 1425, style_codes: ['HAN123-ADELE_KNIT', 'HAN123-CARNABY'] },
-    { order_number: 'han123', styles: 4, styles_priced: 4, fully_priced: true, sku_count: 16, qty_ordered: 400, style_codes: ['HAN123-ISLAY'] },
-  ];
-}
-
-function _mockBreakdownFor(run) {
-  return {
-    run_id: run.id, period_start: run.period_start, period_end: run.period_end, status: run.status,
-    scope_order_number: run.scope_order_number, scope_style_code: run.scope_style_code,
-    computed_at: run.computed_at, recompute_count: run.recompute_count, reopen_count: run.reopen_count,
-    total_amount: 45230.5, total_pieces: 320,
-    by_style: [
-      {
-        style_code: 'HAN123-ADELE_KNIT', style_name: 'ADELE KNIT', pieces: 180, amount: 24500,
-        stages: [
-          { operation_code: 'LEATHER_CUTTING', operation_label: 'Leather Cutting', pieces: 40, amount: 6000 },
-          { operation_code: 'FUSING', operation_label: 'Fusing', pieces: 35, amount: 3500 },
-          { operation_code: 'LINE_STITCHING', operation_label: 'Line Stitching', pieces: 30, amount: 5000 },
-        ],
-        employees: [{ employee_name: 'Asagar Ali', amount: 4200 }],
-      },
-      { style_code: 'HAN123-CARNABY', style_name: 'CARNABY', pieces: 140, amount: 20730.5, stages: [], employees: [] },
-    ],
-    by_stage: [
-      { operation_code: 'LEATHER_CUTTING', operation_label: 'Leather Cutting', sequence: 1, pieces: 90, rate: 150, amount: 13500 },
-      { operation_code: 'FUSING', operation_label: 'Fusing', sequence: 2, pieces: 60, rate: 100, amount: 6000 },
-      { operation_code: 'PASTING', operation_label: 'Pasting', sequence: 3, pieces: 55, rate: 90, amount: 4950 },
-      { operation_code: 'LINE_STITCHING', operation_label: 'Line Stitching', sequence: 4, pieces: 50, rate: 180, amount: 9000, },
-      { operation_code: 'SHELL_STITCHING', operation_label: 'Shell Stitching', sequence: 5, pieces: 40, rate: 190, amount: 7600, },
-      { operation_code: 'FINAL_FINISH', operation_label: 'Final Finish', sequence: 6, pieces: 25, rate: null, amount: null },
-    ],
-    by_employee: [
-      { employee_id: 'e1', employee_name: 'Asagar Ali', designation: 'CUTTER', pieces: 90, amount: 13500, styles: ['HAN123-ADELE_KNIT'] },
-      { employee_id: 'e2', employee_name: 'Ahshan Ali Ansari', designation: 'PASTER', pieces: 55, amount: 4950, styles: ['HAN123-ADELE_KNIT', 'HAN123-CARNABY'] },
-      { employee_id: 'e3', employee_name: 'Priya Kumar', designation: 'STITCHER', pieces: 90, amount: 16600, styles: ['HAN123-CARNABY'] },
-    ],
-  };
-}
-
-function _mockPiecesFor(run) {
-  return {
-    run_id: run.id, status: run.status, total: 3, count: 3,
-    items: [
-      { piece_code: 'HAN123-ADELE_KNIT-DARK_BROWN-38-001', style_code: 'HAN123-ADELE_KNIT', style_name: 'ADELE KNIT', colour: 'DARK BROWN', size: '38', operation_code: 'LEATHER_CUTTING', operation_label: 'Leather Cutting', employee_name: 'Asagar Ali', designation: 'CUTTER', employee_barcode: 'EMP-A1024', work_date: '2026-08-15', qty: 1, rate: 150, amount: 150, note: null },
-      { piece_code: 'HAN123-ADELE_KNIT-DARK_BROWN-38-002', style_code: 'HAN123-ADELE_KNIT', style_name: 'ADELE KNIT', colour: 'DARK BROWN', size: '38', operation_code: 'FUSING', operation_label: 'Fusing', employee_name: 'Ahshan Ali Ansari', designation: 'FUSER', employee_barcode: 'EMP-A1031', work_date: '2026-08-15', qty: 1, rate: 100, amount: 100, note: null },
-      { piece_code: 'HAN123-ADELE_KNIT-DARK_BROWN-38-003', style_code: 'HAN123-ADELE_KNIT', style_name: 'ADELE KNIT', colour: 'DARK BROWN', size: '38', operation_code: 'FINAL_FINISH', operation_label: 'Final Finish', employee_name: 'Priya Kumar', designation: 'FINISHER', employee_barcode: 'EMP-A1055', work_date: '2026-08-16', qty: 1, rate: null, amount: null, note: 'Operation not rated at compute time' },
-    ],
-  };
-}
-
-async function mockApiGetWageOrders() { return _mockOrders(); }
-
-async function mockApiComputeWageRun(token, { periodStart, periodEnd, freeze, orderNumber, styleCode }) {
-  const id = `mock-run-${++_mockRunSeq}`;
-  const run = {
-    id, run_id: id, period_start: periodStart, period_end: periodEnd,
-    status: freeze === false ? 'OPEN' : 'CLOSED',
-    scope_order_number: orderNumber || null, scope_style_code: styleCode || null,
-    piece_rate_only: !!(orderNumber || styleCode),
-    computed_at: new Date().toISOString(), recompute_count: 0, reopen_count: 0,
-    total_amount: 45230.5, total_pieces: 320,
-  };
-  _mockRuns.set(id, run);
-  return run;
-}
-
-async function mockApiCloseWageRun(token, runId) {
-  const run = _mockRuns.get(runId) || { id: runId, run_id: runId };
-  run.status = 'CLOSED';
-  _mockRuns.set(runId, run);
-  return run;
-}
-
-async function mockApiReopenWageRun(token, runId, reason) {
-  const run = _mockRuns.get(runId) || { id: runId, run_id: runId, reopen_count: 0 };
-  run.status = 'OPEN';
-  run.reopen_count = (run.reopen_count || 0) + 1;
-  run.last_reopen_reason = reason;
-  _mockRuns.set(runId, run);
-  return run;
-}
-
-async function mockApiRecomputeWageRun(token, runId) {
-  const run = _mockRuns.get(runId) || { id: runId, run_id: runId, recompute_count: 0 };
-  run.recompute_count = (run.recompute_count || 0) + 1;
-  _mockRuns.set(runId, run);
-  return run;
-}
-
-async function mockApiGetWageRunBreakdown(token, runId) {
-  const run = _mockRuns.get(runId) || { id: runId, period_start: '2026-08-01', period_end: '2026-08-15', status: 'OPEN', recompute_count: 0, reopen_count: 0 };
-  return _mockBreakdownFor(run);
-}
-
-async function mockApiGetWageRunPieces(token, runId) {
-  const run = _mockRuns.get(runId) || { id: runId, status: 'OPEN' };
-  return _mockPiecesFor(run);
-}
-
-async function mockApiGetWageLedger() {
-  const rows = [
-    { run_id: 'mock-ledger-1', period_start: '2026-08-01', period_end: '2026-08-15', status: 'CLOSED', scope_order_number: 'UM-1', scope_style_code: null, computed_at: '2026-08-16T10:00:00Z', recompute_count: 0, last_recomputed_at: null, reopen_count: 0, total_amount: 45230.5, total_pieces: 320, employee_count: 12 },
-    { run_id: 'mock-ledger-2', period_start: '2026-07-16', period_end: '2026-07-31', status: 'CLOSED', scope_order_number: 'han123', scope_style_code: null, computed_at: '2026-08-01T09:00:00Z', recompute_count: 1, last_recomputed_at: '2026-08-01T09:30:00Z', reopen_count: 1, total_amount: 18900, total_pieces: 140, employee_count: 8 },
-  ];
-  [...rows, ..._mockRuns.values()].forEach((r) => {
-    if (!rows.find((x) => x.run_id === (r.run_id || r.id))) {
-      rows.push({ ...r, run_id: r.run_id || r.id, employee_count: 3 });
-    }
-  });
-  return { count: rows.length, items: rows.sort((a, b) => new Date(b.computed_at || 0) - new Date(a.computed_at || 0)) };
-}
-
-const apiGetWageOrders = MOCK_WAGES ? mockApiGetWageOrders : realApiGetWageOrders;
-const apiComputeWageRun = MOCK_WAGES ? mockApiComputeWageRun : realApiComputeWageRun;
-const apiCloseWageRun = MOCK_WAGES ? mockApiCloseWageRun : realApiCloseWageRun;
-const apiReopenWageRun = MOCK_WAGES ? mockApiReopenWageRun : realApiReopenWageRun;
-const apiRecomputeWageRun = MOCK_WAGES ? mockApiRecomputeWageRun : realApiRecomputeWageRun;
-const apiGetWageRunBreakdown = MOCK_WAGES ? mockApiGetWageRunBreakdown : realApiGetWageRunBreakdown;
-const apiGetWageRunPieces = MOCK_WAGES ? mockApiGetWageRunPieces : realApiGetWageRunPieces;
-const apiGetWageLedger = MOCK_WAGES ? mockApiGetWageLedger : realApiGetWageLedger;
-/** END TEMPORARY MOCK LAYER */
-
 import {
   Loader2, History, Eye, X, Save, Activity, Search,
   Briefcase, Scissors, CheckCircle2, AlertCircle, Coins,
   Calendar, FileText, Filter, Users, TrendingUp, ChevronRight, ChevronDown,
-  Warehouse, Package, Lock, Unlock, RefreshCw, Barcode as BarcodeIcon,
+  Warehouse, Package, Lock, Unlock, RefreshCw, Barcode as BarcodeIcon, Download,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import SpotlightCard from '@/components/SpotlightCard';
 
 export default function PieceRatesAndWages() {
@@ -1266,6 +1127,44 @@ function LedgerView({ token }) {
     }
   };
 
+  // One workbook, 4 sheets — matches the 4 detail tabs above exactly, so the
+  // download is never missing something the screen shows (or vice versa).
+  const handleDownloadWorkbook = () => {
+    if (!selectedRun) return;
+    const fmtAmount = (v) => (v === null || v === undefined ? 'Not priced' : v);
+
+    const styleRows = (runBreakdown?.by_style || []).map((s) => ({
+      Style: s.style_name || s.style_code, 'Style Code': s.style_code,
+      Pieces: s.pieces ?? 0, Amount: fmtAmount(s.amount),
+    }));
+    const stageRows = (runBreakdown?.by_stage || []).map((s) => ({
+      Stage: s.operation_label || s.operation_code, Sequence: s.sequence,
+      Pieces: s.pieces ?? 0, Amount: fmtAmount(s.amount),
+    }));
+    const employeeRows = (runBreakdown?.by_employee || []).map((e) => ({
+      Employee: e.employee_name || 'Worker', Designation: e.designation || '',
+      Pieces: e.pieces ?? 0, Amount: fmtAmount(e.amount),
+    }));
+    const pieceRows = (runPieces?.items || []).map((p) => ({
+      'Piece Code': p.piece_code, Style: p.style_name || p.style_code,
+      Colour: p.colour || '', Size: p.size || '',
+      Stage: p.operation_label || p.operation_code,
+      Employee: p.employee_name || '', 'Employee Barcode': p.employee_barcode || '',
+      Designation: p.designation || '', 'Work Date': p.work_date || '',
+      Qty: p.qty ?? '', Rate: fmtAmount(p.rate), Amount: fmtAmount(p.amount),
+      Note: p.note || '',
+    }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(styleRows.length ? styleRows : [{ Info: 'No data' }]), 'Per Style');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(stageRows.length ? stageRows : [{ Info: 'No data' }]), 'Per Stage');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(employeeRows.length ? employeeRows : [{ Info: 'No data' }]), 'Per Employee');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pieceRows.length ? pieceRows : [{ Info: 'No data' }]), 'Per Piece');
+
+    const scopeName = (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
+    XLSX.writeFile(wb, `Payroll_${scopeName}_${selectedRun.period_start}_to_${selectedRun.period_end}.xlsx`);
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center p-20 opacity-60">
@@ -1372,9 +1271,15 @@ function LedgerView({ token }) {
                     <StatusBadge status={selectedRun.status} />
                   </div>
                 </div>
-                <button onClick={() => setSelectedRun(null)} className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
-                  <X className="w-5 h-5 text-slate-600" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={handleDownloadWorkbook} disabled={detailsLoading} title="Download as Excel — Per Style / Per Stage / Per Employee / Per Piece, one sheet each"
+                    className="h-11 px-4 rounded-full font-black text-xs uppercase text-white flex items-center gap-2 disabled:opacity-40" style={{ background: '#c8834a' }}>
+                    <Download className="w-4 h-4" /> Download
+                  </button>
+                  <button onClick={() => setSelectedRun(null)} className="p-3 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
+                    <X className="w-5 h-5 text-slate-600" />
+                  </button>
+                </div>
               </div>
 
               <div className="flex gap-1 p-1 rounded-full bg-slate-100 w-fit mt-4">

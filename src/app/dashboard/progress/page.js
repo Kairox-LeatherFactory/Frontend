@@ -227,6 +227,14 @@ export default function StyleStageProgress() {
   const selectedOrder = orderOptions.find((o) => o.order_id === selectedOrderId);
   const selectedStyle = styleOptions.find((s) => s.style_id === selectedStyleId);
 
+  // The order-detail endpoint only sends a percentage — derive the two raw
+  // counts from it (rather than adding a second source of truth) so this
+  // can never disagree with the % shown elsewhere on the same response.
+  const orderCompletedQty = orderDetail?.total_quantity != null && orderDetail?.completion_pct != null
+    ? Math.round(orderDetail.total_quantity * orderDetail.completion_pct / 100)
+    : null;
+  const orderBalanceQty = orderCompletedQty != null ? orderDetail.total_quantity - orderCompletedQty : null;
+
   return (
     <div className="space-y-8 animate-fade-in">
 
@@ -296,16 +304,20 @@ export default function StyleStageProgress() {
             <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin" style={{ color: '#c8834a' }} /></div>
           ) : orderDetail ? (
             <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 text-center">
                 <div className="p-4 rounded-2xl bg-[#faf6f0] border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
                   <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Total Qty</span>
                   <p className="text-xl font-black mt-1" style={{ color: '#2d1f0e' }}>{orderDetail.total_quantity ?? '—'}</p>
                 </div>
                 <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Completion</span>
-                  <p className="text-xl font-black mt-1 text-emerald-800">{orderDetail.completion_pct != null ? `${Math.round(orderDetail.completion_pct)}%` : '—'}</p>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Completed Qty</span>
+                  <p className="text-xl font-black mt-1 text-emerald-800">{orderCompletedQty ?? '—'}</p>
                 </div>
-                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100 col-span-2 sm:col-span-2">
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">Balance Qty</span>
+                  <p className="text-xl font-black mt-1 text-amber-800">{orderBalanceQty ?? '—'}</p>
+                </div>
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100 col-span-2">
                   <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Bottleneck Stage</span>
                   <p className="text-xl font-black mt-1 text-rose-800 truncate">{orderDetail.blocked_stage || 'None — flowing freely'}</p>
                 </div>

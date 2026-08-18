@@ -1,19 +1,20 @@
 'use client';
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
-  apiGetMaterialSpec as realApiGetMaterialSpec,
-  apiGetMaterialLots as realApiGetMaterialLots,
-  apiGetMaterialLot as realApiGetMaterialLot,
-  apiCreateMaterialLot as realApiCreateMaterialLot,
-  apiPatchMaterialLot as realApiPatchMaterialLot,
-  apiAdjustMaterialLot as realApiAdjustMaterialLot,
-  apiRetireMaterialLot as realApiRetireMaterialLot,
-  apiGetMaterialsStock as realApiGetMaterialsStock,
-  apiReceiveMaterials as realApiReceiveMaterials,
-  apiCreateSupplierOrder as realApiCreateSupplierOrder,
-  apiPatchSupplierOrder as realApiPatchSupplierOrder,
-  apiPatchSupplierOrderSpec as realApiPatchSupplierOrderSpec,
+  apiGetMaterialSpec,
+  apiGetMaterialLots,
+  apiGetMaterialLot,
+  apiCreateMaterialLot,
+  apiPatchMaterialLot,
+  apiAdjustMaterialLot,
+  apiRetireMaterialLot,
+  apiGetMaterialsStock,
+  apiReceiveMaterials,
+  apiCreateSupplierOrder,
+  apiPatchSupplierOrder,
+  apiPatchSupplierOrderSpec,
 } from '@/lib/api';
 import {
   Package, Search, Plus, Loader2, CheckCircle2, XCircle, AlertTriangle,
@@ -21,360 +22,11 @@ import {
   Lock, ArrowUpRight, ArrowDownRight, Boxes,
 } from 'lucide-react';
 
-/**
- * TEMPORARY MOCK LAYER — the Material Service (api-material.pdf, 18-Aug
- * guide) isn't deployed to this backend yet (GET /drawers/by-code, the
- * sibling 17-Aug-delta endpoint, 404s on this same server — confirmed live).
- * Everything below simulates the exact request/response shapes from that
- * guide so the 5 screens can be built and tested now. Delete this whole
- * block (and switch the `real*` imports above back to their plain names)
- * once the backend confirms these routes are live.
- */
-const MOCK_MATERIALS = true;
-
 const CATEGORY_SUBTYPES = {
   LEATHER: [],
   LINING: ['PLAIN_LINING', 'RIBS', 'KNIT'],
   ACCESSORY: ['BUTTON', 'ZIP', 'THREAD', 'OTHER'],
 };
-
-// §4 of the guide, verbatim — the per-category/subtype field matrix.
-const MATERIAL_SPEC_TABLE = {
-  'LEATHER|': { filters: ['article', 'colour', 'thickness'], required_to_add: ['thickness', 'dcm'], quantity_field: 'dcm', uom: 'dcm' },
-  'LINING|PLAIN_LINING': { filters: ['article', 'colour', 'thickness'], required_to_add: ['thickness', 'mtrs'], quantity_field: 'mtrs', uom: 'mtrs' },
-  'LINING|RIBS': { filters: ['article', 'colour'], required_to_add: ['kg'], quantity_field: 'kg', uom: 'kg' },
-  'LINING|KNIT': { filters: ['article', 'colour'], required_to_add: ['pcs'], quantity_field: 'pcs', uom: 'pcs' },
-  'ACCESSORY|BUTTON': { filters: ['article', 'colour', 'size'], required_to_add: ['size', 'count'], quantity_field: 'count', uom: 'pcs' },
-  'ACCESSORY|ZIP': { filters: ['article', 'colour', 'size'], required_to_add: ['size', 'count'], quantity_field: 'count', uom: 'pcs' },
-  'ACCESSORY|THREAD': { filters: ['article', 'colour', 'thickness'], required_to_add: ['thickness', 'mtrs'], quantity_field: 'mtrs', uom: 'mtrs' },
-  'ACCESSORY|OTHER': { filters: ['article', 'colour'], required_to_add: ['description', 'count'], quantity_field: 'count', uom: 'pcs' },
-};
-
-function lookupSpec(category, subtype) {
-  const cat = String(category || '').toUpperCase();
-  let st = subtype ? String(subtype).toUpperCase() : '';
-  if (cat === 'LEATHER') st = '';
-  if (cat === 'LINING' && !st) st = 'PLAIN_LINING';
-  const key = `${cat}|${st}`;
-  const spec = MATERIAL_SPEC_TABLE[key];
-  if (!spec) return { category: cat, subtype: st || null, filters: ['article', 'colour'], required_to_add: [], quantity_field: null, uom: 'unit' };
-  return { category: cat, subtype: st || null, ...spec };
-}
-
-const _mockSuppliers = [
-  { id: 'sup-1', name: 'Anwar Leathers', articles: ['SUEDE-A32', 'NAP-11'] },
-  { id: 'sup-2', name: 'Chennai Leather Co.', articles: ['GOAT SUEDE'] },
-  { id: 'sup-3', name: 'Textile Hub', articles: ['NYLON TAFFETA'] },
-  { id: 'sup-4', name: 'Metal Fittings Ltd', articles: ['SNAP BUTTON', 'YKK ZIP'] },
-];
-function findSupplierForArticle(article) {
-  if (!article) return null;
-  const s = _mockSuppliers.find((s) => s.articles.some((a) => a.toUpperCase() === String(article).toUpperCase()));
-  return s ? { id: s.id, name: s.name } : null;
-}
-
-const _mockLots = new Map(); // lot_id -> lot record
-let _lotSeq = 0;
-
-function _seedLot(rec) {
-  const lot_id = `mock-lot-${++_lotSeq}`;
-  const barcode = `L-${String(_lotSeq).padStart(6, '0')}`;
-  const spec = lookupSpec(rec.category, rec.subtype);
-  _mockLots.set(lot_id, {
-    lot_id, barcode,
-    category: rec.category, subtype: rec.subtype || null,
-    article: rec.article, colour: rec.colour,
-    thickness: rec.thickness ?? null, size: rec.size ?? null,
-    uom: spec.uom,
-    on_hand: rec.on_hand, reserved: rec.reserved || 0,
-    attributes: rec.attributes || {},
-    supplier_id: rec.supplier_id || null,
-    is_active: true,
-  });
-}
-
-function _seedMockLots() {
-  if (_mockLots.size > 0) return;
-  _seedLot({ category: 'LEATHER', subtype: null, article: 'SUEDE-A32', colour: 'WHISKY', thickness: '1.2mm', on_hand: 1500, reserved: 100, attributes: { thickness: '1.2mm', dcm: 1500 }, supplier_id: 'sup-1' });
-  _seedLot({ category: 'LEATHER', subtype: null, article: 'NAP-11', colour: 'FOREST', thickness: '0.9mm', on_hand: 300, reserved: 0, attributes: { thickness: '0.9mm', dcm: 300 } });
-  _seedLot({ category: 'LINING', subtype: 'PLAIN_LINING', article: 'NYLON TAFFETA', colour: 'NAVY', thickness: '0.3mm', on_hand: 220, reserved: 20, attributes: { thickness: '0.3mm', mtrs: 220 }, supplier_id: 'sup-3' });
-  _seedLot({ category: 'LINING', subtype: 'RIBS', article: 'COTTON RIB', colour: 'BLACK', on_hand: 45, reserved: 0, attributes: { kg: 45 } });
-  _seedLot({ category: 'LINING', subtype: 'KNIT', article: 'JERSEY KNIT', colour: 'GREY', on_hand: 800, reserved: 50, attributes: { pcs: 800 } });
-  _seedLot({ category: 'ACCESSORY', subtype: 'BUTTON', article: 'SNAP BUTTON', colour: 'SILVER', size: '15L', on_hand: 5000, reserved: 200, attributes: { size: '15L', count: 5000 }, supplier_id: 'sup-4' });
-  _seedLot({ category: 'ACCESSORY', subtype: 'ZIP', article: 'YKK ZIP', colour: 'BLACK', size: '18IN', on_hand: 30, reserved: 0, attributes: { size: '18IN', count: 30 }, supplier_id: 'sup-4' });
-  _seedLot({ category: 'ACCESSORY', subtype: 'THREAD', article: 'POLY THREAD', colour: 'BROWN', thickness: '40s', on_hand: 1200, reserved: 0, attributes: { thickness: '40s', mtrs: 1200 } });
-}
-
-function _lotView(lot) {
-  const spec = lookupSpec(lot.category, lot.subtype);
-  return {
-    ...lot,
-    available: lot.on_hand - lot.reserved,
-    editable_fields: [...new Set([...spec.filters, 'supplier_id'])],
-    required_attributes: spec.required_to_add,
-  };
-}
-
-function _specIdentityMatches(a, b) {
-  return a.category === b.category
-    && (a.subtype || null) === (b.subtype || null)
-    && String(a.article).toUpperCase() === String(b.article).toUpperCase()
-    && String(a.colour).toUpperCase() === String(b.colour).toUpperCase()
-    && (a.thickness || null) === (b.thickness || null)
-    && (a.size || null) === (b.size || null);
-}
-
-async function mockApiGetMaterialSpec(token, { category, subtype } = {}) {
-  await new Promise((r) => setTimeout(r, 150));
-  return lookupSpec(category, subtype);
-}
-
-async function mockApiCreateMaterialLot(token, lotData) {
-  await new Promise((r) => setTimeout(r, 300));
-  _seedMockLots();
-  const { category, subtype, article, colour, attributes = {}, supplier_id, supplier_name } = lotData;
-  const cat = String(category || '').toUpperCase();
-  if (!MATERIAL_SPEC_TABLE[`${cat}|`] && cat !== 'LINING' && cat !== 'ACCESSORY') {
-    const err = new Error(`Unknown category '${category}'.`); err.status = 422; throw err;
-  }
-  if (cat === 'ACCESSORY' && !subtype) {
-    const err = new Error('Accessory needs a subtype: BUTTON, ZIP, THREAD or OTHER.'); err.status = 422; throw err;
-  }
-  if (!article || !colour) {
-    const err = new Error(!article ? 'article is required.' : 'colour is required.'); err.status = 422; throw err;
-  }
-  const spec = lookupSpec(cat, subtype);
-  const missing = spec.required_to_add.filter((k) => attributes[k] === undefined || attributes[k] === '' || attributes[k] === null);
-  if (missing.length > 0) {
-    const err = new Error(`${cat} lot requires: ${spec.required_to_add.join(', ')}. (supplied: ${spec.required_to_add.filter((k) => !missing.includes(k)).join(', ') || 'none'})`);
-    err.status = 422; throw err;
-  }
-  const qty = Number(attributes[spec.quantity_field]);
-  if (!qty || qty <= 0) {
-    const err = new Error(`${spec.quantity_field} (quantity) must be > 0.`); err.status = 422; throw err;
-  }
-  const candidate = { category: cat, subtype: cat === 'LEATHER' ? null : (subtype || (cat === 'LINING' ? 'PLAIN_LINING' : null)), article, colour, thickness: attributes.thickness || null, size: attributes.size || null };
-  const dupe = Array.from(_mockLots.values()).find((l) => l.is_active && _specIdentityMatches(l, candidate));
-  if (dupe) {
-    const err = new Error(`A lot for ${article} · ${colour}${candidate.thickness ? ` · ${candidate.thickness}` : ''} already exists (${dupe.on_hand.toFixed(1)} ${dupe.uom} on hand). Material is one lot per spec — add this delivery to it with POST /materials/receive using lot_id=${dupe.lot_id}, rather than creating a second lot.`);
-    err.status = 409; throw err;
-  }
-  const lot_id = `mock-lot-${++_lotSeq}`;
-  const barcode = `L-${String(_lotSeq).padStart(6, '0')}`;
-  const lot = { lot_id, barcode, ...candidate, uom: spec.uom, on_hand: qty, reserved: 0, attributes, supplier_id: supplier_id || null, supplier_name: supplier_name || null, is_active: true };
-  _mockLots.set(lot_id, lot);
-  return { lot_id, lot_barcode: barcode, category: lot.category, subtype: lot.subtype, article: lot.article, colour: lot.colour, on_hand: lot.on_hand, reserved: 0, available: lot.on_hand, uom: lot.uom };
-}
-
-async function mockApiGetMaterialLots(token, params = {}) {
-  await new Promise((r) => setTimeout(r, 200));
-  _seedMockLots();
-  let lots = Array.from(_mockLots.values()).filter((l) => l.is_active);
-  if (params.category) lots = lots.filter((l) => l.category === String(params.category).toUpperCase());
-  if (params.subtype) lots = lots.filter((l) => (l.subtype || '') === String(params.subtype).toUpperCase());
-  if (params.article) lots = lots.filter((l) => l.article === params.article);
-  if (params.colour) lots = lots.filter((l) => l.colour === params.colour);
-  if (params.thickness) lots = lots.filter((l) => l.thickness === params.thickness);
-  if (params.size) lots = lots.filter((l) => l.size === params.size);
-  const required = params.required !== undefined && params.required !== '' ? Number(params.required) : null;
-  const items = lots.map((l) => {
-    const v = _lotView(l);
-    return {
-      lot_id: v.lot_id, barcode: v.barcode, category: v.category, subtype: v.subtype,
-      article: v.article, colour: v.colour, thickness: v.thickness, size: v.size, uom: v.uom,
-      on_hand: v.on_hand, reserved: v.reserved, available: v.available,
-      last_used_for_sku: false,
-      covers_required: required === null ? null : v.available >= required,
-    };
-  });
-  const options = {
-    article: [...new Set(lots.map((l) => l.article))],
-    colour: [...new Set(lots.map((l) => l.colour))],
-    thickness: [...new Set(lots.map((l) => l.thickness).filter(Boolean))],
-    size: [...new Set(lots.map((l) => l.size).filter(Boolean))],
-  };
-  return { count: items.length, lots: items, options, suggested_lot_id: items[0]?.lot_id || null, required };
-}
-
-async function mockApiGetMaterialLot(token, lotId) {
-  await new Promise((r) => setTimeout(r, 150));
-  _seedMockLots();
-  const lot = _mockLots.get(lotId);
-  if (!lot) { const err = new Error('Material lot not found.'); err.status = 404; throw err; }
-  return _lotView(lot);
-}
-
-async function mockApiPatchMaterialLot(token, lotId, payload) {
-  await new Promise((r) => setTimeout(r, 250));
-  const lot = _mockLots.get(lotId);
-  if (!lot) { const err = new Error('Material lot not found.'); err.status = 404; throw err; }
-  const allowed = ['article', 'colour', 'thickness', 'size', 'supplier_id'];
-  const blocked = Object.keys(payload).filter((k) => !allowed.includes(k));
-  if (blocked.length > 0) { const err = new Error(`${blocked.join(', ')} cannot be changed here — retire and recreate for category/subtype/uom, use /adjust for on_hand.`); err.status = 422; throw err; }
-  const changes = Object.fromEntries(Object.entries(payload).filter(([, v]) => v !== undefined));
-  if (Object.keys(changes).length === 0) { const err = new Error('Nothing to update.'); err.status = 422; throw err; }
-  const candidate = { ...lot, ...changes };
-  const collide = Array.from(_mockLots.values()).find((l) => l.lot_id !== lotId && l.is_active && _specIdentityMatches(l, candidate));
-  if (collide) { const err = new Error(`This spec collides with lot ${collide.lot_id} (${collide.on_hand.toFixed(1)} ${collide.uom} on hand). Merge via receive instead.`); err.status = 409; throw err; }
-  Object.assign(lot, changes);
-  return _lotView(lot);
-}
-
-async function mockApiAdjustMaterialLot(token, lotId, payload) {
-  await new Promise((r) => setTimeout(r, 250));
-  const lot = _mockLots.get(lotId);
-  if (!lot) { const err = new Error('Material lot not found.'); err.status = 404; throw err; }
-  const { delta, reason } = payload;
-  if (!reason || reason.trim().length < 3 || reason.length > 300) { const err = new Error('Reason must be 3–300 characters.'); err.status = 422; throw err; }
-  const d = Number(delta);
-  if (!d) { const err = new Error('delta must be a non-zero number.'); err.status = 422; throw err; }
-  const newOnHand = lot.on_hand + d;
-  if (newOnHand < 0) { const err = new Error(`That would take ${lot.article} to ${newOnHand.toFixed(1)} ${lot.uom}. Stock cannot go negative.`); err.status = 422; throw err; }
-  if (newOnHand < lot.reserved) { const err = new Error(`${lot.reserved.toFixed(1)} ${lot.uom} of ${lot.article} is reserved for a cut. Release the reservation first.`); err.status = 409; throw err; }
-  lot.on_hand = newOnHand;
-  return _lotView(lot);
-}
-
-async function mockApiRetireMaterialLot(token, lotId) {
-  await new Promise((r) => setTimeout(r, 250));
-  const lot = _mockLots.get(lotId);
-  if (!lot) { const err = new Error('Material lot not found.'); err.status = 404; throw err; }
-  if (lot.reserved > 0) { const err = new Error(`${lot.reserved.toFixed(1)} ${lot.uom} of ${lot.article} is reserved. Release the reservation before retiring.`); err.status = 409; throw err; }
-  lot.is_active = false;
-  return {
-    lot_id: lot.lot_id, is_active: false, barcode_retired: true, on_hand: lot.on_hand,
-    history_preserved: true,
-    message: `${lot.article} is retired. Its barcode no longer scans (410 Gone) and it is hidden from the lot picker; every cut recorded against it is untouched.`,
-  };
-}
-
-async function mockApiGetMaterialsStock(token, params = {}) {
-  await new Promise((r) => setTimeout(r, 200));
-  _seedMockLots();
-  let lots = Array.from(_mockLots.values()).filter((l) => l.is_active);
-  if (params.category) lots = lots.filter((l) => l.category === String(params.category).toUpperCase());
-  if (params.subtype) lots = lots.filter((l) => (l.subtype || '') === String(params.subtype).toUpperCase());
-  if (params.article) lots = lots.filter((l) => l.article === params.article);
-  if (params.colour) lots = lots.filter((l) => l.colour === params.colour);
-  if (params.thickness) lots = lots.filter((l) => l.thickness === params.thickness);
-  if (params.size) lots = lots.filter((l) => l.size === params.size);
-  const on_hand = lots.reduce((a, l) => a + l.on_hand, 0);
-  const reserved = lots.reduce((a, l) => a + l.reserved, 0);
-  const available = on_hand - reserved;
-  const uom = lots[0]?.uom || (params.category ? lookupSpec(params.category, params.subtype).uom : 'unit');
-  const out = {
-    category: params.category ? String(params.category).toUpperCase() : null,
-    subtype: params.subtype || null,
-    article: params.article || null, colour: params.colour || null,
-    thickness: params.thickness || null, size: params.size || null,
-    uom, on_hand, reserved, available, lot_count: lots.length,
-  };
-  if (params.required !== undefined && params.required !== '') {
-    const required = Number(params.required);
-    const short_by = Math.max(0, required - available);
-    out.required = required;
-    out.short_by = short_by;
-    out.suggested_supplier = (short_by > 0 && params.article) ? findSupplierForArticle(params.article) : null;
-  }
-  return out;
-}
-
-async function mockApiReceiveMaterials(token, receiveData) {
-  await new Promise((r) => setTimeout(r, 300));
-  const { lot_id, supplier_order_id, approved_qty, rejected_qty = 0, reserve_for_required, approve_mismatch } = receiveData;
-  const lot = _mockLots.get(lot_id);
-  if (!lot) { const err = new Error('Material lot not found.'); err.status = 404; throw err; }
-  const order = supplier_order_id ? _mockOrders.get(supplier_order_id) : null;
-  if (order && !approve_mismatch) {
-    const mismatches = [];
-    if (order.article && order.article.toUpperCase() !== lot.article.toUpperCase()) mismatches.push('article');
-    if (order.colour && order.colour.toUpperCase() !== lot.colour.toUpperCase()) mismatches.push('colour');
-    if (order.thickness && order.thickness !== lot.thickness) mismatches.push('thickness');
-    if (order.dcm && lot.attributes?.dcm && Number(order.dcm) !== Number(lot.attributes.dcm)) mismatches.push('dcm');
-    if (mismatches.length > 0) {
-      const err = new Error(`Received material does not match the order on: ${mismatches.join(', ')}. A DM/MD may accept it as a substitution with approve_mismatch=true.`);
-      err.status = 409; err.mismatchFields = mismatches; throw err;
-    }
-  }
-  let targetLot = lot;
-  let substituted = false;
-  if (order && approve_mismatch) {
-    const candidate = {
-      category: lot.category, subtype: lot.subtype,
-      article: order.article || lot.article, colour: order.colour || lot.colour,
-      thickness: order.thickness || lot.thickness, size: lot.size,
-    };
-    if (!_specIdentityMatches(candidate, lot)) {
-      const lot_id2 = `mock-lot-${++_lotSeq}`;
-      const barcode2 = `L-${String(_lotSeq).padStart(6, '0')}`;
-      targetLot = { lot_id: lot_id2, barcode: barcode2, ...candidate, uom: lot.uom, on_hand: 0, reserved: 0, attributes: { ...lot.attributes }, supplier_id: lot.supplier_id, is_active: true };
-      _mockLots.set(lot_id2, targetLot);
-      substituted = true;
-    }
-  }
-  targetLot.on_hand += Number(approved_qty) || 0;
-  if (reserve_for_required) targetLot.reserved += Number(reserve_for_required);
-  if (order) { order.status = 'arrived'; order.arrived_at = new Date().toISOString(); }
-  return {
-    lot_id: targetLot.lot_id, on_hand: targetLot.on_hand, reserved: targetLot.reserved,
-    available: targetLot.on_hand - targetLot.reserved,
-    rejected_logged: Number(rejected_qty) || 0,
-    supplier_order_status: order?.status || null,
-    substituted, mismatch_fields: substituted ? ['article', 'colour', 'thickness'].filter((f) => order[f] && order[f] !== lot[f]) : null,
-  };
-}
-
-const _mockOrders = new Map();
-let _orderSeq = 0;
-async function mockApiCreateSupplierOrder(token, orderData) {
-  await new Promise((r) => setTimeout(r, 250));
-  if (!orderData.qty || Number(orderData.qty) <= 0) { const err = new Error('qty must be > 0.'); err.status = 422; throw err; }
-  let supplier = null;
-  if (orderData.supplier_id) {
-    supplier = _mockSuppliers.find((s) => s.id === orderData.supplier_id);
-    if (!supplier) { const err = new Error(`Supplier id '${orderData.supplier_id}' not found.`); err.status = 404; throw err; }
-    if (!supplier.articles.some((a) => a.toUpperCase() === String(orderData.article).toUpperCase())) {
-      const err = new Error(`Supplier '${supplier.name}' does not supply article '${orderData.article}'. Choose a supplier that carries it.`); err.status = 422; throw err;
-    }
-  } else {
-    supplier = findSupplierForArticle(orderData.article);
-  }
-  const order_id = `mock-order-${++_orderSeq}`;
-  const spec = lookupSpec(orderData.category, orderData.subtype);
-  const order = { order_id, status: 'ordered', arrived_at: null, ...orderData, uom: spec.uom, supplier: supplier ? { id: supplier.id, name: supplier.name } : null };
-  _mockOrders.set(order_id, order);
-  return { order_id, status: 'ordered', article: order.article, qty: Number(order.qty), uom: spec.uom, supplier: order.supplier, supplier_name: order.supplier_name || null };
-}
-async function mockApiPatchSupplierOrder(token, orderId, status = 'ARRIVED') {
-  await new Promise((r) => setTimeout(r, 200));
-  const order = _mockOrders.get(orderId);
-  if (!order) { const err = new Error('Supplier order not found.'); err.status = 404; throw err; }
-  order.status = String(status).toLowerCase();
-  order.arrived_at = order.arrived_at || new Date().toISOString();
-  return { order_id: orderId, status: order.status, arrived_at: order.arrived_at };
-}
-async function mockApiPatchSupplierOrderSpec(token, orderId, payload) {
-  await new Promise((r) => setTimeout(r, 200));
-  const order = _mockOrders.get(orderId);
-  if (!order) { const err = new Error('Supplier order not found.'); err.status = 404; throw err; }
-  if (order.status !== 'ordered') { const err = new Error("Only an ORDERED order's spec may be edited."); err.status = 409; throw err; }
-  Object.assign(order, payload);
-  return { order_id: orderId, status: order.status, arrived_at: order.arrived_at };
-}
-
-const apiGetMaterialSpec = MOCK_MATERIALS ? mockApiGetMaterialSpec : realApiGetMaterialSpec;
-const apiGetMaterialLots = MOCK_MATERIALS ? mockApiGetMaterialLots : realApiGetMaterialLots;
-const apiGetMaterialLot = MOCK_MATERIALS ? mockApiGetMaterialLot : realApiGetMaterialLot;
-const apiCreateMaterialLot = MOCK_MATERIALS ? mockApiCreateMaterialLot : realApiCreateMaterialLot;
-const apiPatchMaterialLot = MOCK_MATERIALS ? mockApiPatchMaterialLot : realApiPatchMaterialLot;
-const apiAdjustMaterialLot = MOCK_MATERIALS ? mockApiAdjustMaterialLot : realApiAdjustMaterialLot;
-const apiRetireMaterialLot = MOCK_MATERIALS ? mockApiRetireMaterialLot : realApiRetireMaterialLot;
-const apiGetMaterialsStock = MOCK_MATERIALS ? mockApiGetMaterialsStock : realApiGetMaterialsStock;
-const apiReceiveMaterials = MOCK_MATERIALS ? mockApiReceiveMaterials : realApiReceiveMaterials;
-const apiCreateSupplierOrder = MOCK_MATERIALS ? mockApiCreateSupplierOrder : realApiCreateSupplierOrder;
-const apiPatchSupplierOrder = MOCK_MATERIALS ? mockApiPatchSupplierOrder : realApiPatchSupplierOrder;
-const apiPatchSupplierOrderSpec = MOCK_MATERIALS ? mockApiPatchSupplierOrderSpec : realApiPatchSupplierOrderSpec;
-/** END TEMPORARY MOCK LAYER */
 
 // api-material.pdf §2 — the three permission tiers. Build every gate from these.
 const STOCK_READERS = ['direct_manager', 'managing_director', 'hr', 'cutting_manager', 'stitching_manager', 'lining_manager', 'security', 'store_manager'];
@@ -437,14 +89,8 @@ function CategoryPicker({ category, subtype, onCategory, onSubtype, subtypeRequi
   );
 }
 
-function LotBadge({ lot }) {
-  if (!lot.is_active) return <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-slate-100 text-slate-500 border border-slate-200">RETIRED</span>;
-  if (lot.available === 0) return <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-red-50 text-red-600 border border-red-200">ZERO AVAILABLE</span>;
-  return null;
-}
-
 // ── Screen A — Stock Hub ──────────────────────────────────────────────
-function StockHubScreen({ token, showToast, canOrder, onOpenOrder }) {
+function StockHubScreen({ token, showToast, canOrder, onOpenOrder, canEdit, canAdjust, onReceive }) {
   const [category, setCategory] = useState('LEATHER');
   const [subtype, setSubtype] = useState('');
   const [spec, setSpec] = useState(null);
@@ -453,6 +99,14 @@ function StockHubScreen({ token, showToast, canOrder, onOpenOrder }) {
   const [required, setRequired] = useState('');
   const [loading, setLoading] = useState(false);
   const [lots, setLots] = useState([]);
+  const [detailLot, setDetailLot] = useState(null);
+
+  const openDetail = async (lotId) => {
+    try {
+      const full = await apiGetMaterialLot(token, lotId);
+      setDetailLot(full);
+    } catch (e) { showToast(errMsg(e), 'error'); }
+  };
 
   useEffect(() => {
     if (!category) return;
@@ -531,20 +185,56 @@ function StockHubScreen({ token, showToast, canOrder, onOpenOrder }) {
         </div>
       )}
 
-      <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-        <div className="p-4 border-b font-black text-xs uppercase tracking-wider text-slate-500" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>Matching Lots ({lots.length})</div>
-        <div className="divide-y" style={{ borderColor: 'rgba(200,131,74,0.08)' }}>
-          {lots.map((l) => (
-            <div key={l.lot_id} className="p-3 flex items-center gap-3 text-xs">
-              <span className="font-mono font-bold text-slate-500 w-24 shrink-0">{l.barcode}</span>
-              <span className="font-black text-slate-800 flex-1 min-w-0 truncate">{l.article} · {l.colour}{l.thickness ? ` · ${l.thickness}` : ''}{l.size ? ` · ${l.size}` : ''}</span>
-              <span className={`font-black w-28 text-right ${l.available === 0 ? 'text-red-500' : 'text-slate-700'}`}>{l.available.toFixed(1)} {l.uom} avail</span>
-              {l.covers_required === false && <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" title="Cannot cover the required qty" />}
+      {(() => {
+        // Hub's job is "glance and alert", not "browse" — that's the Lots
+        // screen. Only surface the lots that actually need a look: zero
+        // available, or can't cover the typed requirement.
+        const attention = lots
+          .filter((l) => l.available === 0 || l.covers_required === false)
+          .sort((a, b) => a.available - b.available)
+          .slice(0, 5);
+        // A spec with ZERO lots at all is the worst case, not a healthy
+        // one — an empty `lots` array can't produce any per-lot attention
+        // rows, so without this the panel wrongly said "healthy" right
+        // under a red "short by 99999999999999 mtrs" banner above it.
+        const hasShortfall = stock?.required !== undefined && stock?.required !== null && shortBy > 0;
+        const trulyHealthy = attention.length === 0 && !hasShortfall;
+        return (
+          <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+            <div className="p-4 border-b font-black text-xs uppercase tracking-wider text-slate-500 flex items-center gap-2" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Needs Attention
             </div>
-          ))}
-          {lots.length === 0 && <div className="p-6 text-center text-xs font-bold text-slate-400">No lots match these filters.</div>}
-        </div>
-      </div>
+            {attention.length > 0 ? (
+              <div className="divide-y" style={{ borderColor: 'rgba(200,131,74,0.08)' }}>
+                {attention.map((l) => (
+                  <div key={l.lot_id} onClick={() => openDetail(l.lot_id)}
+                    className={`p-3 flex items-center gap-3 text-xs cursor-pointer hover:brightness-95 ${l.available === 0 ? 'bg-red-50/40' : 'bg-amber-50/40'}`}>
+                    <span className="font-mono font-bold text-slate-500 w-24 shrink-0">{l.barcode}</span>
+                    <span className="font-black text-slate-800 flex-1 min-w-0 truncate">{l.article} · {l.colour}{l.thickness ? ` · ${l.thickness}` : ''}{l.size ? ` · ${l.size}` : ''}</span>
+                    <span className={`font-black w-28 text-right ${l.available === 0 ? 'text-red-500' : 'text-amber-600'}`}>{l.available.toFixed(1)} {l.uom} avail</span>
+                    {l.covers_required === false && <span className="text-[9px] font-black uppercase text-amber-600 shrink-0">Short</span>}
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  </div>
+                ))}
+              </div>
+            ) : trulyHealthy ? (
+              <div className="p-6 text-center text-xs font-bold text-emerald-600 flex items-center justify-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Every lot in this spec looks healthy.</div>
+            ) : (
+              <div className="p-4 text-xs font-bold text-red-700 bg-red-50/40 flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+                No lots exist for this spec at all — short by {shortBy.toFixed(1)} {stock.uom}. Use Add Material to create one, or widen the filters above.
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {detailLot && (
+        <LotDetail token={token} lot={detailLot} onClose={() => setDetailLot(null)} showToast={showToast}
+          canEdit={canEdit} canAdjust={canAdjust}
+          onReceive={onReceive ? (lot) => { onReceive({ lotId: lot.lot_id, article: lot.article }); } : null}
+          onChanged={() => { runCheck(); openDetail(detailLot.lot_id); }} />
+      )}
     </div>
   );
 }
@@ -598,7 +288,13 @@ function LotDetail({ token, lot, onClose, onChanged, showToast, canEdit, canAdju
     } catch (e) { showToast(errMsg(e), 'error'); } finally { setRetiring(false); }
   };
 
-  return (
+  // Rendered inline, `fixed inset-0` was resolving against the nearest
+  // ancestor with a transform (the page's own animate-fade-in wrapper),
+  // not the viewport — so the modal opened off-screen, below the fold.
+  // Porting straight to document.body escapes that and centers it for real.
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
     <div className="fixed inset-0 z-[9999] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="p-5 border-b flex items-center justify-between" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
@@ -686,7 +382,8 @@ function LotDetail({ token, lot, onClose, onChanged, showToast, canEdit, canAdju
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -728,20 +425,37 @@ function LotListScreen({ token, showToast, canEdit, canAdjust, onReceive }) {
 
   return (
     <div className="space-y-5">
-      <div className="bg-white p-5 rounded-3xl shadow-sm border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-        <CategoryPicker category={category} subtype={subtype} onCategory={(c) => { setCategory(c); setSubtype(''); }} onSubtype={setSubtype} subtypeRequired={category === 'ACCESSORY'} />
-        {spec && spec.filters.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {spec.filters.map((f) => (
-              <input key={f} placeholder={f[0].toUpperCase() + f.slice(1)} value={filters[f] || ''} onChange={(e) => setFilters((p) => ({ ...p, [f]: e.target.value }))}
-                className="h-9 px-3 bg-slate-50 border rounded-lg text-xs font-bold outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
-            ))}
-            <button onClick={load} className="h-9 px-4 rounded-lg font-black text-[10px] uppercase text-white flex items-center gap-1.5" style={{ background: '#c8834a' }}>
-              {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Search
-            </button>
-          </div>
-        )}
+      {/* Pill-based browsing, not a form — this screen is "look through
+          everything", Stock Hub is "check one spec". */}
+      <div className="flex flex-wrap gap-2">
+        {['LEATHER', 'LINING', 'ACCESSORY'].map((c) => (
+          <button key={c} onClick={() => { setCategory(c); setSubtype(''); }}
+            className={`h-9 px-4 rounded-full font-black text-xs uppercase transition-all ${category === c ? 'text-white shadow-sm' : 'text-slate-500 bg-white border'}`}
+            style={category === c ? { background: '#c8834a' } : { borderColor: 'rgba(200,131,74,0.2)' }}>
+            {c}
+          </button>
+        ))}
+        {(CATEGORY_SUBTYPES[category] || []).map((s) => (
+          <button key={s} onClick={() => setSubtype(subtype === s ? '' : s)}
+            className={`h-9 px-3 rounded-full font-bold text-[11px] transition-all ${subtype === s ? 'text-white' : 'text-slate-400 bg-slate-50'}`}
+            style={subtype === s ? { background: '#a86022' } : {}}>
+            {s}
+          </button>
+        ))}
       </div>
+
+      {spec && spec.filters.length > 0 && (
+        <div className="flex flex-wrap gap-2 items-center bg-slate-50 p-3 rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+          <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
+          {spec.filters.map((f) => (
+            <input key={f} placeholder={f[0].toUpperCase() + f.slice(1) + '…'} value={filters[f] || ''} onChange={(e) => setFilters((p) => ({ ...p, [f]: e.target.value }))}
+              className="h-9 px-3 bg-white border rounded-lg text-xs font-bold outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
+          ))}
+          <button onClick={load} className="h-9 px-4 rounded-lg font-black text-[10px] uppercase text-white flex items-center gap-1.5 ml-auto" style={{ background: '#c8834a' }}>
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Refine'}
+          </button>
+        </div>
+      )}
 
       <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         <table className="w-full text-xs">
@@ -816,11 +530,20 @@ function AddMaterialScreen({ token, showToast, onDuplicate }) {
       });
       setResult(res);
     } catch (e) {
-      if (e.status === 409) {
-        showToast(errMsg(e), 'error');
-        if (onDuplicate) onDuplicate({ category, subtype, article, colour, thickness: attrs.thickness, size: attrs.size });
-      } else {
-        showToast(errMsg(e), 'error');
+      showToast(errMsg(e), 'error');
+      if (e.status === 409 && onDuplicate) {
+        // Per the API guide: don't regex the lot_id out of the error
+        // message — re-query with the identical spec filters. One lot per
+        // spec guarantees this returns exactly the colliding row.
+        try {
+          const params = { category, subtype: subtype || undefined, article: article.trim(), colour: colour.trim(), thickness: attrs.thickness || undefined, size: attrs.size || undefined };
+          Object.keys(params).forEach((k) => { if (!params[k]) delete params[k]; });
+          const res = await apiGetMaterialLots(token, params);
+          const existing = res.lots?.[0];
+          if (existing) onDuplicate({ lotId: existing.lot_id, article: existing.article });
+        } catch {
+          // Lookup itself failed — nothing more we can do than the toast above.
+        }
       }
     } finally { setSubmitting(false); }
   };
@@ -1016,6 +739,9 @@ function SupplierOrdersScreen({ token, showToast, prefill, onArrived }) {
   const [supplierId, setSupplierId] = useState(prefill?.supplier_id || '');
   const [supplierName, setSupplierName] = useState(prefill?.supplier_name || '');
   const [submitting, setSubmitting] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState(null);
+  const [editForm, setEditForm] = useState({ article: '', colour: '', thickness: '', dcm: '', qty: '' });
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => {
     if (!prefill) return;
@@ -1048,6 +774,27 @@ function SupplierOrdersScreen({ token, showToast, prefill, onArrived }) {
     } catch (e) { showToast(errMsg(e), 'error'); }
   };
 
+  const startEdit = (order) => {
+    setEditingOrderId(order.order_id);
+    setEditForm({ article: order.article || '', colour: order.colour || '', thickness: order.thickness || '', dcm: order.dcm || '', qty: order.qty ?? '' });
+  };
+
+  const saveEdit = async (order) => {
+    setSavingEdit(true);
+    try {
+      const payload = {};
+      if (editForm.article !== (order.article || '')) payload.article = editForm.article;
+      if (editForm.colour !== (order.colour || '')) payload.colour = editForm.colour;
+      if (editForm.thickness !== (order.thickness || '')) payload.thickness = editForm.thickness;
+      if (String(editForm.dcm) !== String(order.dcm ?? '')) payload.dcm = editForm.dcm || undefined;
+      if (String(editForm.qty) !== String(order.qty ?? '')) payload.qty = Number(editForm.qty);
+      const res = await apiPatchSupplierOrderSpec(token, order.order_id, payload);
+      setOrders((prev) => prev.map((o) => (o.order_id === order.order_id ? { ...o, ...editForm, qty: Number(editForm.qty), status: res.status } : o)));
+      showToast('Order spec updated.', 'success');
+      setEditingOrderId(null);
+    } catch (e) { showToast(errMsg(e), 'error'); } finally { setSavingEdit(false); }
+  };
+
   return (
     <div className="space-y-5">
       <div className="bg-white p-6 rounded-3xl shadow-sm border space-y-4 max-w-xl" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
@@ -1076,13 +823,34 @@ function SupplierOrdersScreen({ token, showToast, prefill, onArrived }) {
         </div>
         <div className="divide-y" style={{ borderColor: 'rgba(200,131,74,0.08)' }}>
           {orders.map((o) => (
-            <div key={o.order_id} className="p-3 flex items-center gap-3 text-xs">
-              <span className={`px-2 py-1 rounded-md text-[9px] font-black shrink-0 ${o.status === 'arrived' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>{o.status.toUpperCase()}</span>
-              <span className="font-black text-slate-800 flex-1 min-w-0 truncate">{o.article} · {o.qty} {o.uom}{(o.supplier_name || o.supplier?.name) ? ` · ${o.supplier_name || o.supplier.name}` : ' · no supplier'}</span>
-              {o.status === 'ordered' ? (
-                <button onClick={() => markArrived(o)} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white" style={{ background: '#c8834a' }}>Mark Arrived</button>
+            <div key={o.order_id} className="p-3 text-xs">
+              {editingOrderId === o.order_id ? (
+                <div className="space-y-2 p-2 rounded-xl bg-amber-50/60 border border-amber-200">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input placeholder="Article" value={editForm.article} onChange={(e) => setEditForm((p) => ({ ...p, article: e.target.value }))} className="h-8 px-2 border rounded-lg text-xs font-bold" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+                    <input placeholder="Colour" value={editForm.colour} onChange={(e) => setEditForm((p) => ({ ...p, colour: e.target.value }))} className="h-8 px-2 border rounded-lg text-xs font-bold" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+                    <input placeholder="Thickness" value={editForm.thickness} onChange={(e) => setEditForm((p) => ({ ...p, thickness: e.target.value }))} className="h-8 px-2 border rounded-lg text-xs font-bold" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+                    <input type="number" placeholder="dcm" value={editForm.dcm} onChange={(e) => setEditForm((p) => ({ ...p, dcm: e.target.value }))} className="h-8 px-2 border rounded-lg text-xs font-bold" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+                    <input type="number" placeholder="Qty" value={editForm.qty} onChange={(e) => setEditForm((p) => ({ ...p, qty: e.target.value }))} className="h-8 px-2 border rounded-lg text-xs font-bold col-span-2" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => saveEdit(o)} disabled={savingEdit} className="h-8 px-4 rounded-lg font-black text-[10px] uppercase text-white disabled:opacity-50" style={{ background: '#c8834a' }}>{savingEdit ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}</button>
+                    <button onClick={() => setEditingOrderId(null)} className="h-8 px-4 rounded-lg font-black text-[10px] uppercase text-slate-500 bg-slate-100">Cancel</button>
+                  </div>
+                </div>
               ) : (
-                <button onClick={() => onArrived({ orderId: o.order_id, article: o.article })} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white bg-emerald-500">Receive</button>
+                <div className="flex items-center gap-3">
+                  <span className={`px-2 py-1 rounded-md text-[9px] font-black shrink-0 ${o.status === 'arrived' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-amber-50 text-amber-600 border border-amber-200'}`}>{o.status.toUpperCase()}</span>
+                  <span className="font-black text-slate-800 flex-1 min-w-0 truncate">{o.article} · {o.qty} {o.uom}{(o.supplier_name || o.supplier?.name) ? ` · ${o.supplier_name || o.supplier.name}` : ' · no supplier'}</span>
+                  {o.status === 'ordered' ? (
+                    <>
+                      <button onClick={() => startEdit(o)} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-slate-500 bg-slate-100 flex items-center gap-1"><Pencil className="w-3 h-3" /> Edit</button>
+                      <button onClick={() => markArrived(o)} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white" style={{ background: '#c8834a' }}>Mark Arrived</button>
+                    </>
+                  ) : (
+                    <button onClick={() => onArrived({ orderId: o.order_id, article: o.article })} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white bg-emerald-500">Receive</button>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -1095,10 +863,9 @@ function SupplierOrdersScreen({ token, showToast, prefill, onArrived }) {
 
 // ── Page shell ─────────────────────────────────────────────────────────
 const SCREENS = [
-  { id: 'hub', label: 'Stock Hub', icon: Boxes },
-  { id: 'lots', label: 'Lots', icon: Package },
-  { id: 'add', label: 'Add Material', icon: Plus, writersOnly: true },
-  { id: 'receive', label: 'Receiving', icon: PackagePlus, dmOnly: true },
+  { id: 'hub', label: 'Overview & Alerts', icon: Boxes },
+  { id: 'lots', label: 'Lot Directory', icon: Package },
+  { id: 'intake', label: 'Receive / Add Material', icon: PackagePlus, writersOnly: true },
   { id: 'orders', label: 'Supplier Orders', dmOnly: true, icon: Truck },
 ];
 
@@ -1171,23 +938,36 @@ export default function MaterialsPage() {
       </div>
 
       {screen === 'hub' && (
-        <StockHubScreen token={token} showToast={showToast} canOrder={isDmOnly}
-          onOpenOrder={(prefill) => { setOrderPrefill(prefill); setScreen('orders'); }} />
+        <StockHubScreen token={token} showToast={showToast} canOrder={isDmOnly} canEdit={isWriter} canAdjust={isDmOnly}
+          onOpenOrder={(prefill) => { setOrderPrefill(prefill); setScreen('orders'); }}
+          onReceive={isDmOnly ? (p) => { setReceivePrefill(p); setScreen('intake'); } : null} />
       )}
       {screen === 'lots' && (
         <LotListScreen token={token} showToast={showToast} canEdit={isWriter} canAdjust={isDmOnly}
-          onReceive={isDmOnly ? (p) => { setReceivePrefill(p); setScreen('receive'); } : null} />
+          onReceive={isDmOnly ? (p) => { setReceivePrefill(p); setScreen('intake'); } : null} />
       )}
-      {screen === 'add' && isWriter && (
-        <AddMaterialScreen token={token} showToast={showToast}
-          onDuplicate={(spec) => { setScreen('lots'); showToast(`Search ${spec.article} · ${spec.colour} in Lots, then use "Receive More Stock" on it.`, 'error'); }} />
-      )}
-      {screen === 'receive' && isDmOnly && (
-        <ReceivingScreen token={token} showToast={showToast} prefill={receivePrefill} />
+      {screen === 'intake' && isWriter && (
+        <div className="space-y-8">
+          {/* Team call: this is one physical event on the floor — material
+              arrived. DM/MD check first whether it tops up a lot that
+              already exists (Receiving); only if nothing matches does it
+              become a brand-new spec (Add Material) below. */}
+          {isDmOnly && (
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 px-1">Step 1 — Receive Against an Existing Lot</div>
+              <ReceivingScreen token={token} showToast={showToast} prefill={receivePrefill} />
+            </div>
+          )}
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 px-1">{isDmOnly ? 'Step 2 — ' : ''}No Matching Lot? Add a New Material</div>
+            <AddMaterialScreen token={token} showToast={showToast}
+              onDuplicate={(p) => { setReceivePrefill(p); window.scrollTo({ top: 0, behavior: 'smooth' }); showToast('Already exists — Receiving above is pre-filled with it.', 'success'); }} />
+          </div>
+        </div>
       )}
       {screen === 'orders' && isDmOnly && (
         <SupplierOrdersScreen token={token} showToast={showToast} prefill={orderPrefill}
-          onArrived={(p) => { setReceivePrefill(p); setScreen('receive'); }} />
+          onArrived={(p) => { setReceivePrefill(p); setScreen('intake'); }} />
       )}
     </div>
   );

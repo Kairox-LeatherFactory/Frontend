@@ -18,7 +18,7 @@ import { apiImportPreview, apiImportCommit as realApiImportCommit } from '@/lib/
  * restore the plain `apiImportCommit` import above) once the two-phase
  * endpoint is actually live.
  */
-const MOCK_IMPORT_COMMIT = true;
+const MOCK_IMPORT_COMMIT = false;
 async function mockApiImportCommit(token, file, orderNumber) {
   await new Promise((r) => setTimeout(r, 400)); // feel like a real request
   return {

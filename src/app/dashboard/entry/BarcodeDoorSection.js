@@ -14,12 +14,6 @@ import { manualStages, UI_TO_API_STAGE, API_TO_UI_STAGE, PREREQUISITE_MAP, PIPEL
 // Extracted from src/app/dashboard/entry/page.js (Barcode Gun Scanner door:
 // Cutting/Lining DCM screen + Fusing->Package Export pipeline scan). Props
 // come from page.js's shared state — see SPLIT_GUIDE.md for the full map.
-//
-// KNOWN PRE-EXISTING BUG (not introduced by this split, kept as-is for
-// fidelity): the third focus effect below references `cuttingPieceInputRef`,
-// which is never declared anywhere in the original file either — it will
-// throw a ReferenceError the moment barcodeDcmConfirmed becomes true while
-// on the Cutting/Lining stage. Flagged for a separate fix, not touched here.
 export default function BarcodeDoorSection({
   setSuccessMsg, setErrorMsg,
   recordStageCompletion, completedStagesMap, storeSendedSkus,
@@ -41,9 +35,9 @@ export default function BarcodeDoorSection({
   const [barcodeSkuVerifying, setBarcodeSkuVerifying] = useState(false);
   const [barcodeDcmConfirmed, setBarcodeDcmConfirmed] = useState(false);
   const [sessionCutSkus, setSessionCutSkus] = useState([]); // Track duplicate cuts in session
+  // Item 5: always holds exactly the one piece Verify SKU resolved — Cutting
+  // no longer batches multiple pieces under one shared DCM.
   const [cuttingBatchPieces, setCuttingBatchPieces] = useState([]); // [{ code, seq, serial_str, article, style_name, color, size, order_number }]
-  const [cuttingPieceInput, setCuttingPieceInput] = useState('');
-  const [cuttingPieceResolving, setCuttingPieceResolving] = useState(false);
   const [closedCuttingSkus, setClosedCuttingSkus] = useState([]); // sku_code[] fully cut, closed for further scanning
   const [barcodePieceResolving, setBarcodePieceResolving] = useState(false);
   const [barcodePieceValidating, setBarcodePieceValidating] = useState(false); // FIX: referenced in JSX but never declared in the original file either (also no setter call anywhere — was silently always false); declared here to match that same de-facto behavior.
@@ -124,7 +118,6 @@ export default function BarcodeDoorSection({
   const skuInputRef = useRef(null);
   const dcmInputRef = useRef(null);
   const pieceInputRef = useRef(null);
-  const cuttingPieceInputRef = useRef(null); // FIX: this ref was referenced (line ~173) but never declared in the original file either — a real pre-existing bug, now fixed since it's blocking testing.
   useEffect(() => {
     if (!barcodeWorker) return;
     const isCutOrLining = barcodeStage === 'Cutting' || barcodeStage === 'Lining';
@@ -138,11 +131,12 @@ export default function BarcodeDoorSection({
     }
   }, [barcodeSelectedSku]);
 
+  // Item 5: DCM confirm used to hand focus to the "add another piece to the
+  // batch" input — that step no longer exists (one piece in, one piece
+  // submitted), so this only still applies to the Fusing-onward pipeline.
   useEffect(() => {
-    if (barcodeDcmConfirmed) {
-      const isCutOrLining = barcodeStage === 'Cutting' || barcodeStage === 'Lining';
-      const targetRef = isCutOrLining ? cuttingPieceInputRef : pieceInputRef;
-      setTimeout(() => targetRef.current?.focus(), 150);
+    if (barcodeDcmConfirmed && barcodeStage !== 'Cutting' && barcodeStage !== 'Lining') {
+      setTimeout(() => pieceInputRef.current?.focus(), 150);
     }
   }, [barcodeDcmConfirmed, barcodeStage]);
 
@@ -252,9 +246,12 @@ export default function BarcodeDoorSection({
       // have next_stage pointing straight to Line Stitching — that must read
       // as "Lining doesn't apply here," not "you're not allowed on that stage."
       const currentStageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[barcodeStage]);
-      // Allow Lining scans irrespective of API 'not_applicable' flags —
-      // Lining is permitted to be performed in any stage context per request.
-      if (barcodeStage !== 'Lining' && currentStageEntry?.state === 'not_applicable') {
+      // Per the 17-Aug backend doc (Item 10): "The LINING_CUTTING stage
+      // card's not_applicable verdict now uses the effective rule, so the
+      // screen and the store gate agree" — no special case for Lining here
+      // anymore. A style that doesn't need lining blocks the Lining stage
+      // just like any other not_applicable stage.
+      if (currentStageEntry?.state === 'not_applicable') {
         throw new Error(
           `'${barcodeStage}' does not apply to this piece${currentStageEntry.reason ? ` (${currentStageEntry.reason})` : ''}. It skips straight to its next required stage.`
         );
@@ -294,7 +291,7 @@ export default function BarcodeDoorSection({
 
       // Enforce the pipeline gate using stages[] before letting the operator proceed.
       const stageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[targetStage]);
-      if (targetStage !== 'Lining' && stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
+      if (stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
         throw new Error(
           stageEntry.reason ||
           (stageEntry.state === 'not_applicable'
@@ -354,71 +351,6 @@ export default function BarcodeDoorSection({
       setBarcodeSkuVerifying(false);
     }
   };
-  const handleCuttingPieceScan = async (codeToScan) => {
-    const code = (codeToScan || cuttingPieceInput).trim();
-    if (!code || cuttingPieceResolving || !barcodeSelectedSku) return;
-
-    if (cuttingBatchPieces.some(p => p.code === code)) {
-      setCuttingPieceInput('');
-      return;
-    }
-
-    setCuttingPieceResolving(true);
-    setErrorMsg('');
-    try {
-      const pieceState = await apiGetPieceState(token, {
-        code,
-        employee_barcode: barcodeWorker?.employee_barcode || barcodeWorker?.barcode || barcodeWorker?.id,
-      });
-
-      const piece = pieceState?.piece;
-      if (!piece || !piece.code) {
-        throw new Error(`Piece '${code}' not found. Please scan a valid piece barcode.`);
-      }
-      if (barcodeSelectedSku.sku_code && piece.sku_code && piece.sku_code !== barcodeSelectedSku.sku_code) {
-        throw new Error(`This piece belongs to a different style (${piece.sku_code}). Submit the current batch first, or scan a piece from ${barcodeSelectedSku.sku_code}.`);
-      }
-
-      const stageEntry = (pieceState?.stages || []).find(s => s.stage === UI_TO_API_STAGE[barcodeStage]);
-      if (barcodeStage !== 'Lining' && stageEntry && stageEntry.state !== 'next' && stageEntry.state !== 'completed') {
-        throw new Error(
-          stageEntry.reason ||
-          (stageEntry.state === 'not_applicable'
-            ? `'${barcodeStage}' does not apply to this piece.`
-            : `Production sequence blocked: '${barcodeStage}' isn't ready yet.`)
-        );
-      }
-      const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption');
-      // Exempt Lining from blocker enforcement so lining piece scans aren't
-      // blocked by server readiness flags.
-      if (barcodeStage !== 'Lining' && pieceState?.ready_to_log === false && realBlockers.length > 0) {
-        throw new Error(realBlockers[0].reason || 'Scan blocked by server');
-      }
-
-      setCuttingBatchPieces(prev => prev.some(p => p.code === piece.code) ? prev : [...prev, {
-        code: piece.code,
-        seq: piece.seq,
-        serial_str: piece.serial,
-        article: piece.article,
-        style_name: piece.style_name,
-        color: piece.colour,
-        size: piece.size,
-        order_number: piece.order_number,
-      }]);
-      // Same "Assigned Drawer" indicator the pipeline (Fusing onward) flow
-      // already shows — piece-state already returns this here too, it was
-      // just never captured for Cutting/Lining scans.
-      setScannedPieceDrawerInfo(pieceState.drawer ? { code: pieceState.drawer.code, holding: pieceState.drawer.holding } : null);
-      setCuttingPieceInput('');
-      setSuccessMsg(`✅ Added piece ${piece.code} (${cuttingBatchPieces.length + 1} scanned)`);
-    } catch (err) {
-      setErrorMsg(err.message);
-      setCuttingPieceInput('');
-    } finally {
-      setCuttingPieceResolving(false);
-    }
-  };
-
   // API Flow: Verify (GET) -> Local UI Update -> Submit (POST)
   // Dedicated Barcode Cutting/Lining Submit Handler. THE ONLY WRITE for this door —
   // logs the exact piece that handleVerifySkuBarcode already confirmed via piece-state.
@@ -1233,70 +1165,12 @@ export default function BarcodeDoorSection({
                     </div>
                   </div>
 
-                  {/* Bug #8: Individual Quantity Scanning — every remaining
-                          piece of this style must be scanned one at a time;
-                          each scan is verified live via piece-state before
-                          being added to the batch that Submit sends together. */}
-                  <div className="space-y-3 pt-2 border-t border-[#c8834a]/15">
-                    <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
-                      <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan Piece Barcodes ({cuttingBatchPieces.length} scanned) *
-                    </label>
-                    <div className="flex gap-3">
-                      <div className="relative flex-1">
-                        {!cuttingPieceInput && (
-                          <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
-                        )}
-                        <input
-                          ref={cuttingPieceInputRef}
-                          type="text"
-                          placeholder="Scan next piece barcode..."
-                          value={cuttingPieceInput}
-                          onChange={(e) => setCuttingPieceInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              handleCuttingPieceScan(cuttingPieceInput);
-                            }
-                          }}
-                          style={{ paddingLeft: cuttingPieceInput ? '1rem' : '3.25rem' }}
-                          disabled={cuttingPieceResolving}
-                          className="w-full h-12 bg-[#faf6f0] font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] rounded-xl outline-none disabled:opacity-50"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCuttingPieceScan(cuttingPieceInput)}
-                        disabled={cuttingPieceResolving || !cuttingPieceInput.trim()}
-                        className="h-12 px-5 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
-                      >
-                        {cuttingPieceResolving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                        Add Piece
-                      </button>
-                    </div>
-
-                    {scannedPieceDrawerInfo && (
-                      <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-[#c8834a]/25 text-xs font-bold text-[#7a5a34] w-fit animate-fade-in">
-                        <PackageCheck className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
-                        Assigned Drawer: <span className="font-mono font-black text-[#4a3a2a]">{scannedPieceDrawerInfo.code || '—'}</span>
-                        {scannedPieceDrawerInfo.holding && (
-                          <span className="text-[10px] uppercase tracking-wider text-[#9a7a5a]">({scannedPieceDrawerInfo.holding})</span>
-                        )}
-                      </div>
-                    )}
-
-                    {cuttingBatchPieces.length > 0 && (
-                      <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
-                        {cuttingBatchPieces.map((p) => (
-                          <div key={p.code} className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
-                            <span className="font-mono font-bold text-xs text-[#2d1f0e]">{p.code}</span>
-                            <span className="text-[10px] bg-emerald-100 text-emerald-700 font-extrabold uppercase px-1.5 py-0.5 rounded-md">
-                              #{p.serial_str || (p.seq != null ? String(p.seq).padStart(3, '0') : '—')}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+                  {/* Item 5 (per team request): Cutting logs exactly the ONE
+                      piece resolved by Verify SKU above — each piece needs its
+                      own DCM measurement, so there is no "scan more, batch,
+                      submit together under one shared DCM" step anymore. The
+                      piece's own code/article/colour/size/drawer are already
+                      shown in the confirmation card right after Verify SKU. */}
 
                   {/* Lot Status Indicator — Bug #9: Thickness is optional, so this must not wait on it */}
                   {lotArticle && lotColor && (

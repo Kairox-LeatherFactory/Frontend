@@ -24,7 +24,7 @@ import {
  * plain names) once the real endpoints are live and mint-on-commit is
  * gone.
  */
-const MOCK_BREAKDOWN = true;
+const MOCK_BREAKDOWN = false;
 
 const _mockBreakdowns = new Map(); // order_number -> breakdown object
 const _mockDrawerPool = { pool_size: 200, initial_pool_size: 200, free_drawers: 200, occupied_drawers: 0, pieces_waiting_for_drawer: 0, shortfall: 0 };
