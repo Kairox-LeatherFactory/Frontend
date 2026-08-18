@@ -294,8 +294,10 @@ export default function ProductionLogEntry() {
       // Two-phase commit (Item 9): commit no longer mints barcodes — it
       // just parses the sheet into DRAFT rows and hands off to the
       // Breakdown Review screen, where a DM/MD explicitly releases which
-      // styles actually go into production.
-      if (result?.release_required) {
+      // styles actually go into production. The real response nests this
+      // under `written`, not at the top level (confirmed live) — check both
+      // so the mock (which returns it top-level) keeps working too.
+      if (result?.written?.release_required ?? result?.release_required) {
         const orderNumber = uploadOrderNumber;
         setUploadOrderNumber('');
         router.push(`/dashboard/imports?order=${encodeURIComponent(orderNumber)}`);

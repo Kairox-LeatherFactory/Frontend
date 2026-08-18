@@ -1,5 +1,6 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -623,7 +624,11 @@ export default function BreakdownReviewPage() {
       )}
 
       {/* ── Release result modal ── */}
-      {releaseResult && (
+      {/* Ported to document.body — `fixed inset-0` was resolving against the
+          page's own animate-fade-in wrapper (which has a transform),
+          not the viewport, so the modal opened off-screen/overlapping
+          instead of centered. Same fix as the Materials Lot Detail modal. */}
+      {releaseResult && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/60 backdrop-blur-md animate-fade-in">
           <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden">
             <div className="p-6 border-b flex justify-between items-start" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
@@ -675,7 +680,8 @@ export default function BreakdownReviewPage() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
