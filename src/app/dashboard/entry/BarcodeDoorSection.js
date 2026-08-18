@@ -922,12 +922,18 @@ export default function BarcodeDoorSection({
                     setBarcodeStage(stage);
                   }}
                   className={`p-3.5 rounded-2xl text-xs transition-all text-center border shadow-sm relative ${isDisabled
-                    ? 'opacity-35 grayscale bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                    ? (isSelected
+                      // Stitching Manager: locked out of picking, but the
+                      // auto-detected current stage must still read as
+                      // "this one" — same highlight as a manual selection,
+                      // just visibly non-interactive (cursor-not-allowed).
+                      ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-not-allowed font-black'
+                      : 'opacity-35 grayscale bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed')
                     : isSelected
                       ? 'bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-pointer font-black'
                       : 'bg-white text-slate-800 border-slate-200 hover:border-[#c8834a] hover:bg-amber-50/50 cursor-pointer font-bold'
                     }`}
-                  title={roleLocked ? '🔒 Not permitted for your role' : autoOnly ? 'Auto-selected from the scanned piece' : stage}
+                  title={roleLocked ? '🔒 Not permitted for your role' : autoOnly ? (isSelected ? 'Auto-selected from the scanned piece' : 'Not the current stage — scan a piece to update it') : stage}
                 >
                   {!isFullAccess && isStageAllowedForRole(stage) && (
                     <span className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white shadow-sm z-10" title="Your Assigned Stage"></span>

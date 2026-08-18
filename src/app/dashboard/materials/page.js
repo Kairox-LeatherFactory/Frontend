@@ -18,7 +18,7 @@ import {
 } from '@/lib/api';
 import {
   Package, Search, Plus, Loader2, CheckCircle2, XCircle, AlertTriangle,
-  ChevronRight, X, RefreshCw, Truck, Pencil, Trash2, PackagePlus, Printer,
+  ChevronRight, X, Truck, Pencil, Trash2, PackagePlus, Printer,
   Lock, ArrowUpRight, ArrowDownRight, Boxes,
 } from 'lucide-react';
 
@@ -916,11 +916,6 @@ export default function MaterialsPage() {
           <h1 className="text-3xl font-black tracking-tight flex items-center gap-2" style={{ color: '#2d1f0e' }}><Package className="w-7 h-7" style={{ color: '#c8834a' }} /> Material Stock</h1>
           <p className="font-medium mt-1 text-sm" style={{ color: '#9a7a5a' }}>Lots, receiving and supplier orders — the human-driven stock system, not the BOM-driven inventory module.</p>
         </div>
-        {MOCK_MATERIALS && (
-          <span className="px-3 py-1.5 rounded-full text-[10px] font-black uppercase bg-amber-100 text-amber-700 border border-amber-300 flex items-center gap-1.5">
-            <RefreshCw className="w-3 h-3" /> Mock data — backend not deployed yet
-          </span>
-        )}
       </div>
 
       <div className="flex gap-2 flex-wrap border-b pb-3" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>

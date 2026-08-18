@@ -6,6 +6,7 @@ import {
   apiBarcodeResolve,
   apiListDrawers,
   apiGetDrawer,
+  apiGetPieceState,
   apiReceiveDrawer,
   apiSendDrawers,
   apiStoreDrawerScan,
@@ -76,15 +77,19 @@ function mapDrawerRecord(d) {
   };
 }
 
-// GET /drawers/by-code/{code} (Item 6, 17-Aug delta) 404s on this backend —
-// confirmed not deployed yet. Falls back to the endpoint that IS live:
-// GET /drawers with a large limit, searched client-side by code. Swap this
-// back to apiGetDrawerByCode once the backend team confirms it's deployed.
+// "Fetch a big page and search client-side" doesn't scale — the backend
+// caps `limit` at 2000 (confirmed live), and the pool is already 5800+
+// drawers, so no page size can guarantee the target drawer is on it. Use
+// the real server-side search instead: GET /drawers?code= (Item 6,
+// 17-Aug delta) does a case-insensitive contains match on the backend.
 async function findDrawerByCodeFallback(token, code) {
-  const res = await apiListDrawers(token, { limit: 500 });
+  const target = String(code || '').trim();
+  if (!target) return null;
+  const res = await apiListDrawers(token, { code: target, limit: 50 });
   const items = res?.items || (Array.isArray(res) ? res : []);
-  const target = String(code || '').toUpperCase();
-  const item = items.find((d) => (d.code || d.barcode || '').toUpperCase() === target);
+  const upper = target.toUpperCase();
+  const exact = items.find((d) => (d.code || d.barcode || '').toUpperCase() === upper);
+  const item = exact || items[0] || null;
   return item ? mapDrawerRecord(item) : null;
 }
 
@@ -355,12 +360,27 @@ export default function StoreHubSection({
       setStoreReceiveStatus(res.auto_received ? 'received' : 'pending');
       setSuccessMsg(`Scan logged successfully! (${res.state || 'OK'})`);
 
-      // Refresh the live (500-row) drawers list in the background — this was
-      // previously awaited (blocking the scan feedback on a full relist) AND
-      // then fired a second time right after, doubling the refetch cost on
-      // every single scan. Fire-and-forget once; the UI already has what it
-      // needs from `res` above.
-      fetchLiveDrawers();
+      // Refresh the live (latest-10) drawers list first, THEN pin the
+      // just-verified drawer to the top — otherwise this refresh (which
+      // replaces the whole list) would stomp over the pin if it ran after.
+      await fetchLiveDrawers();
+
+      // Team request: the drawer just verified should be pinned to the top
+      // of the list below, not wherever it happens to land in a re-fetch —
+      // with the default view cut to the latest 10 (Item 6), a drawer that
+      // isn't recently-created could vanish from the list entirely even
+      // though it was JUST scanned. Fetch its full detail directly (we
+      // already have drawerUuid resolved above) and prepend it.
+      if (drawerUuid) {
+        try {
+          const freshDetail = await apiGetDrawer(token, drawerUuid);
+          const mapped = mapDrawerRecord(freshDetail);
+          setStoreDrawers(prev => [mapped, ...prev.filter(d => d.id !== mapped.id)]);
+          setExpandedDrawer(mapped.id);
+        } catch {
+          // Non-critical — the list still refreshed above.
+        }
+      }
     } catch (err) {
       // Show the backend's real reason (e.g. "piece is not merged to drawer
       // X — scan the drawer the upload assigned to this piece") instead of a
@@ -662,17 +682,44 @@ export default function StoreHubSection({
   // Bug #17: whichever side of the pair hasn't been scanned yet, look up
   // what it SHOULD be from the already-loaded drawers?limit=500 list — pure
   // reference for the operator to eyeball-verify against, never auto-filled.
-  const storeExpectedMatch = useMemo(() => {
-    if (storeDrawerInput && !storePieceInput) {
-      const match = storeDrawers.find(d => d.id.toUpperCase() === storeDrawerInput.trim().toUpperCase());
-      return match?.piece_code ? { forSide: 'PIECE', value: match.piece_code } : null;
+  // Team fix: this used to search the loaded `storeDrawers` list — that
+  // worked when the default load was up to 500 drawers, but broke silently
+  // once the default view was cut down to the latest 10 (Item 6). Query
+  // GET /barcode/resolve live instead, so it works regardless of what's
+  // currently loaded. Debounced so it doesn't fire on every keystroke.
+  const [storeExpectedMatch, setStoreExpectedMatch] = useState(null);
+  useEffect(() => {
+    const drawerVal = storeDrawerInput.trim();
+    const pieceVal = storePieceInput.trim();
+    if ((!drawerVal && !pieceVal) || (drawerVal && pieceVal) || !token) {
+      setStoreExpectedMatch(null);
+      return;
     }
-    if (storePieceInput && !storeDrawerInput) {
-      const match = storeDrawers.find(d => (d.piece_code || '').toUpperCase() === storePieceInput.trim().toUpperCase());
-      return match?.id ? { forSide: 'DRAWER', value: match.id } : null;
-    }
-    return null;
-  }, [storeDrawerInput, storePieceInput, storeDrawers]);
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        if (pieceVal) {
+          // Piece -> drawer is a single resolve call.
+          const res = await apiBarcodeResolve(token, pieceVal);
+          const drawerCode = res?.piece?.drawer?.code || res?.drawer?.drawer_code || res?.drawer?.code || null;
+          if (!cancelled) setStoreExpectedMatch(drawerCode ? { forSide: 'DRAWER', value: drawerCode } : null);
+        } else {
+          // Drawer -> piece: resolve only returns the piece's UUID
+          // (`current_piece_id`), not its code — a second call reads the
+          // actual piece code off that id.
+          const res = await apiBarcodeResolve(token, drawerVal);
+          const pieceId = res?.drawer?.current_piece_id || res?.piece?.piece_id || null;
+          if (!pieceId) { if (!cancelled) setStoreExpectedMatch(null); return; }
+          const pieceState = await apiGetPieceState(token, { piece_id: pieceId });
+          const pieceCode = pieceState?.piece?.code || null;
+          if (!cancelled) setStoreExpectedMatch(pieceCode ? { forSide: 'PIECE', value: pieceCode } : null);
+        }
+      } catch {
+        if (!cancelled) setStoreExpectedMatch(null);
+      }
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [storeDrawerInput, storePieceInput, token]);
 
   useEffect(() => {
     setStoreVisibleCount(50);
