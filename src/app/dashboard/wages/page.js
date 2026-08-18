@@ -642,6 +642,14 @@ function ComputationView({ token }) {
   const [reopenReason, setReopenReason] = useState('');
   const [showReopenModal, setShowReopenModal] = useState(false);
 
+  // Team request: Recompute shouldn't require having just computed a draft
+  // in this same session — it should work against any run by id. And when
+  // the target turns out to be CLOSED, offer the confirm_closed escape
+  // hatch (no reason, stays closed) as a popup rather than just failing.
+  const [recomputeRunIdInput, setRecomputeRunIdInput] = useState('');
+  const [isRecomputingStandalone, setIsRecomputingStandalone] = useState(false);
+  const [recomputeConfirmTarget, setRecomputeConfirmTarget] = useState(null); // { runId, isStandalone } | null
+
   const showToast = (msg, type = 'success') => {
     setToastMsg(msg); setToastType(type);
     setTimeout(() => setToastMsg(null), 3000);
@@ -736,19 +744,45 @@ function ComputationView({ token }) {
     }
   };
 
-  const handleRecompute = async () => {
-    const runId = run.id || run.run_id;
-    setIsComputing(true);
+  // Shared by both the inline (just-computed `run`) and standalone (typed
+  // run id) Recompute entry points. Always tries confirm_closed:false
+  // first — the default stays false, per the team's instruction — and
+  // only offers the confirm_closed:true escape hatch via a popup if the
+  // backend actually says the run is closed (409), rather than asking
+  // upfront for every recompute regardless of whether it's even needed.
+  const runRecompute = async (runId, confirmClosed, { isStandalone } = {}) => {
+    const setLoading = isStandalone ? setIsRecomputingStandalone : setIsComputing;
+    setLoading(true);
     try {
-      const updated = await apiRecomputeWageRun(token, runId, false);
-      setRun((prev) => ({ ...prev, ...updated }));
+      const updated = await apiRecomputeWageRun(token, runId, confirmClosed);
+      if (!isStandalone || (run && (run.id || run.run_id) === runId)) {
+        setRun((prev) => (prev ? { ...prev, ...updated } : updated));
+      }
       await loadBreakdown(runId);
       showToast('Run recomputed.', 'success');
+      setRecomputeConfirmTarget(null);
     } catch (e) {
-      showToast(e.message || 'Recompute failed — the run may still be closed.', 'error');
+      if (e.status === 409 && !confirmClosed) {
+        // Closed run, first attempt — offer the escape hatch instead of
+        // just showing an error.
+        setRecomputeConfirmTarget({ runId, isStandalone: !!isStandalone });
+      } else {
+        showToast(e.message || 'Recompute failed.', 'error');
+      }
     } finally {
-      setIsComputing(false);
+      setLoading(false);
     }
+  };
+
+  const handleRecompute = () => {
+    const runId = run.id || run.run_id;
+    runRecompute(runId, false);
+  };
+
+  const handleStandaloneRecompute = () => {
+    const runId = recomputeRunIdInput.trim();
+    if (!runId) { showToast('Enter a run id to recompute.', 'error'); return; }
+    runRecompute(runId, false, { isStandalone: true });
   };
 
   const isOpen = run && String(run.status).toUpperCase() !== 'CLOSED';
@@ -862,33 +896,25 @@ function ComputationView({ token }) {
           </p>
         )}
 
-        <div className="mt-8 flex justify-end relative z-10 pt-6 gap-3" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
-          <button
-            onClick={handleCompute}
-            disabled={isComputing || (scopeType === 'order' && !orderNumber) || (scopeType === 'style' && !styleCode)}
-            className="h-14 px-10 rounded-full font-black text-sm text-white shadow-xl transition-all hover:shadow-orange-500/30 hover:-translate-y-1 active:scale-95 disabled:opacity-50 flex items-center gap-3"
-            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-          >
-            {isComputing ? <><Loader2 className="w-5 h-5 animate-spin" /> Computing...</> : <><Activity className="w-5 h-5" /> Compute Draft Run</>}
-          </button>
-        </div>
-      </div>
-
-      {/* ── RUN STATUS + ACTIONS ── */}
-      {run && (
-        <div className="bg-white rounded-3xl shadow-xl p-6 border flex flex-col sm:flex-row sm:items-center justify-between gap-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-          <div className="flex items-center gap-3">
-            <StatusBadge status={run.status} />
-            <div>
-              <p className="font-black text-sm" style={{ color: '#2d1f0e' }}>Run {String(run.id || run.run_id).slice(0, 8)}...</p>
-              <p className="text-[10px] font-bold text-slate-400">
-                {run.reopen_count > 0 && `Reopened ${run.reopen_count}x · `}
-                {run.recompute_count > 0 && `Recomputed ${run.recompute_count}x`}
-              </p>
+        {/* Team request: Recompute/Close/Reopen used to live in their own
+            card below, only appearing after a run existed — moved into
+            this same row, right beside Compute Draft Run, so every run
+            action lives in one place. */}
+        <div className="mt-8 flex flex-wrap items-center justify-end relative z-10 pt-6 gap-3" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
+          {run && (
+            <div className="flex items-center gap-3 mr-auto">
+              <StatusBadge status={run.status} />
+              <div>
+                <p className="font-black text-sm" style={{ color: '#2d1f0e' }}>Run {String(run.id || run.run_id).slice(0, 8)}...</p>
+                <p className="text-[10px] font-bold text-slate-400">
+                  {run.reopen_count > 0 && `Reopened ${run.reopen_count}x · `}
+                  {run.recompute_count > 0 && `Recomputed ${run.recompute_count}x`}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex gap-2">
-            {isOpen ? (
+          )}
+          {run && (
+            isOpen ? (
               <>
                 <button onClick={handleRecompute} disabled={isComputing} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50" style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}>
                   <RefreshCw className="w-4 h-4" /> Recompute
@@ -901,10 +927,44 @@ function ComputationView({ token }) {
               <button onClick={() => setShowReopenModal(true)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-2" style={{ color: '#a86022', borderColor: 'rgba(200,131,74,0.2)' }}>
                 <Unlock className="w-4 h-4" /> Reopen to Edit
               </button>
-            )}
-          </div>
+            )
+          )}
+          <button
+            onClick={handleCompute}
+            disabled={isComputing || (scopeType === 'order' && !orderNumber) || (scopeType === 'style' && !styleCode)}
+            className="h-14 px-10 rounded-full font-black text-sm text-white shadow-xl transition-all hover:shadow-orange-500/30 hover:-translate-y-1 active:scale-95 disabled:opacity-50 flex items-center gap-3"
+            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+          >
+            {isComputing ? <><Loader2 className="w-5 h-5 animate-spin" /> Computing...</> : <><Activity className="w-5 h-5" /> Compute Draft Run</>}
+          </button>
         </div>
-      )}
+      </div>
+
+      {/* ── RECOMPUTE AN EXISTING RUN ── */}
+      {/* Team request: Recompute shouldn't depend on having just computed a
+          draft in this browser session — a run found via the Ledger (or
+          from an earlier session) can be recomputed directly by id. */}
+      <div className="bg-white rounded-3xl shadow-sm p-5 border flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+        <div className="flex-1">
+          <p className="text-xs font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Recompute an existing run</p>
+          <p className="text-[10px] font-bold text-slate-400 mt-0.5">Paste a run id from the Ledger — no need to compute a fresh draft first.</p>
+        </div>
+        <input
+          value={recomputeRunIdInput}
+          onChange={(e) => setRecomputeRunIdInput(e.target.value)}
+          placeholder="Run id…"
+          className="h-11 px-4 bg-[#faf6f0] border rounded-xl font-mono text-xs font-bold outline-none focus:border-[#c8834a] sm:w-72"
+          style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+        />
+        <button
+          onClick={handleStandaloneRecompute}
+          disabled={isRecomputingStandalone || !recomputeRunIdInput.trim()}
+          className="h-11 px-5 rounded-xl font-black text-xs uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50 shrink-0"
+          style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
+        >
+          {isRecomputingStandalone ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Recompute
+        </button>
+      </div>
 
       {/* ── 3-WAY BREAKDOWN: by style / by stage / by employee ── */}
       {breakdown && (
@@ -1034,6 +1094,37 @@ function ComputationView({ token }) {
                 <button onClick={() => { setShowReopenModal(false); setReopenReason(''); }} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-slate-100 text-slate-600">Cancel</button>
                 <button onClick={handleReopen} disabled={isReopening || reopenReason.trim().length < 5} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white disabled:opacity-50 flex items-center gap-2" style={{ background: '#c8834a' }}>
                   {isReopening ? <Loader2 className="w-4 h-4 animate-spin" /> : <Unlock className="w-4 h-4" />} Reopen Run
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Recompute-on-a-closed-run escape hatch. First attempt always
+          sends confirm_closed:false (default stays false) — this only
+          appears when the backend actually 409s, naming the run as
+          closed. "Confirm" is the one-call override (no reason, stays
+          closed); "Close" just dismisses — the formal route from there
+          is the Reopen button above. */}
+      {recomputeConfirmTarget && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden mx-4">
+            <div className="p-6 sm:p-8 space-y-4">
+              <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>Run Is Closed</h3>
+              <p className="text-xs font-bold text-slate-500">
+                Run <span className="font-mono">{recomputeConfirmTarget.runId}</span> is frozen. You can confirm a one-time recompute anyway (no reason recorded, stays closed afterward) — or close this and use Reopen instead, which asks for a reason and unfreezes it.
+              </p>
+              <div className="flex gap-3 justify-end pt-2">
+                <button onClick={() => setRecomputeConfirmTarget(null)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-slate-100 text-slate-600">Close</button>
+                <button
+                  onClick={() => runRecompute(recomputeConfirmTarget.runId, true, { isStandalone: recomputeConfirmTarget.isStandalone })}
+                  disabled={isComputing || isRecomputingStandalone}
+                  className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white disabled:opacity-50 flex items-center gap-2"
+                  style={{ background: '#c8834a' }}
+                >
+                  {(isComputing || isRecomputingStandalone) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Confirm
                 </button>
               </div>
             </div>
