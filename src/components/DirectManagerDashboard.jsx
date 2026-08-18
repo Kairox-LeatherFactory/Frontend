@@ -453,14 +453,28 @@ export default function DirectManagerDashboard() {
   const isDrillDownActive = !!filterMatchedRow;
 
   const effectivePipeline = useMemo(() => {
-    const base = (isDrillDownActive && activeDrillDownData?.stages?.length)
-      ? activeDrillDownData.stages.map((s) => ({
-          stage: s.stage || s.name,
-          label: formatStage(s.stage || s.label || s.name),
-          completed: readNum(s, ['completed', 'done']),
-          pending: readNum(s, ['pending', 'queue', 'remaining']),
-        }))
-      : (isDrillDownActive ? [] : pipelineList);
+    let base;
+    if (isDrillDownActive) {
+      // The stage funnel's shape (cards, order, labels) stays fixed to the same
+      // factory-wide stage list — only completed/pending get swapped for the
+      // selected order/style's numbers, falling back to 0 for stages the
+      // backend didn't return data for, instead of blanking the whole grid.
+      const stageDataByKey = new Map(
+        (activeDrillDownData?.stages || []).map((s) => [String(s.stage || s.name || '').toUpperCase(), s])
+      );
+      base = pipelineList.map((st) => {
+        const stageKey = st.stage || st.label;
+        const match = stageDataByKey.get(String(stageKey).toUpperCase());
+        return {
+          stage: stageKey,
+          label: st.label || formatStage(stageKey),
+          completed: match ? readNum(match, ['completed', 'done']) : 0,
+          pending: match ? readNum(match, ['pending', 'queue', 'remaining']) : 0,
+        };
+      });
+    } else {
+      base = pipelineList;
+    }
     if (filterDepartment === 'all') return base;
     return base.filter((st) => inferDepartment(st.stage || st.label) === filterDepartment);
   }, [isDrillDownActive, activeDrillDownData, pipelineList, filterDepartment]);
@@ -484,11 +498,26 @@ export default function DirectManagerDashboard() {
   const hasLiningStage = pipelineList.some((st) => /LINING/i.test(st.stage || st.label || ''));
 
   const pipelineWithStore = useMemo(() => {
-    if (isDrillDownActive) return effectivePipeline;
     let cards = [...effectivePipeline];
 
     if (!hasLiningStage) {
-      const liningCard = liningDepartmentRow
+      // Lining pieces are cut in the same LEATHER_CUTTING batch as leather (no
+      // separate LINING_CUTTING event exists), then sit in Store until they're
+      // combined with a leather piece at Line Stitching — so there is no way to
+      // attribute a lining count to one order before Store. The department row
+      // is a factory-wide total; showing it inside a single order's pipeline
+      // would misrepresent it as that order's number, so it's marked N/A there.
+      const liningCard = isDrillDownActive
+        ? {
+            stage: 'LINING',
+            label: 'Lining',
+            completed: null,
+            pending: null,
+            isDepartmentOverlay: true,
+            isUnavailable: true,
+            unavailableNote: 'Not trackable per order before Store',
+          }
+        : liningDepartmentRow
         ? (() => {
             const target = readNum(liningDepartmentRow, ['target']);
             const completed = readNum(liningDepartmentRow, ['completed', 'produced', 'total_produced', 'done']);
@@ -515,18 +544,30 @@ export default function DirectManagerDashboard() {
       cards.splice(cutIdx === -1 ? 0 : cutIdx + 1, 0, liningCard);
     }
 
-    const storeCard = {
-      stage: 'STORE',
-      label: 'Store / Drawer',
-      completed: storeStats.drawers_sent ?? null,
-      pending: storeStats.drawers_in_store ?? null,
-      isStoreOverlay: true,
-    };
+    // Same reasoning as Lining above: drawer/store counts are factory-wide
+    // (no per-order breakdown exists), so they're N/A inside a single order's view.
+    const storeCard = isDrillDownActive
+      ? {
+          stage: 'STORE',
+          label: 'Store / Drawer',
+          completed: null,
+          pending: null,
+          isStoreOverlay: true,
+          isUnavailable: true,
+          unavailableNote: 'Not trackable per order',
+        }
+      : {
+          stage: 'STORE',
+          label: 'Store / Drawer',
+          completed: storeStats.drawers_sent ?? null,
+          pending: storeStats.drawers_in_store ?? null,
+          isStoreOverlay: true,
+        };
     const stitchIdx = cards.findIndex((st) => /STITCH/i.test(st.stage || st.label || ''));
     cards = stitchIdx === -1 ? [...cards, storeCard] : [...cards.slice(0, stitchIdx), storeCard, ...cards.slice(stitchIdx)];
 
     return cards;
-  }, [effectivePipeline, storeStats, isDrillDownActive, liningDepartmentRow, hasLiningStage]);
+  }, [effectivePipeline, storeStats, liningDepartmentRow, hasLiningStage, isDrillDownActive]);
 
   const effectiveTargetPieces = isDrillDownActive
     ? (activeDrillDownData?.total_quantity ?? filterMatchedRow?.total_ordered ?? 0)
@@ -1191,7 +1232,7 @@ export default function DirectManagerDashboard() {
                 </div>
                 <div className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] font-semibold space-y-0.5">
                   {st.isUnavailable ? (
-                    <p className="text-slate-400 italic">No data yet</p>
+                    <p className="text-slate-400 italic">{st.unavailableNote || 'No data yet'}</p>
                   ) : (
                     <>
                       <div className="flex justify-between">
@@ -1223,7 +1264,9 @@ export default function DirectManagerDashboard() {
         {!hasLiningStage && (
           <p className="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5 pt-1">
             <Info className="w-3.5 h-3.5 shrink-0" />
-            {liningDepartmentRow
+            {isDrillDownActive
+              ? 'Lining and Store are shown as N/A here — lining pieces share the same cutting event as leather (no separate LINING_CUTTING stage exists) and only rejoin a specific order at Store, so neither can be attributed to this order before then. Both stay factory-wide totals on the main pipeline view.'
+              : liningDepartmentRow
               ? 'Lining (teal, tagged DEPT) is shown from its real department totals, not the stage funnel — this backend has no LINING_CUTTING stage events in scope yet, only department-level counts.'
               : 'Lining’s slot (dashed, tagged N/A) is reserved but empty — no LINING_CUTTING stage events and no Lining department row exist in this response yet. Store is real data from the store KPI block, same as before.'}
           </p>
