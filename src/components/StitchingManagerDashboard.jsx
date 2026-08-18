@@ -476,14 +476,17 @@ function StitchingDashboardContent() {
     [stages, filterStage]
   );
 
-  const isStageBottleneck = (s) => {
+  // Backlog size only — NOT a bottleneck. A real bottleneck means a stage is falling
+  // behind its expected pace (target vs. time elapsed), which this dashboard doesn't
+  // have the data to compute yet. This just flags stages with a large pending queue.
+  const isHighBacklog = (s) => {
     const total = s.total_received || 0;
     const pending = s.pending_pieces || 0;
     return total > 0 && pending >= 5 && pending / total > 0.3;
   };
 
-  const bottleneckStage = useMemo(() => {
-    const candidates = stages.filter(isStageBottleneck).sort((a, b) => (b.pending_pieces || 0) - (a.pending_pieces || 0));
+  const highBacklogStage = useMemo(() => {
+    const candidates = stages.filter(isHighBacklog).sort((a, b) => (b.pending_pieces || 0) - (a.pending_pieces || 0));
     return candidates[0] || null;
   }, [stages]);
 
@@ -791,7 +794,7 @@ function StitchingDashboardContent() {
       <div className="w-full flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-[#e8edf3] shadow-sm overflow-x-auto">
         {[
           { id: 'tab-today', label: "📌 Today's Priority" },
-          { id: 'tab-stages', label: '🪡 Stage-Wise & Bottlenecks' },
+          { id: 'tab-stages', label: '🪡 Stage-Wise & Pending Backlog' },
           { id: 'tab-store', label: '🏬 Store Handoff & Drawers' },
           { id: 'tab-orders', label: '👗 Order & Style Progress' },
           { id: 'tab-employees', label: '👷 Employee by Stage' },
@@ -926,26 +929,26 @@ function StitchingDashboardContent() {
               </div>
             </div>
 
-            {/* Right Col: Active bottleneck detector */}
+            {/* Right Col: High-backlog stage flag (pending queue size, not a real bottleneck) */}
             <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Active Stage Bottlenecks</span>
+                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Stages With High Pending Backlog</span>
               </div>
-              {bottleneckStage ? (
-                <div className="bg-gradient-to-br from-rose-50 via-red-50 to-orange-50 border-2 border-red-400 p-3.5 rounded-xl my-2 shadow-sm">
+              {highBacklogStage ? (
+                <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 border-2 border-amber-400 p-3.5 rounded-xl my-2 shadow-sm">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-red-900 font-extrabold text-xs">
+                    <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs">
                       <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-600"></span>
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-600"></span>
                       </span>
-                      <span>ACTIVE BOTTLENECK</span>
+                      <span>HIGH PENDING BACKLOG</span>
                     </div>
-                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-red-600 text-white animate-pulse">High Backlog</span>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-600 text-white animate-pulse">Pending</span>
                   </div>
                   <div className="mt-1.5 flex items-baseline justify-between">
-                    <span className="text-xs font-extrabold text-red-950">{bottleneckStage.label || formatStage(bottleneckStage.stage)}</span>
-                    <span className="text-xs font-black text-red-700">{bottleneckStage.pending_pieces} pcs pending</span>
+                    <span className="text-xs font-extrabold text-amber-950">{highBacklogStage.label || formatStage(highBacklogStage.stage)}</span>
+                    <span className="text-xs font-black text-amber-700">{highBacklogStage.pending_pieces} pcs pending</span>
                   </div>
                 </div>
               ) : (
@@ -1131,7 +1134,7 @@ function StitchingDashboardContent() {
           <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-base font-extrabold text-slate-900">Stitching Production Pipeline &amp; Bottleneck Identification</h3>
+                <h3 className="text-base font-extrabold text-slate-900">Stitching Production Pipeline &amp; Pending Backlog</h3>
                 <p className="text-xs text-slate-500">Pre-Store: Fusing, Pasting &bull; Post-Store: Line Stitching, Shell Stitching, Final Finish &bull; scoped to <strong>{activeOrderLabel}</strong></p>
               </div>
             </div>
@@ -1163,13 +1166,13 @@ function StitchingDashboardContent() {
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
                   {filteredStages.map((st, idx) => {
-                    const bottleneck = isStageBottleneck(st);
+                    const highBacklog = isHighBacklog(st);
                     return (
                       <tr
                         key={idx}
                         onClick={() => setSelectedStageDetail(st)}
                         className={`cursor-pointer transition-all ${
-                          bottleneck ? 'bg-red-50/70 border-l-4 border-red-500 hover:bg-red-50' : selectedStageDetail?.stage === st.stage ? 'bg-indigo-50/60' : 'hover:bg-slate-50'
+                          highBacklog ? 'bg-amber-50/70 border-l-4 border-amber-500 hover:bg-amber-50' : selectedStageDetail?.stage === st.stage ? 'bg-indigo-50/60' : 'hover:bg-slate-50'
                         }`}
                       >
                         <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center gap-2"><span>🪡</span><span>{st.label || formatStage(st.stage)}</span></td>
@@ -1178,14 +1181,14 @@ function StitchingDashboardContent() {
                         <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{st.assigned_pieces ?? 0} pcs</td>
                         <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-black">{st.completed_pieces ?? 0} pcs</td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold">
-                          <span className={bottleneck ? 'text-red-600 font-black text-sm' : 'text-slate-800'}>{st.pending_pieces ?? 0} pcs</span>
+                          <span className={highBacklog ? 'text-amber-600 font-black text-sm' : 'text-slate-800'}>{st.pending_pieces ?? 0} pcs</span>
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono">
                           {typeof st.daily_target === 'number' ? `${st.daily_target} pcs` : <NotAvailableBadge label="N/A" />}
                         </td>
                         <td className="py-3.5 px-4 text-center">
-                          <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center justify-center gap-1.5 shadow-sm ${bottleneck ? 'bg-red-600 text-white animate-pulse' : 'bg-emerald-100 text-emerald-800'}`}>
-                            {bottleneck ? <>🔴 BOTTLENECK ({st.pending_pieces} Pending)</> : <span>🟢 Active</span>}
+                          <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center justify-center gap-1.5 shadow-sm ${highBacklog ? 'bg-amber-500 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+                            {highBacklog ? <>⚠️ PENDING ({st.pending_pieces})</> : <span>🟢 Active</span>}
                           </span>
                         </td>
                       </tr>
