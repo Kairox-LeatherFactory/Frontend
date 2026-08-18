@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiImportPreview, apiImportCommit as realApiImportCommit, apiGetBarcodeOrders } from '@/lib/api';
@@ -37,6 +37,7 @@ import dynamic from 'next/dynamic';
 const BarcodeDoorSection = dynamic(() => import('./BarcodeDoorSection'));
 const ManualDoorSection = dynamic(() => import('./ManualDoorSection'));
 const StoreHubSection = dynamic(() => import('./StoreHubSection'));
+const BreakdownReviewBody = dynamic(() => import('../imports/BreakdownReviewBody'));
 // import BarcodeDoorSection from './BarcodeDoorSection';
 // import ManualDoorSection from './ManualDoorSection';
 // import StoreHubSection from './StoreHubSection';
@@ -138,7 +139,7 @@ function DynamicDataViewer({ data }) {
 
 
 export default function ProductionLogEntry() {
-  const router = useRouter();
+  const searchParams = useSearchParams();
   const { user, token } = useAuth();
   const { workers } = useData();
   const { isReadOnly, isFullAccess, isStoreAccess, allowedOperations, isStageAllowedForRole } = useRoleAccess();
@@ -148,14 +149,18 @@ export default function ProductionLogEntry() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'sku' | 'worker'
+  // Lets a "Back to Breakdown Review" link elsewhere (imports/page.js) land
+  // directly on this tab via /dashboard/entry?door=breakdown.
   const [activeDoor, setActiveDoor] = useState(
-    (user === 'store_manager' || user === 'store_scan') ? 'store' : 'manual'
+    searchParams.get('door') === 'breakdown' ? 'breakdown'
+      : (user === 'store_manager' || user === 'store_scan') ? 'store' : 'manual'
   );
   // Team request: a permanent, always-browsable entry point into Breakdown
   // Review — not just the redirect that fires right after a fresh upload.
   const [breakdownOrders, setBreakdownOrders] = useState([]);
   const [breakdownOrdersLoading, setBreakdownOrdersLoading] = useState(false);
   const [breakdownOrderSearch, setBreakdownOrderSearch] = useState('');
+  const [selectedBreakdownOrder, setSelectedBreakdownOrder] = useState(null); // order_number | null — set = show the detail/release screen inline, unset = show the list
   const [barcodeWorkerInput, setBarcodeWorkerInput] = useState('');
   const [barcodeWorker, setBarcodeWorker] = useState(null); // { id, name, designation, barcode }
   const [barcodeWorkerChecking, setBarcodeWorkerChecking] = useState(false);
@@ -305,7 +310,12 @@ export default function ProductionLogEntry() {
       if (result?.written?.release_required ?? result?.release_required) {
         const orderNumber = uploadOrderNumber;
         setUploadOrderNumber('');
-        router.push(`/dashboard/imports?order=${encodeURIComponent(orderNumber)}`);
+        // Team request: land directly on the Breakdown Review tab's
+        // detail/release screen for the order just uploaded — inline,
+        // same page, no navigation. "Back" from there returns to this
+        // tab's order list, not a separate route.
+        setActiveDoor('breakdown');
+        setSelectedBreakdownOrder(orderNumber);
         return;
       }
       setCommitSuccess('File imported and database updated successfully!');
@@ -615,51 +625,62 @@ export default function ProductionLogEntry() {
         )}
 
         {/* Team request: a permanent, browsable Breakdown Review entry
-            point — not only the redirect right after a fresh upload.
-            Picking an order here opens the exact same review/release
-            screen the redirect lands on (/dashboard/imports?order=). */}
+            point — not only the redirect right after a fresh upload — and
+            fully inline (no navigation to /dashboard/imports): picking an
+            order (or landing here straight from a fresh commit) shows the
+            exact same review/release screen right in this tab; "Back"
+            just clears the selection and returns to the list below. */}
         {activeDoor === 'breakdown' && (
-          <div className="space-y-5 animate-fade-in">
-            <div>
-              <h3 className="text-lg font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
-                <FileSpreadsheet className="w-5 h-5" style={{ color: '#c8834a' }} /> Breakdown Review
-              </h3>
-              <p className="text-xs font-bold mt-1" style={{ color: '#9a7a5a' }}>
-                Pick an order to review its DRAFT styles, correct SKU lines, and release into production.
-              </p>
-            </div>
-            <input
-              type="text"
-              value={breakdownOrderSearch}
-              onChange={(e) => setBreakdownOrderSearch(e.target.value)}
-              placeholder="Search order number…"
-              className="w-full h-12 px-4 bg-[#faf6f0] font-bold text-sm border rounded-xl outline-none focus:border-[#c8834a]"
-              style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+          selectedBreakdownOrder ? (
+            <BreakdownReviewBody
+              initialOrderNumber={selectedBreakdownOrder}
+              onBack={() => setSelectedBreakdownOrder(null)}
+              backLabel="Back to Breakdown Review"
+              onBackToProduction={() => { setSelectedBreakdownOrder(null); setActiveDoor('manual'); }}
             />
-            {breakdownOrdersLoading ? (
-              <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: '#c8834a' }} /></div>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[28rem] overflow-y-auto pr-1">
-                {breakdownOrders
-                  .filter((o) => !breakdownOrderSearch.trim() || String(o.order_number || o.order_id || '').toLowerCase().includes(breakdownOrderSearch.trim().toLowerCase()))
-                  .map((o) => (
-                    <button
-                      key={o.order_id || o.order_number}
-                      type="button"
-                      onClick={() => router.push(`/dashboard/imports?order=${encodeURIComponent(o.order_number || o.order_id)}`)}
-                      className="text-left p-4 rounded-2xl border bg-white hover:-translate-y-0.5 hover:shadow-md transition-all cursor-pointer"
-                      style={{ borderColor: 'rgba(200,131,74,0.2)' }}
-                    >
-                      <p className="font-black text-sm" style={{ color: '#2d1f0e' }}>{o.order_number || o.order_id}</p>
-                      <p className="text-[11px] font-bold mt-0.5" style={{ color: '#9a7a5a' }}>{o.client || o.styles ? `${o.styles ?? ''} ${o.styles ? 'styles' : ''}`.trim() : 'View breakdown →'}</p>
-                    </button>
-                  ))}
-                {!breakdownOrdersLoading && breakdownOrders.length === 0 && (
-                  <p className="col-span-full text-center text-xs font-bold py-10" style={{ color: '#9a7a5a' }}>No orders found.</p>
-                )}
+          ) : (
+            <div className="space-y-5 animate-fade-in">
+              <div>
+                <h3 className="text-lg font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+                  <FileSpreadsheet className="w-5 h-5" style={{ color: '#c8834a' }} /> Breakdown Review
+                </h3>
+                <p className="text-xs font-bold mt-1" style={{ color: '#9a7a5a' }}>
+                  Pick an order to review its DRAFT styles, correct SKU lines, and release into production.
+                </p>
               </div>
-            )}
-          </div>
+              <input
+                type="text"
+                value={breakdownOrderSearch}
+                onChange={(e) => setBreakdownOrderSearch(e.target.value)}
+                placeholder="Search order number…"
+                className="w-full h-12 px-4 bg-[#faf6f0] font-bold text-sm border rounded-xl outline-none focus:border-[#c8834a]"
+                style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+              />
+              {breakdownOrdersLoading ? (
+                <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: '#c8834a' }} /></div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[28rem] overflow-y-auto pr-1">
+                  {breakdownOrders
+                    .filter((o) => !breakdownOrderSearch.trim() || String(o.order_number || o.order_id || '').toLowerCase().includes(breakdownOrderSearch.trim().toLowerCase()))
+                    .map((o) => (
+                      <button
+                        key={o.order_id || o.order_number}
+                        type="button"
+                        onClick={() => setSelectedBreakdownOrder(o.order_number || o.order_id)}
+                        className="text-left p-4 rounded-2xl border bg-white hover:-translate-y-0.5 hover:shadow-md transition-all cursor-pointer"
+                        style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                      >
+                        <p className="font-black text-sm" style={{ color: '#2d1f0e' }}>{o.order_number || o.order_id}</p>
+                        <p className="text-[11px] font-bold mt-0.5" style={{ color: '#9a7a5a' }}>{o.client || o.styles ? `${o.styles ?? ''} ${o.styles ? 'styles' : ''}`.trim() : 'View breakdown →'}</p>
+                      </button>
+                    ))}
+                  {!breakdownOrdersLoading && breakdownOrders.length === 0 && (
+                    <p className="col-span-full text-center text-xs font-bold py-10" style={{ color: '#9a7a5a' }}>No orders found.</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )
         )}
 
       </SpotlightCard>
