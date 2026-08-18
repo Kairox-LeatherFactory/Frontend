@@ -112,6 +112,18 @@ async function apiFetch(url, options = {}, token = null) {
  return res.json();
 }
 
+// GET /attendance/today usually returns the full day's roster as an array,
+// but it can come back as a single attendance record object instead (e.g.
+// narrowed to one employee) — without this, `Array.isArray` checks below
+// treat that as "nobody checked in" and silently drop a real record.
+function normalizeRosterArray(rosterData) {
+ if (Array.isArray(rosterData)) return rosterData;
+ if (rosterData?.data && Array.isArray(rosterData.data)) return rosterData.data;
+ if (rosterData?.items && Array.isArray(rosterData.items)) return rosterData.items;
+ if (rosterData?.employee_id) return [rosterData];
+ return [];
+}
+
 // ─── GPS HOOK ─────────────────────────────────────────────────────────────────
 function useGps() {
  const [state, setState] = useState({ lat: null, lon: null, error: null, loading: false });
@@ -697,13 +709,14 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  async function initStatus() {
  try {
  const rosterData = await apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token);
- if (rosterData && Array.isArray(rosterData)) {
+ const rosterArray = normalizeRosterArray(rosterData);
+ if (rosterArray.length > 0) {
  // One-time per day logic:
  // 1. If they have ANY record today, they have already checked in (disable Check-In)
- const inIds = rosterData.map(r => String(r.employee_id));
+ const inIds = rosterArray.map(r => String(r.employee_id));
 
  // 2. If their record has check_out_at, they have already checked out (disable Check-Out)
- const outIds = rosterData.filter(r => r.check_out_at).map(r => String(r.check_out_at ? r.employee_id : null)).filter(id => id !== null);
+ const outIds = rosterArray.filter(r => r.check_out_at).map(r => String(r.check_out_at ? r.employee_id : null)).filter(id => id !== null);
 
  setCheckedInIds(prev => new Set([...prev, ...inIds]));
  setCheckedOutIds(prev => new Set([...prev, ...outIds]));
@@ -1552,7 +1565,7 @@ function AttendanceHistoryView({ token }) {
  apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token)
  .then((data) => {
  if (!isMounted) return;
- setHistory(Array.isArray(data) ? data : []);
+ setHistory(normalizeRosterArray(data));
  })
  .catch((err) => console.error('Failed to fetch attendance history', err))
  .finally(() => {
