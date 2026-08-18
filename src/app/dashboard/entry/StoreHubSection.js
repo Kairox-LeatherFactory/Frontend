@@ -71,9 +71,14 @@ function mapDrawerRecord(d) {
     leather_piece_code: d.leather_piece_code || d.leather?.piece_code || d.piece_code || d.piece?.code || null,
     leather_article: d.leather_article || d.leather?.article || d.article || null,
     leather_colour: d.leather_colour || d.leather_color || d.leather?.colour || d.leather?.color || d.colour || d.color || null,
-    lining_piece_code: d.lining_piece_code || d.lining?.piece_code || null,
-    lining_article: d.lining_article || d.lining?.article || null,
-    lining_colour: d.lining_colour || d.lining_color || d.lining?.colour || d.lining?.color || null,
+    // Confirmed live (2026-08-18): there is no separate lining piece object
+    // at all — a drawer holds ONE piece, and LINING_CUTTING is just a
+    // stage that same piece passes through. `lining_in` only ever means
+    // "this piece's lining part is physically in", so its identity is the
+    // same piece/label_line as the leather side, not a distinct record.
+    lining_piece_code: d.lining_piece_code || d.lining?.piece_code || d.piece_code || d.piece?.code || d.piece?.label_line || null,
+    lining_article: d.lining_article || d.lining?.article || d.article || null,
+    lining_colour: d.lining_colour || d.lining_color || d.lining?.colour || d.lining?.color || d.colour || d.color || null,
   };
 }
 
@@ -303,6 +308,11 @@ export default function StoreHubSection({
           if (alreadyProcessed) {
             // Step 2 (already processed): show its status directly, do NOT
             // POST store-scan, and halt smoothly — no error thrown.
+            // Carry can_send/needs_lining/lining_reason/awaiting through too
+            // — without them, "Send to Line Stitching" below can't tell a
+            // genuinely-ready drawer from one that's stale-marked
+            // received/sended but still actually incomplete (confirmed live
+            // as a real, if rare, backend data state).
             setStoreVerifyResult({
               drawer_id: drawerDetail.drawer_id,
               drawer_code: drawerDetail.code,
@@ -310,6 +320,10 @@ export default function StoreHubSection({
               state: drawerDetail.state,
               holding: drawerDetail.holding,
               sent_to: drawerDetail.sent_to,
+              can_send: drawerDetail.can_send,
+              needs_lining: drawerDetail.needs_lining,
+              lining_reason: drawerDetail.lining_reason,
+              awaiting: drawerDetail.awaiting,
             });
             setStoreReceiveStatus(drawerDetail.sent || drawerDetail.state === 'sended' ? 'sended' : 'received');
             setSuccessMsg(
@@ -1120,16 +1134,31 @@ export default function StoreHubSection({
                   {/* Bug #21: single direct action — no separate "Receive"
                       step. Clicking this fires RECEIVED (if the drawer
                       isn't already auto-received) then SENDED right after. */}
+                  {/* Confirmed live: `can_send` sits top-level on the
+                      store-scan response (storeVerifyResult.can_send) —
+                      false the instant a needs_lining piece is only
+                      HOLDING LEATHER (`awaiting: ["LINING"]`). This button
+                      never checked it, so scanning leather alone made
+                      "Send to Line Stitching" look ready before lining had
+                      even been scanned. */}
                   <div className="pt-4 border-t border-slate-200">
                     <button
                       type="button"
                       onClick={handleSendToLineStitching}
-                      disabled={storeReceiveStatus === 'sended' || storeApiLoading}
+                      disabled={storeReceiveStatus === 'sended' || storeApiLoading || storeVerifyResult?.can_send === false}
+                      title={storeVerifyResult?.can_send === false ? (storeVerifyResult?.lining_reason || 'Not ready — this drawer is still awaiting a part.') : ''}
                       className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
                     >
                       {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : storeReceiveStatus === 'sended' ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
                       {storeReceiveStatus === 'sended' ? 'Sent to Line Stitching ✅' : 'Send to Line Stitching'}
                     </button>
+                    {storeVerifyResult?.can_send === false && storeReceiveStatus !== 'sended' && (
+                      <p className="text-[10px] text-slate-400 font-bold pt-1.5">
+                        {storeVerifyResult?.lining_reason || (Array.isArray(storeVerifyResult?.awaiting) && storeVerifyResult.awaiting.length > 0
+                          ? `Waiting on: ${storeVerifyResult.awaiting.join(', ')}`
+                          : 'Not ready to send yet.')}
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -1208,41 +1237,42 @@ export default function StoreHubSection({
                 </div>
 
                 {/* Bug #13 & #14: Multi-Drawer Selection Toolbar */}
-                {selectedDrawers.size > 0 && (
-                  <div className="mx-4 my-3 p-3 rounded-xl bg-indigo-50 border-2 border-indigo-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center">{selectedDrawers.size}</span>
-                      <span className="text-sm font-black text-indigo-800">{selectedDrawers.size} Drawer{selectedDrawers.size > 1 ? 's' : ''} Selected</span>
+                {selectedDrawers.size > 0 && (() => {
+                  // Team fix: this button used to stay enabled regardless of
+                  // whether the selected drawer(s) could actually be sent —
+                  // contradicting the same drawer's own card, which already
+                  // disables correctly. Enable only if at least one selected
+                  // drawer is really sendable; the backend still partial-
+                  // accepts a mixed batch, so this doesn't block legit sends.
+                  const anySelectedCanSend = Array.from(selectedDrawers).some(id => storeDrawers.find(d => d.id === id)?.can_send);
+                  return (
+                    <div className="mx-4 my-3 p-3 rounded-xl bg-indigo-50 border-2 border-indigo-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center">{selectedDrawers.size}</span>
+                        <span className="text-sm font-black text-indigo-800">{selectedDrawers.size} Drawer{selectedDrawers.size > 1 ? 's' : ''} Selected</span>
+                      </div>
+                      <div className="flex items-center flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleBatchSendDrawers('STITCHING')}
+                          disabled={batchSending || !anySelectedCanSend}
+                          title={anySelectedCanSend ? '' : 'None of the selected drawers are ready to send yet'}
+                          className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                        >
+                          {batchSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                          Send to Line Stitching
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDrawers(new Set())}
+                          className="px-3 py-2 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-lg hover:bg-slate-50 transition-all cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                    <div className="flex items-center flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleBatchSendDrawers('LINING')}
-                        disabled={batchSending}
-                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-sm"
-                      >
-                        <Send className="w-3.5 h-3.5" />
-                        Send to Lining
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleBatchSendDrawers('STITCHING')}
-                        disabled={batchSending}
-                        className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 shadow-sm"
-                      >
-                        {batchSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                        Send to Line Stitching
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedDrawers(new Set())}
-                        className="px-3 py-2 bg-white border border-slate-200 text-slate-600 font-bold text-xs rounded-lg hover:bg-slate-50 transition-all cursor-pointer"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 <div className="divide-y divide-slate-100">
                   {filteredStoreDrawers
@@ -1387,21 +1417,34 @@ export default function StoreHubSection({
                                       {/* Bug #20: send this one drawer directly from its own
                                           card — no need to have just scanned it, or use the
                                           checkbox multi-select above, to send it on. */}
-                                      <div className="pt-2">
-                                        <button
-                                          type="button"
-                                          onClick={(e) => { e.stopPropagation(); handleBatchSendDrawers('STITCHING', [drawer.id]); }}
-                                          disabled={!drawer.can_send || batchSending}
-                                          className="w-full h-10 rounded-lg font-black text-xs text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                                        >
-                                          {batchSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} Send to Line Stitching
-                                        </button>
-                                      </div>
-                                      <p className="text-[10px] text-slate-400 font-bold pt-0.5">
-                                        {drawer.can_send
-                                          ? '✓ Ready to send.'
-                                          : 'Not ready to send yet — waiting on more parts or a prior stage.'}
-                                      </p>
+                                      {(() => {
+                                        // `can_send` is false BOTH when a drawer genuinely
+                                        // isn't complete yet AND when it's already been sent —
+                                        // those need different copy, or "already sent" reads
+                                        // as "still waiting", which is backwards.
+                                        const alreadySent = String(drawer.status || '').toLowerCase() === 'sended';
+                                        return (
+                                          <>
+                                            <div className="pt-2">
+                                              <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); handleBatchSendDrawers('STITCHING', [drawer.id]); }}
+                                                disabled={!drawer.can_send || batchSending}
+                                                className="w-full h-10 rounded-lg font-black text-xs text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                                              >
+                                                {batchSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />} {alreadySent ? 'Already Sent to Line Stitching' : 'Send to Line Stitching'}
+                                              </button>
+                                            </div>
+                                            <p className="text-[10px] text-slate-400 font-bold pt-0.5">
+                                              {drawer.can_send
+                                                ? '✓ Ready to send.'
+                                                : alreadySent
+                                                  ? '✓ Already sent to Line Stitching.'
+                                                  : 'Not ready to send yet — waiting on more parts or a prior stage.'}
+                                            </p>
+                                          </>
+                                        );
+                                      })()}
                                     </div>
                                   </div>
                                 ) : (

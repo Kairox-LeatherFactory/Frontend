@@ -1087,8 +1087,11 @@ export async function apiRecomputeWageRun(token, runId, confirmClosed = false) {
     body: JSON.stringify({ confirm_closed: confirmClosed }),
   });
   if (!res.ok) {
-    const errText = await res.text().catch(() => 'Failed to recompute wage run');
-    throw new Error(errText || `Failed to recompute wage run (${res.status})`);
+    let detail;
+    try { detail = (await res.json()).detail; } catch { /* no JSON body */ }
+    const err = new Error((typeof detail === 'string' && detail) || `Failed to recompute wage run (${res.status})`);
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
