@@ -142,7 +142,7 @@ function inferDepartment(stageKeyOrLabel = '') {
   return 'Production';
 }
 
-const DEPARTMENT_DISPLAY_ORDER = ['Cutting', 'Lining', 'Store', 'Stitching', 'Quality', 'Packaging'];
+const DEPARTMENT_DISPLAY_ORDER = ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Stitching', 'Quality', 'Inspection', 'Packaging', 'Packing'];
 
 function departmentSortIndex(name = '') {
   const idx = DEPARTMENT_DISPLAY_ORDER.findIndex((d) => d.toLowerCase() === String(name).toLowerCase());
@@ -313,16 +313,20 @@ export default function DirectManagerDashboard() {
   }, [selectedPieceCode, token]);
 
   // ── LIVE BACKEND CALL: GET /api/v1/dashboard/direct-manager/orders/{order_id} ──
+  // order_progress rows only ever carry order_number (order_id is never sent),
+  // so fall back to it here the same way the risk-list id already does below —
+  // otherwise this guard blocks every fetch and the order filter never drills down.
   useEffect(() => {
     let isMounted = true;
-    if (!selectedOrderRow?.order_id || !token) {
+    const orderKey = selectedOrderRow?.order_id || selectedOrderRow?.order_number;
+    if (!orderKey || !token) {
       setOrderDetailData(null);
       return;
     }
     (async () => {
       setLoadingOrderDetail(true);
       try {
-        const data = await apiGetDirectManagerOrderDetail(token, selectedOrderRow.order_id);
+        const data = await apiGetDirectManagerOrderDetail(token, orderKey);
         if (isMounted && data) setOrderDetailData(data);
       } catch (err) {
         console.warn('Order detail fetch notice:', err.message);
@@ -334,16 +338,20 @@ export default function DirectManagerDashboard() {
   }, [selectedOrderRow, token]);
 
   // ── LIVE BACKEND CALL: GET /api/v1/dashboard/direct-manager/styles/{style_id} ──
+  // Same issue as the order-detail fetch above: order_progress rows only ever
+  // carry style_name (style_id is never sent), so fall back to it — otherwise
+  // this guard blocks every fetch and the style filter never drills down.
   useEffect(() => {
     let isMounted = true;
-    if (!selectedStyleRow?.style_id || !token) {
+    const styleKey = selectedStyleRow?.style_id || selectedStyleRow?.style_name;
+    if (!styleKey || !token) {
       setStyleDetailData(null);
       return;
     }
     (async () => {
       setLoadingStyleDetail(true);
       try {
-        const data = await apiGetDirectManagerStyleDetail(token, selectedStyleRow.style_id);
+        const data = await apiGetDirectManagerStyleDetail(token, styleKey);
         if (isMounted && data) setStyleDetailData(data);
       } catch (err) {
         console.warn('Style detail fetch notice:', err.message);
@@ -459,8 +467,18 @@ export default function DirectManagerDashboard() {
 
   const effectiveBlockedStage = selectedOrderRow ? orderDetailData?.blocked_stage : null;
 
+  // Leather Cutting and Lining Cutting are cut together from the same pieces,
+  // so the backend often bundles both under one "Cutting" department row
+  // (stages: ['LEATHER_CUTTING', 'LINING_CUTTING']) with one combined total —
+  // check the stages list, not just the department name, or a merged row like
+  // that gets missed and Lining wrongly shows as having no data at all.
   const liningDepartmentRow = useMemo(
-    () => departmentsList.find((d) => /LINING/i.test(d.department || d.name || '')) || null,
+    () =>
+      departmentsList.find(
+        (d) =>
+          /LINING/i.test(d.department || d.name || '') ||
+          (Array.isArray(d.stages) && d.stages.some((s) => /LINING/i.test(s)))
+      ) || null,
     [departmentsList]
   );
   const hasLiningStage = pipelineList.some((st) => /LINING/i.test(st.stage || st.label || ''));
@@ -471,13 +489,20 @@ export default function DirectManagerDashboard() {
 
     if (!hasLiningStage) {
       const liningCard = liningDepartmentRow
-        ? {
-            stage: 'LINING',
-            label: 'Lining',
-            completed: readNum(liningDepartmentRow, ['completed', 'total_produced', 'done']),
-            pending: readNum(liningDepartmentRow, ['pending', 'total_pending', 'queue']),
-            isDepartmentOverlay: true,
-          }
+        ? (() => {
+            const target = readNum(liningDepartmentRow, ['target']);
+            const completed = readNum(liningDepartmentRow, ['completed', 'produced', 'total_produced', 'done']);
+            const pending =
+              readNum(liningDepartmentRow, ['pending', 'total_pending', 'queue']) ??
+              (target !== null && completed !== null ? Math.max(0, target - completed) : null);
+            return {
+              stage: 'LINING',
+              label: 'Lining',
+              completed,
+              pending,
+              isDepartmentOverlay: true,
+            };
+          })()
         : {
             stage: 'LINING',
             label: 'Lining',
@@ -609,14 +634,20 @@ export default function DirectManagerDashboard() {
     }
   };
 
-  // ─── DEPARTMENT PERFORMANCE — real departments[] rows only. No target field
-  // exists anywhere in the documented DM schema for a department, so this reads
-  // only completed/pending/achievement_pct and shows a NotAvailableBadge/status
-  // of null rather than fabricating a target to divide by. ───
+  // ─── DEPARTMENT PERFORMANCE — real departments[] rows. Reads target/
+  // completed/pending/achievement_pct off each row, computing pending as
+  // target-completed when the backend doesn't send an explicit pending field.
+  // Leather Cutting and Lining Cutting are cut from the same pieces, so a
+  // department row that bundles both stages (stages includes LINING_CUTTING
+  // but the row itself is named "Cutting") gets its totals mirrored into an
+  // explicit Lining row instead of leaving Lining blank. ───
   const deptPerformanceTable = useMemo(() => {
-    const rows = departmentsList.map((d) => {
-      const completed = readNum(d, ['completed', 'total_produced', 'done']);
-      const pending = readNum(d, ['pending', 'total_pending', 'queue']);
+    const rows = departmentsList.flatMap((d) => {
+      const target = readNum(d, ['target']);
+      const completed = readNum(d, ['completed', 'produced', 'total_produced', 'done']);
+      const pending =
+        readNum(d, ['pending', 'total_pending', 'queue']) ??
+        (target !== null && completed !== null ? Math.max(0, target - completed) : null);
       const achievementPct = readNum(d, ['achievement_pct', 'completion_pct']);
       let status = null;
       if (achievementPct !== null) {
@@ -625,20 +656,31 @@ export default function DirectManagerDashboard() {
         else if (achievementPct >= 80) status = 'Slightly Behind';
         else status = 'Behind';
       }
-      return {
+      const baseRow = {
         department: d.department || d.name || 'Unknown',
+        target,
         completed,
         pending,
         achievementPct,
         status,
       };
+
+      if (
+        Array.isArray(d.stages) &&
+        d.stages.some((s) => /LINING/i.test(s)) &&
+        !/LINING/i.test(baseRow.department)
+      ) {
+        return [baseRow, { ...baseRow, department: 'Lining' }];
+      }
+      return [baseRow];
     });
 
     // Lining runs in parallel with Cutting on the real floor, so it always gets
-    // a row here — real numbers when the backend returns a Lining department,
-    // an honest null row (kept, not hidden) when it doesn't.
+    // a row here — real numbers when the backend returns a Lining department
+    // (or bundles it into Cutting's stages, handled above), an honest null row
+    // (kept, not hidden) only when neither exists.
     if (!rows.some((r) => /LINING/i.test(r.department))) {
-      rows.push({ department: 'Lining', completed: null, pending: null, achievementPct: null, status: null });
+      rows.push({ department: 'Lining', target: null, completed: null, pending: null, achievementPct: null, status: null });
     }
 
     return rows.sort((a, b) => departmentSortIndex(a.department) - departmentSortIndex(b.department));
@@ -991,8 +1033,8 @@ export default function DirectManagerDashboard() {
       case 'Department Report':
         downloadCsv(
           `Department_Report_${dateStamp}.csv`,
-          ['Department', 'Completed', 'Pending', 'Achievement %'],
-          deptPerformanceTable.map((d) => [d.department, d.completed ?? '', d.pending ?? '', d.achievementPct ?? ''])
+          ['Department', 'Target', 'Completed', 'Pending', 'Achievement %'],
+          deptPerformanceTable.map((d) => [d.department, d.target ?? '', d.completed ?? '', d.pending ?? '', d.achievementPct ?? ''])
         );
         break;
       case 'Order Status':
@@ -1635,7 +1677,9 @@ export default function DirectManagerDashboard() {
                       {displayDeptTable.map((row, idx) => (
                         <tr key={`dept-perf-${row.department}-${idx}`} className="hover:bg-slate-50 transition-colors">
                           <td className="py-2 px-2.5 font-bold text-slate-800">{row.department}</td>
-                          <td className="py-2 px-2 text-right"><NotAvailableBadge label="N/A" /></td>
+                          <td className="py-2 px-2 text-right font-mono text-slate-600">
+                            {row.target !== null && row.target !== undefined ? row.target : <NotAvailableBadge label="N/A" />}
+                          </td>
                           <td className="py-2 px-2 text-right font-mono text-slate-600">{row.completed ?? '—'}</td>
                           <td className="py-2 px-2 text-right font-mono text-slate-600">{row.pending ?? '—'}</td>
                           <td className="py-2 px-2 text-right font-mono text-slate-900 font-bold">{row.achievementPct !== null ? `${row.achievementPct}%` : '—'}</td>

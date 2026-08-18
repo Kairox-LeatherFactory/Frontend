@@ -652,7 +652,8 @@ export async function apiGetPieceDetail(token, { piece_code, sku_code, seq }) {
 
 /**
  * 5. GET /api/v1/analytics/alerts/stage-spread
- * Bottleneck detector.
+ * Per-style/piece stage-completion spread — traces how far a style's pieces have
+ * lagged from stage to stage. Not a bottleneck detector (no time/pace comparison).
  */
 export async function apiGetStageSpreadAlerts(token) {
   const res = await fetch(`${API_BASE_URL}/api/v1/analytics/alerts/stage-spread`, {
