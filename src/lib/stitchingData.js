@@ -57,7 +57,7 @@ export const STITCHING_STAGES_DATA = [
     daily_target: 30,
     daily_completed: 26,
     achievement_pct: 86.6,
-    status: "Bottleneck (56 Pending)",
+    status: "Pending (56)",
   },
   {
     stage: "LINE_STITCHING",

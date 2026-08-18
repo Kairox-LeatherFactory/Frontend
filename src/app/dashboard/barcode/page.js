@@ -343,15 +343,14 @@ function EmployeeTicketCard({ barcode, cardRef, width }) {
  );
 }
 
-// ─── BUCKET / DRAWER LABEL — 100mm × 70mm, barcode and nothing else ──────────
-// This one gets pasted on the bucket itself, so it carries no logo, no field
-// grid and no ticket header — just the symbol and the code printed under it.
-// The size is fixed in mm (see .bucket-label in the print CSS) rather than in
-// px, so the sheet comes off the printer at the bucket-face size regardless of
-// screen DPI. It only renders at label size when the print dialog is at 100%
-// scale — "fit to page" will shrink it like any other physical-size print.
-const BUCKET_LABEL = { widthMm: 100, heightMm: 70 };
-// 2 across × 4 down on A4 at a 5mm page margin.
+// ─── BUCKET / DRAWER LABEL — 98mm × 65.5mm, barcode and nothing else ──────────
+// Sized so exactly 8 labels (2 across × 4 down = 262mm height) fit completely
+// within 1 single A4 or Letter printed sheet with safe printer hardware margins.
+const BUCKET_LABEL = { widthMm: 98, heightMm: 65.5 };
+// 2 across × 4 down on A4 at a 5mm page margin — the full arithmetic max
+// (280mm of a 287mm printable area) is safe again now that each label is
+// absolutely positioned rather than flowed/wrapped by the browser; see the
+// .print-label-page comment below for why flow-based layouts kept failing.
 const BUCKET_LABELS_PER_PAGE = 8;
 // Style print sheet carries barcode + code only (no field grid), so it packs
 // 2 across × 4 down like the bucket sheet instead of the 2×2 card layout
@@ -361,9 +360,7 @@ const STYLE_LABELS_PER_PAGE = 8;
 function DrawerBarcodeLabel({ barcode, cardRef }) {
  return (
  <div ref={cardRef} className="bucket-label">
- {/* Tall bars + wide modules: the label has 100mm to spend, and a wider
- module is what a handheld scanner reads from a distance. */}
- <BarcodeCanvas code={barcode.pieceCode} height={160} moduleWidth={3} />
+  <BarcodeCanvas code={barcode.pieceCode} height={80} moduleWidth={2.4} margin={4} />
  </div>
  );
 }
@@ -2482,14 +2479,13 @@ export default function BarcodeManagementPage() {
  operators: Array.from(new Set(employeeStore.history.map((b) => b.generatedBy))),
  };
  }, [employeeDirectory, employeeStore.history]);
-
- const bucketHistoryOptions = useMemo(() => ({
- orderIds: Array.from(new Set(bucketStore.history.map((b) => b.orderId))),
- clients: Array.from(new Set(bucketStore.history.map((b) => b.client))),
- styles: Array.from(new Set(bucketStore.history.map((b) => b.style))),
- sizes: Array.from(new Set(bucketStore.history.map((b) => b.size))),
- operators: Array.from(new Set(bucketStore.history.map((b) => b.generatedBy))),
- }), [bucketStore.history]);
+const bucketHistoryOptions = useMemo(() => ({
+		orderIds: Array.from(new Set(bucketStore.history.map((b) => b.orderId))),
+		clients: Array.from(new Set(bucketStore.history.map((b) => b.client))),
+		styles: Array.from(new Set(bucketStore.history.map((b) => b.style))),
+		sizes: Array.from(new Set(bucketStore.history.map((b) => b.size))),
+		operators: Array.from(new Set(bucketStore.history.map((b) => b.generatedBy))),
+	}), [bucketStore.history]);
 
  const activeHistoryOptions = category === 'employee' ? employeeHistoryOptions : bucketHistoryOptions;
 
@@ -2536,67 +2532,59 @@ export default function BarcodeManagementPage() {
  cursor: pointer; min-height: 48px; transition: all 0.2s ease;
  }
  .btn-warm-secondary:hover { background: #fdf6ee; border-color: #c8834a; }
- /* Bucket label, 100×70mm. Sizes are written out rather than
- interpolated from BUCKET_LABEL so this whole block stays a static
- styled-jsx style; keep the two in step if the label size changes.
- Here in px (96dpi ≈ 378×265) for the PNG/PDF export and the modal —
- @media print below re-states the same label in mm for paper. */
  .bucket-label {
- width: 378px; height: 265px;
+ width: 360px; height: 240px;
  box-sizing: border-box; background: #fff; border: 1px dashed #999;
- display: flex; align-items: center; justify-content: center; overflow: hidden;
+ display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 4px;
  }
- .bucket-label svg { width: 92%; height: auto; }
+ .bucket-label canvas, .bucket-label svg { max-width: 95%; max-height: 95%; width: auto; height: auto; object-fit: contain; }
  @media print {
- /* 5mm so two 100mm labels fit across A4's 210mm. The other sheets
- size their page box off this, so it is shared deliberately. */
- @page { size: A4; margin: 5mm; }
+ /* 4mm margins so two 98mm labels fit across A4 (210mm) and Letter (215.9mm) */
+ @page { size: A4 portrait; margin: 4mm; }
  body * { visibility: hidden; }
  #thermalPrintSheet, #thermalPrintSheet * { visibility: visible; }
  #thermalPrintSheet { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: #fff !important; }
  .print-page {
  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
- gap: 8mm; width: 100%; height: 287mm; page-break-after: always; box-sizing: border-box;
+ gap: 8mm; width: 100%; height: 280mm; page-break-after: always; box-sizing: border-box;
  }
  .print-page:last-child { page-break-after: auto; }
- /* These codes run ~30+ characters, so CODE128 needs ~390 modules.
- A 2-column cell (~90mm) can't fit that many modules at a
- scanner-safe bar width (0.25mm+) without the browser downscaling
- the canvas — which blurs adjacent bars together and is exactly
- why scans were failing. One column gives each barcode the full
- page width (~190mm) instead, so 8 per page now stack as 8 rows.
- Plain block/flex flow on purpose, NOT CSS grid: a fixed-height
- grid track that overflows by even a fraction of a mm makes Chrome's
- print engine fragment mid-row — it paints a sliver of the row at
- the bottom of one page AND repaints the same item in full at the
- top of the next, i.e. that item prints twice. Normal flow with
- break-inside: avoid on each .print-card (below) just pushes the
- whole card to the next page instead, no duplication. */
  .print-page-barcodes {
  display: flex; flex-direction: column;
  gap: 3mm; width: 100%; page-break-after: always; box-sizing: border-box;
  }
  .print-page-barcodes:last-child { page-break-after: auto; }
  .print-page-barcodes .print-card { width: 100%; }
- /* Bucket labels: 2 across × 4 down = 8 exact 100×70mm labels per A4.
- No gap — the dashed border doubles as the cut line. Two floated
- single-column stacks, NOT a wrapping grid/flex container — grid
- (grid-auto-rows) and flex-wrap both hit the same Chrome print bug:
- a multi-row WRAPPING container that lands a fraction of a mm short
- of the page gets its last row split across the break and reprinted
- whole on page 2 (the DRW-0007/0008 row duplicating happened with
- both). A float only ever flows top-to-bottom within its own column
- — no wrapping row for Chrome to mis-fragment — so each column
- paginates exactly like the barcode sheet's flex-column fix above. */
+ /* Bucket labels: 2 across × 4 down = 8 exact 98×65.5mm labels per page.
+ Total page height is 262mm, fitting reliably within A4 (289mm printable)
+ and US Letter (271.4mm printable) without spilling to page 2. */
  .print-label-page {
- width: 200mm; page-break-after: always; overflow: hidden;
+ position: relative; width: 196mm; height: 262mm; max-height: 262mm;
+ page-break-after: always; break-after: page; page-break-inside: avoid; break-inside: avoid;
+ box-sizing: border-box; overflow: hidden; margin: 0 auto;
  }
- .print-label-page:last-child { page-break-after: auto; }
- .print-label-col { float: left; width: 100mm; }
+ .print-label-page:last-child { page-break-after: auto; break-after: auto; }
+ .print-label-slot { position: absolute; width: 98mm; height: 65.5mm; box-sizing: border-box; }
  .print-label-page .bucket-label {
- width: 100mm; height: 70mm; border: 1px dashed #bbb; break-inside: avoid;
- }
- .print-label-page .bucket-label svg { width: 92mm; height: auto; }
+		width: 98mm;
+		height: 65.5mm;
+		border: 1px dashed #bbb;
+		box-sizing: border-box;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		overflow: hidden;
+		padding: 2mm;
+	}
+	.print-label-page .bucket-label canvas,
+	.print-label-page .bucket-label svg {
+		max-width: 92mm;
+		max-height: 58mm;
+		width: auto;
+		height: auto;
+		object-fit: contain;
+		display: block;
+	}
  .print-card {
  border: 1px dashed #999; border-radius: 6px; padding: 2mm; box-sizing: border-box;
  display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -2781,14 +2769,17 @@ export default function BarcodeManagementPage() {
  {isBucketSheet
  ? chunkArray(printSheetItems, BUCKET_LABELS_PER_PAGE).map((group, pageIdx) => (
  <div className="print-label-page" key={pageIdx}>
- {/* Two floated single-column stacks (left = even index, right = odd),
- not one wrapping container — see .print-label-page comment below. */}
- <div className="print-label-col">
- {group.filter((_, i) => i % 2 === 0).map((b) => <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />)}
+ {/* Every label gets a pre-computed absolute coordinate instead of
+ flowing/wrapping — see .print-label-page comment below for why. */}
+ {group.map((b, i) => (
+ <div
+ key={b.pieceCode}
+ className="print-label-slot"
+ style={{ left: `${(i % 2) * BUCKET_LABEL.widthMm}mm`, top: `${Math.floor(i / 2) * BUCKET_LABEL.heightMm}mm` }}
+ >
+ <DrawerBarcodeLabel barcode={b} />
  </div>
- <div className="print-label-col">
- {group.filter((_, i) => i % 2 === 1).map((b) => <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />)}
- </div>
+ ))}
  </div>
  ))
  : category === 'employee'
