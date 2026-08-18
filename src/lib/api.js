@@ -294,6 +294,9 @@ export async function apiProductionCutting(token, payload) {
 }
 
 /**
+ * LEGACY — pre-17-Aug redesign, unused since the Ledger switched to
+ * apiGetWageRunBreakdown + apiGetWageRunPieces (richer per-run detail).
+ * Kept for reference only; not called anywhere.
  * Fetch a specific wage run by ID
  * NOTE: /api/v1/wages/runs has no GET (list) endpoint — only POST (create).
  * Use this to fetch a single run by ID after creation.
@@ -308,6 +311,9 @@ export async function apiGetWageRun(token, runId) {
 }
 
 /**
+ * LEGACY — exact duplicate of apiSetWageRateSingle (same POST /wages/rates
+ * endpoint, added under an earlier name). Kept for reference only; not
+ * called anywhere. Use apiSetWageRateSingle.
  * Set a wage rate for a style and operation
  */
 export async function apiSetWageRate(token, payload) {
@@ -387,6 +393,151 @@ export async function apiImportCommit(token, file, orderNumber) {
     const err = new Error(errText || `Failed to commit import (${res.status})`);
     err.status = res.status;
     throw err;
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/imports/breakdown/{order_number} — the CRUD-able breakdown
+ * table (styles[], each with production_status DRAFT|RELEASED|CANCELLED
+ * and skus[]). The screen between upload and production.
+ */
+export async function apiGetBreakdown(token, orderNumber) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch breakdown (${res.status})`);
+  return res.json();
+}
+
+/**
+ * PATCH /api/v1/imports/breakdown/skus/{sku_id} — correct one DRAFT line.
+ * Send only what changes: { qty_ordered?, color_name?, color_code?, size?,
+ * knit_color?, nylon_color? }. 409 once the style is RELEASED.
+ */
+export async function apiPatchBreakdownSku(token, skuId, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/skus/${encodeURIComponent(skuId)}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to update breakdown line');
+    throw new Error(errText || `Failed to update breakdown line (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * DELETE /api/v1/imports/breakdown/skus/{sku_id} — drop a DRAFT line with
+ * zero minted pieces. 409 otherwise (that's the safety check).
+ */
+export async function apiDeleteBreakdownSku(token, skuId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/skus/${encodeURIComponent(skuId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to delete breakdown line');
+    throw new Error(errText || `Failed to delete breakdown line (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /api/v1/imports/breakdown/{order_number}/cancel — withdraw DRAFT
+ * styles from the release screen. @param {string[]} styleIds
+ */
+export async function apiCancelBreakdownStyles(token, orderNumber, styleIds) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}/cancel`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ style_ids: styleIds }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to cancel styles');
+    throw new Error(errText || `Failed to cancel styles (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /api/v1/imports/breakdown/{order_number}/release — THE MINT. Creates
+ * per-piece barcodes and merges drawers for the named styles, atomically.
+ * Idempotent (release tops up, never rewrites). Read
+ * `minted.pieces_waiting_for_drawer`, not the HTTP status — non-zero means
+ * those pieces have barcodes but no drawer until the pool grows.
+ * @param {string[]} styleIds
+ * @param {boolean} growDrawerPool default false — opt-in only.
+ */
+export async function apiReleaseBreakdownStyles(token, orderNumber, styleIds, growDrawerPool = false) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}/release`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ style_ids: styleIds, grow_drawer_pool: growDrawerPool }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to release styles');
+    throw new Error(errText || `Failed to release styles (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/drawers/pool — { pool_size, initial_pool_size, free_drawers,
+ * occupied_drawers, pieces_waiting_for_drawer, shortfall }.
+ */
+export async function apiGetDrawerPool(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/pool`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch drawer pool (${res.status})`);
+  return res.json();
+}
+
+/**
+ * POST /api/v1/drawers/pool — DM/MD only, one-way. Adds `add` permanent
+ * barcoded drawers and drains the waiting list into them (max 1000/call).
+ */
+export async function apiGrowDrawerPool(token, add) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/pool`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ add }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to grow drawer pool');
+    throw new Error(errText || `Failed to grow drawer pool (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /api/v1/drawers/allocate-waiting — drains the waiting list into
+ * whatever drawers are currently free, without growing the pool.
+ */
+export async function apiAllocateWaitingDrawers(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/allocate-waiting`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to allocate waiting pieces');
+    throw new Error(errText || `Failed to allocate waiting pieces (${res.status})`);
   }
   return res.json();
 }
@@ -824,6 +975,9 @@ export async function apiGetRateHistory(token, styleCode, operationCode) {
 }
 
 /**
+ * LEGACY — pre-17-Aug redesign, unused since the Ledger switched to
+ * apiGetWageLedger (latest-computed-first, carries recompute_count/
+ * reopen_count). Kept for reference only; not called anywhere.
  * 6. GET /wages/runs - Payroll history list
  */
 export async function apiGetWageRuns(token, limit = 50, offset = 0) {
@@ -836,11 +990,18 @@ export async function apiGetWageRuns(token, limit = 50, offset = 0) {
 }
 
 /**
- * 7. POST /wages/runs - Compute & Freeze payroll
+ * 7. POST /wages/runs - Compute a wage run.
+ * `freeze: false` creates an OPEN draft (recompute freely); `freeze: true`
+ * (the default, matching every existing caller) creates a CLOSED/frozen
+ * run — reopening it afterwards requires apiReopenWageRun with a reason.
+ * `orderNumber`/`styleCode` are mutually exclusive (backend 422s both) —
+ * a scoped run only pays PIECE_RATE work (piece_rate_only: true).
  */
-export async function apiComputeWageRun(token, period_start, period_end, styleId = null) {
-  const payload = { period_start, period_end };
-  if (styleId) payload.style_code = styleId;
+export async function apiComputeWageRun(token, { periodStart, periodEnd, freeze, orderNumber, styleCode } = {}) {
+  const payload = { period_start: periodStart, period_end: periodEnd };
+  if (freeze !== undefined) payload.freeze = freeze;
+  if (orderNumber) payload.order_number = orderNumber;
+  else if (styleCode) payload.style_code = styleCode;
 
   const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs`, {
     method: 'POST',
@@ -858,6 +1019,142 @@ export async function apiComputeWageRun(token, period_start, period_end, styleId
 }
 
 /**
+ * GET /wages/orders — order cards for the payroll landing screen
+ * (order -> style -> rate). @returns {order_number, styles, styles_priced,
+ * fully_priced, sku_count, qty_ordered, style_codes[]}[]
+ */
+export async function apiGetWageOrders(token, { on, unpricedOnly } = {}) {
+  const params = new URLSearchParams();
+  if (on) params.set('on', on);
+  if (unpricedOnly !== undefined) params.set('unpriced_only', unpricedOnly);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/orders${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage orders (${res.status})`);
+  return res.json();
+}
+
+/**
+ * POST /wages/runs/{run_id}/close — freezes a draft (idempotent; 409 on
+ * an empty run).
+ */
+export async function apiCloseWageRun(token, runId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/close`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to close wage run');
+    throw new Error(errText || `Failed to close wage run (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /wages/runs/{run_id}/reopen — the only door out of CLOSED.
+ * `reason` is mandatory (5-500 chars), stored and audited.
+ */
+export async function apiReopenWageRun(token, runId, reason) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/reopen`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ reason }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to reopen wage run');
+    throw new Error(errText || `Failed to reopen wage run (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * POST /wages/runs/{run_id}/recompute — recomputes an OPEN run freely.
+ * On a CLOSED run this 409s unless `confirmClosed: true` is sent (a
+ * one-call escape hatch that records no reason — prefer apiReopenWageRun
+ * for anything that needs an audit trail).
+ */
+export async function apiRecomputeWageRun(token, runId, confirmClosed = false) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/recompute`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ confirm_closed: confirmClosed }),
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => 'Failed to recompute wage run');
+    throw new Error(errText || `Failed to recompute wage run (${res.status})`);
+  }
+  return res.json();
+}
+
+/**
+ * GET /wages/runs/{run_id}/breakdown — the Run Engine result screen.
+ * One frozen row set folded three ways — by_style[], by_stage[],
+ * by_employee[] — never re-sum these client-side, they're server folds
+ * of the same rows so they can't disagree with each other or the total.
+ */
+export async function apiGetWageRunBreakdown(token, runId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/breakdown`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage run breakdown (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /wages/runs/{run_id}/pieces — per-piece payroll detail: garment,
+ * stage, worker, employee barcode, amount. `rate`/`amount` come back
+ * null (never 0) when that cell wasn't priced in this run.
+ */
+export async function apiGetWageRunPieces(token, runId, { styleCode, limit, offset } = {}) {
+  const params = new URLSearchParams();
+  if (styleCode) params.set('style_code', styleCode);
+  if (limit) params.set('limit', limit);
+  if (offset) params.set('offset', offset);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/runs/${encodeURIComponent(runId)}/pieces${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage run pieces (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /wages/ledger — every run, latest computed first, searchable by
+ * order/style/window/status. Each row carries recompute_count and
+ * reopen_count.
+ */
+export async function apiGetWageLedger(token, { orderNumber, styleCode, dateFrom, dateTo, status, limit, offset } = {}) {
+  const params = new URLSearchParams();
+  if (orderNumber) params.set('order_number', orderNumber);
+  if (styleCode) params.set('style_code', styleCode);
+  if (dateFrom) params.set('date_from', dateFrom);
+  if (dateTo) params.set('date_to', dateTo);
+  if (status) params.set('status', status);
+  if (limit) params.set('limit', limit);
+  if (offset) params.set('offset', offset);
+  const qs = params.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/wages/ledger${qs ? `?${qs}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch wage ledger (${res.status})`);
+  return res.json();
+}
+
+/**
+ * LEGACY — pre-17-Aug redesign, unused since the Ledger switched to
+ * apiGetWageRunBreakdown + apiGetWageRunPieces (richer per-run detail).
+ * Kept for reference only; not called anywhere.
  * 8. GET /wages/runs/{run_id} - Payslip details
  */
 export async function apiGetWageRunDetails(token, runId) {
@@ -957,9 +1254,55 @@ export async function apiPatchEmployeeBarcode(token, employeeId, action) {
   return res.json();
 }
 
+// The material service uses two different 422 shapes: a business rejection
+// is a plain string detail, a Pydantic rejection is an array of {loc, msg,
+// type}. This is the "safe renderer" the API guide prescribes for both.
+function parseMaterialErrorDetail(detail) {
+  if (!detail) return null;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map((d) => d.msg).join(', ');
+  return null;
+}
+
+async function materialApiError(res, fallback) {
+  let detail;
+  try { detail = (await res.json()).detail; } catch { /* no JSON body */ }
+  const message = parseMaterialErrorDetail(detail) || fallback;
+  const err = new Error(message);
+  err.status = res.status;
+  err.detail = detail;
+  return err;
+}
+
+/**
+ * GET /api/v1/materials/spec
+ * The form definition for one category (+subtype): which filter boxes to
+ * show, which attribute inputs the Add form needs, which one is the
+ * quantity field, and the unit. Call this the moment category/subtype is
+ * picked — never hardcode the per-category field table in the frontend.
+ * @param {{ category: string, subtype?: string }} params
+ * @returns {{ category, subtype, filters: string[], required_to_add: string[], quantity_field: string, uom: string }}
+ */
+export async function apiGetMaterialSpec(token, { category, subtype } = {}) {
+  const qs = new URLSearchParams();
+  if (category) qs.append('category', category);
+  if (subtype) qs.append('subtype', subtype);
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/spec?${qs.toString()}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialApiError(res, `Failed to fetch material spec (${res.status})`);
+  return res.json();
+}
+
 /**
  * 5. POST /api/v1/materials/lots
- * Create material lot (LEATHER, LINING, ACCESSORY)
+ * Create material lot. Body: { category, subtype?, article, colour,
+ * attributes: {...required_to_add fields}, supplier_id? }. Mints the lot's
+ * barcode and adds the opening quantity to stock in one transaction.
+ * 409 means a lot with this exact spec already exists — the message names
+ * the existing lot; the caller should offer POST /materials/receive
+ * instead of retrying create.
  */
 export async function apiCreateMaterialLot(token, lotData) {
   const res = await fetch(`${API_BASE_URL}/api/v1/materials/lots`, {
@@ -970,7 +1313,7 @@ export async function apiCreateMaterialLot(token, lotData) {
     },
     body: JSON.stringify(lotData),
   });
-  if (!res.ok) throw new Error(`Failed to create material lot (${res.status})`);
+  if (!res.ok) throw await materialApiError(res, `Failed to create material lot (${res.status})`);
   return res.json();
 }
 
@@ -987,13 +1330,16 @@ export async function apiGetMaterialLots(token, params = {}) {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`Failed to fetch material lots (${res.status})`);
+  if (!res.ok) throw await materialApiError(res, `Failed to fetch material lots (${res.status})`);
   return res.json();
 }
 
 /**
  * 6. GET /api/v1/materials/stock
- * Check stock on-hand, reserved, available, shortfall
+ * Check stock on-hand, reserved, available, shortfall. `required` and
+ * `short_by` are only present when a `required` qty was passed;
+ * `suggested_supplier` only when required was passed, short_by > 0 and
+ * article was passed (and can still be null).
  */
 export async function apiGetMaterialsStock(token, params = {}) {
   const query = new URLSearchParams(params).toString();
@@ -1001,13 +1347,86 @@ export async function apiGetMaterialsStock(token, params = {}) {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!res.ok) throw new Error(`Failed to fetch material stock (${res.status})`);
+  if (!res.ok) throw await materialApiError(res, `Failed to fetch material stock (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /api/v1/materials/lots/{lot_id}
+ * One material lot opened: full detail plus `editable_fields` and
+ * `required_attributes` so the edit form needs no second call.
+ * Who: stock readers (DM, MD, Cutting, Lining).
+ */
+export async function apiGetMaterialLot(token, lotId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/lots/${encodeURIComponent(lotId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialApiError(res, `Failed to fetch material lot (${res.status})`);
+  return res.json();
+}
+
+/**
+ * PATCH /api/v1/materials/lots/{lot_id}
+ * Edit a lot's identity fields. Only article/colour/thickness/size/supplier_id
+ * are patchable — category/subtype/uom decide the lot's required-field set
+ * and are NOT patchable (retire + recreate instead). 409 if the new spec
+ * collides with another lot. Who: DM, MD, Cutting, Lining.
+ * @param {{ article?, colour?, thickness?, size?, supplier_id? }} payload
+ */
+export async function apiPatchMaterialLot(token, lotId, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/lots/${encodeURIComponent(lotId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await materialApiError(res, `Failed to update material lot (${res.status})`);
+  return res.json();
+}
+
+/**
+ * PATCH /api/v1/materials/lots/{lot_id}/adjust
+ * Adjust on_hand by a signed delta — on_hand is a ledger, not a field, so
+ * this is the ONLY way to change it (never PATCH it directly). Records an
+ * audited movement. 409 below reserved, 422 below zero. Who: DM, MD.
+ * @param {{ delta: number, reason: string }} payload reason must be 3..300 chars
+ */
+export async function apiAdjustMaterialLot(token, lotId, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/lots/${encodeURIComponent(lotId)}/adjust`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await materialApiError(res, `Failed to adjust material lot (${res.status})`);
+  return res.json();
+}
+
+/**
+ * DELETE /api/v1/materials/lots/{lot_id}
+ * Retires the lot — never a hard delete. Lot row and cut-event history
+ * survive; the barcode goes RETIRED (old label scans 410 Gone). 409 while
+ * stock is reserved. Who: DM, MD.
+ * @returns {{ lot_id, is_active, barcode_retired, on_hand, history_preserved, message }}
+ */
+export async function apiRetireMaterialLot(token, lotId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/lots/${encodeURIComponent(lotId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialApiError(res, `Failed to retire material lot (${res.status})`);
   return res.json();
 }
 
 /**
  * 7. POST /api/v1/materials/receive
- * Record receiving approved/rejected quantities
+ * Approved qty adds to on_hand; rejected qty is logged only (supplier
+ * quality history, never touches stock). If supplier_order_id is given and
+ * the delivery doesn't match the order spec, this 409s with
+ * approve_mismatch:false — re-POST the identical body with
+ * approve_mismatch:true to accept as a substitution. On a substitution the
+ * response's lot_id is a NEW lot, not the one sent — always re-read from
+ * the returned lot_id.
+ * @param {{ lot_id, supplier_order_id?, approved_qty, rejected_qty?, reserve_for_required?, approve_mismatch? }} receiveData
  */
 export async function apiReceiveMaterials(token, receiveData) {
   const res = await fetch(`${API_BASE_URL}/api/v1/materials/receive`, {
@@ -1018,7 +1437,7 @@ export async function apiReceiveMaterials(token, receiveData) {
     },
     body: JSON.stringify(receiveData),
   });
-  if (!res.ok) throw new Error(`Failed to receive material lot (${res.status})`);
+  if (!res.ok) throw await materialApiError(res, `Failed to receive material lot (${res.status})`);
   return res.json();
 }
 
@@ -1035,13 +1454,16 @@ export async function apiCreateSupplierOrder(token, orderData) {
     },
     body: JSON.stringify(orderData),
   });
-  if (!res.ok) throw new Error(`Failed to create supplier order (${res.status})`);
+  if (!res.ok) throw await materialApiError(res, `Failed to create supplier order (${res.status})`);
   return res.json();
 }
 
 /**
  * 9. PATCH /api/v1/suppliers/orders/{id}
- * Flip status ORDERED -> ARRIVED
+ * Flip status ORDERED -> ARRIVED. Idempotent — calling it on an already-
+ * arrived order is a safe no-op. Note POST /materials/receive with a
+ * supplier_order_id also flips this, so this call is mainly for "goods are
+ * at the gate but nobody has counted them yet".
  */
 export async function apiPatchSupplierOrder(token, orderId, status = 'ARRIVED') {
   const res = await fetch(`${API_BASE_URL}/api/v1/suppliers/orders/${encodeURIComponent(orderId)}`, {
@@ -1052,7 +1474,42 @@ export async function apiPatchSupplierOrder(token, orderId, status = 'ARRIVED') 
     },
     body: JSON.stringify({ status }),
   });
-  if (!res.ok) throw new Error(`Failed to update supplier order status (${res.status})`);
+  if (!res.ok) throw await materialApiError(res, `Failed to update supplier order status (${res.status})`);
+  return res.json();
+}
+
+/**
+ * PATCH /api/v1/suppliers/orders/{id}/spec
+ * Correct an order while it's still ORDERED — 409 once ARRIVED (hide the
+ * Edit control on an arrived row). Send only what changed.
+ * @param {{ article?, colour?, thickness?, dcm?, qty? }} payload
+ */
+export async function apiPatchSupplierOrderSpec(token, orderId, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/suppliers/orders/${encodeURIComponent(orderId)}/spec`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await materialApiError(res, `Failed to update supplier order spec (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /api/v1/barcode/materials
+ * The material-barcode reprint list. Who: MD, DM, HR, Supervisor,
+ * Cutting/Lining/Stitching manager. Pass active_only=false to include
+ * retired lots (render status:"retired" rows greyed, non-printable).
+ * @param {{ category?, active_only? }} params
+ */
+export async function apiGetBarcodeMaterials(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.category) qs.append('category', params.category);
+  qs.append('active_only', params.active_only === undefined ? true : params.active_only);
+  const res = await fetch(`${API_BASE_URL}/api/v1/barcode/materials?${qs.toString()}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialApiError(res, `Failed to fetch material barcodes (${res.status})`);
   return res.json();
 }
 
@@ -1386,6 +1843,10 @@ export async function apiListDrawers(token, params = {}) {
   if (params.offset) qs.append('offset', params.offset);
   if (params.has_piece !== undefined) qs.append('has_piece', params.has_piece);
   if (params.sendable !== undefined) qs.append('sendable', params.sendable);
+  // Item 6 (17-Aug delta): case-insensitive contains search — "42" and
+  // "drw-004" both match. Lets the search box hit the backend directly
+  // instead of only filtering whatever page is already loaded.
+  if (params.code) qs.append('code', params.code);
 
   const res = await fetch(`${API_BASE_URL}/api/v1/drawers?${qs.toString()}`, {
     method: 'GET',
@@ -1421,6 +1882,32 @@ export async function apiGetDrawer(token, drawerId) {
       // no JSON body
     }
     const err = new Error(detail || `Failed to fetch drawer (${res.status})`);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/drawers/by-code/{code}
+ * Same body as GET /drawers/{drawer_id}, but keyed by the human drawer code
+ * (e.g. "DRW-0014") instead of the UUID — so a searched row opens exactly
+ * like a clicked one. 404 if no such code.
+ */
+export async function apiGetDrawerByCode(token, code) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/by-code/${encodeURIComponent(code)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    let detail;
+    try {
+      const errObj = await res.json();
+      detail = errObj.detail || errObj.message;
+    } catch {
+      // no JSON body
+    }
+    const err = new Error(detail || `Failed to fetch drawer by code (${res.status})`);
     err.status = res.status;
     throw err;
   }

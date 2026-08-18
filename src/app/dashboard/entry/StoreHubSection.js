@@ -13,6 +13,81 @@ import {
 import { Lock, CheckCircle2, XCircle, Barcode, Check, Layers, PackageCheck, ChevronRight, ChevronDown, Camera, Send, RefreshCw, X, Loader2 } from 'lucide-react';
 import { CameraScannerModal } from './shared';
 
+// Shared by the list endpoint (GET /drawers, item shape) and the single-drawer
+// endpoints (GET /drawers/{id}, GET /drawers/by-code/{code} — full detail
+// shape, e.g. a nested `piece` object) — the fallback chains below already
+// cover both, so one mapper keeps every place that loads a drawer row in sync.
+function mapDrawerRecord(d) {
+  const leatherIn = !!d.leather_in;
+  const liningIn = !!d.lining_in;
+  let type;
+  if (d.leather_in !== undefined || d.lining_in !== undefined) {
+    type = (leatherIn && liningIn) ? 'Both' : leatherIn ? 'Leather' : liningIn ? 'Lining' : 'Empty';
+  } else {
+    const holdingNorm = (d.holding || '').toLowerCase();
+    const stateNorm = (d.state || '').toLowerCase();
+    type = holdingNorm.includes('both') ? 'Both'
+      : holdingNorm.includes('leather') ? 'Leather'
+        : holdingNorm.includes('lining') ? 'Lining'
+          : stateNorm.includes('both') ? 'Both'
+            : stateNorm.includes('leather') ? 'Leather'
+              : stateNorm.includes('lining') ? 'Lining'
+                : 'Empty';
+  }
+
+  return {
+    id: d.code || d.barcode || `DRW-${String(d.seq).padStart(4, '0')}`,
+    drawer_id: d.drawer_id || d.id, // Keep the UUID for API calls
+    type,
+    holding: d.holding || 'EMPTY',
+    status: d.state || 'Free',
+    client: d.caption || 'Store Rack',
+    style: d.code || '-',
+    pieces: d.seq || 0,
+    // Expanded Piece & Stage Breakdown Details
+    order_number: d.order_number || d.order_id || 'PO-1001',
+    style_name: d.style_name || d.style || d.code || 'ADELE-38',
+    article: d.article || d.material || 'LEATHER',
+    serial: d.serial || d.serial_no || '001',
+    colour: d.colour || d.color || 'BLACK',
+    size: d.size || '38',
+    display_label: d.display_label || d.label || d.stage_label || 'Store Inventory',
+    current_stage: d.current_stage || d.stage || 'Store Hub',
+    drawer_code: d.code || d.drawer_code || `DRW-${String(d.seq || 1).padStart(4, '0')}`,
+    // Bug #13: Hold Leather / Hold Lining breakdown — the API returns
+    // these as real booleans (what's physically inside right now).
+    leather_in: leatherIn,
+    lining_in: liningIn,
+    can_send: d.can_send,
+    // Bug #17: whichever piece this drawer already holds — lets the
+    // Store Verification Gateway show "the other side" as a reference
+    // the moment either the drawer OR the piece has been scanned, so
+    // the operator can eyeball-verify before/while scanning the pair.
+    piece_code: d.piece_code || d.piece?.code || null,
+    // Bug #19/#20: per-part detail, when the backend exposes it —
+    // falls back to the shared fields above so the expanded card still
+    // renders sensibly even before the backend splits these out.
+    leather_piece_code: d.leather_piece_code || d.leather?.piece_code || d.piece_code || d.piece?.code || null,
+    leather_article: d.leather_article || d.leather?.article || d.article || null,
+    leather_colour: d.leather_colour || d.leather_color || d.leather?.colour || d.leather?.color || d.colour || d.color || null,
+    lining_piece_code: d.lining_piece_code || d.lining?.piece_code || null,
+    lining_article: d.lining_article || d.lining?.article || null,
+    lining_colour: d.lining_colour || d.lining_color || d.lining?.colour || d.lining?.color || null,
+  };
+}
+
+// GET /drawers/by-code/{code} (Item 6, 17-Aug delta) 404s on this backend —
+// confirmed not deployed yet. Falls back to the endpoint that IS live:
+// GET /drawers with a large limit, searched client-side by code. Swap this
+// back to apiGetDrawerByCode once the backend team confirms it's deployed.
+async function findDrawerByCodeFallback(token, code) {
+  const res = await apiListDrawers(token, { limit: 500 });
+  const items = res?.items || (Array.isArray(res) ? res : []);
+  const target = String(code || '').toUpperCase();
+  const item = items.find((d) => (d.code || d.barcode || '').toUpperCase() === target);
+  return item ? mapDrawerRecord(item) : null;
+}
+
 // Extracted from src/app/dashboard/entry/page.js (Store Management Hub door).
 // Props come from page.js's shared state: toast setters, recordStageCompletion,
 // storeSendedSkus/storeReceiveStatus (also read by Manual Door), the shared
@@ -73,74 +148,18 @@ export default function StoreHubSection({
     if (node) observerRef.current.observe(node);
   }, []);
 
+  // Item 6 (17-Aug delta): production view only needs the 10 latest drawers,
+  // not the whole pool — the backend now supports a real `limit`, so a huge
+  // default fetch is no longer the only way to have something to show.
   const fetchLiveDrawers = useCallback(async () => {
     if (!token) return;
     setStoreLoading(true);
     try {
-      const res = await apiListDrawers(token);
-      console.log('[Store Hub] GET /api/v1/drawers response:', res);
+      const res = await apiListDrawers(token, { limit: 10 });
+      console.log('[Store Hub] GET /api/v1/drawers?limit=10 response:', res);
       const drawerItems = res?.items || (Array.isArray(res) ? res : []);
       if (Array.isArray(drawerItems)) {
-        const mapped = drawerItems.map(d => {
-     
-          const leatherIn = !!d.leather_in;
-          const liningIn = !!d.lining_in;
-          let type;
-          if (d.leather_in !== undefined || d.lining_in !== undefined) {
-            type = (leatherIn && liningIn) ? 'Both' : leatherIn ? 'Leather' : liningIn ? 'Lining' : 'Empty';
-          } else {
-            const holdingNorm = (d.holding || '').toLowerCase();
-            const stateNorm = (d.state || '').toLowerCase();
-            type = holdingNorm.includes('both') ? 'Both'
-              : holdingNorm.includes('leather') ? 'Leather'
-                : holdingNorm.includes('lining') ? 'Lining'
-                  : stateNorm.includes('both') ? 'Both'
-                    : stateNorm.includes('leather') ? 'Leather'
-                      : stateNorm.includes('lining') ? 'Lining'
-                        : 'Empty';
-          }
-
-          return {
-            id: d.code || d.barcode || `DRW-${String(d.seq).padStart(4, '0')}`,
-            drawer_id: d.drawer_id || d.id, // Keep the UUID for API calls
-            type,
-            holding: d.holding || 'EMPTY',
-            status: d.state || 'Free',
-            client: d.caption || 'Store Rack',
-            style: d.code || '-',
-            pieces: d.seq || 0,
-            // Expanded Piece & Stage Breakdown Details
-            order_number: d.order_number || d.order_id || 'PO-1001',
-            style_name: d.style_name || d.style || d.code || 'ADELE-38',
-            article: d.article || d.material || 'LEATHER',
-            serial: d.serial || d.serial_no || '001',
-            colour: d.colour || d.color || 'BLACK',
-            size: d.size || '38',
-            display_label: d.display_label || d.label || d.stage_label || 'Store Inventory',
-            current_stage: d.current_stage || d.stage || 'Store Hub',
-            drawer_code: d.code || d.drawer_code || `DRW-${String(d.seq || 1).padStart(4, '0')}`,
-            // Bug #13: Hold Leather / Hold Lining breakdown — the API returns
-            // these as real booleans (what's physically inside right now).
-            leather_in: leatherIn,
-            lining_in: liningIn,
-            can_send: d.can_send,
-            // Bug #17: whichever piece this drawer already holds — lets the
-            // Store Verification Gateway show "the other side" as a reference
-            // the moment either the drawer OR the piece has been scanned, so
-            // the operator can eyeball-verify before/while scanning the pair.
-            piece_code: d.piece_code || d.piece?.code || null,
-            // Bug #19/#20: per-part detail, when the backend exposes it —
-            // falls back to the shared fields above so the expanded card still
-            // renders sensibly even before the backend splits these out.
-            leather_piece_code: d.leather_piece_code || d.leather?.piece_code || d.piece_code || d.piece?.code || null,
-            leather_article: d.leather_article || d.leather?.article || d.article || null,
-            leather_colour: d.leather_colour || d.leather_color || d.leather?.colour || d.leather?.color || d.colour || d.color || null,
-            lining_piece_code: d.lining_piece_code || d.lining?.piece_code || null,
-            lining_article: d.lining_article || d.lining?.article || null,
-            lining_colour: d.lining_colour || d.lining_color || d.lining?.colour || d.lining?.color || null,
-          };
-        });
-        setStoreDrawers(mapped);
+        setStoreDrawers(drawerItems.map(mapDrawerRecord));
       }
     } catch (err) {
       console.warn('[Store Hub] GET /api/v1/drawers:', err);
@@ -167,16 +186,11 @@ export default function StoreHubSection({
       (d.drawer_id === code)
     );
 
-    if (!matchingDrawer && code.startsWith('DRW-')) {
-      const seqMatch = code.match(/DRW-(\d+)/i);
-      if (seqMatch) {
-        const seqNum = parseInt(seqMatch[1], 10);
-        try {
-          const fetchRes = await apiListDrawers(token, { seq_from: seqNum, seq_to: seqNum, limit: 1 });
-          if (fetchRes?.items?.length > 0) matchingDrawer = fetchRes.items[0];
-        } catch {
-          // Backend lookup failed — fall through, caller handles a null return.
-        }
+    if (!matchingDrawer) {
+      try {
+        matchingDrawer = await findDrawerByCodeFallback(token, code);
+      } catch {
+        // Backend lookup failed — fall through, caller handles a null return.
       }
     }
 
@@ -205,30 +219,19 @@ export default function StoreHubSection({
         return;
       }
 
-      // The default Drawers list is capped (500) — fetch this one directly
-      // if it isn't already in the loaded page, so it has something to render.
+      // Item 6 (17-Aug delta): the default Drawers list is now only the
+      // latest 10 — fetch this one directly by code if it isn't already in
+      // that page, so it has something to render.
       let target = storeDrawers.find(d => d.id.toUpperCase() === drawerCode.toUpperCase());
       if (!target) {
-        const seqMatch = drawerCode.match(/DRW-(\d+)/i);
-        if (seqMatch) {
-          try {
-            const fetchRes = await apiListDrawers(token, { seq_from: parseInt(seqMatch[1], 10), seq_to: parseInt(seqMatch[1], 10), limit: 1 });
-            const item = fetchRes?.items?.[0];
-            if (item) {
-              target = {
-                id: item.code || item.barcode || drawerCode,
-                drawer_id: item.drawer_id || item.id,
-                holding: item.holding || 'EMPTY',
-                status: item.state || 'Free',
-                style: item.code || '-',
-                drawer_code: item.code || drawerCode,
-              };
-              setStoreDrawers(prev => prev.some(d => d.id === target.id) ? prev : [target, ...prev]);
-            }
-          } catch {
-            // Direct fetch failed — the search/highlight below still runs on
-            // whatever's already loaded, just without a forced-in row.
+        try {
+          target = await findDrawerByCodeFallback(token, drawerCode);
+          if (target) {
+            setStoreDrawers(prev => prev.some(d => d.id === target.id) ? prev : [target, ...prev]);
           }
+        } catch {
+          // Direct fetch failed — the search/highlight below still runs on
+          // whatever's already loaded, just without a forced-in row.
         }
       }
 
@@ -459,20 +462,13 @@ export default function StoreHubSection({
           (d.drawer_id === drawerCode)
         );
 
-        // If not found in the initial 500 local drawers, ask the backend directly!
+        // Not in the loaded latest-10 — search the full live list instead
+        // (GET /drawers/by-code/{code} 404s, not deployed yet).
         if (!matchingDrawer && drawerCode.startsWith('DRW-')) {
-          const seqMatch = drawerCode.match(/DRW-(\d+)/i);
-          if (seqMatch) {
-            const seqNum = parseInt(seqMatch[1], 10);
-            try {
-              const fetchRes = await apiListDrawers(token, { seq_from: seqNum, seq_to: seqNum, limit: 1 });
-              if (fetchRes?.items && fetchRes.items.length > 0) {
-                matchingDrawer = fetchRes.items[0];
-                // Note: backend apiListDrawers returns drawer_id natively in the items array
-              }
-            } catch (e) {
-              console.error("Failed to query specific drawer from backend", e);
-            }
+          try {
+            matchingDrawer = await findDrawerByCodeFallback(token, drawerCode);
+          } catch (e) {
+            console.error("Failed to query specific drawer from backend", e);
           }
         }
 

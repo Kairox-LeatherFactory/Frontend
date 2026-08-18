@@ -32,6 +32,7 @@ import {
   Shirt,
   Boxes,
   ChevronDown,
+  Package,
 } from 'lucide-react';
 
 // Raw hide → cut pattern pieces → stitched seam → finished jacket
@@ -122,6 +123,7 @@ const NAV_ICONS = {
   '/dashboard/progress': BarChart3,
   '/dashboard/orders': TreePine,
   '/dashboard/wages': Wallet,
+  '/dashboard/materials': Package,
   '/dashboard/simulator': Gamepad2,
   '/dashboard/tracer': ScanSearch,
   '/dashboard/chat': BotMessageSquare,
@@ -292,6 +294,10 @@ export default function DashboardLayout({ children }) {
       {
         name: 'Payroll & Rates',
         href: '/dashboard/wages',
+      },
+      {
+        name: 'Material Stock',
+        href: '/dashboard/materials',
       },
       {
         name: 'Attendance',
