@@ -1,5 +1,5 @@
 // API service for Kairox Leather Platform backend
-const API_BASE_URL = '';
+const NEXT_PUBLIC_API_BASE_URL = '';
 
 /**
  * Login with username and password
