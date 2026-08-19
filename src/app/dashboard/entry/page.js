@@ -4,32 +4,7 @@ import { createPortal } from 'react-dom';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiImportPreview, apiImportCommit as realApiImportCommit, apiGetBarcodeOrders } from '@/lib/api';
-
-/**
- * TEMPORARY MOCK — real backend `POST /imports/commit` still mints
- * barcodes + drawers immediately on commit (the OLD one-step behavior);
- * the new two-phase flow (`release_required: true`, DRAFT-only, no mint)
- * from the 17-Aug change set isn't deployed yet. Testing against the real
- * endpoint burns real permanent barcodes/drawers for every test upload —
- * confirmed live (one test commit minted 1425 real drawers). Mock the
- * commit response here so the redirect-to-Breakdown-Review flow can be
- * tested without touching the real backend. Delete this block (and
- * restore the plain `apiImportCommit` import above) once the two-phase
- * endpoint is actually live.
- */
-const MOCK_IMPORT_COMMIT = false;
-async function mockApiImportCommit(token, file, orderNumber) {
-  await new Promise((r) => setTimeout(r, 400)); // feel like a real request
-  return {
-    release_required: true,
-    pieces_minted: 0,
-    order_number: orderNumber,
-    message: `Parsed and staged as DRAFT — nothing minted yet. Review and release from the Breakdown screen.`,
-  };
-}
-const apiImportCommit = MOCK_IMPORT_COMMIT ? mockApiImportCommit : realApiImportCommit;
-/** END TEMPORARY MOCK */
+import { apiImportPreview, apiImportCommit, apiGetBarcodeOrders } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Users, FileSpreadsheet, X, Upload, Barcode, Loader2, Store, Camera, AlertTriangle } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useRoleAccess, CameraScannerModal } from './shared';
