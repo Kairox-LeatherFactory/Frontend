@@ -1,7 +1,7 @@
 'use client';
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import { apiImportPreview, apiImportCommit as realApiImportCommit, apiGetBarcodeOrders } from '@/lib/api';
@@ -140,6 +140,7 @@ function DynamicDataViewer({ data }) {
 
 export default function ProductionLogEntry() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { user, token } = useAuth();
   const { workers } = useData();
   const { isReadOnly, isFullAccess, isStoreAccess, allowedOperations, isStageAllowedForRole } = useRoleAccess();
@@ -160,7 +161,13 @@ export default function ProductionLogEntry() {
   const [breakdownOrders, setBreakdownOrders] = useState([]);
   const [breakdownOrdersLoading, setBreakdownOrdersLoading] = useState(false);
   const [breakdownOrderSearch, setBreakdownOrderSearch] = useState('');
-  const [selectedBreakdownOrder, setSelectedBreakdownOrder] = useState(null); // order_number | null — set = show the detail/release screen inline, unset = show the list
+  // Team request: a commit's landing on this order's detail screen must
+  // survive a refresh — read the order back out of the URL on load, not
+  // just the door, so a reload doesn't dump the operator back on the list
+  // (or the wrong tab entirely).
+  const [selectedBreakdownOrder, setSelectedBreakdownOrder] = useState(
+    searchParams.get('door') === 'breakdown' ? (searchParams.get('order') || null) : null
+  ); // order_number | null — set = show the detail/release screen inline, unset = show the list
   const [barcodeWorkerInput, setBarcodeWorkerInput] = useState('');
   const [barcodeWorker, setBarcodeWorker] = useState(null); // { id, name, designation, barcode }
   const [barcodeWorkerChecking, setBarcodeWorkerChecking] = useState(false);
@@ -187,6 +194,14 @@ export default function ProductionLogEntry() {
   const [commitLoading, setCommitLoading] = useState(false);
   const [commitSuccess, setCommitSuccess] = useState('');
   const [uploadError, setUploadError] = useState('');
+  // Team request: show the same tabular summary the Preview step showed —
+  // confirmation once Commit has actually saved it, before moving on to
+  // Breakdown Review — real `written` result from the commit response
+  // (order_number, styles, skus_created/updated, pieces_minted etc.), not
+  // a re-show of the pre-commit preview.
+  const [showCommitConfirmation, setShowCommitConfirmation] = useState(false);
+  const [commitResult, setCommitResult] = useState(null);
+  const [pendingBreakdownOrder, setPendingBreakdownOrder] = useState(null);
   const [showOrderNumModal, setShowOrderNumModal] = useState(false);
   const [uploadOrderNumber, setUploadOrderNumber] = useState('');
   const [uploadOrderNumberError, setUploadOrderNumberError] = useState('');
@@ -310,12 +325,12 @@ export default function ProductionLogEntry() {
       if (result?.written?.release_required ?? result?.release_required) {
         const orderNumber = uploadOrderNumber;
         setUploadOrderNumber('');
-        // Team request: land directly on the Breakdown Review tab's
-        // detail/release screen for the order just uploaded — inline,
-        // same page, no navigation. "Back" from there returns to this
-        // tab's order list, not a separate route.
-        setActiveDoor('breakdown');
-        setSelectedBreakdownOrder(orderNumber);
+        // Team request: confirm what was actually written by Commit —
+        // before moving on to Breakdown Review, instead of silently
+        // jumping straight there.
+        setCommitResult(result?.written ?? result);
+        setPendingBreakdownOrder(orderNumber);
+        setShowCommitConfirmation(true);
         return;
       }
       setCommitSuccess('File imported and database updated successfully!');
@@ -341,15 +356,35 @@ export default function ProductionLogEntry() {
     setMounted(true);
   }, []);
 
+  // Keeps the URL in sync with the Breakdown tab/order so a refresh restores
+  // the exact same screen instead of dumping the operator back to Manual
+  // Logger. replace (not push) — this mirrors state, it isn't a new page.
   useEffect(() => {
-    if (activeDoor !== 'breakdown' || breakdownOrders.length > 0 || !token) return;
+    if (activeDoor !== 'breakdown') {
+      if (searchParams.get('door') === 'breakdown') router.replace('/dashboard/entry', { scroll: false });
+      return;
+    }
+    const params = new URLSearchParams();
+    params.set('door', 'breakdown');
+    if (selectedBreakdownOrder) params.set('order', selectedBreakdownOrder);
+    router.replace(`/dashboard/entry?${params.toString()}`, { scroll: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeDoor, selectedBreakdownOrder, router]);
+
+  // Refetches every time the list view is actually landed on — first visit,
+  // coming back via "Back to Breakdown Review", or after a fresh commit
+  // redirects here — instead of once ever. A stale one-time fetch was
+  // hiding orders committed after that first load (they'd never appear
+  // until a full page reload).
+  useEffect(() => {
+    if (activeDoor !== 'breakdown' || selectedBreakdownOrder || !token) return;
     setBreakdownOrdersLoading(true);
     apiGetBarcodeOrders(token)
       .then((data) => setBreakdownOrders(Array.isArray(data) ? data : (data?.items || [])))
       .catch(() => setBreakdownOrders([]))
       .finally(() => setBreakdownOrdersLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeDoor, token]);
+  }, [activeDoor, selectedBreakdownOrder, token]);
 
   useEffect(() => {
     if (successMsg) {
@@ -396,6 +431,7 @@ export default function ProductionLogEntry() {
       </div>
     );
   }
+
   return (
     <div className="w-full min-w-0 space-y-8 animate-fade-in pb-12">
 
@@ -732,6 +768,88 @@ export default function ProductionLogEntry() {
                 ) : (
                   <><Upload className="w-4 h-4" /> Confirm &amp; Import to Database</>
                 )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* COMMIT CONFIRMATION MODAL — the real `written` result from the
+          commit response (what was actually saved), not a re-show of the
+          pre-commit preview. */}
+      {mounted && showCommitConfirmation && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-2xl max-h-[90vh] flex flex-col relative overflow-hidden">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <div>
+                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  Committed to Database
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  File: {fileName} — saved as DRAFT, styles now awaiting release.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
+              {commitResult ? (
+                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex items-center justify-between border-b pb-3">
+                    <span className="text-xs font-black uppercase text-emerald-700 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
+                      Order {commitResult.order_number}
+                    </span>
+                    <span className="text-xs font-black uppercase px-3 py-1 rounded-lg border" style={commitResult.release_required
+                      ? { color: '#a86022', background: 'rgba(200,131,74,0.08)', borderColor: 'rgba(200,131,74,0.25)' }
+                      : { color: '#047857', background: '#ecfdf5', borderColor: '#a7f3d0' }}>
+                      {commitResult.release_required ? 'Release Required' : 'No Release Needed'}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center">
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Styles</p>
+                      <p className="text-lg font-black text-slate-800">{commitResult.styles ?? 0}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">SKUs Created</p>
+                      <p className="text-lg font-black text-emerald-600">{commitResult.skus_created ?? 0}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">SKUs Updated</p>
+                      <p className="text-lg font-black text-amber-600">{commitResult.skus_updated ?? 0}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Pieces Minted</p>
+                      <p className="text-lg font-black text-slate-800">{commitResult.pieces_minted ?? 0}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Operations</p>
+                      <p className="text-lg font-black text-slate-800">{commitResult.operations ?? 0}</p>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Rates</p>
+                      <p className="text-lg font-black text-slate-800">{commitResult.rates ?? 0}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-slate-500 font-bold">No summary available.</div>
+              )}
+            </div>
+
+            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
+              <button
+                onClick={() => {
+                  setShowCommitConfirmation(false);
+                  setActiveDoor('breakdown');
+                  setSelectedBreakdownOrder(pendingBreakdownOrder);
+                  setPendingBreakdownOrder(null);
+                  setCommitResult(null);
+                }}
+                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+              >
+                Continue to Breakdown Review
               </button>
             </div>
           </div>

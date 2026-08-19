@@ -477,14 +477,16 @@ export async function apiCancelBreakdownStyles(token, orderNumber, styleIds) {
  * @param {string[]} styleIds
  * @param {boolean} growDrawerPool default false — opt-in only.
  */
-export async function apiReleaseBreakdownStyles(token, orderNumber, styleIds, growDrawerPool = false) {
+export async function apiReleaseBreakdownStyles(token, orderNumber, styleIds, growDrawerPool = false, needsLining) {
+  const payload = { style_ids: styleIds, grow_drawer_pool: growDrawerPool };
+  if (needsLining !== undefined) payload.needs_lining = needsLining;
   const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}/release`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ style_ids: styleIds, grow_drawer_pool: growDrawerPool }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to release styles');
