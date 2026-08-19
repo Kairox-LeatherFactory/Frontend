@@ -1273,6 +1273,10 @@ function LedgerView({ token }) {
   const [runPieces, setRunPieces] = useState(null);
   const [detailTab, setDetailTab] = useState('style'); // style | stage | employee | pieces
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailSearch, setDetailSearch] = useState(''); // filters whichever tab is active; cleared on tab switch
+  // Per Piece tab only: column-wise filters, on top of the free-text search above.
+  const [pieceFilterStage, setPieceFilterStage] = useState('');
+  const [pieceFilterEmployee, setPieceFilterEmployee] = useState('');
 
   const loadLedger = () => {
     setLoading(true);
@@ -1318,6 +1322,9 @@ function LedgerView({ token }) {
   const handleOpenRun = async (run) => {
     setSelectedRun(run);
     setDetailTab('style');
+    setDetailSearch('');
+    setPieceFilterStage('');
+    setPieceFilterEmployee('');
     setDetailsLoading(true);
     setRunBreakdown(null);
     setRunPieces(null);
@@ -1380,6 +1387,47 @@ function LedgerView({ token }) {
       </div>
     );
   }
+
+  // Team request: a search box per detail tab, filtering that tab's rows,
+  // plus a "download what's filtered" button next to it — separate from
+  // the existing "download everything" workbook button above.
+  const searchNorm = detailSearch.trim().toLowerCase();
+  const filteredByStyle = (runBreakdown?.by_style || []).filter((s) => !searchNorm || `${s.style_name || ''} ${s.style_code || ''}`.toLowerCase().includes(searchNorm));
+  const filteredByStage = (runBreakdown?.by_stage || []).filter((s) => !searchNorm || `${s.operation_label || ''} ${s.operation_code || ''}`.toLowerCase().includes(searchNorm));
+  const filteredByEmployee = (runBreakdown?.by_employee || []).filter((e) => !searchNorm || `${e.employee_name || ''} ${e.designation || ''}`.toLowerCase().includes(searchNorm));
+  const pieceStageOptions = Array.from(new Set((runPieces?.items || []).map((p) => p.operation_label || p.operation_code).filter(Boolean)));
+  const pieceEmployeeOptions = Array.from(new Set((runPieces?.items || []).map((p) => p.employee_name).filter(Boolean)));
+  const filteredPieces = (runPieces?.items || []).filter((p) =>
+    (!searchNorm || `${p.piece_code || ''} ${p.employee_name || ''} ${p.employee_barcode || ''} ${p.operation_label || ''}`.toLowerCase().includes(searchNorm)) &&
+    (!pieceFilterStage || (p.operation_label || p.operation_code) === pieceFilterStage) &&
+    (!pieceFilterEmployee || p.employee_name === pieceFilterEmployee)
+  );
+
+  const handleDownloadFiltered = () => {
+    if (!selectedRun) return;
+    const fmtAmount = (v) => (v === null || v === undefined ? 'Not priced' : v);
+    let rows = []; let sheetName = '';
+    if (detailTab === 'style') {
+      sheetName = 'Per Style';
+      rows = filteredByStyle.map((s) => ({ Style: s.style_name || s.style_code, 'Style Code': s.style_code, Pieces: s.pieces ?? 0, Amount: fmtAmount(s.amount) }));
+    } else if (detailTab === 'stage') {
+      sheetName = 'Per Stage';
+      rows = filteredByStage.map((s) => ({ Stage: s.operation_label || s.operation_code, Pieces: s.pieces ?? 0, Amount: fmtAmount(s.amount) }));
+    } else if (detailTab === 'employee') {
+      sheetName = 'Per Employee';
+      rows = filteredByEmployee.map((e) => ({ Employee: e.employee_name || 'Worker', Designation: e.designation || '', Pieces: e.pieces ?? 0, Amount: fmtAmount(e.amount) }));
+    } else {
+      sheetName = 'Per Piece';
+      rows = filteredPieces.map((p) => ({
+        'Piece Code': p.piece_code, Stage: p.operation_label || p.operation_code,
+        Employee: p.employee_name || '', 'Employee Barcode': p.employee_barcode || '', Amount: fmtAmount(p.amount),
+      }));
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ Info: 'No matching rows' }]), sheetName);
+    const scopeName = (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
+    XLSX.writeFile(wb, `Payroll_${scopeName}_${sheetName.replace(/\s+/g, '_')}_filtered.xlsx`);
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -1508,17 +1556,36 @@ function LedgerView({ token }) {
                 </div>
               </div>
 
-              <div className="flex gap-1 p-1 rounded-full bg-slate-100 w-fit mt-4">
-                {[
-                  { id: 'style', label: 'Per Style' },
-                  { id: 'stage', label: 'Per Stage' },
-                  { id: 'employee', label: 'Per Employee' },
-                  { id: 'pieces', label: 'Per Piece' },
-                ].map((t) => (
-                  <button key={t.id} onClick={() => setDetailTab(t.id)} className={`px-4 py-2 rounded-full font-bold text-[11px] transition-all ${detailTab === t.id ? 'bg-white shadow-sm' : 'text-slate-500'}`} style={detailTab === t.id ? { color: '#c8834a' } : {}}>
-                    {t.label}
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+                <div className="flex gap-1 p-1 rounded-full bg-slate-100 w-fit">
+                  {[
+                    { id: 'style', label: 'Per Style' },
+                    { id: 'stage', label: 'Per Stage' },
+                    { id: 'employee', label: 'Per Employee' },
+                    { id: 'pieces', label: 'Per Piece' },
+                  ].map((t) => (
+                    <button key={t.id} onClick={() => { setDetailTab(t.id); setDetailSearch(''); setPieceFilterStage(''); setPieceFilterEmployee(''); }} className={`px-4 py-2 rounded-full font-bold text-[11px] transition-all ${detailTab === t.id ? 'bg-white shadow-sm' : 'text-slate-500'}`} style={detailTab === t.id ? { color: '#c8834a' } : {}}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={detailSearch}
+                      onChange={(e) => setDetailSearch(e.target.value)}
+                      placeholder={detailTab === 'pieces' ? 'Search piece code, employee…' : 'Search this tab…'}
+                      className="h-9 pl-8 pr-3 w-48 sm:w-64 bg-slate-50 border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]"
+                      style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                    />
+                  </div>
+                  <button onClick={handleDownloadFiltered} disabled={detailsLoading} title="Download only what's shown in this tab right now"
+                    className="h-9 px-3 rounded-full font-black text-[10px] uppercase bg-white border shadow-sm flex items-center gap-1.5 disabled:opacity-40" style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}>
+                    <Download className="w-3.5 h-3.5" /> Download filtered
                   </button>
-                ))}
+                </div>
               </div>
             </div>
 
@@ -1529,7 +1596,7 @@ function LedgerView({ token }) {
                 <>
                   {detailTab === 'style' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {(runBreakdown?.by_style || []).map((s, i) => (
+                      {filteredByStyle.map((s, i) => (
                         <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
                           <div className="flex justify-between items-start">
                             <div>
@@ -1540,7 +1607,7 @@ function LedgerView({ token }) {
                           </div>
                         </div>
                       ))}
-                      {(!runBreakdown?.by_style || runBreakdown.by_style.length === 0) && <p className="text-sm font-bold text-slate-400 col-span-full text-center py-6">No data.</p>}
+                      {filteredByStyle.length === 0 && <p className="text-sm font-bold text-slate-400 col-span-full text-center py-6">{searchNorm ? 'No matches.' : 'No data.'}</p>}
                     </div>
                   )}
 
@@ -1553,14 +1620,14 @@ function LedgerView({ token }) {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {(runBreakdown?.by_stage || []).map((s, i) => (
+                          {filteredByStage.map((s, i) => (
                             <tr key={i}>
                               <td className="py-3 px-4 font-bold text-slate-800">{s.operation_label || s.operation_code}</td>
                               <td className="py-3 px-4 font-bold" style={{ color: '#c8834a' }}>{s.pieces ?? 0}</td>
                               <td className="py-3 px-4 font-black text-emerald-600"><Money value={s.amount} /></td>
                             </tr>
                           ))}
-                          {(!runBreakdown?.by_stage || runBreakdown.by_stage.length === 0) && <tr><td colSpan="3" className="py-8 text-center text-slate-400 font-bold">No data.</td></tr>}
+                          {filteredByStage.length === 0 && <tr><td colSpan="3" className="py-8 text-center text-slate-400 font-bold">{searchNorm ? 'No matches.' : 'No data.'}</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -1568,7 +1635,7 @@ function LedgerView({ token }) {
 
                   {detailTab === 'employee' && (
                     <div className="space-y-3">
-                      {(runBreakdown?.by_employee || []).map((e, i) => (
+                      {filteredByEmployee.map((e, i) => (
                         <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
                           <div>
                             <h5 className="font-black text-base text-slate-800">{e.employee_name || 'Worker'}</h5>
@@ -1577,11 +1644,25 @@ function LedgerView({ token }) {
                           <p className="font-black text-lg text-emerald-600"><Money value={e.amount} /></p>
                         </div>
                       ))}
-                      {(!runBreakdown?.by_employee || runBreakdown.by_employee.length === 0) && <p className="text-sm font-bold text-slate-400 text-center py-6">No data.</p>}
+                      {filteredByEmployee.length === 0 && <p className="text-sm font-bold text-slate-400 text-center py-6">{searchNorm ? 'No matches.' : 'No data.'}</p>}
                     </div>
                   )}
 
                   {detailTab === 'pieces' && (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select value={pieceFilterStage} onChange={(e) => setPieceFilterStage(e.target.value)} className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
+                          <option value="">All Stages</option>
+                          {pieceStageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <select value={pieceFilterEmployee} onChange={(e) => setPieceFilterEmployee(e.target.value)} className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
+                          <option value="">All Employees</option>
+                          {pieceEmployeeOptions.map((e) => <option key={e} value={e}>{e}</option>)}
+                        </select>
+                        {(pieceFilterStage || pieceFilterEmployee) && (
+                          <button onClick={() => { setPieceFilterStage(''); setPieceFilterEmployee(''); }} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Clear column filters</button>
+                        )}
+                      </div>
                     <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
                       <table className="w-full text-left text-xs">
                         <thead>
@@ -1594,7 +1675,7 @@ function LedgerView({ token }) {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {(runPieces?.items || []).map((p, i) => (
+                          {filteredPieces.map((p, i) => (
                             <tr key={i}>
                               <td className="py-2.5 px-3 font-mono font-bold text-slate-700">{p.piece_code}</td>
                               <td className="py-2.5 px-3 font-bold text-slate-500">{p.operation_label || p.operation_code}</td>
@@ -1603,9 +1684,10 @@ function LedgerView({ token }) {
                               <td className="py-2.5 px-3 font-black text-emerald-600"><Money value={p.amount} /></td>
                             </tr>
                           ))}
-                          {(!runPieces?.items || runPieces.items.length === 0) && <tr><td colSpan="5" className="py-8 text-center text-slate-400 font-bold">No piece-level data.</td></tr>}
+                          {filteredPieces.length === 0 && <tr><td colSpan="5" className="py-8 text-center text-slate-400 font-bold">{searchNorm ? 'No matches.' : 'No piece-level data.'}</td></tr>}
                         </tbody>
                       </table>
+                    </div>
                     </div>
                   )}
                 </>
