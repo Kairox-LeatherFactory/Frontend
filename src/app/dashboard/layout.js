@@ -308,24 +308,24 @@ export default function DashboardLayout({ children }) {
         href: '/dashboard/barcode',
       },
 
-      // Procurement Suite
-      {
-        name: 'Procurement',
-        href: '/dashboard/procurement',
-        divider: true,
-      },
-      {
-        name: 'New Intake',
-        href: '/dashboard/procurement/intake',
-      },
-      {
-        name: 'Inventory Check',
-        href: '/dashboard/procurement/inventory',
-      },
-      {
-        name: 'PO Tracker',
-        href: '/dashboard/procurement/po',
-      },
+      // // Procurement Suite
+      // {
+      //   name: 'Procurement',
+      //   href: '/dashboard/procurement',
+      //   divider: true,
+      // },
+      // {
+      //   name: 'New Intake',
+      //   href: '/dashboard/procurement/intake',
+      // },
+      // {
+      //   name: 'Inventory Check',
+      //   href: '/dashboard/procurement/inventory',
+      // },
+      // {
+      //   name: 'PO Tracker',
+      //   href: '/dashboard/procurement/po',
+      // },
 
       // Admin
       {

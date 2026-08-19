@@ -654,6 +654,20 @@ function ComputationView({ token }) {
   const [recomputeConfirmTarget, setRecomputeConfirmTarget] = useState(null); // { runId, isStandalone } | null
   const [showRecomputeAreYouSure, setShowRecomputeAreYouSure] = useState(false); // general "are you sure?" before every recompute attempt
 
+  // "Find a run" picker — team asked why the operator needs to know a raw
+  // run_id at all. They still do (the recompute/close/reopen endpoints are
+  // keyed on it), but this lets them search by order/style/date instead of
+  // copy-pasting one from the Ledger tab; picking a result just fills
+  // runActionId for them.
+  const [showRunFinder, setShowRunFinder] = useState(false);
+  const [finderOrderNumber, setFinderOrderNumber] = useState('');
+  const [finderStyleCode, setFinderStyleCode] = useState('');
+  const [finderDateFrom, setFinderDateFrom] = useState('');
+  const [finderDateTo, setFinderDateTo] = useState('');
+  const [finderResults, setFinderResults] = useState([]);
+  const [finderLoading, setFinderLoading] = useState(false);
+  const [finderSearched, setFinderSearched] = useState(false);
+
   const showToast = (msg, type = 'success') => {
     setToastMsg(msg); setToastType(type);
     setTimeout(() => setToastMsg(null), 3000);
@@ -669,14 +683,14 @@ function ComputationView({ token }) {
   // Load the picker's options lazily, only once the operator actually
   // switches to that scope — no point fetching both lists up front.
   useEffect(() => {
-    if (scopeType === 'order' && orderOptions.length === 0) {
+    if ((scopeType === 'order' || showRunFinder) && orderOptions.length === 0) {
       setOrderOptionsLoading(true);
       apiGetWageOrders(token)
         .then((data) => setOrderOptions(Array.isArray(data) ? data : []))
         .catch(() => setOrderOptions([]))
         .finally(() => setOrderOptionsLoading(false));
     }
-    if (scopeType === 'style' && styleOptions.length === 0) {
+    if ((scopeType === 'style' || showRunFinder) && styleOptions.length === 0) {
       setStyleOptionsLoading(true);
       apiGetWageStyles(token, {})
         .then((data) => setStyleOptions(Array.isArray(data) ? data : []))
@@ -684,7 +698,7 @@ function ComputationView({ token }) {
         .finally(() => setStyleOptionsLoading(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeType, token]);
+  }, [scopeType, showRunFinder, token]);
 
   const loadBreakdown = async (runId) => {
     const data = await apiGetWageRunBreakdown(token, runId);
@@ -789,6 +803,38 @@ function ComputationView({ token }) {
   const handleRecomputeClick = () => {
     if (!runActionId.trim()) { showToast('Enter a run id to recompute.', 'error'); return; }
     setShowRecomputeAreYouSure(true);
+  };
+
+  const handleFindRuns = async () => {
+    setFinderLoading(true);
+    setFinderSearched(true);
+    try {
+      const data = await apiGetWageLedger(token, {
+        orderNumber: finderOrderNumber || undefined,
+        styleCode: finderStyleCode || undefined,
+        dateFrom: finderDateFrom || undefined,
+        dateTo: finderDateTo || undefined,
+        limit: 20,
+      });
+      setFinderResults(Array.isArray(data?.items) ? data.items : []);
+    } catch (e) {
+      showToast(e.message || 'Search failed.', 'error');
+      setFinderResults([]);
+    } finally {
+      setFinderLoading(false);
+    }
+  };
+
+  const handlePickRun = (r) => {
+    setRunActionId(r.run_id);
+    setRun(r);
+    setShowRunFinder(false);
+    setFinderResults([]);
+    setFinderSearched(false);
+    setFinderOrderNumber('');
+    setFinderStyleCode('');
+    setFinderDateFrom('');
+    setFinderDateTo('');
   };
 
   return (
@@ -919,10 +965,102 @@ function ComputationView({ token }) {
           typed run id (auto-filled after a fresh compute, purely as a
           convenience). */}
       <div className="bg-white rounded-3xl shadow-sm p-5 sm:p-6 border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-        <div>
-          <p className="text-xs font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Run Actions</p>
-          <p className="text-[10px] font-bold text-slate-400 mt-0.5">Works on any run by id — paste one from the Ledger, or use the one just computed above.</p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Run Actions</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-0.5">Works on any run — use the one just computed above, or find one by order/style/date.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowRunFinder((v) => !v)}
+            className="shrink-0 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-1.5"
+            style={{ color: '#c8834a', borderColor: 'rgba(200,131,74,0.25)' }}
+          >
+            <Search className="w-3.5 h-3.5" /> {showRunFinder ? 'Hide' : 'Find a Run'}
+          </button>
         </div>
+
+        {showRunFinder && (
+          <div className="rounded-2xl border p-4 space-y-3 bg-[#faf6f0]" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <SearchCombobox
+                placeholder="Any order..."
+                value={finderOrderNumber}
+                options={orderOptions}
+                getKey={(o) => o.order_number}
+                getLabel={(o) => `PO ${o.order_number}`}
+                getSub={(o) => `${o.styles} styles`}
+                onSelect={(o) => setFinderOrderNumber(o ? o.order_number : '')}
+                loading={orderOptionsLoading}
+                allowClear
+              />
+              <SearchCombobox
+                placeholder="Any style..."
+                value={finderStyleCode}
+                options={styleOptions}
+                getKey={(s) => s.style_code}
+                getLabel={(s) => s.style_code}
+                getSub={(s) => s.style_name}
+                onSelect={(s) => setFinderStyleCode(s ? s.style_code : '')}
+                loading={styleOptionsLoading}
+                allowClear
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <input type="date" value={finderDateFrom} onChange={(e) => setFinderDateFrom(e.target.value)}
+                  className="w-full h-11 pl-9 pr-3 bg-white border rounded-xl text-xs font-bold outline-none focus:border-[#c8834a]"
+                  style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+              </div>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <input type="date" value={finderDateTo} onChange={(e) => setFinderDateTo(e.target.value)}
+                  className="w-full h-11 pl-9 pr-3 bg-white border rounded-xl text-xs font-bold outline-none focus:border-[#c8834a]"
+                  style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleFindRuns}
+              disabled={finderLoading}
+              className="px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest text-white shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+              style={{ background: '#c8834a' }}
+            >
+              {finderLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Search
+            </button>
+
+            {finderSearched && !finderLoading && (
+              <div className="space-y-1.5 pt-1">
+                {finderResults.length === 0 ? (
+                  <p className="text-xs font-bold text-slate-400 text-center py-3">No runs match this search.</p>
+                ) : (
+                  finderResults.map((r) => (
+                    <button
+                      key={r.run_id}
+                      type="button"
+                      onClick={() => handlePickRun(r)}
+                      className="w-full flex items-center justify-between gap-3 p-3 rounded-xl bg-white border hover:border-[#c8834a] transition-all text-left"
+                      style={{ borderColor: 'rgba(200,131,74,0.15)' }}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
+                          {r.scope_order_number || r.scope_style_code || 'Whole Factory'}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-400">{r.period_start} → {r.period_end}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <StatusBadge status={r.status} />
+                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <input
           value={runActionId}
           onChange={(e) => setRunActionId(e.target.value)}
