@@ -416,7 +416,7 @@ export default function DashboardLayout({ children }) {
                   <div className="h-px" style={{ background: 'rgba(200,131,74,0.15)' }} />
                 </div>
               )}
-              <Link href={link.href} onClick={() => setMobileMenuOpen(false)} className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full`}>
+              <Link href={link.href} prefetch={false} onClick={() => setMobileMenuOpen(false)} className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full`}>
                 <NavPendingBar />
                 {isActive && (
                   <motion.span className="absolute inset-0 rounded-[10px] overflow-hidden" style={{ background: 'linear-gradient(135deg, #a8703f 0%, #8a5a2e 45%, #6b4423 100%)', boxShadow: 'inset 0 0 0 1px rgba(255,232,204,0.14), inset 0 2px 4px rgba(0,0,0,0.35), 0 3px 10px rgba(0,0,0,0.25)' }} transition={{ type: 'spring', stiffness: 460, damping: 28, mass: 0.9 }}>
