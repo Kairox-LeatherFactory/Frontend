@@ -52,8 +52,6 @@ function mapDrawerRecord(d) {
     serial: d.serial || d.serial_no || '001',
     colour: d.colour || d.color || 'BLACK',
     size: d.size || '38',
-    display_label: d.display_label || d.label || d.stage_label || 'Store Inventory',
-    current_stage: d.current_stage || d.stage || 'Store Hub',
     drawer_code: d.code || d.drawer_code || `DRW-${String(d.seq || 1).padStart(4, '0')}`,
     // Bug #13: Hold Leather / Hold Lining breakdown — the API returns
     // these as real booleans (what's physically inside right now).
@@ -1131,35 +1129,50 @@ export default function StoreHubSection({
                     </div>
                   )}
 
-                  {/* Bug #21: single direct action — no separate "Receive"
-                      step. Clicking this fires RECEIVED (if the drawer
-                      isn't already auto-received) then SENDED right after. */}
-                  {/* Confirmed live: `can_send` sits top-level on the
-                      store-scan response (storeVerifyResult.can_send) —
-                      false the instant a needs_lining piece is only
-                      HOLDING LEATHER (`awaiting: ["LINING"]`). This button
-                      never checked it, so scanning leather alone made
-                      "Send to Line Stitching" look ready before lining had
-                      even been scanned. */}
-                  <div className="pt-4 border-t border-slate-200">
-                    <button
-                      type="button"
-                      onClick={handleSendToLineStitching}
-                      disabled={storeReceiveStatus === 'sended' || storeApiLoading || storeVerifyResult?.can_send === false}
-                      title={storeVerifyResult?.can_send === false ? (storeVerifyResult?.lining_reason || 'Not ready — this drawer is still awaiting a part.') : ''}
-                      className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
-                    >
-                      {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : storeReceiveStatus === 'sended' ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                      {storeReceiveStatus === 'sended' ? 'Sent to Line Stitching ✅' : 'Send to Line Stitching'}
-                    </button>
-                    {storeVerifyResult?.can_send === false && storeReceiveStatus !== 'sended' && (
-                      <p className="text-[10px] text-slate-400 font-bold pt-1.5">
-                        {storeVerifyResult?.lining_reason || (Array.isArray(storeVerifyResult?.awaiting) && storeVerifyResult.awaiting.length > 0
-                          ? `Waiting on: ${storeVerifyResult.awaiting.join(', ')}`
-                          : 'Not ready to send yet.')}
+                  {/* Team request: the Leather tab is a receiving step only —
+                      no Send action there regardless of can_send (even a
+                      needs_lining:false piece that's already sendable right
+                      after its leather scan). Sending happens either from
+                      the Lining tab's verify screen, or later from the
+                      drawer's own card in the list below (which has its own
+                      can_send-gated Send button). */}
+                  {storeScanPart === 'LINING' ? (
+                    // Bug #21: single direct action — no separate "Receive"
+                    // step. Clicking this fires RECEIVED (if the drawer
+                    // isn't already auto-received) then SENDED right after.
+                    // Confirmed live: `can_send` sits top-level on the
+                    // store-scan response (storeVerifyResult.can_send) —
+                    // false the instant a needs_lining piece is only
+                    // HOLDING LEATHER (`awaiting: ["LINING"]`). This button
+                    // never checked it, so scanning leather alone made
+                    // "Send to Line Stitching" look ready before lining had
+                    // even been scanned.
+                    <div className="pt-4 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={handleSendToLineStitching}
+                        disabled={storeReceiveStatus === 'sended' || storeApiLoading || storeVerifyResult?.can_send === false}
+                        title={storeVerifyResult?.can_send === false ? (storeVerifyResult?.lining_reason || 'Not ready — this drawer is still awaiting a part.') : ''}
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : storeReceiveStatus === 'sended' ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                        {storeReceiveStatus === 'sended' ? 'Sent to Line Stitching ✅' : 'Send to Line Stitching'}
+                      </button>
+                      {storeVerifyResult?.can_send === false && storeReceiveStatus !== 'sended' && (
+                        <p className="text-[10px] text-slate-400 font-bold pt-1.5">
+                          {storeVerifyResult?.lining_reason || (Array.isArray(storeVerifyResult?.awaiting) && storeVerifyResult.awaiting.length > 0
+                            ? `Waiting on: ${storeVerifyResult.awaiting.join(', ')}`
+                            : 'Not ready to send yet.')}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="pt-4 border-t border-slate-200">
+                      <p className="text-xs font-black text-center text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3">
+                        ✅ Leather Confirmed — send from the Lining tab once lining arrives, or from this drawer's card in the list below.
                       </p>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
               <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
@@ -1362,14 +1375,6 @@ export default function StoreHubSection({
                                       <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
                                         <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Color / Size</div>
                                         <div className="text-xs font-black text-slate-800 mt-0.5">{drawer.colour} / {drawer.size}</div>
-                                      </div>
-                                      <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-200/60">
-                                        <div className="text-[10px] text-indigo-600 font-bold uppercase tracking-wider">Current Stage</div>
-                                        <div className="mt-1">
-                                          <span className="inline-flex items-center px-2 py-0.5 bg-indigo-600 text-white text-[10px] font-black rounded-md shadow-xs">
-                                            {drawer.display_label || drawer.current_stage || 'In Production'}
-                                          </span>
-                                        </div>
                                       </div>
                                       <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
                                         <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Assigned Drawer</div>

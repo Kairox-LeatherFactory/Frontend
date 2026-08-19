@@ -865,7 +865,7 @@ function SupplierOrdersScreen({ token, showToast, prefill, onArrived }) {
 const SCREENS = [
   { id: 'hub', label: 'Overview & Alerts', icon: Boxes },
   { id: 'lots', label: 'Lot Directory', icon: Package },
-  { id: 'intake', label: 'Receive / Add Material', icon: PackagePlus, writersOnly: true },
+  { id: 'intake', label: 'Add Material', icon: PackagePlus, writersOnly: true },
   { id: 'orders', label: 'Supplier Orders', dmOnly: true, icon: Truck },
 ];
 
