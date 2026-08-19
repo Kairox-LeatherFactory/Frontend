@@ -226,6 +226,7 @@ const apiAllocateWaitingDrawers = MOCK_BREAKDOWN ? mockApiAllocateWaitingDrawers
 import {
   Search, Lock, Loader2, Package, CheckCircle2, XCircle, AlertTriangle,
   Trash2, Save, Rocket, Ban, Boxes, RefreshCw, X, Barcode as BarcodeIcon, ArrowLeft,
+  ChevronDown, CheckSquare,
 } from 'lucide-react';
 
 function Toast({ msg, type }) {
@@ -346,6 +347,7 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [selectedStyleIds, setSelectedStyleIds] = useState([]);
+  const [expandedStyleIds, setExpandedStyleIds] = useState([]);
   const [releasing, setReleasing] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [releaseResult, setReleaseResult] = useState(null);
@@ -357,6 +359,10 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
   const [growAmount, setGrowAmount] = useState('');
   const [growing, setGrowing] = useState(false);
   const [allocating, setAllocating] = useState(false);
+
+  // Release now needs a needs_lining answer up front — one boolean for the
+  // whole batch being released, asked via a popup rather than guessed.
+  const [showLiningPrompt, setShowLiningPrompt] = useState(false);
 
   const showToast = (msg, type = 'success') => {
     setToastMsg(msg); setToastType(type);
@@ -401,11 +407,28 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
     setSelectedStyleIds((prev) => prev.includes(styleId) ? prev.filter((id) => id !== styleId) : [...prev, styleId]);
   };
 
-  const handleRelease = async () => {
+  const toggleStyleExpand = (styleId) => {
+    setExpandedStyleIds((prev) => prev.includes(styleId) ? prev.filter((id) => id !== styleId) : [...prev, styleId]);
+  };
+
+  const selectAllDraft = () => {
+    setSelectedStyleIds(draftStyles.map((s) => s.style_id));
+  };
+
+  const unselectAll = () => {
+    setSelectedStyleIds([]);
+  };
+
+  const handleRelease = () => {
     if (selectedStyleIds.length === 0) return;
+    setShowLiningPrompt(true);
+  };
+
+  const confirmRelease = async (needsLining) => {
+    setShowLiningPrompt(false);
     setReleasing(true);
     try {
-      const result = await apiReleaseBreakdownStyles(token, activeOrderNumber, selectedStyleIds, false);
+      const result = await apiReleaseBreakdownStyles(token, activeOrderNumber, selectedStyleIds, false, needsLining);
       setReleaseResult(result);
       showToast(result.message || 'Styles released to production.', 'success');
       setSelectedStyleIds([]);
@@ -569,17 +592,40 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
                 {breakdown.totals?.styles} styles ({breakdown.totals?.styles_draft} draft, {breakdown.totals?.styles_released} released) · {breakdown.totals?.qty_ordered} pcs ordered · {breakdown.totals?.minted_pieces} pieces minted
               </p>
             </div>
+            {canRelease && draftStyles.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={selectAllDraft}
+                  disabled={selectedStyleIds.length === draftStyles.length}
+                  className="h-10 px-4 rounded-xl font-black text-[11px] uppercase bg-white border shadow-sm flex items-center gap-1.5 disabled:opacity-40"
+                  style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
+                >
+                  <CheckSquare className="w-3.5 h-3.5" /> Select All ({draftStyles.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={unselectAll}
+                  disabled={selectedStyleIds.length === 0}
+                  className="h-10 px-4 rounded-xl font-black text-[11px] uppercase bg-white border shadow-sm flex items-center gap-1.5 disabled:opacity-40"
+                  style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
+                >
+                  <XCircle className="w-3.5 h-3.5" /> Unselect All
+                </button>
+              </div>
+            )}
           </div>
 
           {(breakdown.styles || []).map((style) => {
             const isDraft = style.production_status === 'DRAFT';
             const isSelected = selectedStyleIds.includes(style.style_id);
+            const isExpanded = expandedStyleIds.includes(style.style_id);
             return (
               <div key={style.style_id} className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: isSelected ? '#c8834a' : 'rgba(200,131,74,0.15)' }}>
-                <div className="p-5 flex flex-wrap items-start justify-between gap-3" style={{ background: isSelected ? 'rgba(200,131,74,0.05)' : 'transparent' }}>
+                <div className="p-5 flex flex-wrap items-start justify-between gap-3 cursor-pointer" style={{ background: isSelected ? 'rgba(200,131,74,0.05)' : 'transparent' }} onClick={() => toggleStyleExpand(style.style_id)}>
                   <div className="flex items-start gap-3">
                     {isDraft && canRelease && (
-                      <input type="checkbox" checked={isSelected} onChange={() => toggleStyleSelect(style.style_id)} className="w-4 h-4 mt-1 accent-[#c8834a] cursor-pointer" />
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleStyleSelect(style.style_id)} onClick={(e) => e.stopPropagation()} className="w-4 h-4 mt-1 accent-[#c8834a] cursor-pointer" />
                     )}
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
@@ -593,25 +639,30 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
                       )}
                     </div>
                   </div>
-                  {style.minted_pieces > 0 && (
-                    <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1">
-                      <BarcodeIcon className="w-3 h-3" /> {style.minted_pieces} minted
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {style.minted_pieces > 0 && (
+                      <span className="text-[10px] font-black uppercase text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1">
+                        <BarcodeIcon className="w-3 h-3" /> {style.minted_pieces} minted
+                      </span>
+                    )}
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                  </div>
                 </div>
-                <div className="px-5 pb-5 space-y-1.5">
-                  {(style.skus || []).map((sku) => (
-                    <SkuRow
-                      key={sku.sku_id}
-                      sku={sku}
-                      editable={isDraft && style.editable !== false}
-                      token={token}
-                      showToast={showToast}
-                      onSaved={() => loadBreakdown(activeOrderNumber)}
-                      onDeleted={() => loadBreakdown(activeOrderNumber)}
-                    />
-                  ))}
-                </div>
+                {isExpanded && (
+                  <div className="px-5 pb-5 space-y-1.5">
+                    {(style.skus || []).map((sku) => (
+                      <SkuRow
+                        key={sku.sku_id}
+                        sku={sku}
+                        editable={isDraft && style.editable !== false}
+                        token={token}
+                        showToast={showToast}
+                        onSaved={() => loadBreakdown(activeOrderNumber)}
+                        onDeleted={() => loadBreakdown(activeOrderNumber)}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
@@ -638,6 +689,27 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
             </button>
           </div>
         </div>
+      )}
+
+      {/* ── Lining prompt — asked once per Release click, answer applies to
+          the whole selected batch. ── */}
+      {showLiningPrompt && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/60 backdrop-blur-md animate-fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden mx-4">
+            <div className="p-6 sm:p-8 space-y-4">
+              <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>Does this need lining?</h3>
+              <p className="text-xs font-bold text-slate-500">
+                {selectedStyleIds.length} style(s) selected for release. This answer applies to all of them.
+              </p>
+              <div className="flex gap-3 justify-end pt-2">
+                <button onClick={() => setShowLiningPrompt(false)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-slate-100 text-slate-600">Cancel</button>
+                <button onClick={() => confirmRelease(false)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-white border text-slate-700" style={{ borderColor: 'rgba(200,131,74,0.3)' }}>No</button>
+                <button onClick={() => confirmRelease(true)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white" style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>Yes</button>
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* ── Release result modal ── */}

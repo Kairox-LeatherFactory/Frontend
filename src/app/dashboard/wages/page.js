@@ -651,7 +651,6 @@ function ComputationView({ token }) {
   const [runActionId, setRunActionId] = useState('');
   const [isRecomputingStandalone, setIsRecomputingStandalone] = useState(false);
   const [isClosingById, setIsClosingById] = useState(false);
-  const [recomputeConfirmTarget, setRecomputeConfirmTarget] = useState(null); // { runId, isStandalone } | null
   const [showRecomputeAreYouSure, setShowRecomputeAreYouSure] = useState(false); // general "are you sure?" before every recompute attempt
 
   // "Find a run" picker — team asked why the operator needs to know a raw
@@ -772,27 +771,20 @@ function ComputationView({ token }) {
     }
   };
 
-  // Always tries confirm_closed:false first — the default stays false, per
-  // the team's instruction — and only offers the confirm_closed:true
-  // escape hatch via a popup if the backend actually says the run is
-  // closed (409), rather than asking upfront for every recompute
-  // regardless of whether it's even needed.
-  const runRecompute = async (runId, confirmClosed) => {
+  // Team request: every Recompute click sends confirm_closed:true straight
+  // away — no separate try-false-then-escalate dance. OPEN or CLOSED, one
+  // click recomputes it; Reopen (above) is still the route for attaching an
+  // audit reason to unfreezing a run, but recompute itself no longer waits
+  // on that.
+  const runRecompute = async (runId) => {
     setIsRecomputingStandalone(true);
     try {
-      const updated = await apiRecomputeWageRun(token, runId, confirmClosed);
+      const updated = await apiRecomputeWageRun(token, runId, true);
       if (run && (run.id || run.run_id) === runId) setRun((prev) => ({ ...prev, ...updated }));
       await loadBreakdown(runId);
       showToast('Run recomputed.', 'success');
-      setRecomputeConfirmTarget(null);
     } catch (e) {
-      if (e.status === 409 && !confirmClosed) {
-        // Closed run, first attempt — offer the escape hatch instead of
-        // just showing an error.
-        setRecomputeConfirmTarget({ runId });
-      } else {
-        showToast(e.message || 'Recompute failed.', 'error');
-      }
+      showToast(e.message || 'Recompute failed.', 'error');
     } finally {
       setIsRecomputingStandalone(false);
     }
@@ -1244,43 +1236,12 @@ function ComputationView({ token }) {
               <div className="flex gap-3 justify-end pt-2">
                 <button onClick={() => setShowRecomputeAreYouSure(false)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-slate-100 text-slate-600">Cancel</button>
                 <button
-                  onClick={() => { setShowRecomputeAreYouSure(false); runRecompute(runActionId.trim(), false); }}
+                  onClick={() => { setShowRecomputeAreYouSure(false); runRecompute(runActionId.trim()); }}
                   disabled={isRecomputingStandalone}
                   className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white disabled:opacity-50 flex items-center gap-2"
                   style={{ background: '#c8834a' }}
                 >
                   {isRecomputingStandalone ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Yes, Recompute
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Recompute-on-a-closed-run escape hatch. First attempt always
-          sends confirm_closed:false (default stays false) — this only
-          appears when the backend actually 409s, naming the run as
-          closed. "Confirm" is the one-call override (no reason, stays
-          closed); "Close" just dismisses — the formal route from there
-          is the Reopen button above. */}
-      {recomputeConfirmTarget && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/40 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden mx-4">
-            <div className="p-6 sm:p-8 space-y-4">
-              <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>Run Is Closed</h3>
-              <p className="text-xs font-bold text-slate-500">
-                Run <span className="font-mono">{recomputeConfirmTarget.runId}</span> is frozen. You can confirm a one-time recompute anyway (no reason recorded, stays closed afterward) — or close this and use Reopen instead, which asks for a reason and unfreezes it.
-              </p>
-              <div className="flex gap-3 justify-end pt-2">
-                <button onClick={() => setRecomputeConfirmTarget(null)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-slate-100 text-slate-600">Close</button>
-                <button
-                  onClick={() => runRecompute(recomputeConfirmTarget.runId, true)}
-                  disabled={isRecomputingStandalone}
-                  className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white disabled:opacity-50 flex items-center gap-2"
-                  style={{ background: '#c8834a' }}
-                >
-                  {isRecomputingStandalone ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Confirm
                 </button>
               </div>
             </div>
