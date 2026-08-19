@@ -645,18 +645,32 @@ export default function BarcodeDoorSection({
         (result?.role_blocked?.length > 0) ||
         (Array.isArray(result?.blocked) && result.blocked.length > 0);
 
+      // Bug fix (parity with ManualDoorSection): `logged`/`rework` only say a
+      // piece is RECORDED at this stage — a rescan of a piece already logged
+      // here comes back with rework populated but count_logged: 0 and an
+      // empty `logged` array (backend message: "Nothing new logged — already
+      // recorded at this stage"). Branching success on logged/rework length
+      // showed a success modal even though nothing new happened, which is why
+      // the dashboard's completed count didn't move. `count_logged` is the
+      // only field that reflects whether the backend actually recorded new work.
+      const actuallyLogged = (result?.count_logged ?? 0) > 0;
+
       if (hasBlockedItems) {
         result.stage = barcodeStage;
         setBucketResult(result);
         setShowBucketModal(true);
-      } else if (loggedCodes.length > 0 || reworkCodes.length > 0) {
+      } else if (actuallyLogged) {
         setBarcodeSuccessModal({
           stage: barcodeStage,
-          count: result.count_logged ?? (loggedCodes.length + reworkCodes.length),
+          count: result.count_logged,
           pieces: barcodeBatchPieces
         });
       } else {
         setErrorMsg(result?.message || 'No pieces were logged.');
+      }
+
+      if (result?.skill_warnings?.length) {
+        setErrorMsg(prev => `${prev ? prev + ' ' : ''}${result.skill_warnings[0].note}`);
       }
 
       setBarcodeBatchPieces([]);

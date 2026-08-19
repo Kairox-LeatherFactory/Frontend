@@ -214,6 +214,24 @@ function sortByCanonicalStageOrder(list, stageKey = 'stage') {
   });
 }
 
+// Full piece-journey order for the Piece Tracker's stage history table — wider
+// than PIPELINE_STAGE_ORDER above, since a single piece's history also
+// includes Cutting/Lining and the Store handoff. Matches the dashboard's own
+// "Pre-Store: Fusing -> Pasting - Post-Store: Line Stitch -> Shell Stitch ->
+// Final Finish" description: Store comes after Fusing/Pasting, not before.
+const PIECE_HISTORY_STAGE_ORDER = [
+  'LEATHER_CUTTING', 'LINING_CUTTING', 'FUSING', 'PASTING', 'STORE',
+  'LINE_STITCHING', 'SHELL_STITCHING', 'FINAL_FINISH', 'FINAL_INSPECTION',
+];
+
+function sortPieceHistory(history) {
+  return [...(history || [])].sort((a, b) => {
+    const ai = PIECE_HISTORY_STAGE_ORDER.indexOf(a.stage);
+    const bi = PIECE_HISTORY_STAGE_ORDER.indexOf(b.stage);
+    return (ai === -1 ? PIECE_HISTORY_STAGE_ORDER.length : ai) - (bi === -1 ? PIECE_HISTORY_STAGE_ORDER.length : bi);
+  });
+}
+
 function StitchingDashboardContent() {
   const searchParams = useSearchParams();
   const { token } = useAuth();
@@ -234,9 +252,14 @@ function StitchingDashboardContent() {
   const [apiError, setApiError] = useState(null);
 
   // ── Piece-level lookup, from GET /api/v1/dashboard/stitching/pieces/{piece_code} ──
+  // The endpoint returns ONE piece-detail object (piece_code, style, article,
+  // colour, size, order_number, display_stage, drawer info, total_consumption)
+  // plus a `history` array — one entry per stage the piece has actually been
+  // through, each with its own employee/work_date/consumption. Not a list of
+  // sibling batch pieces.
   const [pieceSearchInput, setPieceSearchInput] = useState('');
   const [pieceSearchedCode, setPieceSearchedCode] = useState(null);
-  const [pieceSearchResults, setPieceSearchResults] = useState([]);
+  const [pieceDetail, setPieceDetail] = useState(null);
   const [pieceSearchLoading, setPieceSearchLoading] = useState(false);
   const [pieceSearchError, setPieceSearchError] = useState(null);
 
@@ -336,7 +359,8 @@ function StitchingDashboardContent() {
     }
   };
 
-  // Handler to look up a piece batch via GET /api/v1/dashboard/stitching/pieces/{piece_code}
+  // Handler to look up a piece's detail + stage history via
+  // GET /api/v1/dashboard/stitching/pieces/{piece_code}
   const handlePieceSearch = async (codeOverride) => {
     const code = (codeOverride ?? pieceSearchInput).trim();
     if (!code || !token) return;
@@ -344,13 +368,13 @@ function StitchingDashboardContent() {
       setPieceSearchLoading(true);
       setPieceSearchError(null);
       const data = await apiGetStitchingPieceDetail(token, code);
-      setPieceSearchResults(Array.isArray(data) ? data : []);
+      setPieceDetail(data && typeof data === 'object' && !Array.isArray(data) ? data : null);
       setPieceSearchedCode(code);
       setPieceSearchInput(code);
     } catch (err) {
       console.warn(`Backend API /api/v1/dashboard/stitching/pieces/${code} notice:`, err.message);
       setPieceSearchError(err.message);
-      setPieceSearchResults([]);
+      setPieceDetail(null);
     } finally {
       setPieceSearchLoading(false);
     }
@@ -383,7 +407,7 @@ function StitchingDashboardContent() {
     stages.forEach((s) => s.stage && set.add(s.stage));
     employees.forEach((e) => e.stage && set.add(e.stage));
     dailyProduction.forEach((d) => d.stage && set.add(d.stage));
-    return Array.from(set);
+    return sortByCanonicalStageOrder(Array.from(set).map((stage) => ({ stage }))).map((s) => s.stage);
   }, [stages, employees, dailyProduction]);
 
   const availableEmployees = useMemo(() => {
@@ -476,6 +500,45 @@ function StitchingDashboardContent() {
     [stages, filterStage]
   );
 
+  const STAGE_DEFAULT_LABELS = {
+    FUSING: 'Fusing',
+    PASTING: 'Pasting',
+    LINE_STITCHING: 'Line Stitching',
+    SHELL_STITCHING: 'Shell Stitching',
+    FINAL_FINISH: 'Final Finish',
+  };
+
+  // `queue`, per stage, is how many pieces actually finished the stage right
+  // before this one — for Fusing (the first stage tracked here), that's
+  // total_received (the real handoff count from Cutting); for every stage
+  // after that, it's simply the previous tracked stage's own completed_pieces
+  // (Fusing's done pieces are Pasting's queue, and so on), same cascading
+  // logic the Direct Manager pipeline uses.
+  // `overallRemaining`, per stage, is ONE fixed order-wide total — the real
+  // overall piece count (kpis.overall_pieces, the same 228 shown on the
+  // "Overall Pieces" tile) — minus this stage's own Done. Same 228 base for
+  // every stage: Fusing done 4 -> 224 remaining, Pasting done 3 -> 225
+  // remaining, and so on. (Not each stage's own, already-net pending_pieces —
+  // that's a different, smaller number per stage and was double-subtracting.)
+  const stitchingPipelineStages = useMemo(() => {
+    const basePending = kpis?.overall_pieces ?? 0;
+    return PIPELINE_STAGE_ORDER.reduce((acc, stageKey, i) => {
+      const found = stages.find((s) => s.stage === stageKey);
+      const row = found || {
+        stage: stageKey,
+        label: STAGE_DEFAULT_LABELS[stageKey] || formatStage(stageKey),
+        total_received: 0,
+        assigned_pieces: 0,
+        completed_pieces: 0,
+        pending_pieces: 0,
+      };
+      const completed = row.completed_pieces ?? 0;
+      const queue = i === 0 ? (row.total_received ?? 0) : (acc[i - 1].completed_pieces ?? 0);
+      const overallRemaining = Math.max(0, basePending - completed);
+      return [...acc, { ...row, queue, overallRemaining }];
+    }, []);
+  }, [stages, kpis]);
+
   // Backlog size only — NOT a bottleneck. A real bottleneck means a stage is falling
   // behind its expected pace (target vs. time elapsed), which this dashboard doesn't
   // have the data to compute yet. This just flags stages with a large pending queue.
@@ -485,10 +548,22 @@ function StitchingDashboardContent() {
     return total > 0 && pending >= 5 && pending / total > 0.3;
   };
 
+  // Respect the active Order/Stage filters — same filtered list the Stage-Wise
+  // table uses — so this panel actually reflects the selected stage instead of
+  // always flagging whatever stage has the biggest backlog floor-wide.
   const highBacklogStage = useMemo(() => {
-    const candidates = stages.filter(isHighBacklog).sort((a, b) => (b.pending_pieces || 0) - (a.pending_pieces || 0));
+    const candidates = filteredStages.filter(isHighBacklog).sort((a, b) => (b.pending_pieces || 0) - (a.pending_pieces || 0));
     return candidates[0] || null;
-  }, [stages]);
+  }, [filteredStages]);
+
+  // ── Real per-stage snapshot for the selected Stage filter — `stages` is
+  // already order-scoped by the backend (order_id param), so this reflects
+  // "pending/completed for THIS stage within THIS order" when an order is
+  // also selected, or floor-wide for the stage when it isn't. ──
+  const selectedStageSnapshot = useMemo(
+    () => (filterStage !== 'all' ? stages.find((s) => s.stage === filterStage) || null : null),
+    [stages, filterStage]
+  );
 
   // ── Employees (denormalized: one row per employee per stage) ──
   const filteredEmployees = useMemo(() => {
@@ -649,49 +724,6 @@ function StitchingDashboardContent() {
         )}
       </AnimatePresence>
 
-      {/* ─── TOP ACTION BANNER ─── */}
-      <div className="w-full bg-white p-5 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#4f46e5] to-[#4338ca] flex items-center justify-center text-white shadow-md">
-            <Waypoints className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-[#1e293b] tracking-tight">Stitching Floor Operations Dashboard</h1>
-            <p className="text-xs text-[#64748b] font-medium">Pre-Store: <strong className="text-[#4f46e5]">Fusing &rarr; Pasting</strong> &bull; Post-Store: <strong className="text-[#4f46e5]">Line Stitch &rarr; Shell Stitch &rarr; Final Finish</strong></p>
-          </div>
-        </div>
-
-        <div className="flex items-center flex-wrap gap-2.5">
-          <button
-            onClick={handleExportCSV}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#f8fafc] text-slate-700 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-all"
-            title="Export currently loaded order & style progress to CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
-
-          <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-slate-200 text-xs text-slate-500 font-semibold">
-            {loading ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                <span>Syncing with backend…</span>
-              </>
-            ) : apiError ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                <span className="text-red-600">API error: {apiError}</span>
-              </>
-            ) : (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Live backend data{meta?.generated_for ? ` · ${meta.generated_for}` : ''}</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* ─── UNIVERSAL MULTI-FILTER TOOLBAR ─── */}
       <section className="w-full bg-white p-4 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col gap-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -700,6 +732,14 @@ function StitchingDashboardContent() {
             <span>Universal Operations Cross-Filter</span>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleExportCSV}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#f8fafc] text-slate-700 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+              title="Export currently loaded order & style progress to CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export CSV</span>
+            </button>
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#e0e7ff] text-[#3730a3] border border-[#c7d2fe]">
               Showing {filteredOrderProgress.length} of {orderProgress.length} order/style rows
             </span>
@@ -820,150 +860,128 @@ function StitchingDashboardContent() {
            ==================================================================== */}
       {activeTab === 'tab-today' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
-          {/* CURRENT STYLE HERO BANNER */}
-          <div className="w-full bg-gradient-to-br from-white via-[#f8fafc] to-[#eef2ff] border border-indigo-200/70 rounded-3xl p-6 shadow-sm grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="flex flex-col justify-between space-y-4">
-              {heroFilterActive ? (
-                heroAggregate?.empty ? (
-                  <div>
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-slate-100 text-slate-500">No match</span>
-                    <p className="text-xs font-semibold text-slate-500 mt-2">No order/style rows match the current filter.</p>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-indigo-100 text-indigo-800">
-                        {heroAggregate.orderLabel}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-500">Article: <strong>{heroAggregate.articleLabel}</strong></span>
-                    </div>
-                    <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{heroAggregate.styleLabel}</h2>
-                    <p className="text-xs font-semibold text-slate-600 mt-0.5">
-                      {heroAggregate.total_ordered} pcs ordered across {heroAggregate.rowCount} {heroAggregate.rowCount === 1 ? 'row' : 'rows'} &bull; filtered live from order_progress
-                    </p>
-                    <div className="grid grid-cols-3 gap-2 mt-3">
-                      <div className="bg-white border border-slate-100 rounded-lg px-2 py-1.5">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Completed</span>
-                        <div className="text-sm font-black text-emerald-700">{heroAggregate.completed}</div>
-                      </div>
-                      <div className="bg-white border border-slate-100 rounded-lg px-2 py-1.5">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Pending</span>
-                        <div className="text-sm font-black text-amber-700">{heroAggregate.pending}</div>
-                      </div>
-                      <div className="bg-white border border-slate-100 rounded-lg px-2 py-1.5">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Completion</span>
-                        <div className="text-sm font-black text-indigo-700">{heroAggregate.completion_pct}%</div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              ) : (
-                <div>
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-indigo-100 text-indigo-800">
-                      {currentStyle?.order_number || '—'}
-                    </span>
-                    <span className="text-xs font-semibold text-slate-500">Article: <strong>{currentStyle?.article || '—'}</strong></span>
-                  </div>
-                  <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{currentStyle?.style || '—'}</h2>
-                  <p className="text-xs font-semibold text-slate-600 mt-0.5">{currentStyle?.total_pieces ?? 0} pcs in this style &bull; backend spotlight (unfiltered view)</p>
-                </div>
-              )}
-
-              {/* Real per-stage funnel for the current style, incl. CUTTING & FINAL_INSPECTION
-                  which the top-level `stages` list does not carry. Backend only spotlights ONE
-                  style at a time, so this funnel is only shown when it actually matches the
-                  active Order/Style filter (or when no filter is applied). */}
-              <div className="pt-4 border-t border-slate-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Style Pipeline (live counts)</span>
-                {(!heroFilterActive || heroAggregate?.matchesCurrentStyle) ? (
-                  <>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                      {(currentStyle?.stages || []).map((s, idx) => (
-                        <span key={`${s.stage}-${idx}`} className="inline-flex items-center gap-1">
-                          <span className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-[10px] font-bold text-slate-700">
-                            {s.label || formatStage(s.stage)} <strong className="text-indigo-600">{s.count}</strong>
-                          </span>
-                          {idx < (currentStyle?.stages || []).length - 1 && <ArrowRight className="w-3 h-3 text-slate-300" />}
-                        </span>
-                      ))}
-                      {(!currentStyle?.stages || currentStyle.stages.length === 0) && (
-                        <span className="text-xs text-slate-400">No pipeline data yet</span>
-                      )}
-                    </div>
-                    {meta?.unsupported?.chain_order && (
-                      <p className="text-[10px] text-slate-400 mt-1.5 italic">Note: {meta.unsupported.chain_order}</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-[11px] text-slate-500 mt-1.5 italic">
-                    Backend only exposes a full CUTTING→FINISH stage pipeline for one spotlighted style at a time ({currentStyle?.style || '—'}, PO {currentStyle?.order_number || '—'}) — not the current filter. Clear filters to view it.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Middle Col: Daily pacing */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Daily Pacing (avg)</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 my-3">
-                <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-500">Avg Daily Completed</span>
-                  <div className="text-lg font-black text-slate-900">{avgDailyCompleted !== null ? avgDailyCompleted.toFixed(1) : '—'} pcs</div>
-                </div>
-                <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-500">Ready for Inspection</span>
-                  <div className="text-lg font-black text-slate-900">{kpis?.ready_for_inspection ?? currentStyle?.ready_for_inspection ?? 0} pcs</div>
-                </div>
-              </div>
+          {/* STITCHING PRODUCTION PIPELINE (Full Width Card matching Direct Manager style) */}
+          <div className="w-full bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
-                <div className="flex justify-between text-xs font-bold mb-1.5">
-                  <span className="text-slate-600">Overall Completion ({meta?.scope || 'all clients'})</span>
-                  <span className="text-[#4f46e5]">{completionPct}%</span>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                    Stitching Floor &bull; 5-Stage Live Pipeline
+                  </span>
+                  {meta?.generated_for && (
+                    <span className="text-slate-400 text-xs font-semibold">Generated {meta.generated_for}</span>
+                  )}
+                  {heroFilterActive && heroAggregate && !heroAggregate.empty ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                      PO: {heroAggregate.orderLabel} &bull; {heroAggregate.styleLabel}
+                    </span>
+                  ) : currentStyle?.style ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                      Spotlight: {currentStyle.style} ({currentStyle.article || 'Article'})
+                    </span>
+                  ) : null}
                 </div>
-                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                  <div className="bg-gradient-to-r from-[#4f46e5] to-[#6366f1] h-full rounded-full transition-all duration-500" style={{ width: `${completionPct}%` }}></div>
+                <h2 className="text-base sm:text-lg font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                  <Waypoints className="w-5 h-5 text-indigo-600" />
+                  Stitching Floor Production Pipeline
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Live funnel stages from GET /api/v1/dashboard/stitching &mdash; Done = completed pieces, Queue = pieces that finished the stage before this one, Overall Remaining = order-wide pending count minus this stage&rsquo;s Done.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5 mr-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" /> High Pending Backlog
+                </span>
+                {filterStage !== 'all' && (
+                  <button
+                    onClick={() => setFilterStage('all')}
+                    className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer mr-2"
+                  >
+                    Clear Stage Filter
+                  </button>
+                )}
+                <div className="flex items-center gap-3 pl-3 border-l border-slate-200 text-xs font-semibold text-slate-600">
+                  <span>In Store: <strong className="text-slate-800">{storeHandoff?.in_store ?? kpis?.in_store ?? 0}</strong></span>
+                  <span>Ready for Store: <strong className="text-emerald-700">{storeHandoff?.ready_for_store ?? kpis?.ready_for_store ?? 0}</strong></span>
                 </div>
               </div>
             </div>
 
-            {/* Right Col: High-backlog stage flag (pending queue size, not a real bottleneck) */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Stages With High Pending Backlog</span>
-              </div>
-              {highBacklogStage ? (
-                <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 border-2 border-amber-400 p-3.5 rounded-xl my-2 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-600"></span>
-                      </span>
-                      <span>HIGH PENDING BACKLOG</span>
+            {/* 5 STAGES HORIZONTAL CARD GRID */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-1">
+              {stitchingPipelineStages.map((st, idx) => {
+                const isSelected = filterStage === st.stage;
+                const isBottleneck = isHighBacklog(st);
+                const completed = st.completed_pieces ?? 0;
+                // Both set in stitchingPipelineStages above: "Queue" = pieces that
+                // finished the stage right before this one (Cutting for Fusing,
+                // otherwise the previous tracked stage's Done). "Overall Remaining"
+                // = the order-wide pending count minus this stage's own Done.
+                const queue = st.queue ?? 0;
+                const overallRemaining = st.overallRemaining ?? 0;
+
+                return (
+                  <div
+                    key={`stitching-stage-card-${st.stage}-${idx}`}
+                    onClick={() => {
+                      setFilterStage(filterStage === st.stage ? 'all' : st.stage);
+                    }}
+                    className={`relative p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group ${
+                      isSelected
+                        ? 'border-indigo-600 bg-indigo-50/80 shadow-md ring-2 ring-indigo-500/20'
+                        : isBottleneck
+                        ? 'border-amber-400 bg-amber-50/50 shadow-sm hover:border-amber-500'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-md'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md font-mono ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white'
+                            : isBottleneck
+                            ? 'bg-amber-200 text-amber-900 font-bold'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          #{idx + 1}
+                        </span>
+                        {isSelected && (
+                          <span className="text-[9px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded">Active Filter</span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-extrabold text-slate-900 leading-tight truncate">
+                        {st.label || STAGE_DEFAULT_LABELS[st.stage] || formatStage(st.stage)}
+                      </h4>
                     </div>
-                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-600 text-white animate-pulse">Pending</span>
+
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] font-semibold space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Done:</span>
+                        <span className="font-bold text-emerald-700 font-mono">{completed}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Queue:</span>
+                        <span className={`font-bold font-mono ${queue > 20 ? 'text-amber-600 font-black' : 'text-slate-700'}`}>
+                          {queue}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px]">
+                        <span className="text-slate-400">Overall Remaining:</span>
+                        <span className="font-bold text-slate-600 font-mono">{overallRemaining}</span>
+                      </div>
+                    </div>
+
+                    {isBottleneck && (
+                      <div className="mt-2 text-center bg-amber-100 border border-amber-200 text-amber-800 text-[9px] font-black uppercase rounded-lg py-0.5 tracking-wider">
+                        High Backlog
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-1.5 flex items-baseline justify-between">
-                    <span className="text-xs font-extrabold text-amber-950">{highBacklogStage.label || formatStage(highBacklogStage.stage)}</span>
-                    <span className="text-xs font-black text-amber-700">{highBacklogStage.pending_pieces} pcs pending</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl my-2">
-                  <div className="flex items-center gap-2 text-emerald-800 font-extrabold text-xs">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Pipeline Flow Status: Normal</span>
-                  </div>
-                  <p className="text-[11px] text-emerald-700 mt-1">No stage is over the backlog threshold</p>
-                </div>
-              )}
-              <div className="flex justify-between text-xs font-semibold text-slate-600 pt-2 border-t border-slate-100">
-                <span>In Store: <strong>{storeHandoff?.in_store ?? kpis?.in_store ?? 0}</strong></span>
-                <span>Ready for Store: <strong className="text-emerald-700">{storeHandoff?.ready_for_store ?? kpis?.ready_for_store ?? 0}</strong></span>
-              </div>
+                );
+              })}
             </div>
           </div>
 
@@ -991,6 +1009,38 @@ function StitchingDashboardContent() {
                     <span key={idx} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[10px]">{s.label}: {s.completed}/{s.assigned}</span>
                   ))}
                 </span>
+              </div>
+            </div>
+          )}
+
+          {/* SELECTED STAGE SNAPSHOT — real completed/pending for the exact stage
+              picked in the Stage filter (e.g. Fusing), scoped to the selected Order
+              when one is also active (stages is already order_id-scoped by the
+              backend), or floor-wide otherwise. Shown whenever the Stage filter
+              is set to something other than "All Stages". */}
+          {selectedStageSnapshot && (
+            <div className="w-full bg-white border border-amber-200 rounded-2xl p-5 shadow-sm flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-lg">🪡</div>
+                <div>
+                  <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Selected Stage</span>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    {selectedStageSnapshot.label || formatStage(selectedStageSnapshot.stage)}
+                    {filterOrder !== 'all' && <> &bull; {activeOrderLabel}</>}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {filterOrder !== 'all' ? 'Scoped to this order' : `Floor-wide (${meta?.scope || 'all clients'})`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-600 flex-1">
+                <span>Received: <strong className="text-slate-900">{selectedStageSnapshot.total_received ?? 0}</strong></span>
+                <span>Assigned: <strong className="text-blue-700">{selectedStageSnapshot.assigned_pieces ?? 0}</strong></span>
+                <span>Completed: <strong className="text-emerald-700">{selectedStageSnapshot.completed_pieces ?? 0}</strong></span>
+                <span>Pending: <strong className="text-amber-700">{selectedStageSnapshot.pending_pieces ?? 0}</strong></span>
+                {typeof selectedStageSnapshot.daily_target === 'number' && (
+                  <span>Daily Target: <strong className="text-indigo-700">{selectedStageSnapshot.daily_target}</strong></span>
+                )}
               </div>
             </div>
           )}
@@ -1024,13 +1074,26 @@ function StitchingDashboardContent() {
                 <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg">🪡</div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700">{stages.length} stages</span>
               </div>
-              <span className="text-xs font-semibold text-slate-500">Fusing Output</span>
+              <span className="text-xs font-semibold text-slate-500">
+                {selectedStageSnapshot ? `${selectedStageSnapshot.label || formatStage(selectedStageSnapshot.stage)} Output` : 'Fusing Output'}
+              </span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{stages.find((s) => s.stage === 'FUSING')?.completed_pieces ?? 0} pcs</span>
+                <span className="text-2xl font-black text-slate-900">
+                  {(selectedStageSnapshot ? selectedStageSnapshot.completed_pieces : stages.find((s) => s.stage === 'FUSING')?.completed_pieces) ?? 0} pcs
+                </span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Pasting Done: <strong>{stages.find((s) => s.stage === 'PASTING')?.completed_pieces ?? 0}</strong></span>
-                <span>Pasting Pending: <strong className="text-rose-600">{stages.find((s) => s.stage === 'PASTING')?.pending_pieces ?? 0}</strong></span>
+                {selectedStageSnapshot ? (
+                  <>
+                    <span>Assigned: <strong>{selectedStageSnapshot.assigned_pieces ?? 0}</strong></span>
+                    <span>Pending: <strong className="text-rose-600">{selectedStageSnapshot.pending_pieces ?? 0}</strong></span>
+                  </>
+                ) : (
+                  <>
+                    <span>Pasting Done: <strong>{stages.find((s) => s.stage === 'PASTING')?.completed_pieces ?? 0}</strong></span>
+                    <span>Pasting Pending: <strong className="text-rose-600">{stages.find((s) => s.stage === 'PASTING')?.pending_pieces ?? 0}</strong></span>
+                  </>
+                )}
               </div>
             </div>
 
@@ -1231,24 +1294,53 @@ function StitchingDashboardContent() {
           {meta?.unsupported?.store_is_drawer_state && (
             <InfoNote>{meta.unsupported.store_is_drawer_state}</InfoNote>
           )}
-          <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[
-              { key: 'ready_for_store', label: 'Ready for Store', icon: '📤', color: 'blue' },
-              { key: 'in_store', label: 'In Store', icon: '🏬', color: 'indigo' },
-              { key: 'sent_to_store', label: 'Sent to Store', icon: '🚚', color: 'purple' },
-              { key: 'in_drawer', label: 'In Drawer', icon: '🗄️', color: 'amber' },
-              { key: 'ready_for_stitching', label: 'Ready for Line Stitching', icon: '🪡', color: 'emerald' },
-              { key: 'store_pending', label: 'Store Pending', icon: '⏳', color: 'rose' },
-            ].map((card) => (
-              <div key={card.key} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-lg">{card.icon}</div>
-                  <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase">Live</span>
-                </div>
-                <span className="text-xs font-semibold text-slate-500">{card.label}</span>
-                <div className="text-2xl font-black text-slate-900 mt-1">{storeHandoff?.[card.key] ?? 0} pcs</div>
+          {/* Two clear phases instead of 6 flat, similarly-worded cards: a piece
+              first moves through STORE (arrives, sits inside, leaves), then
+              through DRAWER (queued for a drawer, held in one, released for
+              Line Stitching). Same 6 backend fields as before, just grouped
+              and relabeled so it's obvious what each number means. */}
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mb-3">Store</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {[
+                  { key: 'ready_for_store', label: 'Incoming', sub: 'On its way in, not yet arrived', icon: '📥' },
+                  { key: 'in_store', label: 'Inside', sub: 'Currently held in store', icon: '🏬' },
+                  { key: 'sent_to_store', label: 'Outgoing', sub: 'Left the store', icon: '📤' },
+                ].map((card) => (
+                  <div key={card.key} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-lg">{card.icon}</div>
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase">Live</span>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-500">{card.label}</span>
+                    <div className="text-2xl font-black text-slate-900 mt-1">{storeHandoff?.[card.key] ?? 0} pcs</div>
+                    <p className="text-[10px] text-slate-400 mt-1">{card.sub}</p>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+
+            <div>
+              <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mb-3">Drawer</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {[
+                  { key: 'store_pending', label: 'Ready for Drawer', sub: 'Waiting to be placed in a drawer', icon: '📦' },
+                  { key: 'in_drawer', label: 'Holding', sub: 'Sitting in a drawer right now', icon: '🗄️' },
+                  { key: 'ready_for_stitching', label: 'Ready for Line Stitching', sub: 'Released, moving on to Line Stitching', icon: '🪡' },
+                ].map((card) => (
+                  <div key={card.key} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-lg">{card.icon}</div>
+                      <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 uppercase">Live</span>
+                    </div>
+                    <span className="text-xs font-semibold text-slate-500">{card.label}</span>
+                    <div className="text-2xl font-black text-slate-900 mt-1">{storeHandoff?.[card.key] ?? 0} pcs</div>
+                    <p className="text-[10px] text-slate-400 mt-1">{card.sub}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </motion.div>
       )}
@@ -1450,7 +1542,7 @@ function StitchingDashboardContent() {
           <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <h3 className="text-base font-extrabold text-slate-900 mb-1">Piece-Level Batch Tracker</h3>
             <p className="text-xs text-slate-500 mb-4">
-              Enter any piece code to pull its production batch from the backend, or open an operator&rsquo;s trace on the Employee tab and click &ldquo;View full batch&rdquo;.
+              Enter any piece code to pull its production batch from the backend — including who last worked each piece and its current status — or open an operator&rsquo;s trace on the Employee tab and click &ldquo;View full batch&rdquo;.
             </p>
             <div className="flex items-center gap-2 mb-4">
               <div className="relative flex-1">
@@ -1477,45 +1569,95 @@ function StitchingDashboardContent() {
               <div className="mb-4 text-xs text-red-600 font-semibold bg-red-50 border border-red-100 rounded-xl px-3 py-2">API error: {pieceSearchError}</div>
             )}
 
-            {pieceSearchedCode && !pieceSearchLoading && (
-              <div className="mb-3 text-xs font-bold text-slate-500">
-                Showing {pieceSearchResults.length} piece(s) returned for <span className="font-mono text-indigo-700">{pieceSearchedCode}</span>
-              </div>
+            {pieceSearchedCode && !pieceSearchLoading && !pieceSearchError && !pieceDetail && (
+              <div className="text-center py-8 text-slate-400 font-medium text-xs">No piece found for <span className="font-mono text-slate-600">{pieceSearchedCode}</span>.</div>
             )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                    <th className="py-3 px-4">Piece Code</th>
-                    <th className="py-3 px-4 text-right">Seq</th>
-                    <th className="py-3 px-4">Style</th>
-                    <th className="py-3 px-4">Size</th>
-                    <th className="py-3 px-4">Colour</th>
-                    <th className="py-3 px-4">Current Stage</th>
-                    <th className="py-3 px-4">Last Worked</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {pieceSearchResults.map((p, idx) => (
-                    <tr key={`${p.piece_code}-${idx}`} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-mono font-bold text-slate-900">{p.piece_code}</td>
-                      <td className="py-3 px-4 text-right font-mono">{p.seq}</td>
-                      <td className="py-3 px-4 font-semibold text-slate-800">{p.style}</td>
-                      <td className="py-3 px-4">{p.size}</td>
-                      <td className="py-3 px-4">{p.colour}</td>
-                      <td className="py-3 px-4">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-50 text-indigo-700">{formatStage(p.current_stage)}</span>
-                      </td>
-                      <td className="py-3 px-4 font-mono text-slate-600">{p.last_worked}</td>
-                    </tr>
-                  ))}
-                  {pieceSearchResults.length === 0 && !pieceSearchLoading && (
-                    <tr><td colSpan={7} className="text-center py-8 text-slate-400 font-medium">{pieceSearchedCode ? 'No pieces returned for that code.' : 'Search for a piece code to begin.'}</td></tr>
+            {!pieceSearchedCode && !pieceSearchLoading && (
+              <div className="text-center py-8 text-slate-400 font-medium text-xs">Search for a piece code to begin.</div>
+            )}
+
+            {pieceDetail && !pieceSearchLoading && (
+              <div className="space-y-5">
+                {/* Piece summary */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-[#f8fafc] rounded-xl border border-slate-100">
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Piece Code</span>
+                    <p className="text-xs font-mono font-bold text-slate-900 truncate">{pieceDetail.piece_code}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Style / Article</span>
+                    <p className="text-xs font-semibold text-slate-800">{pieceDetail.style} &bull; {pieceDetail.article || '—'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Colour / Size</span>
+                    <p className="text-xs font-semibold text-slate-800">{pieceDetail.colour || '—'} &bull; {pieceDetail.size || '—'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Order</span>
+                    <p className="text-xs font-semibold text-slate-800">{pieceDetail.order_number || '—'}</p>
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold text-slate-400 uppercase">Current Stage</span>
+                    <p className="text-xs font-bold">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-50 text-indigo-700">
+                        {pieceDetail.display_stage ? formatStage(pieceDetail.display_stage) : '—'}
+                      </span>
+                    </p>
+                  </div>
+                  {pieceDetail.in_store && (
+                    <div className="col-span-2">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Store Status</span>
+                      <p className="text-xs font-semibold text-amber-700">{pieceDetail.store_label || '—'} {pieceDetail.drawer_code ? `(${pieceDetail.drawer_code})` : ''}</p>
+                    </div>
                   )}
-                </tbody>
-              </table>
-            </div>
+                  {typeof pieceDetail.total_consumption === 'number' && (
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Total Consumption</span>
+                      <p className="text-xs font-mono font-bold text-slate-800">{pieceDetail.total_consumption} DCM</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Stage-by-stage history — who worked this piece, at every stage */}
+                <div>
+                  <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mb-2">Stage History &mdash; Who Worked This Piece</h4>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs text-left">
+                      <thead>
+                        <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
+                          <th className="py-3 px-4">Stage</th>
+                          <th className="py-3 px-4">Worked By</th>
+                          <th className="py-3 px-4">Work Date</th>
+                          <th className="py-3 px-4 text-right">Consumption</th>
+                          <th className="py-3 px-4">Lot (Article / Colour)</th>
+                          <th className="py-3 px-4">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {sortPieceHistory(pieceDetail.history).map((h, idx) => (
+                          <tr key={`${h.stage}-${idx}`} className={`hover:bg-slate-50 ${h.is_store_overlay ? 'bg-amber-50/40' : ''}`}>
+                            <td className="py-3 px-4 font-bold text-slate-900">{h.label || formatStage(h.stage)}</td>
+                            <td className="py-3 px-4 font-semibold text-slate-800">{h.employee || '—'}</td>
+                            <td className="py-3 px-4 font-mono text-slate-600">{h.work_date || '—'}</td>
+                            <td className="py-3 px-4 text-right font-mono">{typeof h.consumption === 'number' ? `${h.consumption} DCM` : '—'}</td>
+                            <td className="py-3 px-4 text-slate-600">
+                              {h.lot_article ? `${h.lot_article}${h.lot_colour ? ` / ${h.lot_colour}` : ''}` : '—'}
+                            </td>
+                            <td className="py-3 px-4 text-slate-500">
+                              {h.is_store_overlay ? (h.store_status ? h.store_status.replace(/_/g, ' ') : 'Store handoff') : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                        {(!pieceDetail.history || pieceDetail.history.length === 0) && (
+                          <tr><td colSpan={6} className="text-center py-8 text-slate-400 font-medium">No stage history recorded for this piece yet.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       )}

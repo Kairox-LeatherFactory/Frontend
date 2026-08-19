@@ -4,10 +4,10 @@ import { createPortal } from 'react-dom';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiImportPreview, apiImportCommit, apiGetBarcodeOrders } from '@/lib/api';
+import { apiImportPreview, apiImportCommit, apiGetBarcodeOrders, apiBarcodeResolve } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Users, FileSpreadsheet, X, Upload, Barcode, Loader2, Store, Camera, AlertTriangle } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
-import { useRoleAccess, CameraScannerModal } from './shared';
+import { useRoleAccess, CameraScannerModal, normalizeRosterArray } from './shared';
 import dynamic from 'next/dynamic';
 const BarcodeDoorSection = dynamic(() => import('./BarcodeDoorSection'));
 const ManualDoorSection = dynamic(() => import('./ManualDoorSection'));
@@ -209,11 +209,34 @@ export default function ProductionLogEntry() {
 
     try {
       const queryLower = query.toLowerCase();
-      const matchedWorker = workers.find(w =>
+      let matchedWorker = workers.find(w =>
         String(w.id) === query ||
         String(w.employee_barcode || '').toLowerCase() === queryLower ||
         String(w.name || '').toLowerCase().includes(queryLower)
       );
+
+      // The local `workers` list's employee_barcode is often just a display
+      // fallback (derived from the id) rather than the real backend-issued
+      // code, so a genuinely valid, checked-in badge can fail to match here
+      // even though it's perfectly valid — GET /barcode/resolve is the
+      // backend's own authoritative barcode → employee lookup, so ask it
+      // directly instead of only trusting this local guess.
+      if (!matchedWorker) {
+        try {
+          const resolved = await apiBarcodeResolve(token, query);
+          if (resolved?.type === 'EMPLOYEE' && resolved.employee?.id) {
+            const byId = workers.find(w => String(w.id) === String(resolved.employee.id));
+            matchedWorker = byId || {
+              id: resolved.employee.id,
+              name: resolved.employee.name || `Worker (${query})`,
+              designation: resolved.employee.designation || 'Production Worker',
+              employee_barcode: resolved.code || query,
+            };
+          }
+        } catch (resolveErr) {
+          console.warn('Barcode resolve fallback warning:', resolveErr.message);
+        }
+      }
 
       const targetWorker = matchedWorker || {
         id: query,
@@ -226,7 +249,7 @@ export default function ProductionLogEntry() {
       try {
         const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
         const rosterData = await response.json();
-        const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+        const rosterArray = normalizeRosterArray(rosterData);
         const workerRoster = rosterArray.find(r =>
           String(r.employee_id) === String(targetWorker.id) ||
           (r.employee_barcode && String(r.employee_barcode).toLowerCase() === query.toLowerCase()) ||
