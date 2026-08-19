@@ -476,6 +476,45 @@ function StitchingDashboardContent() {
     [stages, filterStage]
   );
 
+  const STAGE_DEFAULT_LABELS = {
+    FUSING: 'Fusing',
+    PASTING: 'Pasting',
+    LINE_STITCHING: 'Line Stitching',
+    SHELL_STITCHING: 'Shell Stitching',
+    FINAL_FINISH: 'Final Finish',
+  };
+
+  // `queue`, per stage, is how many pieces actually finished the stage right
+  // before this one — for Fusing (the first stage tracked here), that's
+  // total_received (the real handoff count from Cutting); for every stage
+  // after that, it's simply the previous tracked stage's own completed_pieces
+  // (Fusing's done pieces are Pasting's queue, and so on), same cascading
+  // logic the Direct Manager pipeline uses.
+  // `overallRemaining`, per stage, is ONE fixed order-wide total — the real
+  // overall piece count (kpis.overall_pieces, the same 228 shown on the
+  // "Overall Pieces" tile) — minus this stage's own Done. Same 228 base for
+  // every stage: Fusing done 4 -> 224 remaining, Pasting done 3 -> 225
+  // remaining, and so on. (Not each stage's own, already-net pending_pieces —
+  // that's a different, smaller number per stage and was double-subtracting.)
+  const stitchingPipelineStages = useMemo(() => {
+    const basePending = kpis?.overall_pieces ?? 0;
+    return PIPELINE_STAGE_ORDER.reduce((acc, stageKey, i) => {
+      const found = stages.find((s) => s.stage === stageKey);
+      const row = found || {
+        stage: stageKey,
+        label: STAGE_DEFAULT_LABELS[stageKey] || formatStage(stageKey),
+        total_received: 0,
+        assigned_pieces: 0,
+        completed_pieces: 0,
+        pending_pieces: 0,
+      };
+      const completed = row.completed_pieces ?? 0;
+      const queue = i === 0 ? (row.total_received ?? 0) : (acc[i - 1].completed_pieces ?? 0);
+      const overallRemaining = Math.max(0, basePending - completed);
+      return [...acc, { ...row, queue, overallRemaining }];
+    }, []);
+  }, [stages, kpis]);
+
   // Backlog size only — NOT a bottleneck. A real bottleneck means a stage is falling
   // behind its expected pace (target vs. time elapsed), which this dashboard doesn't
   // have the data to compute yet. This just flags stages with a large pending queue.
@@ -661,49 +700,6 @@ function StitchingDashboardContent() {
         )}
       </AnimatePresence>
 
-      {/* ─── TOP ACTION BANNER ─── */}
-      <div className="w-full bg-white p-5 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#4f46e5] to-[#4338ca] flex items-center justify-center text-white shadow-md">
-            <Waypoints className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-[#1e293b] tracking-tight">Stitching Floor Operations Dashboard</h1>
-            <p className="text-xs text-[#64748b] font-medium">Pre-Store: <strong className="text-[#4f46e5]">Fusing &rarr; Pasting</strong> &bull; Post-Store: <strong className="text-[#4f46e5]">Line Stitch &rarr; Shell Stitch &rarr; Final Finish</strong></p>
-          </div>
-        </div>
-
-        <div className="flex items-center flex-wrap gap-2.5">
-          <button
-            onClick={handleExportCSV}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#f8fafc] text-slate-700 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-all"
-            title="Export currently loaded order & style progress to CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
-
-          <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-slate-200 text-xs text-slate-500 font-semibold">
-            {loading ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                <span>Syncing with backend…</span>
-              </>
-            ) : apiError ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                <span className="text-red-600">API error: {apiError}</span>
-              </>
-            ) : (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Live backend data{meta?.generated_for ? ` · ${meta.generated_for}` : ''}</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* ─── UNIVERSAL MULTI-FILTER TOOLBAR ─── */}
       <section className="w-full bg-white p-4 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col gap-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -712,6 +708,14 @@ function StitchingDashboardContent() {
             <span>Universal Operations Cross-Filter</span>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleExportCSV}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#f8fafc] text-slate-700 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+              title="Export currently loaded order & style progress to CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export CSV</span>
+            </button>
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#e0e7ff] text-[#3730a3] border border-[#c7d2fe]">
               Showing {filteredOrderProgress.length} of {orderProgress.length} order/style rows
             </span>
@@ -832,150 +836,128 @@ function StitchingDashboardContent() {
            ==================================================================== */}
       {activeTab === 'tab-today' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
-          {/* CURRENT STYLE HERO BANNER */}
-          <div className="w-full bg-gradient-to-br from-white via-[#f8fafc] to-[#eef2ff] border border-indigo-200/70 rounded-3xl p-6 shadow-sm grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="flex flex-col justify-between space-y-4">
-              {heroFilterActive ? (
-                heroAggregate?.empty ? (
-                  <div>
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-slate-100 text-slate-500">No match</span>
-                    <p className="text-xs font-semibold text-slate-500 mt-2">No order/style rows match the current filter.</p>
-                  </div>
-                ) : (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-indigo-100 text-indigo-800">
-                        {heroAggregate.orderLabel}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-500">Article: <strong>{heroAggregate.articleLabel}</strong></span>
-                    </div>
-                    <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{heroAggregate.styleLabel}</h2>
-                    <p className="text-xs font-semibold text-slate-600 mt-0.5">
-                      {heroAggregate.total_ordered} pcs ordered across {heroAggregate.rowCount} {heroAggregate.rowCount === 1 ? 'row' : 'rows'} &bull; filtered live from order_progress
-                    </p>
-                    <div className="grid grid-cols-3 gap-2 mt-3">
-                      <div className="bg-white border border-slate-100 rounded-lg px-2 py-1.5">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Completed</span>
-                        <div className="text-sm font-black text-emerald-700">{heroAggregate.completed}</div>
-                      </div>
-                      <div className="bg-white border border-slate-100 rounded-lg px-2 py-1.5">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Pending</span>
-                        <div className="text-sm font-black text-amber-700">{heroAggregate.pending}</div>
-                      </div>
-                      <div className="bg-white border border-slate-100 rounded-lg px-2 py-1.5">
-                        <span className="text-[9px] font-bold text-slate-400 uppercase">Completion</span>
-                        <div className="text-sm font-black text-indigo-700">{heroAggregate.completion_pct}%</div>
-                      </div>
-                    </div>
-                  </div>
-                )
-              ) : (
-                <div>
-                  <div className="flex items-center gap-2 mb-2 flex-wrap">
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-indigo-100 text-indigo-800">
-                      {currentStyle?.order_number || '—'}
-                    </span>
-                    <span className="text-xs font-semibold text-slate-500">Article: <strong>{currentStyle?.article || '—'}</strong></span>
-                  </div>
-                  <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{currentStyle?.style || '—'}</h2>
-                  <p className="text-xs font-semibold text-slate-600 mt-0.5">{currentStyle?.total_pieces ?? 0} pcs in this style &bull; backend spotlight (unfiltered view)</p>
-                </div>
-              )}
-
-              {/* Real per-stage funnel for the current style, incl. CUTTING & FINAL_INSPECTION
-                  which the top-level `stages` list does not carry. Backend only spotlights ONE
-                  style at a time, so this funnel is only shown when it actually matches the
-                  active Order/Style filter (or when no filter is applied). */}
-              <div className="pt-4 border-t border-slate-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">Style Pipeline (live counts)</span>
-                {(!heroFilterActive || heroAggregate?.matchesCurrentStyle) ? (
-                  <>
-                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                      {(currentStyle?.stages || []).map((s, idx) => (
-                        <span key={`${s.stage}-${idx}`} className="inline-flex items-center gap-1">
-                          <span className="px-2 py-1 rounded-lg bg-white border border-slate-200 text-[10px] font-bold text-slate-700">
-                            {s.label || formatStage(s.stage)} <strong className="text-indigo-600">{s.count}</strong>
-                          </span>
-                          {idx < (currentStyle?.stages || []).length - 1 && <ArrowRight className="w-3 h-3 text-slate-300" />}
-                        </span>
-                      ))}
-                      {(!currentStyle?.stages || currentStyle.stages.length === 0) && (
-                        <span className="text-xs text-slate-400">No pipeline data yet</span>
-                      )}
-                    </div>
-                    {meta?.unsupported?.chain_order && (
-                      <p className="text-[10px] text-slate-400 mt-1.5 italic">Note: {meta.unsupported.chain_order}</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-[11px] text-slate-500 mt-1.5 italic">
-                    Backend only exposes a full CUTTING→FINISH stage pipeline for one spotlighted style at a time ({currentStyle?.style || '—'}, PO {currentStyle?.order_number || '—'}) — not the current filter. Clear filters to view it.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Middle Col: Daily pacing */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Daily Pacing (avg)</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3 my-3">
-                <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-500">Avg Daily Completed</span>
-                  <div className="text-lg font-black text-slate-900">{avgDailyCompleted !== null ? avgDailyCompleted.toFixed(1) : '—'} pcs</div>
-                </div>
-                <div className="bg-[#f8fafc] p-3 rounded-xl border border-slate-100">
-                  <span className="text-[10px] font-bold text-slate-500">Ready for Inspection</span>
-                  <div className="text-lg font-black text-slate-900">{kpis?.ready_for_inspection ?? currentStyle?.ready_for_inspection ?? 0} pcs</div>
-                </div>
-              </div>
+          {/* STITCHING PRODUCTION PIPELINE (Full Width Card matching Direct Manager style) */}
+          <div className="w-full bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
               <div>
-                <div className="flex justify-between text-xs font-bold mb-1.5">
-                  <span className="text-slate-600">Overall Completion ({meta?.scope || 'all clients'})</span>
-                  <span className="text-[#4f46e5]">{completionPct}%</span>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                    Stitching Floor &bull; 5-Stage Live Pipeline
+                  </span>
+                  {meta?.generated_for && (
+                    <span className="text-slate-400 text-xs font-semibold">Generated {meta.generated_for}</span>
+                  )}
+                  {heroFilterActive && heroAggregate && !heroAggregate.empty ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                      PO: {heroAggregate.orderLabel} &bull; {heroAggregate.styleLabel}
+                    </span>
+                  ) : currentStyle?.style ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
+                      Spotlight: {currentStyle.style} ({currentStyle.article || 'Article'})
+                    </span>
+                  ) : null}
                 </div>
-                <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                  <div className="bg-gradient-to-r from-[#4f46e5] to-[#6366f1] h-full rounded-full transition-all duration-500" style={{ width: `${completionPct}%` }}></div>
+                <h2 className="text-base sm:text-lg font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-2">
+                  <Waypoints className="w-5 h-5 text-indigo-600" />
+                  Stitching Floor Production Pipeline
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Live funnel stages from GET /api/v1/dashboard/stitching &mdash; Done = completed pieces, Queue = pieces that finished the stage before this one, Overall Remaining = order-wide pending count minus this stage&rsquo;s Done.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5 mr-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" /> High Pending Backlog
+                </span>
+                {filterStage !== 'all' && (
+                  <button
+                    onClick={() => setFilterStage('all')}
+                    className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer mr-2"
+                  >
+                    Clear Stage Filter
+                  </button>
+                )}
+                <div className="flex items-center gap-3 pl-3 border-l border-slate-200 text-xs font-semibold text-slate-600">
+                  <span>In Store: <strong className="text-slate-800">{storeHandoff?.in_store ?? kpis?.in_store ?? 0}</strong></span>
+                  <span>Ready for Store: <strong className="text-emerald-700">{storeHandoff?.ready_for_store ?? kpis?.ready_for_store ?? 0}</strong></span>
                 </div>
               </div>
             </div>
 
-            {/* Right Col: High-backlog stage flag (pending queue size, not a real bottleneck) */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Stages With High Pending Backlog</span>
-              </div>
-              {highBacklogStage ? (
-                <div className="bg-gradient-to-br from-amber-50 via-yellow-50 to-orange-50 border-2 border-amber-400 p-3.5 rounded-xl my-2 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-amber-900 font-extrabold text-xs">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-600"></span>
-                      </span>
-                      <span>HIGH PENDING BACKLOG</span>
+            {/* 5 STAGES HORIZONTAL CARD GRID */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-1">
+              {stitchingPipelineStages.map((st, idx) => {
+                const isSelected = filterStage === st.stage;
+                const isBottleneck = isHighBacklog(st);
+                const completed = st.completed_pieces ?? 0;
+                // Both set in stitchingPipelineStages above: "Queue" = pieces that
+                // finished the stage right before this one (Cutting for Fusing,
+                // otherwise the previous tracked stage's Done). "Overall Remaining"
+                // = the order-wide pending count minus this stage's own Done.
+                const queue = st.queue ?? 0;
+                const overallRemaining = st.overallRemaining ?? 0;
+
+                return (
+                  <div
+                    key={`stitching-stage-card-${st.stage}-${idx}`}
+                    onClick={() => {
+                      setFilterStage(filterStage === st.stage ? 'all' : st.stage);
+                    }}
+                    className={`relative p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between group ${
+                      isSelected
+                        ? 'border-indigo-600 bg-indigo-50/80 shadow-md ring-2 ring-indigo-500/20'
+                        : isBottleneck
+                        ? 'border-amber-400 bg-amber-50/50 shadow-sm hover:border-amber-500'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:shadow-md'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md font-mono ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white'
+                            : isBottleneck
+                            ? 'bg-amber-200 text-amber-900 font-bold'
+                            : 'bg-slate-100 text-slate-600'
+                        }`}>
+                          #{idx + 1}
+                        </span>
+                        {isSelected && (
+                          <span className="text-[9px] font-bold text-indigo-700 bg-indigo-100 px-1.5 py-0.5 rounded">Active Filter</span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-extrabold text-slate-900 leading-tight truncate">
+                        {st.label || STAGE_DEFAULT_LABELS[st.stage] || formatStage(st.stage)}
+                      </h4>
                     </div>
-                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-600 text-white animate-pulse">Pending</span>
+
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] font-semibold space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Done:</span>
+                        <span className="font-bold text-emerald-700 font-mono">{completed}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-500">Queue:</span>
+                        <span className={`font-bold font-mono ${queue > 20 ? 'text-amber-600 font-black' : 'text-slate-700'}`}>
+                          {queue}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center text-[10px]">
+                        <span className="text-slate-400">Overall Remaining:</span>
+                        <span className="font-bold text-slate-600 font-mono">{overallRemaining}</span>
+                      </div>
+                    </div>
+
+                    {isBottleneck && (
+                      <div className="mt-2 text-center bg-amber-100 border border-amber-200 text-amber-800 text-[9px] font-black uppercase rounded-lg py-0.5 tracking-wider">
+                        High Backlog
+                      </div>
+                    )}
                   </div>
-                  <div className="mt-1.5 flex items-baseline justify-between">
-                    <span className="text-xs font-extrabold text-amber-950">{highBacklogStage.label || formatStage(highBacklogStage.stage)}</span>
-                    <span className="text-xs font-black text-amber-700">{highBacklogStage.pending_pieces} pcs pending</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-emerald-50 border border-emerald-200 p-3 rounded-xl my-2">
-                  <div className="flex items-center gap-2 text-emerald-800 font-extrabold text-xs">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Pipeline Flow Status: Normal</span>
-                  </div>
-                  <p className="text-[11px] text-emerald-700 mt-1">No stage is over the backlog threshold</p>
-                </div>
-              )}
-              <div className="flex justify-between text-xs font-semibold text-slate-600 pt-2 border-t border-slate-100">
-                <span>In Store: <strong>{storeHandoff?.in_store ?? kpis?.in_store ?? 0}</strong></span>
-                <span>Ready for Store: <strong className="text-emerald-700">{storeHandoff?.ready_for_store ?? kpis?.ready_for_store ?? 0}</strong></span>
-              </div>
+                );
+              })}
             </div>
           </div>
 
