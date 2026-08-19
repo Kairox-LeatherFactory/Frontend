@@ -646,21 +646,42 @@ function DashboardInner() {
 
   // Top-line numbers
   const totalOrderPieces = productionKpis?.total_order_pieces ?? currentOrder?.total_pieces ?? 0;
-  const overallCompleted = productionKpis?.overall_completed ?? 0;
-  const overallPending = productionKpis?.overall_pending ?? 0;
+  // completed/pending are NOT trusted from production_kpis.overall_completed /
+  // current_order.completed — the backend under-reports them (stays 0 even
+  // right after a piece is really logged at LINING_CUTTING). Two independent
+  // signals for "really completed" exist instead:
+  //  1. piecesList (the consumption endpoint) — but a piece can be logged
+  //     with no consumption record at all (production/log can return
+  //     consumption_recorded: null for a real completed log), so this alone
+  //     under-counts.
+  //  2. production_kpis.assigned_pieces — despite the name, this is the field
+  //     that actually increments 1:1 with every new piece logged at this
+  //     stage (verified: logging one more piece moved it 3 -> 4, matching
+  //     completed_today moving 3 -> 4 the same way). It's the reliable signal.
+  // Take the max of both so neither gap under-reports the real count.
+  const groundTruthCompleted = useMemo(
+    () => new Set(piecesList.map((p) => p.piece_code)).size,
+    [piecesList]
+  );
+  const overallCompleted = Math.max(productionKpis?.assigned_pieces ?? 0, groundTruthCompleted);
+  const overallPending = Math.max(0, totalOrderPieces - overallCompleted);
   // production_kpis has no top-level minted_pieces field — derive it from the
   // per-style minted counts on current_order, which the backend does return.
   const mintedPieces = useMemo(
     () => (currentOrder?.styles || []).reduce((acc, s) => acc + (s.minted || 0), 0),
     [currentOrder]
   );
+  // lining_required_pieces is the real, stable "assigned to lining" total for
+  // the order — it doesn't move when pieces get completed, unlike assigned_pieces
+  // above (which is really a completion counter, not an assignment count).
   const liningRequiredPieces = productionKpis?.lining_required_pieces ?? null;
+  const assignedToLining = liningRequiredPieces ?? totalOrderPieces;
   const damagePieces = productionKpis?.damage_pieces ?? 0;
   const reworkPieces = productionKpis?.rework_pieces ?? 0;
 
-  const orderCompletionPct = currentOrder?.total_pieces
-    ? Math.round(((currentOrder.completed ?? 0) / currentOrder.total_pieces) * 100)
-    : (totalOrderPieces ? Math.round((overallCompleted / totalOrderPieces) * 100) : 0);
+  const orderCompletionPct = totalOrderPieces
+    ? Math.round((overallCompleted / totalOrderPieces) * 100)
+    : 0;
 
   const avgDcmPerPiece = useMemo(() => {
     const withValue = piecesList.filter((p) => typeof p.actual_consumption === 'number');
@@ -696,49 +717,6 @@ function DashboardInner() {
         )}
       </AnimatePresence>
 
-      {/* ─── TOP ACTION BANNER (Full Width) ─── */}
-      <div className="w-full bg-white p-5 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#e11d48] to-[#be123c] flex items-center justify-center text-white shadow-md">
-            <Shirt className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-[#1e293b] tracking-tight">Lining Floor Operations Dashboard</h1>
-            <p className="text-xs text-[#64748b] font-medium">Piece & Style Traceability &bull; Standard Unit: <strong className="text-[#e11d48]">Decimeter (DCM / dm²) & Meters</strong></p>
-          </div>
-        </div>
-
-        <div className="flex items-center flex-wrap gap-2.5">
-          <button
-            onClick={handleExportCSV}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#f8fafc] text-slate-700 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-all"
-            title="Export currently loaded lining log to CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
-
-          <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-slate-200 text-xs text-slate-500 font-semibold">
-            {loading || piecesLoading ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                <span>Syncing with backend…</span>
-              </>
-            ) : apiError ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                <span className="text-red-600">API error: {apiError}</span>
-              </>
-            ) : (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Live backend data{meta?.generated_for ? ` · ${meta.generated_for}` : ''}</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* ─── UNIVERSAL MULTI-FILTER TOOLBAR (Full Width) ─── */}
       <section className="w-full bg-white p-4 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col gap-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -747,6 +725,14 @@ function DashboardInner() {
             <span>Universal Operations Cross-Filter</span>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleExportCSV}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#f8fafc] text-slate-700 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+              title="Export currently loaded lining log to CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export CSV</span>
+            </button>
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#ffe4e6] text-[#be123c] border border-[#fecdd3]">
               Showing {filteredPieces.length} of {piecesList.length} Lining Records
             </span>
@@ -902,8 +888,8 @@ function DashboardInner() {
       {activeTab === 'tab-today' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
           {/* CURRENT RUNNING ORDER HERO BANNER */}
-          <div className="w-full bg-gradient-to-br from-white via-[#f8fafc] to-[#fff1f2] border border-rose-200/70 rounded-3xl p-6 shadow-sm grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="flex flex-col justify-between space-y-4">
+          <div className="w-full bg-gradient-to-br from-white via-[#f8fafc] to-[#fff1f2] border border-rose-200/70 rounded-3xl p-6 shadow-sm flex flex-col lg:flex-row lg:items-start gap-6">
+            <div className="flex flex-col justify-between space-y-4 lg:flex-[0.8_0.8_0%]">
               <div>
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-rose-100 text-rose-800 border border-rose-200">
@@ -917,7 +903,7 @@ function DashboardInner() {
                   {currentOrder?.total_pieces ?? totalOrderPieces} pcs ordered
                 </h2>
                 <p className="text-xs font-semibold text-slate-600 mt-0.5">
-                  {(currentOrder?.styles || []).length} styles &bull; <span className="text-emerald-600">{currentOrder?.completed ?? 0} completed</span> &bull; <span className="text-amber-600">{currentOrder?.pending ?? 0} pending</span> in this order
+                  {(currentOrder?.styles || []).length} styles &bull; <span className="text-emerald-600">{overallCompleted} completed</span> &bull; <span className="text-amber-600">{overallPending} pending</span> in this order
                 </p>
               </div>
 
@@ -934,7 +920,7 @@ function DashboardInner() {
             </div>
 
             {/* Middle Col: Daily Pacing */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
+            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between lg:flex-[0.8_0.8_0%]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Daily Pacing (avg)</span>
               </div>
@@ -968,37 +954,45 @@ function DashboardInner() {
               </div>
             </div>
 
-            {/* Right Col: Production KPI Breakdown */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
+            {/* Right Col: Production KPI Breakdown — given more width than the
+                other two hero columns since this is the card operators check
+                most often, with extra context (order total + completion) and
+                larger tiles to make use of the space. */}
+            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-6 flex flex-col justify-between lg:flex-[1.3_1.3_0%]">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Production KPI Breakdown</span>
+                <span className="text-sm font-extrabold uppercase tracking-wider text-slate-500">Production KPI Breakdown</span>
                 <span className="text-[10px] font-bold text-slate-400 uppercase">{meta?.scope || 'all_clients'}</span>
               </div>
+              <div className="flex items-baseline justify-between mt-2 pb-3 border-b border-dashed border-slate-100">
+                <span className="text-xs font-semibold text-slate-500">
+                  {totalOrderPieces} total pieces &bull; <span className="text-[#e11d48]">{orderCompletionPct}% complete</span>
+                </span>
+              </div>
 
-              <div className="grid grid-cols-3 gap-2 my-2.5 text-xs font-bold">
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
+              <div className="grid grid-cols-3 gap-3 my-3 text-xs font-bold">
+                <div className="bg-[#f8fafc] p-3.5 rounded-xl border border-slate-100">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Assigned</span>
-                  <div className="text-lg font-black text-slate-900">{productionKpis?.assigned_pieces ?? 0}</div>
+                  <div className="text-2xl font-black text-slate-900">{assignedToLining}</div>
                 </div>
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
+                <div className="bg-[#f8fafc] p-3.5 rounded-xl border border-slate-100">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Completed</span>
-                  <div className="text-lg font-black text-slate-900">{overallCompleted}</div>
+                  <div className="text-2xl font-black text-slate-900">{overallCompleted}</div>
                 </div>
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
+                <div className="bg-[#f8fafc] p-3.5 rounded-xl border border-slate-100">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Pending</span>
-                  <div className="text-lg font-black text-slate-900">{overallPending}</div>
+                  <div className="text-2xl font-black text-slate-900">{overallPending}</div>
                 </div>
-                <div className="bg-rose-50/70 p-2.5 rounded-xl border border-rose-100">
+                <div className="bg-rose-50/70 p-3.5 rounded-xl border border-rose-100">
                   <span className="text-[10px] text-rose-500 uppercase font-semibold">Damage</span>
-                  <div className="text-lg font-black text-rose-600">{damagePieces}</div>
+                  <div className="text-2xl font-black text-rose-600">{damagePieces}</div>
                 </div>
-                <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-100">
+                <div className="bg-purple-50/70 p-3.5 rounded-xl border border-purple-100">
                   <span className="text-[10px] text-purple-500 uppercase font-semibold">Rework</span>
-                  <div className="text-lg font-black text-purple-700">{reworkPieces}</div>
+                  <div className="text-2xl font-black text-purple-700">{reworkPieces}</div>
                 </div>
-                <div className="bg-blue-50/70 p-2.5 rounded-xl border border-blue-100">
+                <div className="bg-blue-50/70 p-3.5 rounded-xl border border-blue-100">
                   <span className="text-[10px] text-blue-500 uppercase font-semibold">Today</span>
-                  <div className="text-[11px] font-black text-blue-700 leading-tight mt-0.5">
+                  <div className="text-sm font-black text-blue-700 leading-tight mt-1">
                     {productionKpis?.completed_today ?? 0} done<br />{productionKpis?.pending_today ?? 0} pending
                   </div>
                 </div>

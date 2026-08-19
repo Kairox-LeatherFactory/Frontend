@@ -536,26 +536,51 @@ export default function DashboardLayout({ children }) {
               <Menu className="w-6 h-6" />
             </button>
 
-            <div className="hidden sm:block">
-              <h2
-                className="text-xl font-bold"
-                style={{
-                  color: '#3d2b1a',
-                }}
-              >
-                Shop Floor Command
-              </h2>
+            {(() => {
+              let title = 'Shop Floor Command';
+              let subtitle = 'Production, wages, and compliance tracking';
 
-              <p
-                className="text-xs"
-                style={{
-                  color: '#9a8a7a',
-                }}
-              >
-                Production, wages, and
-                compliance tracking
-              </p>
-            </div>
+              const isCutting = pathname === '/dashboard/cutting' || (pathname === '/dashboard' && user === 'cutting_manager');
+              const isLining = pathname === '/dashboard/lining' || (pathname === '/dashboard' && user === 'lining_manager');
+              const isStitching = pathname === '/dashboard/stitching' || (pathname === '/dashboard' && user === 'stitching_manager');
+              const isDM = pathname === '/dashboard/direct-manager' || (pathname === '/dashboard' && ['direct_manager', 'managing_director', 'hr'].includes(user));
+
+              if (isLining) {
+                title = 'Lining Floor Operations Dashboard';
+                subtitle = 'Piece & Style Traceability • Standard Unit: Decimeter (DCM / dm²) & Meters';
+              } else if (isCutting) {
+                title = 'Cutting Floor Operations Dashboard';
+                subtitle = 'Piece & Style Traceability • Standard Unit: Decimeter (DCM / dm²)';
+              } else if (isStitching) {
+                title = 'Stitching Floor Operations Dashboard';
+                subtitle = 'Pre-Store: Fusing → Pasting • Post-Store: Line Stitch → Shell Stitch → Final Finish';
+              } else if (isDM) {
+                title = 'Direct Manager Operations Dashboard';
+                subtitle = 'Executive Command • Real-time Factory Pipeline, Department Queues & Traceability';
+              }
+
+              return (
+                <div className="hidden sm:block">
+                  <h2
+                    className="text-xl font-bold"
+                    style={{
+                      color: '#3d2b1a',
+                    }}
+                  >
+                    {title}
+                  </h2>
+
+                  <p
+                    className="text-xs"
+                    style={{
+                      color: '#9a8a7a',
+                    }}
+                  >
+                    {subtitle}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
 
           {/* User section */}

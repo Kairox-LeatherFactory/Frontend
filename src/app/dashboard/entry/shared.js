@@ -199,6 +199,22 @@ export const API_TO_UI_STAGE = Object.fromEntries(
 // advanceToNextPipelineStage() walks this order after a successful submit.
 export const PIPELINE_STAGE_ORDER = ['Cutting', 'Fusing', 'Pasting', 'Line Stitching', 'Shell Stitching', 'Final Finish', 'Final Inspection', 'Package Export'];
 
+// GET /attendance/today normally returns the full day's roster as an array,
+// but some responses come back as a single attendance record object instead
+// (e.g. when the backend narrows the result to one employee) — without this,
+// `Array.isArray(rosterData)` is false, the `.data`/`.items` fallbacks don't
+// exist on a bare record either, and the caller silently gets an empty
+// roster, so a worker who really is checked in still gets blocked by the
+// "not checked-in" gate. Wrap a bare record (recognizable by employee_id) in
+// an array so callers can `.find()` over it the same way either way.
+export function normalizeRosterArray(rosterData) {
+  if (Array.isArray(rosterData)) return rosterData;
+  if (rosterData?.data && Array.isArray(rosterData.data)) return rosterData.data;
+  if (rosterData?.items && Array.isArray(rosterData.items)) return rosterData.items;
+  if (rosterData?.employee_id) return [rosterData];
+  return [];
+}
+
 // Role/permission helpers — shared by all three sections (Barcode door,
 // Manual door, Store Hub) plus page.js's own tab-switch and toast logic.
 export function useRoleAccess() {

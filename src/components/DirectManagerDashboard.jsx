@@ -144,6 +144,11 @@ function inferDepartment(stageKeyOrLabel = '') {
 
 const DEPARTMENT_DISPLAY_ORDER = ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Stitching', 'Quality', 'Inspection', 'Packaging', 'Packing'];
 
+// GET /dashboard/store/traceability has no `stage` field — each row is
+// (piece, material_type), and material_type is only ever "LEATHER" or
+// "LINING", corresponding to the Leather Cutting / Lining Cutting stages.
+const MATERIAL_TYPE_TO_STAGE = { LEATHER: 'LEATHER_CUTTING', LINING: 'LINING_CUTTING' };
+
 function departmentSortIndex(name = '') {
   const idx = DEPARTMENT_DISPLAY_ORDER.findIndex((d) => d.toLowerCase() === String(name).toLowerCase());
   return idx === -1 ? DEPARTMENT_DISPLAY_ORDER.length : idx;
@@ -269,7 +274,13 @@ export default function DirectManagerDashboard() {
     if (activeTab === 'tab-drawers') fetchDrawers();
   }, [token, activeTab]);
 
-  // ── LIVE BACKEND CALL: GET /api/v1/dashboard/store/traceability (Piece Traceability tab) ──
+  // ── LIVE BACKEND CALL: GET /api/v1/dashboard/store/traceability (Piece Traceability tab only) ──
+  // Gated back to this one tab — firing it on every Order/Style filter
+  // change (selectedStyleRow updates from that) was calling it on every
+  // filter click across the whole dashboard, not just when actually viewing
+  // Piece Traceability. Selecting a specific piece row also does NOT refire
+  // this — that only sets selectedPieceCode, which drives the separate
+  // /direct-manager/pieces/{piece_code} call below.
   useEffect(() => {
     if (!token || activeTab !== 'tab-pieces') return;
     let isMounted = true;
@@ -453,80 +464,140 @@ export default function DirectManagerDashboard() {
   const isDrillDownActive = !!filterMatchedRow;
 
   const effectivePipeline = useMemo(() => {
-    const base = (isDrillDownActive && activeDrillDownData?.stages?.length)
-      ? activeDrillDownData.stages.map((s) => ({
-          stage: s.stage || s.name,
-          label: formatStage(s.stage || s.label || s.name),
-          completed: readNum(s, ['completed', 'done']),
-          pending: readNum(s, ['pending', 'queue', 'remaining']),
-        }))
-      : (isDrillDownActive ? [] : pipelineList);
+    let base;
+    if (isDrillDownActive) {
+      // The stage funnel's shape (cards, order, labels) stays fixed to the same
+      // factory-wide stage list — only completed/pending get swapped for the
+      // selected order/style's numbers, falling back to 0 for stages the
+      // backend didn't return data for, instead of blanking the whole grid.
+      const stageDataByKey = new Map(
+        (activeDrillDownData?.stages || []).map((s) => [String(s.stage || s.name || '').toUpperCase(), s])
+      );
+      // The order/style detail endpoint only reports `completed` (+ pct/status)
+      // per stage, never a pending/queue count — unlike the factory-wide
+      // pipeline list. Derive it: whatever finished the previous stage but
+      // hasn't finished this one is sitting in this stage's queue, starting
+      // from the order's total_quantity feeding stage #1's queue.
+      const totalQty = readNum(activeDrillDownData, ['total_quantity']) ?? 0;
+      let previousCompleted = totalQty;
+      base = pipelineList.map((st) => {
+        const stageKey = st.stage || st.label;
+        const match = stageDataByKey.get(String(stageKey).toUpperCase());
+        const completed = match ? (readNum(match, ['completed', 'done']) ?? 0) : 0;
+        const pending = Math.max(0, previousCompleted - completed);
+        previousCompleted = completed;
+        return {
+          stage: stageKey,
+          label: st.label || formatStage(stageKey),
+          completed,
+          pending,
+        };
+      });
+    } else {
+      base = pipelineList;
+    }
     if (filterDepartment === 'all') return base;
     return base.filter((st) => inferDepartment(st.stage || st.label) === filterDepartment);
   }, [isDrillDownActive, activeDrillDownData, pipelineList, filterDepartment]);
 
   const effectiveBlockedStage = selectedOrderRow ? orderDetailData?.blocked_stage : null;
 
-  // Leather Cutting and Lining Cutting are cut together from the same pieces,
-  // so the backend often bundles both under one "Cutting" department row
-  // (stages: ['LEATHER_CUTTING', 'LINING_CUTTING']) with one combined total —
-  // check the stages list, not just the department name, or a merged row like
-  // that gets missed and Lining wrongly shows as having no data at all.
-  const liningDepartmentRow = useMemo(
-    () =>
-      departmentsList.find(
-        (d) =>
-          /LINING/i.test(d.department || d.name || '') ||
-          (Array.isArray(d.stages) && d.stages.some((s) => /LINING/i.test(s)))
-      ) || null,
-    [departmentsList]
-  );
   const hasLiningStage = pipelineList.some((st) => /LINING/i.test(st.stage || st.label || ''));
 
+  // Real per-stage "Done" counts for the selected employee, built from
+  // traceabilityData (the only endpoint that carries an employee field per
+  // piece). The real response has no `stage` field — one row per
+  // (piece, material_type), where material_type is "LEATHER" or "LINING",
+  // i.e. it only covers the Leather Cutting / Lining Cutting stages. There's
+  // no employee attribution anywhere in the backend for Fusing onward, so
+  // this map only ever has (at most) those two keys — every later stage is
+  // left alone rather than shown as a fake 0.
+  const employeeStageDoneCounts = useMemo(() => {
+    const map = new Map();
+    if (filterEmployee === 'all') return map;
+    // Seed both covered stages at 0 so a real "this employee did 0 pieces
+    // here" is distinguishable from "this stage has no employee data at
+    // all" (every other stage, which is never seeded and stays absent).
+    map.set('LEATHER_CUTTING', 0);
+    map.set('LINING_CUTTING', 0);
+    traceabilityData.forEach((t) => {
+      if (t.employee !== filterEmployee) return;
+      if (filterOrder !== 'all' && t.order_number !== filterOrder) return;
+      const key = MATERIAL_TYPE_TO_STAGE[String(t.material_type || '').toUpperCase()];
+      if (!key) return;
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [traceabilityData, filterEmployee, filterOrder]);
+
   const pipelineWithStore = useMemo(() => {
-    if (isDrillDownActive) return effectivePipeline;
     let cards = [...effectivePipeline];
 
     if (!hasLiningStage) {
-      const liningCard = liningDepartmentRow
-        ? (() => {
-            const target = readNum(liningDepartmentRow, ['target']);
-            const completed = readNum(liningDepartmentRow, ['completed', 'produced', 'total_produced', 'done']);
-            const pending =
-              readNum(liningDepartmentRow, ['pending', 'total_pending', 'queue']) ??
-              (target !== null && completed !== null ? Math.max(0, target - completed) : null);
-            return {
-              stage: 'LINING',
-              label: 'Lining',
-              completed,
-              pending,
-              isDepartmentOverlay: true,
-            };
-          })()
-        : {
-            stage: 'LINING',
-            label: 'Lining',
-            completed: null,
-            pending: null,
-            isDepartmentOverlay: true,
-            isUnavailable: true,
-          };
+      // Lining and Leather Cutting are cut from the same batch — the backend
+      // has no distinct LINING_CUTTING stage, so any "Lining" number we could
+      // show here would just be Cutting's own total borrowed from the
+      // department table, not real separate Lining data. Keep the card in
+      // place (don't drop it from the row) but leave its fields null until
+      // the backend actually reports a distinct LINING_CUTTING stage — at
+      // that point hasLiningStage flips true and this overlay is skipped in
+      // favor of the real numbered stage from effectivePipeline.
+      const liningCard = {
+        stage: 'LINING',
+        label: 'Lining',
+        completed: null,
+        pending: null,
+        isDepartmentOverlay: true,
+        isUnavailable: true,
+        unavailableNote: isDrillDownActive ? 'Not trackable per order before Store' : 'No separate LINING_CUTTING stage reported yet',
+      };
       const cutIdx = cards.findIndex((st) => /CUT|LEATHER/i.test(st.stage || st.label || ''));
       cards.splice(cutIdx === -1 ? 0 : cutIdx + 1, 0, liningCard);
     }
 
-    const storeCard = {
-      stage: 'STORE',
-      label: 'Store / Drawer',
-      completed: storeStats.drawers_sent ?? null,
-      pending: storeStats.drawers_in_store ?? null,
-      isStoreOverlay: true,
-    };
-    const stitchIdx = cards.findIndex((st) => /STITCH/i.test(st.stage || st.label || ''));
-    cards = stitchIdx === -1 ? [...cards, storeCard] : [...cards.slice(0, stitchIdx), storeCard, ...cards.slice(stitchIdx)];
+    // Drawer/store counts are factory-wide (no per-order breakdown exists), so
+    // the buffer overlay only applies when the real pipeline has no Store
+    // stage of its own — otherwise it would just duplicate that real card.
+    const hasRealStoreStage = cards.some((st) => /STORE/i.test(st.stage || st.label || ''));
+    if (!hasRealStoreStage) {
+      const storeCard = isDrillDownActive
+        ? {
+            stage: 'STORE',
+            label: 'Store / Drawer',
+            completed: null,
+            pending: null,
+            isStoreOverlay: true,
+            isUnavailable: true,
+            unavailableNote: 'Not trackable per order',
+          }
+        : {
+            stage: 'STORE',
+            label: 'Store / Drawer',
+            completed: storeStats.drawers_sent ?? null,
+            pending: storeStats.drawers_in_store ?? null,
+            isStoreOverlay: true,
+          };
+      const stitchIdx = cards.findIndex((st) => /STITCH/i.test(st.stage || st.label || ''));
+      cards = stitchIdx === -1 ? [...cards, storeCard] : [...cards.slice(0, stitchIdx), storeCard, ...cards.slice(stitchIdx)];
+    }
 
-    return cards;
-  }, [effectivePipeline, storeStats, isDrillDownActive, liningDepartmentRow, hasLiningStage]);
+    if (filterEmployee === 'all') return cards;
+    // Overlay/unavailable cards (Lining placeholder, Store buffer) have no
+    // real per-piece data behind them either way — leave those alone. Of the
+    // real numbered stages, only Leather Cutting and Lining Cutting have any
+    // employee attribution at all (employeeStageDoneCounts only ever has
+    // those two keys) — override those with this employee's real Done count;
+    // every stage from Fusing onward has no employee data anywhere in the
+    // backend, so it's flagged as unavailable instead of shown as a fake 0.
+    return cards.map((st) => {
+      if (st.isUnavailable || st.isStoreOverlay || st.isDepartmentOverlay) return st;
+      const key = String(st.stage || st.label || '').toUpperCase();
+      if (!employeeStageDoneCounts.has(key)) {
+        return { ...st, isUnavailable: true, unavailableNote: `No per-employee data for ${filterEmployee} at this stage`, employeeScoped: true };
+      }
+      return { ...st, completed: employeeStageDoneCounts.get(key), pending: null, employeeScoped: true };
+    });
+  }, [effectivePipeline, storeStats, hasLiningStage, isDrillDownActive, filterEmployee, employeeStageDoneCounts]);
 
   const effectiveTargetPieces = isDrillDownActive
     ? (activeDrillDownData?.total_quantity ?? filterMatchedRow?.total_ordered ?? 0)
@@ -1191,11 +1262,11 @@ export default function DirectManagerDashboard() {
                 </div>
                 <div className="mt-2.5 pt-2 border-t border-slate-100 text-[10px] font-semibold space-y-0.5">
                   {st.isUnavailable ? (
-                    <p className="text-slate-400 italic">No data yet</p>
+                    <p className="text-slate-400 italic">{st.unavailableNote || 'No data yet'}</p>
                   ) : (
                     <>
                       <div className="flex justify-between">
-                        <span className="text-slate-500">{st.isStoreOverlay ? 'Sent:' : 'Done:'}</span>
+                        <span className="text-slate-500">{st.isStoreOverlay ? 'Sent:' : st.employeeScoped ? `${filterEmployee} Done:` : 'Done:'}</span>
                         <span className="font-bold text-emerald-700 font-mono">{completed ?? '—'}</span>
                       </div>
                       <div className="flex justify-between">
@@ -1223,9 +1294,9 @@ export default function DirectManagerDashboard() {
         {!hasLiningStage && (
           <p className="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5 pt-1">
             <Info className="w-3.5 h-3.5 shrink-0" />
-            {liningDepartmentRow
-              ? 'Lining (teal, tagged DEPT) is shown from its real department totals, not the stage funnel — this backend has no LINING_CUTTING stage events in scope yet, only department-level counts.'
-              : 'Lining’s slot (dashed, tagged N/A) is reserved but empty — no LINING_CUTTING stage events and no Lining department row exist in this response yet. Store is real data from the store KPI block, same as before.'}
+            {isDrillDownActive
+              ? 'Lining and Store are shown as N/A here — lining pieces share the same cutting event as leather (no separate LINING_CUTTING stage exists) and only rejoin a specific order at Store, so neither can be attributed to this order before then. Both stay blank until the backend reports them separately.'
+              : 'Lining’s slot (dashed, tagged N/A) is reserved but left blank — no separate LINING_CUTTING stage events exist in this response yet, so nothing here would be genuine Lining data. It will populate automatically once the backend reports that stage.'}
           </p>
         )}
       </section>
@@ -1351,6 +1422,23 @@ export default function DirectManagerDashboard() {
           );
         })}
       </div>
+
+      {/* Employee filter recomputes Done counts on the pipeline cards (and
+          everything derived from them — Departments, Stage Funnel) from
+          traceabilityData, the only endpoint with a real employee field per
+          piece. Queue/pending stays blank there since it isn't attributable
+          to one employee. Productivity/Quality Pass/Attendance/Store Drawer
+          Dispatch stay factory-wide — the backend has no employee dimension
+          for those at all, so faking a number there would be worse than
+          leaving them as-is. */}
+      {filterEmployee !== 'all' && (
+        <div className="w-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold p-3 rounded-2xl flex items-center gap-2">
+          <Info className="w-4 h-4 shrink-0" />
+          <span>
+            Filtered to Employee &ldquo;{filterEmployee}&rdquo; — pipeline Done counts (and Departments / Stage Funnel, which derive from them), plus the <strong>Employees</strong> and <strong>Piece Traceability</strong> tabs, now show this employee&rsquo;s own real numbers. Productivity, Quality Pass, Attendance, and Store Drawer Dispatch stay factory-wide — the backend has no employee breakdown for those.
+          </span>
+        </div>
+      )}
 
       {/* ====================================================================
            TAB: FACTORY OVERVIEW (Redesigned with reference card fields in app theme)
@@ -2637,6 +2725,120 @@ export default function DirectManagerDashboard() {
                   <span>Download Report (CSV)</span>
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MODAL: PIECE DETAIL & STAGE HISTORY — real per-piece lookup from
+           GET /api/v1/dashboard/direct-manager/pieces/{piece_code}, fired
+           by selectedPieceCode above (which was already correctly wired) but
+           previously never rendered — clicking a row in the traceability
+           table set the state and fetched real data that just went nowhere. ─── */}
+      <AnimatePresence>
+        {selectedPieceCode && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white border border-slate-200 rounded-3xl p-6 max-w-2xl w-full text-slate-800 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <QrCode className="w-5 h-5 text-indigo-600" />
+                  Piece Detail &amp; Stage History
+                </h3>
+                <button onClick={() => setSelectedPieceCode(null)} className="p-1 text-slate-400 hover:text-slate-600"><X className="w-5 h-5" /></button>
+              </div>
+
+              {loadingPieceDetail && (
+                <p className="text-xs text-slate-400 font-semibold text-center py-8">Loading piece detail…</p>
+              )}
+
+              {!loadingPieceDetail && !pieceDetailData && (
+                <p className="text-xs text-slate-400 font-semibold text-center py-8">No detail found for <span className="font-mono text-slate-600">{selectedPieceCode}</span>.</p>
+              )}
+
+              {!loadingPieceDetail && pieceDetailData && (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-[#f8fafc] rounded-xl border border-slate-100">
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Piece Code</span>
+                      <p className="text-xs font-mono font-bold text-slate-900 truncate">{pieceDetailData.piece_code}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Style / Article</span>
+                      <p className="text-xs font-semibold text-slate-800">{pieceDetailData.style || '—'} &bull; {pieceDetailData.article || '—'}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Colour / Size</span>
+                      <p className="text-xs font-semibold text-slate-800">{pieceDetailData.colour || '—'} &bull; {pieceDetailData.size || '—'}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Order</span>
+                      <p className="text-xs font-semibold text-slate-800">{pieceDetailData.order_number || '—'}</p>
+                    </div>
+                    <div>
+                      <span className="text-[10px] font-bold text-slate-400 uppercase">Current Stage</span>
+                      <p className="text-xs font-bold">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-indigo-50 text-indigo-700">
+                          {pieceDetailData.display_stage ? formatStage(pieceDetailData.display_stage) : '—'}
+                        </span>
+                      </p>
+                    </div>
+                    {pieceDetailData.in_store && (
+                      <div className="col-span-2">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Store Status</span>
+                        <p className="text-xs font-semibold text-amber-700">{pieceDetailData.store_label || '—'} {pieceDetailData.drawer_code ? `(${pieceDetailData.drawer_code})` : ''}</p>
+                      </div>
+                    )}
+                    {typeof pieceDetailData.total_consumption === 'number' && (
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Total Consumption</span>
+                        <p className="text-xs font-mono font-bold text-slate-800">{pieceDetailData.total_consumption} DCM</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mb-2">Stage History &mdash; Who Worked This Piece</h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs text-left">
+                        <thead>
+                          <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
+                            <th className="py-3 px-4">Stage</th>
+                            <th className="py-3 px-4">Worked By</th>
+                            <th className="py-3 px-4">Work Date</th>
+                            <th className="py-3 px-4 text-right">Consumption</th>
+                            <th className="py-3 px-4">Lot (Article / Colour)</th>
+                            <th className="py-3 px-4">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-medium">
+                          {(pieceDetailData.history || []).map((h, idx) => (
+                            <tr key={`${h.stage}-${idx}`} className={`hover:bg-slate-50 ${h.is_store_overlay ? 'bg-amber-50/40' : ''}`}>
+                              <td className="py-3 px-4 font-bold text-slate-900">{h.label || formatStage(h.stage)}</td>
+                              <td className="py-3 px-4 font-semibold text-slate-800">{h.employee || '—'}</td>
+                              <td className="py-3 px-4 font-mono text-slate-600">{h.work_date || '—'}</td>
+                              <td className="py-3 px-4 text-right font-mono">{typeof h.consumption === 'number' ? `${h.consumption} DCM` : '—'}</td>
+                              <td className="py-3 px-4 text-slate-600">
+                                {h.lot_article ? `${h.lot_article}${h.lot_colour ? ` / ${h.lot_colour}` : ''}` : '—'}
+                              </td>
+                              <td className="py-3 px-4 text-slate-500">
+                                {h.is_store_overlay ? (h.store_status ? h.store_status.replace(/_/g, ' ') : 'Store handoff') : '—'}
+                              </td>
+                            </tr>
+                          ))}
+                          {(!pieceDetailData.history || pieceDetailData.history.length === 0) && (
+                            <tr><td colSpan={6} className="text-center py-8 text-slate-400 font-medium">No stage history recorded for this piece yet.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </div>
         )}

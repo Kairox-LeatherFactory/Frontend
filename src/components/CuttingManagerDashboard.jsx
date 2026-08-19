@@ -458,6 +458,45 @@ function DashboardInner() {
     return map;
   }, [filteredPieces]);
 
+  // Real "what actually got minted/cut, by style" summary for the hero KPI row —
+  // built from the same styleConsumptionAgg map (real cut-log counts), not the
+  // factory-wide leather stock totals that used to sit in that tile. Each row
+  // also carries the style's real remaining piece count (order_progress.pending)
+  // and remaining leather stock (sum of matching lots.remaining, matched by the
+  // article/colour that style's own cut pieces actually used).
+  const styleMintedSummary = useMemo(() => {
+    const styleMaterials = new Map();
+    filteredPieces.forEach((p) => {
+      if (!p.style) return;
+      if (!styleMaterials.has(p.style)) styleMaterials.set(p.style, new Set());
+      styleMaterials.get(p.style).add(`${p.leather_article || ''}::${p.colour || ''}`);
+    });
+
+    const rows = Array.from(styleConsumptionAgg.entries())
+      .map(([key, v]) => {
+        const [orderNumber, styleName] = key.split('::');
+        const progressRow = orderProgress.find(
+          (s) => s.style_name === styleName && s.order_number === orderNumber
+        );
+        const materials = styleMaterials.get(styleName) || new Set();
+        const remainingStock = lotsList
+          .filter((l) => materials.has(`${l.article || ''}::${l.colour || ''}`))
+          .reduce((acc, l) => acc + (l.remaining ?? 0), 0);
+        return {
+          orderNumber,
+          styleName,
+          pieces: v.count,
+          dcm: v.total,
+          remainingQty: progressRow?.pending ?? null,
+          remainingStock,
+        };
+      })
+      .filter((r) => r.pieces > 0)
+      .sort((a, b) => b.pieces - a.pieces);
+    const totalPieces = rows.reduce((acc, r) => acc + r.pieces, 0);
+    return { rows, totalPieces };
+  }, [styleConsumptionAgg, filteredPieces, orderProgress, lotsList]);
+
   const selectedStyleSizeBreakdown = useMemo(() => {
     if (!selectedStyleDetail) return [];
     const map = new Map();
@@ -626,20 +665,31 @@ function DashboardInner() {
     triggerToast('📥 Cutting Traceability CSV Report Downloaded Successfully');
   };
 
-  // ── Top-line numbers — always sourced from production_kpis / leather_kpis
-  // (backend-computed order-wide totals), never from the partial cut-log window. ──
+  // ── Top-line numbers — sourced from production_kpis / leather_kpis
+  // (backend-computed order-wide totals) EXCEPT for completed/pending, which
+  // the backend under-reports (it can report 0 completed even when real
+  // LEATHER_CUTTING consumption events exist for the order/piece). The
+  // consumption endpoint (piecesList) is the only endpoint with piece-level
+  // rows, so it's the ground truth for "how many pieces actually got cut" —
+  // use its distinct piece count instead of trusting production_kpis/current_order
+  // for completed/pending. ──
   const totalOrderPieces = productionKpis?.total_order_pieces ?? currentOrder?.total_pieces ?? 0;
-  const overallCompleted = productionKpis?.overall_completed ?? 0;
-  const overallPending = productionKpis?.overall_pending ?? 0;
+  const groundTruthCompleted = useMemo(
+    () => new Set(piecesList.map((p) => p.piece_code)).size,
+    [piecesList]
+  );
+  const overallCompleted = groundTruthCompleted;
+  const overallPending = Math.max(0, totalOrderPieces - groundTruthCompleted);
   const mintedPieces = productionKpis?.minted_pieces ?? 0;
   const damagePieces = productionKpis?.damage_pieces ?? 0;
   const reworkPieces = productionKpis?.rework_pieces ?? 0;
 
   // Scoped to the single current_order (not the floor-wide production_kpis totals above) —
   // this is what the hero banner's own progress bar should reflect, since that card is
-  // describing one specific order, not the all-clients aggregate.
+  // describing one specific order, not the all-clients aggregate. Uses the same
+  // ground-truth completed count as above, for the same reason.
   const orderCompletionPct = currentOrder?.total_pieces
-    ? Math.round(((currentOrder.completed ?? 0) / currentOrder.total_pieces) * 100)
+    ? Math.round((groundTruthCompleted / currentOrder.total_pieces) * 100)
     : 0;
 
   const avgDcmPerPiece = useMemo(() => {
@@ -676,49 +726,6 @@ function DashboardInner() {
         )}
       </AnimatePresence>
 
-      {/* ─── TOP ACTION BANNER (Full Width) ─── */}
-      <div className="w-full bg-white p-5 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#2563eb] to-[#1d4ed8] flex items-center justify-center text-white shadow-md">
-            <Scissors className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-[#1e293b] tracking-tight">Cutting Floor Operations Dashboard</h1>
-            <p className="text-xs text-[#64748b] font-medium">Piece & Style Traceability &bull; Standard Unit: <strong className="text-[#2563eb]">Decimeter (DCM / dm²)</strong></p>
-          </div>
-        </div>
-
-        <div className="flex items-center flex-wrap gap-2.5">
-          <button
-            onClick={handleExportCSV}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#f8fafc] text-slate-700 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-all"
-            title="Export currently loaded cutting log to CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
-
-          <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-slate-200 text-xs text-slate-500 font-semibold">
-            {loading || piecesLoading ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-                <span>Syncing with backend…</span>
-              </>
-            ) : apiError ? (
-              <>
-                <span className="w-2 h-2 rounded-full bg-red-500"></span>
-                <span className="text-red-600">API error: {apiError}</span>
-              </>
-            ) : (
-              <>
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                <span>Live backend data{meta?.generated_for ? ` · ${meta.generated_for}` : ''}</span>
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* ─── UNIVERSAL MULTI-FILTER TOOLBAR (Full Width) ─── */}
       <section className="w-full bg-white p-4 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col gap-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
@@ -727,8 +734,16 @@ function DashboardInner() {
             <span>Universal Operations Cross-Filter</span>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={handleExportCSV}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#f8fafc] text-slate-700 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-all cursor-pointer shadow-sm"
+              title="Export currently loaded cutting log to CSV"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export CSV</span>
+            </button>
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#eff6ff] text-[#2563eb] border border-[#bfdbfe]">
-              Showing {filteredPieces.length} of {piecesList.length} Cut Records
+              Showing {filteredPieces.length} of {piecesList.length} Cutting Records
             </span>
             <button
               onClick={handleResetFilters}
@@ -882,8 +897,8 @@ function DashboardInner() {
       {activeTab === 'tab-today' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
           {/* CURRENT RUNNING ORDER HERO BANNER */}
-          <div className="w-full bg-gradient-to-br from-white via-[#f8fafc] to-[#eff6ff] border border-slate-200 rounded-3xl p-6 shadow-sm grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="flex flex-col justify-between space-y-4">
+          <div className="w-full bg-gradient-to-br from-white via-[#f8fafc] to-[#eff6ff] border border-slate-200 rounded-3xl p-6 shadow-sm flex flex-col lg:flex-row lg:items-start gap-6">
+            <div className="flex flex-col justify-between space-y-4 lg:flex-[0.8_0.8_0%]">
               <div>
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-blue-100 text-blue-800">
@@ -914,7 +929,7 @@ function DashboardInner() {
             </div>
 
             {/* Middle Col: Real daily pacing averages computed from daily_production */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
+            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between lg:flex-[0.8_0.8_0%]">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Daily Pacing (avg)</span>
               </div>
@@ -948,37 +963,45 @@ function DashboardInner() {
               </div>
             </div>
 
-            {/* Right Col: Real production_kpis breakdown (floor-wide, scope: {meta?.scope}) */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
+            {/* Right Col: Real production_kpis breakdown (floor-wide, scope: {meta?.scope}) —
+                given more width than the other two hero columns since this is the card
+                operators check most often, with extra context (order total + completion)
+                and larger tiles to make use of the space. */}
+            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-6 flex flex-col justify-between lg:flex-[1.3_1.3_0%]">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Production KPI Breakdown</span>
+                <span className="text-sm font-extrabold uppercase tracking-wider text-slate-500">Production KPI Breakdown</span>
                 <span className="text-[10px] font-bold text-slate-400 uppercase">{meta?.scope || 'all_clients'}</span>
               </div>
+              <div className="flex items-baseline justify-between mt-2 pb-3 border-b border-dashed border-slate-100">
+                <span className="text-xs font-semibold text-slate-500">
+                  {totalOrderPieces} total pieces &bull; <span className="text-[#2563eb]">{orderCompletionPct}% complete</span>
+                </span>
+              </div>
 
-              <div className="grid grid-cols-3 gap-2 my-2.5 text-xs font-bold">
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
+              <div className="grid grid-cols-3 gap-3 my-3 text-xs font-bold">
+                <div className="bg-[#f8fafc] p-3.5 rounded-xl border border-slate-100">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Assigned</span>
-                  <div className="text-lg font-black text-slate-900">{productionKpis?.assigned_pieces ?? 0}</div>
+                  <div className="text-2xl font-black text-slate-900">{productionKpis?.assigned_pieces ?? 0}</div>
                 </div>
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
+                <div className="bg-[#f8fafc] p-3.5 rounded-xl border border-slate-100">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Completed</span>
-                  <div className="text-lg font-black text-slate-900">{overallCompleted}</div>
+                  <div className="text-2xl font-black text-slate-900">{overallCompleted}</div>
                 </div>
-                <div className="bg-[#f8fafc] p-2.5 rounded-xl border border-slate-100">
+                <div className="bg-[#f8fafc] p-3.5 rounded-xl border border-slate-100">
                   <span className="text-[10px] text-slate-400 uppercase font-semibold">Pending</span>
-                  <div className="text-lg font-black text-slate-900">{overallPending}</div>
+                  <div className="text-2xl font-black text-slate-900">{overallPending}</div>
                 </div>
-                <div className="bg-red-50/70 p-2.5 rounded-xl border border-red-100">
+                <div className="bg-red-50/70 p-3.5 rounded-xl border border-red-100">
                   <span className="text-[10px] text-red-500 uppercase font-semibold">Damage</span>
-                  <div className="text-lg font-black text-red-600">{damagePieces}</div>
+                  <div className="text-2xl font-black text-red-600">{damagePieces}</div>
                 </div>
-                <div className="bg-purple-50/70 p-2.5 rounded-xl border border-purple-100">
+                <div className="bg-purple-50/70 p-3.5 rounded-xl border border-purple-100">
                   <span className="text-[10px] text-purple-500 uppercase font-semibold">Rework</span>
-                  <div className="text-lg font-black text-purple-700">{reworkPieces}</div>
+                  <div className="text-2xl font-black text-purple-700">{reworkPieces}</div>
                 </div>
-                <div className="bg-blue-50/70 p-2.5 rounded-xl border border-blue-100">
+                <div className="bg-blue-50/70 p-3.5 rounded-xl border border-blue-100">
                   <span className="text-[10px] text-blue-500 uppercase font-semibold">Today</span>
-                  <div className="text-[11px] font-black text-blue-700 leading-tight mt-0.5">
+                  <div className="text-sm font-black text-blue-700 leading-tight mt-1">
                     {productionKpis?.completed_today ?? 0} done<br />{productionKpis?.pending_today ?? 0} pending
                   </div>
                 </div>
@@ -1024,18 +1047,38 @@ function DashboardInner() {
               </div>
             </div>
 
-            {/* KPI 3: Leather Stock — fully real from leather_kpis */}
-            <div onClick={() => setActiveTab('tab-inventory')} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group">
+            {/* KPI 3: Pieces minted/cut, by style — a plain style-wise list.
+                Real counts from the cut log (styleConsumptionAgg), scoped to
+                whatever filters are active, plus each style's real remaining
+                piece count (order_progress.pending) and remaining leather
+                stock (matching lots.remaining, by the article/colour that
+                style's own cut pieces actually used). Replaces the old
+                factory-wide "Leather Consumed vs Stock" tile, which showed
+                one aggregate stock pool instead of a style breakdown. */}
+            <div onClick={() => setActiveTab('tab-styles')} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group">
               <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">🧵</div>
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">✂️</div>
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
+                  {styleMintedSummary.rows.length} style{styleMintedSummary.rows.length === 1 ? '' : 's'}
+                </span>
               </div>
-              <span className="text-xs font-semibold text-slate-500">Leather Consumed vs Stock (DCM)</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{(leatherKpis?.consumed_leather ?? 0).toLocaleString()} DCM</span>
-              </div>
-              <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Total Stock: <strong>{(leatherKpis?.total_available_leather ?? 0).toLocaleString()} DCM</strong></span>
-                <span>Remaining: <strong className="text-emerald-600">{(leatherKpis?.remaining_leather ?? 0).toLocaleString()} DCM</strong></span>
+              <span className="text-xs font-semibold text-slate-500">Pieces Cut / Minted by Style</span>
+              <div className="mt-2.5 space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                {styleMintedSummary.rows.map((r) => (
+                  <div key={`${r.orderNumber}::${r.styleName}`} className="bg-[#f8fafc] px-2.5 py-2 rounded-lg border border-slate-100">
+                    <div className="flex justify-between items-center gap-2 text-xs font-bold">
+                      <span className="truncate text-slate-800">{r.styleName}</span>
+                      <span className="text-emerald-600 shrink-0">{r.pieces} pcs cut</span>
+                    </div>
+                    <div className="flex justify-between gap-2 mt-1 text-[10px] font-semibold text-slate-500">
+                      <span>Remaining Qty: <strong className="text-amber-600">{r.remainingQty ?? '—'}</strong></span>
+                      <span>Stock Left: <strong className="text-slate-700">{r.remainingStock.toLocaleString()} DCM</strong></span>
+                    </div>
+                  </div>
+                ))}
+                {styleMintedSummary.rows.length === 0 && (
+                  <span className="text-xs text-slate-400 font-semibold">No cuts logged yet for this filter</span>
+                )}
               </div>
             </div>
 
