@@ -637,18 +637,35 @@ function ComputationView({ token }) {
   const [breakdownTab, setBreakdownTab] = useState('style'); // style | stage | employee
   const [toastMsg, setToastMsg] = useState(null);
   const [toastType, setToastType] = useState('success');
-  const [isClosing, setIsClosing] = useState(false);
   const [isReopening, setIsReopening] = useState(false);
   const [reopenReason, setReopenReason] = useState('');
   const [showReopenModal, setShowReopenModal] = useState(false);
+  const [reopenTargetId, setReopenTargetId] = useState(null);
 
-  // Team request: Recompute shouldn't require having just computed a draft
-  // in this same session — it should work against any run by id. And when
-  // the target turns out to be CLOSED, offer the confirm_closed escape
-  // hatch (no reason, stays closed) as a popup rather than just failing.
-  const [recomputeRunIdInput, setRecomputeRunIdInput] = useState('');
+  // Team request: Recompute/Close/Reopen shouldn't require having just
+  // computed a draft in this same session — a single "Run Actions" area,
+  // keyed off a typed run id, works on any run at any time. When a
+  // recompute target turns out to be CLOSED, offer the confirm_closed
+  // escape hatch (no reason, stays closed) as a follow-up popup rather
+  // than just failing.
+  const [runActionId, setRunActionId] = useState('');
   const [isRecomputingStandalone, setIsRecomputingStandalone] = useState(false);
-  const [recomputeConfirmTarget, setRecomputeConfirmTarget] = useState(null); // { runId, isStandalone } | null
+  const [isClosingById, setIsClosingById] = useState(false);
+  const [showRecomputeAreYouSure, setShowRecomputeAreYouSure] = useState(false); // general "are you sure?" before every recompute attempt
+
+  // "Find a run" picker — team asked why the operator needs to know a raw
+  // run_id at all. They still do (the recompute/close/reopen endpoints are
+  // keyed on it), but this lets them search by order/style/date instead of
+  // copy-pasting one from the Ledger tab; picking a result just fills
+  // runActionId for them.
+  const [showRunFinder, setShowRunFinder] = useState(false);
+  const [finderOrderNumber, setFinderOrderNumber] = useState('');
+  const [finderStyleCode, setFinderStyleCode] = useState('');
+  const [finderDateFrom, setFinderDateFrom] = useState('');
+  const [finderDateTo, setFinderDateTo] = useState('');
+  const [finderResults, setFinderResults] = useState([]);
+  const [finderLoading, setFinderLoading] = useState(false);
+  const [finderSearched, setFinderSearched] = useState(false);
 
   const showToast = (msg, type = 'success') => {
     setToastMsg(msg); setToastType(type);
@@ -665,14 +682,14 @@ function ComputationView({ token }) {
   // Load the picker's options lazily, only once the operator actually
   // switches to that scope — no point fetching both lists up front.
   useEffect(() => {
-    if (scopeType === 'order' && orderOptions.length === 0) {
+    if ((scopeType === 'order' || showRunFinder) && orderOptions.length === 0) {
       setOrderOptionsLoading(true);
       apiGetWageOrders(token)
         .then((data) => setOrderOptions(Array.isArray(data) ? data : []))
         .catch(() => setOrderOptions([]))
         .finally(() => setOrderOptionsLoading(false));
     }
-    if (scopeType === 'style' && styleOptions.length === 0) {
+    if ((scopeType === 'style' || showRunFinder) && styleOptions.length === 0) {
       setStyleOptionsLoading(true);
       apiGetWageStyles(token, {})
         .then((data) => setStyleOptions(Array.isArray(data) ? data : []))
@@ -680,7 +697,7 @@ function ComputationView({ token }) {
         .finally(() => setStyleOptionsLoading(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeType, token]);
+  }, [scopeType, showRunFinder, token]);
 
   const loadBreakdown = async (runId) => {
     const data = await apiGetWageRunBreakdown(token, runId);
@@ -701,6 +718,10 @@ function ComputationView({ token }) {
         styleCode: scopeType === 'style' ? styleCode : undefined,
       });
       setRun(runData);
+      // Convenience only — Run Actions below never require this to have
+      // happened, but pre-filling saves a copy/paste for the common case
+      // of immediately closing what you just computed.
+      setRunActionId(runData.id || runData.run_id || '');
       await loadBreakdown(runData.id || runData.run_id);
       showToast('Draft run computed — review, then close to freeze.', 'success');
     } catch (e) {
@@ -710,17 +731,23 @@ function ComputationView({ token }) {
     }
   };
 
-  const handleClose = async () => {
-    const runId = run.id || run.run_id;
-    setIsClosing(true);
+  // All three run actions below (Recompute/Close/Reopen) target whichever
+  // run id is typed into the "Run Actions" section — they never require
+  // having just computed a fresh draft in this session. `run` itself stays
+  // reserved for "the run this session's Compute Draft Run produced" (used
+  // to load its breakdown below); actions update it too when the ids match,
+  // purely so the status badge there stays in sync, not as a dependency.
+  const handleCloseById = async (runId) => {
+    if (!runId) { showToast('Enter a run id to close.', 'error'); return; }
+    setIsClosingById(true);
     try {
       const updated = await apiCloseWageRun(token, runId);
-      setRun(updated);
+      if (run && (run.id || run.run_id) === runId) setRun((prev) => ({ ...prev, ...updated }));
       showToast('Run closed and frozen. Recompute now requires a reopen.', 'success');
     } catch (e) {
       showToast(e.message || 'Failed to close run.', 'error');
     } finally {
-      setIsClosing(false);
+      setIsClosingById(false);
     }
   };
 
@@ -729,11 +756,11 @@ function ComputationView({ token }) {
       showToast('Reason must be at least 5 characters.', 'error');
       return;
     }
-    const runId = run.id || run.run_id;
+    const runId = reopenTargetId;
     setIsReopening(true);
     try {
       const updated = await apiReopenWageRun(token, runId, reopenReason.trim());
-      setRun((prev) => ({ ...prev, ...updated }));
+      if (run && (run.id || run.run_id) === runId) setRun((prev) => ({ ...prev, ...updated }));
       setShowReopenModal(false);
       setReopenReason('');
       showToast(`Run reopened (reopen #${updated.reopen_count}). You can recompute now.`, 'success');
@@ -744,48 +771,63 @@ function ComputationView({ token }) {
     }
   };
 
-  // Shared by both the inline (just-computed `run`) and standalone (typed
-  // run id) Recompute entry points. Always tries confirm_closed:false
-  // first — the default stays false, per the team's instruction — and
-  // only offers the confirm_closed:true escape hatch via a popup if the
-  // backend actually says the run is closed (409), rather than asking
-  // upfront for every recompute regardless of whether it's even needed.
-  const runRecompute = async (runId, confirmClosed, { isStandalone } = {}) => {
-    const setLoading = isStandalone ? setIsRecomputingStandalone : setIsComputing;
-    setLoading(true);
+  // Team request: every Recompute click sends confirm_closed:true straight
+  // away — no separate try-false-then-escalate dance. OPEN or CLOSED, one
+  // click recomputes it; Reopen (above) is still the route for attaching an
+  // audit reason to unfreezing a run, but recompute itself no longer waits
+  // on that.
+  const runRecompute = async (runId) => {
+    setIsRecomputingStandalone(true);
     try {
-      const updated = await apiRecomputeWageRun(token, runId, confirmClosed);
-      if (!isStandalone || (run && (run.id || run.run_id) === runId)) {
-        setRun((prev) => (prev ? { ...prev, ...updated } : updated));
-      }
+      const updated = await apiRecomputeWageRun(token, runId, true);
+      if (run && (run.id || run.run_id) === runId) setRun((prev) => ({ ...prev, ...updated }));
       await loadBreakdown(runId);
       showToast('Run recomputed.', 'success');
-      setRecomputeConfirmTarget(null);
     } catch (e) {
-      if (e.status === 409 && !confirmClosed) {
-        // Closed run, first attempt — offer the escape hatch instead of
-        // just showing an error.
-        setRecomputeConfirmTarget({ runId, isStandalone: !!isStandalone });
-      } else {
-        showToast(e.message || 'Recompute failed.', 'error');
-      }
+      showToast(e.message || 'Recompute failed.', 'error');
     } finally {
-      setLoading(false);
+      setIsRecomputingStandalone(false);
     }
   };
 
-  const handleRecompute = () => {
-    const runId = run.id || run.run_id;
-    runRecompute(runId, false);
+  // Team request: every recompute click asks "are you sure?" first — this
+  // is separate from (and comes before) the closed-run escape-hatch popup.
+  const handleRecomputeClick = () => {
+    if (!runActionId.trim()) { showToast('Enter a run id to recompute.', 'error'); return; }
+    setShowRecomputeAreYouSure(true);
   };
 
-  const handleStandaloneRecompute = () => {
-    const runId = recomputeRunIdInput.trim();
-    if (!runId) { showToast('Enter a run id to recompute.', 'error'); return; }
-    runRecompute(runId, false, { isStandalone: true });
+  const handleFindRuns = async () => {
+    setFinderLoading(true);
+    setFinderSearched(true);
+    try {
+      const data = await apiGetWageLedger(token, {
+        orderNumber: finderOrderNumber || undefined,
+        styleCode: finderStyleCode || undefined,
+        dateFrom: finderDateFrom || undefined,
+        dateTo: finderDateTo || undefined,
+        limit: 20,
+      });
+      setFinderResults(Array.isArray(data?.items) ? data.items : []);
+    } catch (e) {
+      showToast(e.message || 'Search failed.', 'error');
+      setFinderResults([]);
+    } finally {
+      setFinderLoading(false);
+    }
   };
 
-  const isOpen = run && String(run.status).toUpperCase() !== 'CLOSED';
+  const handlePickRun = (r) => {
+    setRunActionId(r.run_id);
+    setRun(r);
+    setShowRunFinder(false);
+    setFinderResults([]);
+    setFinderSearched(false);
+    setFinderOrderNumber('');
+    setFinderStyleCode('');
+    setFinderDateFrom('');
+    setFinderDateTo('');
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -896,39 +938,7 @@ function ComputationView({ token }) {
           </p>
         )}
 
-        {/* Team request: Recompute/Close/Reopen used to live in their own
-            card below, only appearing after a run existed — moved into
-            this same row, right beside Compute Draft Run, so every run
-            action lives in one place. */}
-        <div className="mt-8 flex flex-wrap items-center justify-end relative z-10 pt-6 gap-3" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
-          {run && (
-            <div className="flex items-center gap-3 mr-auto">
-              <StatusBadge status={run.status} />
-              <div>
-                <p className="font-black text-sm" style={{ color: '#2d1f0e' }}>Run {String(run.id || run.run_id).slice(0, 8)}...</p>
-                <p className="text-[10px] font-bold text-slate-400">
-                  {run.reopen_count > 0 && `Reopened ${run.reopen_count}x · `}
-                  {run.recompute_count > 0 && `Recomputed ${run.recompute_count}x`}
-                </p>
-              </div>
-            </div>
-          )}
-          {run && (
-            isOpen ? (
-              <>
-                <button onClick={handleRecompute} disabled={isComputing} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50" style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}>
-                  <RefreshCw className="w-4 h-4" /> Recompute
-                </button>
-                <button onClick={handleClose} disabled={isClosing} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50" style={{ background: '#10b981' }}>
-                  {isClosing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} Close &amp; Freeze
-                </button>
-              </>
-            ) : (
-              <button onClick={() => setShowReopenModal(true)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-2" style={{ color: '#a86022', borderColor: 'rgba(200,131,74,0.2)' }}>
-                <Unlock className="w-4 h-4" /> Reopen to Edit
-              </button>
-            )
-          )}
+        <div className="mt-8 flex justify-end relative z-10 pt-6" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
           <button
             onClick={handleCompute}
             disabled={isComputing || (scopeType === 'order' && !orderNumber) || (scopeType === 'style' && !styleCode)}
@@ -940,30 +950,141 @@ function ComputationView({ token }) {
         </div>
       </div>
 
-      {/* ── RECOMPUTE AN EXISTING RUN ── */}
-      {/* Team request: Recompute shouldn't depend on having just computed a
-          draft in this browser session — a run found via the Ledger (or
-          from an earlier session) can be recomputed directly by id. */}
-      <div className="bg-white rounded-3xl shadow-sm p-5 border flex flex-col sm:flex-row sm:items-center gap-3" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-        <div className="flex-1">
-          <p className="text-xs font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Recompute an existing run</p>
-          <p className="text-[10px] font-bold text-slate-400 mt-0.5">Paste a run id from the Ledger — no need to compute a fresh draft first.</p>
+      {/* ── RUN ACTIONS ── */}
+      {/* Team request: Recompute/Close/Reopen must not depend on having
+          just computed a fresh draft in this session — they live in their
+          own always-visible area below Compute Draft Run, keyed off a
+          typed run id (auto-filled after a fresh compute, purely as a
+          convenience). */}
+      <div className="bg-white rounded-3xl shadow-sm p-5 sm:p-6 border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Run Actions</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-0.5">Works on any run — use the one just computed above, or find one by order/style/date.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowRunFinder((v) => !v)}
+            className="shrink-0 px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-1.5"
+            style={{ color: '#c8834a', borderColor: 'rgba(200,131,74,0.25)' }}
+          >
+            <Search className="w-3.5 h-3.5" /> {showRunFinder ? 'Hide' : 'Find a Run'}
+          </button>
         </div>
+
+        {showRunFinder && (
+          <div className="rounded-2xl border p-4 space-y-3 bg-[#faf6f0]" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <SearchCombobox
+                placeholder="Any order..."
+                value={finderOrderNumber}
+                options={orderOptions}
+                getKey={(o) => o.order_number}
+                getLabel={(o) => `PO ${o.order_number}`}
+                getSub={(o) => `${o.styles} styles`}
+                onSelect={(o) => setFinderOrderNumber(o ? o.order_number : '')}
+                loading={orderOptionsLoading}
+                allowClear
+              />
+              <SearchCombobox
+                placeholder="Any style..."
+                value={finderStyleCode}
+                options={styleOptions}
+                getKey={(s) => s.style_code}
+                getLabel={(s) => s.style_code}
+                getSub={(s) => s.style_name}
+                onSelect={(s) => setFinderStyleCode(s ? s.style_code : '')}
+                loading={styleOptionsLoading}
+                allowClear
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <input type="date" value={finderDateFrom} onChange={(e) => setFinderDateFrom(e.target.value)}
+                  className="w-full h-11 pl-9 pr-3 bg-white border rounded-xl text-xs font-bold outline-none focus:border-[#c8834a]"
+                  style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+              </div>
+              <div className="relative">
+                <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                <input type="date" value={finderDateTo} onChange={(e) => setFinderDateTo(e.target.value)}
+                  className="w-full h-11 pl-9 pr-3 bg-white border rounded-xl text-xs font-bold outline-none focus:border-[#c8834a]"
+                  style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleFindRuns}
+              disabled={finderLoading}
+              className="px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-widest text-white shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+              style={{ background: '#c8834a' }}
+            >
+              {finderLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />} Search
+            </button>
+
+            {finderSearched && !finderLoading && (
+              <div className="space-y-1.5 pt-1">
+                {finderResults.length === 0 ? (
+                  <p className="text-xs font-bold text-slate-400 text-center py-3">No runs match this search.</p>
+                ) : (
+                  finderResults.map((r) => (
+                    <button
+                      key={r.run_id}
+                      type="button"
+                      onClick={() => handlePickRun(r)}
+                      className="w-full flex items-center justify-between gap-3 p-3 rounded-xl bg-white border hover:border-[#c8834a] transition-all text-left"
+                      style={{ borderColor: 'rgba(200,131,74,0.15)' }}
+                    >
+                      <div className="min-w-0">
+                        <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
+                          {r.scope_order_number || r.scope_style_code || 'Whole Factory'}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-400">{r.period_start} → {r.period_end}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <StatusBadge status={r.status} />
+                        <ChevronRight className="w-4 h-4 text-slate-300" />
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <input
-          value={recomputeRunIdInput}
-          onChange={(e) => setRecomputeRunIdInput(e.target.value)}
+          value={runActionId}
+          onChange={(e) => setRunActionId(e.target.value)}
           placeholder="Run id…"
-          className="h-11 px-4 bg-[#faf6f0] border rounded-xl font-mono text-xs font-bold outline-none focus:border-[#c8834a] sm:w-72"
+          className="w-full h-11 px-4 bg-[#faf6f0] border rounded-xl font-mono text-xs font-bold outline-none focus:border-[#c8834a]"
           style={{ borderColor: 'rgba(200,131,74,0.2)' }}
         />
-        <button
-          onClick={handleStandaloneRecompute}
-          disabled={isRecomputingStandalone || !recomputeRunIdInput.trim()}
-          className="h-11 px-5 rounded-xl font-black text-xs uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50 shrink-0"
-          style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
-        >
-          {isRecomputingStandalone ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Recompute
-        </button>
+        {run && (run.id || run.run_id) === runActionId.trim() && (
+          <div className="flex items-center gap-3">
+            <StatusBadge status={run.status} />
+            <p className="text-[10px] font-bold text-slate-400">
+              {run.reopen_count > 0 && `Reopened ${run.reopen_count}x · `}
+              {run.recompute_count > 0 && `Recomputed ${run.recompute_count}x`}
+            </p>
+          </div>
+        )}
+        <div className="flex flex-wrap gap-3">
+          <button onClick={handleRecomputeClick} disabled={isRecomputingStandalone || !runActionId.trim()} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50" style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}>
+            {isRecomputingStandalone ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Recompute
+          </button>
+          <button onClick={() => handleCloseById(runActionId.trim())} disabled={isClosingById || !runActionId.trim()} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50" style={{ background: '#10b981' }}>
+            {isClosingById ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />} Close &amp; Freeze
+          </button>
+          <button
+            onClick={() => { if (!runActionId.trim()) { showToast('Enter a run id to reopen.', 'error'); return; } setReopenTargetId(runActionId.trim()); setShowReopenModal(true); }}
+            disabled={!runActionId.trim()}
+            className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-white border shadow-sm hover:shadow-md transition-all flex items-center gap-2 disabled:opacity-50"
+            style={{ color: '#a86022', borderColor: 'rgba(200,131,74,0.2)' }}
+          >
+            <Unlock className="w-4 h-4" /> Reopen to Edit
+          </button>
+        </div>
       </div>
 
       {/* ── 3-WAY BREAKDOWN: by style / by stage / by employee ── */}
@@ -1102,29 +1223,25 @@ function ComputationView({ token }) {
         document.body
       )}
 
-      {/* Recompute-on-a-closed-run escape hatch. First attempt always
-          sends confirm_closed:false (default stays false) — this only
-          appears when the backend actually 409s, naming the run as
-          closed. "Confirm" is the one-call override (no reason, stays
-          closed); "Close" just dismisses — the formal route from there
-          is the Reopen button above. */}
-      {recomputeConfirmTarget && typeof document !== 'undefined' && createPortal(
+      {/* General "are you sure?" — every Recompute click asks this first,
+          before the request is even sent. */}
+      {showRecomputeAreYouSure && typeof document !== 'undefined' && createPortal(
         <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/40 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl overflow-hidden mx-4">
             <div className="p-6 sm:p-8 space-y-4">
-              <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>Run Is Closed</h3>
+              <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>Recompute This Run?</h3>
               <p className="text-xs font-bold text-slate-500">
-                Run <span className="font-mono">{recomputeConfirmTarget.runId}</span> is frozen. You can confirm a one-time recompute anyway (no reason recorded, stays closed afterward) — or close this and use Reopen instead, which asks for a reason and unfreezes it.
+                Run <span className="font-mono">{runActionId.trim()}</span> will be recomputed against the current rate sheet and production events. Are you sure you want to recompute?
               </p>
               <div className="flex gap-3 justify-end pt-2">
-                <button onClick={() => setRecomputeConfirmTarget(null)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-slate-100 text-slate-600">Close</button>
+                <button onClick={() => setShowRecomputeAreYouSure(false)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-slate-100 text-slate-600">Cancel</button>
                 <button
-                  onClick={() => runRecompute(recomputeConfirmTarget.runId, true, { isStandalone: recomputeConfirmTarget.isStandalone })}
-                  disabled={isComputing || isRecomputingStandalone}
+                  onClick={() => { setShowRecomputeAreYouSure(false); runRecompute(runActionId.trim()); }}
+                  disabled={isRecomputingStandalone}
                   className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white disabled:opacity-50 flex items-center gap-2"
                   style={{ background: '#c8834a' }}
                 >
-                  {(isComputing || isRecomputingStandalone) ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Confirm
+                  {isRecomputingStandalone ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Yes, Recompute
                 </button>
               </div>
             </div>
@@ -1156,6 +1273,10 @@ function LedgerView({ token }) {
   const [runPieces, setRunPieces] = useState(null);
   const [detailTab, setDetailTab] = useState('style'); // style | stage | employee | pieces
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [detailSearch, setDetailSearch] = useState(''); // filters whichever tab is active; cleared on tab switch
+  // Per Piece tab only: column-wise filters, on top of the free-text search above.
+  const [pieceFilterStage, setPieceFilterStage] = useState('');
+  const [pieceFilterEmployee, setPieceFilterEmployee] = useState('');
 
   const loadLedger = () => {
     setLoading(true);
@@ -1201,6 +1322,9 @@ function LedgerView({ token }) {
   const handleOpenRun = async (run) => {
     setSelectedRun(run);
     setDetailTab('style');
+    setDetailSearch('');
+    setPieceFilterStage('');
+    setPieceFilterEmployee('');
     setDetailsLoading(true);
     setRunBreakdown(null);
     setRunPieces(null);
@@ -1263,6 +1387,47 @@ function LedgerView({ token }) {
       </div>
     );
   }
+
+  // Team request: a search box per detail tab, filtering that tab's rows,
+  // plus a "download what's filtered" button next to it — separate from
+  // the existing "download everything" workbook button above.
+  const searchNorm = detailSearch.trim().toLowerCase();
+  const filteredByStyle = (runBreakdown?.by_style || []).filter((s) => !searchNorm || `${s.style_name || ''} ${s.style_code || ''}`.toLowerCase().includes(searchNorm));
+  const filteredByStage = (runBreakdown?.by_stage || []).filter((s) => !searchNorm || `${s.operation_label || ''} ${s.operation_code || ''}`.toLowerCase().includes(searchNorm));
+  const filteredByEmployee = (runBreakdown?.by_employee || []).filter((e) => !searchNorm || `${e.employee_name || ''} ${e.designation || ''}`.toLowerCase().includes(searchNorm));
+  const pieceStageOptions = Array.from(new Set((runPieces?.items || []).map((p) => p.operation_label || p.operation_code).filter(Boolean)));
+  const pieceEmployeeOptions = Array.from(new Set((runPieces?.items || []).map((p) => p.employee_name).filter(Boolean)));
+  const filteredPieces = (runPieces?.items || []).filter((p) =>
+    (!searchNorm || `${p.piece_code || ''} ${p.employee_name || ''} ${p.employee_barcode || ''} ${p.operation_label || ''}`.toLowerCase().includes(searchNorm)) &&
+    (!pieceFilterStage || (p.operation_label || p.operation_code) === pieceFilterStage) &&
+    (!pieceFilterEmployee || p.employee_name === pieceFilterEmployee)
+  );
+
+  const handleDownloadFiltered = () => {
+    if (!selectedRun) return;
+    const fmtAmount = (v) => (v === null || v === undefined ? 'Not priced' : v);
+    let rows = []; let sheetName = '';
+    if (detailTab === 'style') {
+      sheetName = 'Per Style';
+      rows = filteredByStyle.map((s) => ({ Style: s.style_name || s.style_code, 'Style Code': s.style_code, Pieces: s.pieces ?? 0, Amount: fmtAmount(s.amount) }));
+    } else if (detailTab === 'stage') {
+      sheetName = 'Per Stage';
+      rows = filteredByStage.map((s) => ({ Stage: s.operation_label || s.operation_code, Pieces: s.pieces ?? 0, Amount: fmtAmount(s.amount) }));
+    } else if (detailTab === 'employee') {
+      sheetName = 'Per Employee';
+      rows = filteredByEmployee.map((e) => ({ Employee: e.employee_name || 'Worker', Designation: e.designation || '', Pieces: e.pieces ?? 0, Amount: fmtAmount(e.amount) }));
+    } else {
+      sheetName = 'Per Piece';
+      rows = filteredPieces.map((p) => ({
+        'Piece Code': p.piece_code, Stage: p.operation_label || p.operation_code,
+        Employee: p.employee_name || '', 'Employee Barcode': p.employee_barcode || '', Amount: fmtAmount(p.amount),
+      }));
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ Info: 'No matching rows' }]), sheetName);
+    const scopeName = (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
+    XLSX.writeFile(wb, `Payroll_${scopeName}_${sheetName.replace(/\s+/g, '_')}_filtered.xlsx`);
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -1334,6 +1499,13 @@ function LedgerView({ token }) {
                     </div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Pay Cycle</p>
                     <h4 className="font-black text-sm" style={{ color: '#2d1f0e' }}>{run.period_start} <span className="opacity-40 px-1">to</span> {run.period_end}</h4>
+                    <p
+                      className="font-mono text-[9px] font-bold text-slate-300 mt-1 truncate"
+                      title={run.run_id}
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(run.run_id || ''); }}
+                    >
+                      {run.run_id}
+                    </p>
                     <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
                       <div>
                         <p className="text-[10px] font-bold text-slate-400">Total</p>
@@ -1360,6 +1532,17 @@ function LedgerView({ token }) {
                   <div className="flex gap-3 mt-2 flex-wrap items-center">
                     <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md">{selectedRun.period_start} to {selectedRun.period_end}</span>
                     <StatusBadge status={selectedRun.status} />
+                    {/* Team asked "where do I get a run id" for Run Actions
+                        (Recompute/Close/Reopen) — it was never shown
+                        anywhere in the UI. Copyable here now. */}
+                    <button
+                      type="button"
+                      onClick={() => { navigator.clipboard?.writeText(selectedRun.run_id || ''); }}
+                      title="Click to copy run id"
+                      className="font-mono text-[10px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-1 rounded-md hover:bg-slate-100 cursor-pointer"
+                    >
+                      {selectedRun.run_id}
+                    </button>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1373,17 +1556,36 @@ function LedgerView({ token }) {
                 </div>
               </div>
 
-              <div className="flex gap-1 p-1 rounded-full bg-slate-100 w-fit mt-4">
-                {[
-                  { id: 'style', label: 'Per Style' },
-                  { id: 'stage', label: 'Per Stage' },
-                  { id: 'employee', label: 'Per Employee' },
-                  { id: 'pieces', label: 'Per Piece' },
-                ].map((t) => (
-                  <button key={t.id} onClick={() => setDetailTab(t.id)} className={`px-4 py-2 rounded-full font-bold text-[11px] transition-all ${detailTab === t.id ? 'bg-white shadow-sm' : 'text-slate-500'}`} style={detailTab === t.id ? { color: '#c8834a' } : {}}>
-                    {t.label}
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+                <div className="flex gap-1 p-1 rounded-full bg-slate-100 w-fit">
+                  {[
+                    { id: 'style', label: 'Per Style' },
+                    { id: 'stage', label: 'Per Stage' },
+                    { id: 'employee', label: 'Per Employee' },
+                    { id: 'pieces', label: 'Per Piece' },
+                  ].map((t) => (
+                    <button key={t.id} onClick={() => { setDetailTab(t.id); setDetailSearch(''); setPieceFilterStage(''); setPieceFilterEmployee(''); }} className={`px-4 py-2 rounded-full font-bold text-[11px] transition-all ${detailTab === t.id ? 'bg-white shadow-sm' : 'text-slate-500'}`} style={detailTab === t.id ? { color: '#c8834a' } : {}}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={detailSearch}
+                      onChange={(e) => setDetailSearch(e.target.value)}
+                      placeholder={detailTab === 'pieces' ? 'Search piece code, employee…' : 'Search this tab…'}
+                      className="h-9 pl-8 pr-3 w-48 sm:w-64 bg-slate-50 border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]"
+                      style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                    />
+                  </div>
+                  <button onClick={handleDownloadFiltered} disabled={detailsLoading} title="Download only what's shown in this tab right now"
+                    className="h-9 px-3 rounded-full font-black text-[10px] uppercase bg-white border shadow-sm flex items-center gap-1.5 disabled:opacity-40" style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}>
+                    <Download className="w-3.5 h-3.5" /> Download filtered
                   </button>
-                ))}
+                </div>
               </div>
             </div>
 
@@ -1394,7 +1596,7 @@ function LedgerView({ token }) {
                 <>
                   {detailTab === 'style' && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {(runBreakdown?.by_style || []).map((s, i) => (
+                      {filteredByStyle.map((s, i) => (
                         <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
                           <div className="flex justify-between items-start">
                             <div>
@@ -1405,7 +1607,7 @@ function LedgerView({ token }) {
                           </div>
                         </div>
                       ))}
-                      {(!runBreakdown?.by_style || runBreakdown.by_style.length === 0) && <p className="text-sm font-bold text-slate-400 col-span-full text-center py-6">No data.</p>}
+                      {filteredByStyle.length === 0 && <p className="text-sm font-bold text-slate-400 col-span-full text-center py-6">{searchNorm ? 'No matches.' : 'No data.'}</p>}
                     </div>
                   )}
 
@@ -1418,14 +1620,14 @@ function LedgerView({ token }) {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {(runBreakdown?.by_stage || []).map((s, i) => (
+                          {filteredByStage.map((s, i) => (
                             <tr key={i}>
                               <td className="py-3 px-4 font-bold text-slate-800">{s.operation_label || s.operation_code}</td>
                               <td className="py-3 px-4 font-bold" style={{ color: '#c8834a' }}>{s.pieces ?? 0}</td>
                               <td className="py-3 px-4 font-black text-emerald-600"><Money value={s.amount} /></td>
                             </tr>
                           ))}
-                          {(!runBreakdown?.by_stage || runBreakdown.by_stage.length === 0) && <tr><td colSpan="3" className="py-8 text-center text-slate-400 font-bold">No data.</td></tr>}
+                          {filteredByStage.length === 0 && <tr><td colSpan="3" className="py-8 text-center text-slate-400 font-bold">{searchNorm ? 'No matches.' : 'No data.'}</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -1433,7 +1635,7 @@ function LedgerView({ token }) {
 
                   {detailTab === 'employee' && (
                     <div className="space-y-3">
-                      {(runBreakdown?.by_employee || []).map((e, i) => (
+                      {filteredByEmployee.map((e, i) => (
                         <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
                           <div>
                             <h5 className="font-black text-base text-slate-800">{e.employee_name || 'Worker'}</h5>
@@ -1442,11 +1644,25 @@ function LedgerView({ token }) {
                           <p className="font-black text-lg text-emerald-600"><Money value={e.amount} /></p>
                         </div>
                       ))}
-                      {(!runBreakdown?.by_employee || runBreakdown.by_employee.length === 0) && <p className="text-sm font-bold text-slate-400 text-center py-6">No data.</p>}
+                      {filteredByEmployee.length === 0 && <p className="text-sm font-bold text-slate-400 text-center py-6">{searchNorm ? 'No matches.' : 'No data.'}</p>}
                     </div>
                   )}
 
                   {detailTab === 'pieces' && (
+                    <div className="space-y-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <select value={pieceFilterStage} onChange={(e) => setPieceFilterStage(e.target.value)} className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
+                          <option value="">All Stages</option>
+                          {pieceStageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <select value={pieceFilterEmployee} onChange={(e) => setPieceFilterEmployee(e.target.value)} className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
+                          <option value="">All Employees</option>
+                          {pieceEmployeeOptions.map((e) => <option key={e} value={e}>{e}</option>)}
+                        </select>
+                        {(pieceFilterStage || pieceFilterEmployee) && (
+                          <button onClick={() => { setPieceFilterStage(''); setPieceFilterEmployee(''); }} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Clear column filters</button>
+                        )}
+                      </div>
                     <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
                       <table className="w-full text-left text-xs">
                         <thead>
@@ -1459,7 +1675,7 @@ function LedgerView({ token }) {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {(runPieces?.items || []).map((p, i) => (
+                          {filteredPieces.map((p, i) => (
                             <tr key={i}>
                               <td className="py-2.5 px-3 font-mono font-bold text-slate-700">{p.piece_code}</td>
                               <td className="py-2.5 px-3 font-bold text-slate-500">{p.operation_label || p.operation_code}</td>
@@ -1468,9 +1684,10 @@ function LedgerView({ token }) {
                               <td className="py-2.5 px-3 font-black text-emerald-600"><Money value={p.amount} /></td>
                             </tr>
                           ))}
-                          {(!runPieces?.items || runPieces.items.length === 0) && <tr><td colSpan="5" className="py-8 text-center text-slate-400 font-bold">No piece-level data.</td></tr>}
+                          {filteredPieces.length === 0 && <tr><td colSpan="5" className="py-8 text-center text-slate-400 font-bold">{searchNorm ? 'No matches.' : 'No piece-level data.'}</td></tr>}
                         </tbody>
                       </table>
+                    </div>
                     </div>
                   )}
                 </>

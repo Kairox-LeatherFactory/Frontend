@@ -112,6 +112,18 @@ async function apiFetch(url, options = {}, token = null) {
  return res.json();
 }
 
+// GET /attendance/today usually returns the full day's roster as an array,
+// but it can come back as a single attendance record object instead (e.g.
+// narrowed to one employee) — without this, `Array.isArray` checks below
+// treat that as "nobody checked in" and silently drop a real record.
+function normalizeRosterArray(rosterData) {
+ if (Array.isArray(rosterData)) return rosterData;
+ if (rosterData?.data && Array.isArray(rosterData.data)) return rosterData.data;
+ if (rosterData?.items && Array.isArray(rosterData.items)) return rosterData.items;
+ if (rosterData?.employee_id) return [rosterData];
+ return [];
+}
+
 // ─── GPS HOOK ─────────────────────────────────────────────────────────────────
 function useGps() {
  const [state, setState] = useState({ lat: null, lon: null, error: null, loading: false });
@@ -697,13 +709,14 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  async function initStatus() {
  try {
  const rosterData = await apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token);
- if (rosterData && Array.isArray(rosterData)) {
+ const rosterArray = normalizeRosterArray(rosterData);
+ if (rosterArray.length > 0) {
  // One-time per day logic:
  // 1. If they have ANY record today, they have already checked in (disable Check-In)
- const inIds = rosterData.map(r => String(r.employee_id));
+ const inIds = rosterArray.map(r => String(r.employee_id));
 
  // 2. If their record has check_out_at, they have already checked out (disable Check-Out)
- const outIds = rosterData.filter(r => r.check_out_at).map(r => String(r.check_out_at ? r.employee_id : null)).filter(id => id !== null);
+ const outIds = rosterArray.filter(r => r.check_out_at).map(r => String(r.check_out_at ? r.employee_id : null)).filter(id => id !== null);
 
  setCheckedInIds(prev => new Set([...prev, ...inIds]));
  setCheckedOutIds(prev => new Set([...prev, ...outIds]));
@@ -1220,9 +1233,12 @@ function OperationsHRView({ token }) {
  shift_start: data.shift_start,
  shift_length_hours: data.shift_length_hours,
  late_grace_minutes: data.late_grace_minutes,
- factory_lat: data.factory_lat,
- factory_lon: data.factory_lon,
- radius_m: data.radius_m,
+ // Geofence Parameters — commented out so attendance can be configured
+ // and marked without requiring factory lat/lon/radius. Re-enable by
+ // uncommenting these fields alongside the JSX block further below.
+ // factory_lat: data.factory_lat,
+ // factory_lon: data.factory_lon,
+ // radius_m: data.radius_m,
  });
  } catch {
  showAlert('error', 'Failed to load shift configuration.');
@@ -1245,9 +1261,12 @@ function OperationsHRView({ token }) {
  shift_start: configForm.shift_start,
  shift_length_hours: parseFloat(configForm.shift_length_hours),
  late_grace_minutes: parseInt(configForm.late_grace_minutes, 10),
- factory_lat: parseFloat(configForm.factory_lat),
- factory_lon: parseFloat(configForm.factory_lon),
- radius_m: parseInt(configForm.radius_m, 10),
+ // Geofence Parameters — commented out so saving shift config no longer
+ // requires factory lat/lon/radius. Re-enable alongside fetchConfig above
+ // and the JSX block further below.
+ // factory_lat: parseFloat(configForm.factory_lat),
+ // factory_lon: parseFloat(configForm.factory_lon),
+ // radius_m: parseInt(configForm.radius_m, 10),
  };
  const updated = await apiFetch(`${API}/config`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
  setConfig(updated);
@@ -1423,6 +1442,10 @@ function OperationsHRView({ token }) {
  </div>
  </div>
 
+ {/* Geofence Parameters — commented out so shift config can be saved and
+ attendance marked without requiring factory lat/lon/radius. Uncomment
+ this block (and the matching fields in fetchConfig/handleSaveConfig
+ above) to bring geofencing back.
  <div className="space-y-4">
  <h4 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
  <Shield className="w-3.5 h-3.5" /> Geofence Parameters
@@ -1452,6 +1475,7 @@ function OperationsHRView({ token }) {
  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
  </div>
  </div>
+ */}
  </div>
  )}
 
@@ -1552,7 +1576,7 @@ function AttendanceHistoryView({ token }) {
  apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token)
  .then((data) => {
  if (!isMounted) return;
- setHistory(Array.isArray(data) ? data : []);
+ setHistory(normalizeRosterArray(data));
  })
  .catch((err) => console.error('Failed to fetch attendance history', err))
  .finally(() => {

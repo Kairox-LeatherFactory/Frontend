@@ -17,7 +17,7 @@ import {
 } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Rocket, Ruler, Scissors, Plus, Calendar, Users, FileSpreadsheet, X, Upload, Loader2, ListChecks, BarChart3, Search, ChevronDown, AlertTriangle, QrCode, Barcode, Check, Camera } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
-import { manualStages, useRoleAccess } from './shared';
+import { manualStages, useRoleAccess, normalizeRosterArray } from './shared';
 
 // Helper components used only by this door's Traveler Card Print Modal and
 // Analytics Popup Modal — moved here from the top of the original page.js
@@ -480,7 +480,7 @@ export default function ManualDoorSection({
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(r => String(r.employee_id) === String(w.id));
       if (!workerRoster) {
         setWarningWorkerName(w.name || 'Unknown');
@@ -555,7 +555,7 @@ export default function ManualDoorSection({
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setWarningWorkerName(currentWorker?.name || 'Unknown');
@@ -613,7 +613,7 @@ export default function ManualDoorSection({
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setWarningWorkerName(currentWorker?.name || 'Unknown');
@@ -692,7 +692,7 @@ export default function ManualDoorSection({
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setShowPrintModal(false);
@@ -802,7 +802,7 @@ export default function ManualDoorSection({
     try {
       const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
       const rosterData = await response.json();
-      const rosterArray = Array.isArray(rosterData) ? rosterData : (rosterData?.data || rosterData?.items || []);
+      const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(r => String(r.employee_id) === String(workerId));
       if (!workerRoster) {
         setShowChecklistModal(false);
