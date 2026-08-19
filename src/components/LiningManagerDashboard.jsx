@@ -646,8 +646,18 @@ function DashboardInner() {
 
   // Top-line numbers
   const totalOrderPieces = productionKpis?.total_order_pieces ?? currentOrder?.total_pieces ?? 0;
-  const overallCompleted = productionKpis?.overall_completed ?? 0;
-  const overallPending = productionKpis?.overall_pending ?? 0;
+  // completed/pending are NOT trusted from production_kpis/current_order — the
+  // backend under-reports them (e.g. reports 0 completed even when a real
+  // LINING_CUTTING consumption event exists for the piece). The consumption
+  // endpoint (piecesList) is the only endpoint with piece-level rows, so it's
+  // the ground truth for "how many pieces actually got lined" — use its
+  // distinct piece count instead.
+  const groundTruthCompleted = useMemo(
+    () => new Set(piecesList.map((p) => p.piece_code)).size,
+    [piecesList]
+  );
+  const overallCompleted = groundTruthCompleted;
+  const overallPending = Math.max(0, totalOrderPieces - groundTruthCompleted);
   // production_kpis has no top-level minted_pieces field — derive it from the
   // per-style minted counts on current_order, which the backend does return.
   const mintedPieces = useMemo(
@@ -658,9 +668,9 @@ function DashboardInner() {
   const damagePieces = productionKpis?.damage_pieces ?? 0;
   const reworkPieces = productionKpis?.rework_pieces ?? 0;
 
-  const orderCompletionPct = currentOrder?.total_pieces
-    ? Math.round(((currentOrder.completed ?? 0) / currentOrder.total_pieces) * 100)
-    : (totalOrderPieces ? Math.round((overallCompleted / totalOrderPieces) * 100) : 0);
+  const orderCompletionPct = totalOrderPieces
+    ? Math.round((groundTruthCompleted / totalOrderPieces) * 100)
+    : 0;
 
   const avgDcmPerPiece = useMemo(() => {
     const withValue = piecesList.filter((p) => typeof p.actual_consumption === 'number');
@@ -917,7 +927,7 @@ function DashboardInner() {
                   {currentOrder?.total_pieces ?? totalOrderPieces} pcs ordered
                 </h2>
                 <p className="text-xs font-semibold text-slate-600 mt-0.5">
-                  {(currentOrder?.styles || []).length} styles &bull; <span className="text-emerald-600">{currentOrder?.completed ?? 0} completed</span> &bull; <span className="text-amber-600">{currentOrder?.pending ?? 0} pending</span> in this order
+                  {(currentOrder?.styles || []).length} styles &bull; <span className="text-emerald-600">{overallCompleted} completed</span> &bull; <span className="text-amber-600">{overallPending} pending</span> in this order
                 </p>
               </div>
 

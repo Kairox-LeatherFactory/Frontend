@@ -518,27 +518,31 @@ export default function DirectManagerDashboard() {
       cards.splice(cutIdx === -1 ? 0 : cutIdx + 1, 0, liningCard);
     }
 
-    // Drawer/store counts are factory-wide
-    // (no per-order breakdown exists), so they're N/A inside a single order's view.
-    const storeCard = isDrillDownActive
-      ? {
-          stage: 'STORE',
-          label: 'Store / Drawer',
-          completed: null,
-          pending: null,
-          isStoreOverlay: true,
-          isUnavailable: true,
-          unavailableNote: 'Not trackable per order',
-        }
-      : {
-          stage: 'STORE',
-          label: 'Store / Drawer',
-          completed: storeStats.drawers_sent ?? null,
-          pending: storeStats.drawers_in_store ?? null,
-          isStoreOverlay: true,
-        };
-    const stitchIdx = cards.findIndex((st) => /STITCH/i.test(st.stage || st.label || ''));
-    cards = stitchIdx === -1 ? [...cards, storeCard] : [...cards.slice(0, stitchIdx), storeCard, ...cards.slice(stitchIdx)];
+    // Drawer/store counts are factory-wide (no per-order breakdown exists), so
+    // the buffer overlay only applies when the real pipeline has no Store
+    // stage of its own — otherwise it would just duplicate that real card.
+    const hasRealStoreStage = cards.some((st) => /STORE/i.test(st.stage || st.label || ''));
+    if (!hasRealStoreStage) {
+      const storeCard = isDrillDownActive
+        ? {
+            stage: 'STORE',
+            label: 'Store / Drawer',
+            completed: null,
+            pending: null,
+            isStoreOverlay: true,
+            isUnavailable: true,
+            unavailableNote: 'Not trackable per order',
+          }
+        : {
+            stage: 'STORE',
+            label: 'Store / Drawer',
+            completed: storeStats.drawers_sent ?? null,
+            pending: storeStats.drawers_in_store ?? null,
+            isStoreOverlay: true,
+          };
+      const stitchIdx = cards.findIndex((st) => /STITCH/i.test(st.stage || st.label || ''));
+      cards = stitchIdx === -1 ? [...cards, storeCard] : [...cards.slice(0, stitchIdx), storeCard, ...cards.slice(stitchIdx)];
+    }
 
     return cards;
   }, [effectivePipeline, storeStats, hasLiningStage, isDrillDownActive]);

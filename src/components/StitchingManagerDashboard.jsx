@@ -383,7 +383,7 @@ function StitchingDashboardContent() {
     stages.forEach((s) => s.stage && set.add(s.stage));
     employees.forEach((e) => e.stage && set.add(e.stage));
     dailyProduction.forEach((d) => d.stage && set.add(d.stage));
-    return Array.from(set);
+    return sortByCanonicalStageOrder(Array.from(set).map((stage) => ({ stage }))).map((s) => s.stage);
   }, [stages, employees, dailyProduction]);
 
   const availableEmployees = useMemo(() => {
@@ -485,10 +485,22 @@ function StitchingDashboardContent() {
     return total > 0 && pending >= 5 && pending / total > 0.3;
   };
 
+  // Respect the active Order/Stage filters — same filtered list the Stage-Wise
+  // table uses — so this panel actually reflects the selected stage instead of
+  // always flagging whatever stage has the biggest backlog floor-wide.
   const highBacklogStage = useMemo(() => {
-    const candidates = stages.filter(isHighBacklog).sort((a, b) => (b.pending_pieces || 0) - (a.pending_pieces || 0));
+    const candidates = filteredStages.filter(isHighBacklog).sort((a, b) => (b.pending_pieces || 0) - (a.pending_pieces || 0));
     return candidates[0] || null;
-  }, [stages]);
+  }, [filteredStages]);
+
+  // ── Real per-stage snapshot for the selected Stage filter — `stages` is
+  // already order-scoped by the backend (order_id param), so this reflects
+  // "pending/completed for THIS stage within THIS order" when an order is
+  // also selected, or floor-wide for the stage when it isn't. ──
+  const selectedStageSnapshot = useMemo(
+    () => (filterStage !== 'all' ? stages.find((s) => s.stage === filterStage) || null : null),
+    [stages, filterStage]
+  );
 
   // ── Employees (denormalized: one row per employee per stage) ──
   const filteredEmployees = useMemo(() => {
@@ -995,6 +1007,38 @@ function StitchingDashboardContent() {
             </div>
           )}
 
+          {/* SELECTED STAGE SNAPSHOT — real completed/pending for the exact stage
+              picked in the Stage filter (e.g. Fusing), scoped to the selected Order
+              when one is also active (stages is already order_id-scoped by the
+              backend), or floor-wide otherwise. Shown whenever the Stage filter
+              is set to something other than "All Stages". */}
+          {selectedStageSnapshot && (
+            <div className="w-full bg-white border border-amber-200 rounded-2xl p-5 shadow-sm flex flex-wrap items-center gap-6">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center text-lg">🪡</div>
+                <div>
+                  <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Selected Stage</span>
+                  <h3 className="text-sm font-extrabold text-slate-900">
+                    {selectedStageSnapshot.label || formatStage(selectedStageSnapshot.stage)}
+                    {filterOrder !== 'all' && <> &bull; {activeOrderLabel}</>}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {filterOrder !== 'all' ? 'Scoped to this order' : `Floor-wide (${meta?.scope || 'all clients'})`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-4 text-xs font-bold text-slate-600 flex-1">
+                <span>Received: <strong className="text-slate-900">{selectedStageSnapshot.total_received ?? 0}</strong></span>
+                <span>Assigned: <strong className="text-blue-700">{selectedStageSnapshot.assigned_pieces ?? 0}</strong></span>
+                <span>Completed: <strong className="text-emerald-700">{selectedStageSnapshot.completed_pieces ?? 0}</strong></span>
+                <span>Pending: <strong className="text-amber-700">{selectedStageSnapshot.pending_pieces ?? 0}</strong></span>
+                {typeof selectedStageSnapshot.daily_target === 'number' && (
+                  <span>Daily Target: <strong className="text-indigo-700">{selectedStageSnapshot.daily_target}</strong></span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* 4 TOP SUMMARY KPIS — real fields from kpis object, or the filtered
               order/style aggregate when an Order or Style filter is active. */}
           <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1024,13 +1068,26 @@ function StitchingDashboardContent() {
                 <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg">🪡</div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700">{stages.length} stages</span>
               </div>
-              <span className="text-xs font-semibold text-slate-500">Fusing Output</span>
+              <span className="text-xs font-semibold text-slate-500">
+                {selectedStageSnapshot ? `${selectedStageSnapshot.label || formatStage(selectedStageSnapshot.stage)} Output` : 'Fusing Output'}
+              </span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{stages.find((s) => s.stage === 'FUSING')?.completed_pieces ?? 0} pcs</span>
+                <span className="text-2xl font-black text-slate-900">
+                  {(selectedStageSnapshot ? selectedStageSnapshot.completed_pieces : stages.find((s) => s.stage === 'FUSING')?.completed_pieces) ?? 0} pcs
+                </span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Pasting Done: <strong>{stages.find((s) => s.stage === 'PASTING')?.completed_pieces ?? 0}</strong></span>
-                <span>Pasting Pending: <strong className="text-rose-600">{stages.find((s) => s.stage === 'PASTING')?.pending_pieces ?? 0}</strong></span>
+                {selectedStageSnapshot ? (
+                  <>
+                    <span>Assigned: <strong>{selectedStageSnapshot.assigned_pieces ?? 0}</strong></span>
+                    <span>Pending: <strong className="text-rose-600">{selectedStageSnapshot.pending_pieces ?? 0}</strong></span>
+                  </>
+                ) : (
+                  <>
+                    <span>Pasting Done: <strong>{stages.find((s) => s.stage === 'PASTING')?.completed_pieces ?? 0}</strong></span>
+                    <span>Pasting Pending: <strong className="text-rose-600">{stages.find((s) => s.stage === 'PASTING')?.pending_pieces ?? 0}</strong></span>
+                  </>
+                )}
               </div>
             </div>
 

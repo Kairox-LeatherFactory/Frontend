@@ -1233,9 +1233,12 @@ function OperationsHRView({ token }) {
  shift_start: data.shift_start,
  shift_length_hours: data.shift_length_hours,
  late_grace_minutes: data.late_grace_minutes,
- factory_lat: data.factory_lat,
- factory_lon: data.factory_lon,
- radius_m: data.radius_m,
+ // Geofence Parameters — commented out so attendance can be configured
+ // and marked without requiring factory lat/lon/radius. Re-enable by
+ // uncommenting these fields alongside the JSX block further below.
+ // factory_lat: data.factory_lat,
+ // factory_lon: data.factory_lon,
+ // radius_m: data.radius_m,
  });
  } catch {
  showAlert('error', 'Failed to load shift configuration.');
@@ -1258,9 +1261,12 @@ function OperationsHRView({ token }) {
  shift_start: configForm.shift_start,
  shift_length_hours: parseFloat(configForm.shift_length_hours),
  late_grace_minutes: parseInt(configForm.late_grace_minutes, 10),
- factory_lat: parseFloat(configForm.factory_lat),
- factory_lon: parseFloat(configForm.factory_lon),
- radius_m: parseInt(configForm.radius_m, 10),
+ // Geofence Parameters — commented out so saving shift config no longer
+ // requires factory lat/lon/radius. Re-enable alongside fetchConfig above
+ // and the JSX block further below.
+ // factory_lat: parseFloat(configForm.factory_lat),
+ // factory_lon: parseFloat(configForm.factory_lon),
+ // radius_m: parseInt(configForm.radius_m, 10),
  };
  const updated = await apiFetch(`${API}/config`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
  setConfig(updated);
@@ -1436,6 +1442,10 @@ function OperationsHRView({ token }) {
  </div>
  </div>
 
+ {/* Geofence Parameters — commented out so shift config can be saved and
+ attendance marked without requiring factory lat/lon/radius. Uncomment
+ this block (and the matching fields in fetchConfig/handleSaveConfig
+ above) to bring geofencing back.
  <div className="space-y-4">
  <h4 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
  <Shield className="w-3.5 h-3.5" /> Geofence Parameters
@@ -1465,6 +1475,7 @@ function OperationsHRView({ token }) {
  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
  </div>
  </div>
+ */}
  </div>
  )}
 

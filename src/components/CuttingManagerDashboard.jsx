@@ -626,20 +626,31 @@ function DashboardInner() {
     triggerToast('📥 Cutting Traceability CSV Report Downloaded Successfully');
   };
 
-  // ── Top-line numbers — always sourced from production_kpis / leather_kpis
-  // (backend-computed order-wide totals), never from the partial cut-log window. ──
+  // ── Top-line numbers — sourced from production_kpis / leather_kpis
+  // (backend-computed order-wide totals) EXCEPT for completed/pending, which
+  // the backend under-reports (it can report 0 completed even when real
+  // LEATHER_CUTTING consumption events exist for the order/piece). The
+  // consumption endpoint (piecesList) is the only endpoint with piece-level
+  // rows, so it's the ground truth for "how many pieces actually got cut" —
+  // use its distinct piece count instead of trusting production_kpis/current_order
+  // for completed/pending. ──
   const totalOrderPieces = productionKpis?.total_order_pieces ?? currentOrder?.total_pieces ?? 0;
-  const overallCompleted = productionKpis?.overall_completed ?? 0;
-  const overallPending = productionKpis?.overall_pending ?? 0;
+  const groundTruthCompleted = useMemo(
+    () => new Set(piecesList.map((p) => p.piece_code)).size,
+    [piecesList]
+  );
+  const overallCompleted = groundTruthCompleted;
+  const overallPending = Math.max(0, totalOrderPieces - groundTruthCompleted);
   const mintedPieces = productionKpis?.minted_pieces ?? 0;
   const damagePieces = productionKpis?.damage_pieces ?? 0;
   const reworkPieces = productionKpis?.rework_pieces ?? 0;
 
   // Scoped to the single current_order (not the floor-wide production_kpis totals above) —
   // this is what the hero banner's own progress bar should reflect, since that card is
-  // describing one specific order, not the all-clients aggregate.
+  // describing one specific order, not the all-clients aggregate. Uses the same
+  // ground-truth completed count as above, for the same reason.
   const orderCompletionPct = currentOrder?.total_pieces
-    ? Math.round(((currentOrder.completed ?? 0) / currentOrder.total_pieces) * 100)
+    ? Math.round((groundTruthCompleted / currentOrder.total_pieces) * 100)
     : 0;
 
   const avgDcmPerPiece = useMemo(() => {
