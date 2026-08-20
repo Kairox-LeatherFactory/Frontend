@@ -639,7 +639,7 @@ export default function ProductionLogEntry() {
             setBucketResult={setBucketResult} setShowBucketModal={setShowBucketModal}
             barcodeWorker={barcodeWorker} setBarcodeWorker={setBarcodeWorker} barcodeWorkerInput={barcodeWorkerInput} setBarcodeWorkerInput={setBarcodeWorkerInput} barcodeWorkerChecking={barcodeWorkerChecking}
             handleVerifyBarcodeWorker={handleVerifyBarcodeWorker} barcodeNotCheckedInModal={barcodeNotCheckedInModal} setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal} workerInputRef={workerInputRef}
-            setCameraScanTarget={setCameraScanTarget}
+            cameraScanTarget={cameraScanTarget} setCameraScanTarget={setCameraScanTarget}
           />
         )}
         {activeDoor === 'manual' && (
@@ -1090,7 +1090,7 @@ export default function ProductionLogEntry() {
           storeReceiveStatus={storeReceiveStatus} setStoreReceiveStatus={setStoreReceiveStatus}
           barcodeWorker={barcodeWorker} setBarcodeWorker={setBarcodeWorker} barcodeWorkerInput={barcodeWorkerInput} setBarcodeWorkerInput={setBarcodeWorkerInput} barcodeWorkerChecking={barcodeWorkerChecking}
           handleVerifyBarcodeWorker={handleVerifyBarcodeWorker} workerInputRef={workerInputRef}
-          setCameraScanTarget={setCameraScanTarget}
+          cameraScanTarget={cameraScanTarget} setCameraScanTarget={setCameraScanTarget}
         />
       )}
 
