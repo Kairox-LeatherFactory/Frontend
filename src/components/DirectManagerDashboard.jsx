@@ -473,19 +473,24 @@ export default function DirectManagerDashboard() {
       const stageDataByKey = new Map(
         (activeDrillDownData?.stages || []).map((s) => [String(s.stage || s.name || '').toUpperCase(), s])
       );
-      // The order/style detail endpoint only reports `completed` (+ pct/status)
-      // per stage, never a pending/queue count — unlike the factory-wide
-      // pipeline list. Derive it: whatever finished the previous stage but
-      // hasn't finished this one is sitting in this stage's queue, starting
-      // from the order's total_quantity feeding stage #1's queue.
+      // The order/style detail endpoint now reports `pending`/`total` directly
+      // per stage — use those when present. Only derive a fallback (whatever
+      // finished the previous stage but hasn't finished this one, starting
+      // from the order's total_quantity feeding stage #1's queue) for a stage
+      // the backend didn't give a real pending count for. The old always-derive
+      // approach broke PARALLEL-kind stages (e.g. Lining Cutting running
+      // alongside Leather Cutting, not after it): previousCompleted carried
+      // over from Cutting's own completed count, so Lining's queue collapsed
+      // to 0 whenever Cutting hadn't finished anything yet.
       const totalQty = readNum(activeDrillDownData, ['total_quantity']) ?? 0;
       let previousCompleted = totalQty;
       base = pipelineList.map((st) => {
         const stageKey = st.stage || st.label;
         const match = stageDataByKey.get(String(stageKey).toUpperCase());
         const completed = match ? (readNum(match, ['completed', 'done']) ?? 0) : 0;
-        const pending = Math.max(0, previousCompleted - completed);
-        previousCompleted = completed;
+        const realPending = match ? readNum(match, ['pending', 'queue', 'total_pending']) : null;
+        const pending = realPending !== null ? realPending : Math.max(0, previousCompleted - completed);
+        if (match?.kind !== 'PARALLEL') previousCompleted = completed;
         return {
           stage: stageKey,
           label: st.label || formatStage(stageKey),

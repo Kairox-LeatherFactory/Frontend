@@ -320,11 +320,11 @@ function IdCard({ barcode, labels, cardRef, width, showOnlyFields = false }) {
   if (showOnlyFields) {
     return (
       <div className="w-full">
-        <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-left text-sm p-3 rounded-lg" style={{ background: BRAND.bg }}>
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5 text-left text-xs p-3 rounded-lg" style={{ background: BRAND.bg }}>
           {fields.map(([label, value], idx) => (
-            <div key={`${label}-${idx}`} className="flex flex-col gap-0.5">
-              <span className="text-[0.68rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{label}</span>
-              <span className="font-semibold" style={{ color: BRAND.text }}>{value || '—'}</span>
+            <div key={`${label}-${idx}`} className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-[0.62rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{label}</span>
+              <span className="font-semibold break-words" style={{ color: BRAND.text }}>{value || '—'}</span>
             </div>
           ))}
         </div>
@@ -582,7 +582,7 @@ function ToastStack({ toasts }) {
  if (!mounted) return null;
 
  return createPortal(
- <div className="fixed top-5 right-5 z-[999] flex flex-col gap-2 pointer-events-none w-[300px]">
+ <div className="toast-stack fixed top-5 right-5 z-[999] flex flex-col gap-2 pointer-events-none w-[300px]">
  <AnimatePresence>
  {toasts.map((t) => (
  <motion.div
@@ -625,89 +625,104 @@ function formatRegistryValue(value) {
 // passthrough dict server-side, so this dumps whatever keys are present
 // instead of hard-coding fields that might not exist for every code type.
 function LiveBarcodeDetailModal({ open, loading, error, data, onClose }) {
- const barcodeRef = useRef(null);
- const [exporting, setExporting] = useState(null);
- const payload = data ? (data.piece || data.employee || data.drawer || data.lot) : null;
+  const barcodeRef = useRef(null);
+  const [exporting, setExporting] = useState(null);
+  const payload = data ? (data.piece || data.employee || data.drawer || data.lot) : null;
 
- // Downloads only the barcode symbol itself — not the surrounding card/field
- // grid — since this lookup modal is used for style barcodes, which only
- // ever need the printable symbol.
- const handleDownload = async (format) => {
- if (!barcodeRef.current || exporting || !data) return;
- setExporting(format);
- try {
- const canvas = await captureNodeToCanvas(barcodeRef.current);
- if (format === 'png') await saveCanvasAsPng(canvas, data.code);
- else await saveCanvasAsPdf(canvas, data.code);
- } finally {
- setExporting(null);
- }
- };
+  // Downloads only the barcode symbol itself — not the surrounding card/field
+  // grid — since this lookup modal is used for style barcodes, which only
+  // ever need the printable symbol.
+  const handleDownload = async (format) => {
+    if (!barcodeRef.current || exporting || !data) return;
+    setExporting(format);
+    try {
+      const canvas = await captureNodeToCanvas(barcodeRef.current);
+      if (format === 'png') await saveCanvasAsPng(canvas, data.code);
+      else await saveCanvasAsPdf(canvas, data.code);
+    } finally {
+      setExporting(null);
+    }
+  };
 
- return (
- <AnimatedModal
- isOpen={open}
- onClose={onClose}
- zIndex={2000}
- panelClassName="rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
- panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
- >
- <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
- <h3 className="font-bold flex items-center gap-2" style={{ color: '#5a3518' }}>
- <ScanLine className="w-4 h-4" style={{ color: BRAND.accent }} /> Barcode Registry Lookup
- </h3>
- <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
- </div>
+  return (
+    <AnimatedModal
+      isOpen={open}
+      onClose={onClose}
+      zIndex={2000}
+      panelClassName="rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
+      panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
+    >
+      <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+        <h3 className="font-bold flex items-center gap-2" style={{ color: '#5a3518' }}>
+          <ScanLine className="w-4 h-4" style={{ color: BRAND.accent }} /> Barcode Registry Lookup
+        </h3>
+        <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+      </div>
 
- {loading ? (
- <div className="py-16 flex flex-col items-center gap-2">
- <Loader2 className="w-6 h-6 animate-spin" style={{ color: BRAND.accent }} />
- <p className="text-sm" style={{ color: BRAND.textMuted }}>Resolving…</p>
- </div>
- ) : error ? (
- <div className="py-16 text-center px-6">
- <p className="font-bold" style={{ color: '#b91c1c' }}>{error}</p>
- </div>
- ) : data ? (
- <>
- <div className="p-6 text-center" style={{ background: '#ffffff' }}>
- <div ref={barcodeRef} className="p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
- <BarcodeCanvas code={data.code} displayWidth={260} />
- </div>
- <div className="font-mono font-bold mb-2" style={{ color: '#5a3518' }}>{data.code}</div>
- <div className="flex items-center justify-center gap-2 mb-4">
- <span className="text-[0.65rem] px-2.5 py-1 rounded-full font-black uppercase tracking-wide" style={{ background: BRAND.bg, color: BRAND.accent, border: `1px solid ${BRAND.border}` }}>
- {BARCODE_TYPE_LABELS[data.type] || data.type}
- </span>
- <span className={statusBadgeClass(data.active ? 'PRINTED' : 'PENDING')}>{data.active ? 'Active' : 'Retired'}</span>
- </div>
- {data.caption && <div className="text-sm font-semibold mb-4" style={{ color: BRAND.textMuted }}>{data.caption}</div>}
- {payload && Object.keys(payload).length > 0 ? (
- <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-left text-sm p-4 rounded-lg" style={{ background: BRAND.bg }}>
- {Object.entries(payload).map(([key, value]) => (
- <div key={key} className="flex flex-col gap-0.5">
- <span className="text-[0.68rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{humanizeKey(key)}</span>
- <span className="font-semibold break-words" style={{ color: BRAND.text }}>{formatRegistryValue(value)}</span>
- </div>
- ))}
- </div>
- ) : (
- <p className="text-xs" style={{ color: BRAND.textMuted }}>No additional detail on record for this code.</p>
- )}
- </div>
- <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
- <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
- <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
- <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
- </button>
- <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
- <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
- </button>
- </div>
- </>
- ) : null}
- </AnimatedModal>
- );
+      {loading ? (
+        <div className="py-16 flex flex-col items-center gap-2">
+          <Loader2 className="w-6 h-6 animate-spin" style={{ color: BRAND.accent }} />
+          <p className="text-sm" style={{ color: BRAND.textMuted }}>Resolving…</p>
+        </div>
+      ) : error ? (
+        <div className="py-16 text-center px-6">
+          <p className="font-bold" style={{ color: '#b91c1c' }}>{error}</p>
+        </div>
+      ) : data ? (
+        <>
+          <div className="p-6 flex-1 min-h-0 overflow-y-auto" style={{ background: '#ffffff' }}>
+            <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 items-start">
+              {/* Left column: Barcode visual badge & status */}
+              <div className="flex flex-col items-center text-center p-4 rounded-xl border border-amber-100 bg-amber-50/30">
+                <div ref={barcodeRef} className="p-3 rounded-lg mb-3 flex justify-center overflow-hidden bg-white w-full" style={{ border: `1px solid ${BRAND.border}` }}>
+                  <BarcodeCanvas code={data.code} displayWidth={240} />
+                </div>
+                <div className="font-mono font-bold text-sm mb-1.5 break-all" style={{ color: '#5a3518' }}>{data.code}</div>
+                <div className="flex items-center justify-center gap-2 mb-2 flex-wrap">
+                  <span className="text-[0.65rem] px-2.5 py-1 rounded-full font-black uppercase tracking-wide" style={{ background: BRAND.bg, color: BRAND.accent, border: `1px solid ${BRAND.border}` }}>
+                    {BARCODE_TYPE_LABELS[data.type] || data.type}
+                  </span>
+                  <span className={statusBadgeClass(data.active ? 'PRINTED' : 'PENDING')}>{data.active ? 'Active' : 'Retired'}</span>
+                </div>
+                {data.caption && <div className="text-xs font-semibold text-slate-600 mt-1">{data.caption}</div>}
+              </div>
+
+              {/* Right column: Detailed specifications grid in multi-column layout */}
+              <div className="w-full min-w-0">
+                <div className="text-xs font-black uppercase tracking-wider text-[#9a7a5a] mb-2.5">
+                  Piece &amp; Production Details
+                </div>
+                {payload && Object.keys(payload).length > 0 ? (
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5 text-left text-xs p-4 rounded-xl" style={{ background: BRAND.bg }}>
+                    {Object.entries(payload).map(([key, value]) => (
+                      <div key={key} className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-[0.62rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{humanizeKey(key)}</span>
+                        <span className="font-semibold break-words text-slate-900" style={{ color: BRAND.text }}>{formatRegistryValue(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center text-xs rounded-xl" style={{ background: BRAND.bg, color: BRAND.textMuted }}>
+                    No additional detail on record for this code.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 px-6 py-4 flex-wrap shrink-0" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
+            <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
+            <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
+            </button>
+            <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </AnimatedModal>
+  );
 }
 
 // Page-level "scan or type a code" lookup — GET /barcode/resolve. Available
@@ -1725,12 +1740,25 @@ function DrawerGenerationTab({
  {drw.state || 'active'}
  </span>
  </div>
+ {drw.state === 'merged' && drw.piece_code && (
+ <div className="mt-0.5 font-mono font-bold text-xs break-all" style={{ color: '#a86530' }}>
+ Piece: {drw.piece_code}
+ {drw.piece_serial && (
+ <span className="ml-2 font-sans font-semibold" style={{ color: BRAND.textMuted }}>(Serial #{drw.piece_serial})</span>
+ )}
+ {drw.needs_lining && (
+ <span className="ml-2 font-sans font-bold" style={{ color: '#b45309' }}>· needs lining</span>
+ )}
+ {drw.complete && (
+ <span className="ml-2 font-sans font-bold" style={{ color: '#047857' }}>· complete</span>
+ )}
+ </div>
+ )}
  <div className="text-xs font-mono mt-0.5" style={{ color: BRAND.textMuted }}>
- ID: <span className="font-semibold">{drw.drawer_id}</span>
  {drw.barcode ? (
- <span className="ml-2">· Barcode: <span className="text-[#a86530] font-bold">{drw.barcode}</span></span>
+ <span>Barcode: <span className="text-[#a86530] font-bold">{drw.barcode}</span></span>
  ) : (
- <span className="ml-2 font-sans font-semibold" style={{ color: '#b91c1c' }}>· no registry barcode — cannot be printed</span>
+ <span className="font-sans font-semibold" style={{ color: '#b91c1c' }}>no registry barcode — cannot be printed</span>
  )}
  </div>
  </div>
@@ -3185,7 +3213,7 @@ function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style
   const isDrawer = category === 'bucket';
 
   const handleDownload = async (format) => {
-    if (!cardRef.current || exporting) return;
+    if (!cardRef.current || exporting || !barcode) return;
     setExporting(format);
     try {
       const canvas = await captureNodeToCanvas(cardRef.current);
@@ -3201,38 +3229,36 @@ function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style
       isOpen={!!barcode}
       onClose={onClose}
       zIndex={2000}
-      panelClassName="rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+      panelClassName="rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
       panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
     >
       {barcode && (
         <>
-          <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+          <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
             <h3 className="font-bold" style={{ color: '#5a3518' }}>Barcode Specification</h3>
             <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
           </div>
 
-          <div className="p-6 flex flex-col items-center gap-4 max-h-[70vh] overflow-y-auto">
-            {/* Clean barcode label target (captured on download) */}
-            <div className="w-full flex justify-center">
+          <div className="p-5 grid gap-4 sm:grid-cols-[minmax(0,260px)_1fr] items-start flex-1 min-h-0 overflow-y-auto">
+            <div className="flex justify-center sm:sticky sm:top-0">
               {isEmployee ? (
                 <EmployeeTicketCard barcode={barcode} cardRef={cardRef} />
               ) : isDrawer ? (
                 <DrawerBarcodeLabel barcode={barcode} cardRef={cardRef} />
               ) : (
-                <BarcodeStickerLabel barcode={barcode} cardRef={cardRef} width={400} />
+                <BarcodeStickerLabel barcode={barcode} cardRef={cardRef} width={260} />
               )}
             </div>
 
-            {/* Detailed specification list below the barcode sticker */}
             {!isEmployee && !isDrawer && (
-              <div className="w-full mt-2">
+              <div className="w-full min-w-0">
                 <div className="text-xs font-black uppercase tracking-wider text-[#9a7a5a] mb-2 px-1">Lot & Specification Details</div>
                 <IdCard barcode={barcode} labels={labels} showOnlyFields={true} />
               </div>
             )}
           </div>
 
-          <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
+          <div className="flex justify-end gap-2 px-6 py-4 flex-wrap shrink-0" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
             <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
             <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
               <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
@@ -3878,9 +3904,18 @@ const bucketHistoryOptions = useMemo(() => ({
  @media print {
  /* 4mm margins so two 98mm labels fit across A4 (210mm) and Letter (215.9mm) */
  @page { size: A4 portrait; margin: 4mm; }
- body * { visibility: hidden; }
- #thermalPrintSheet, #thermalPrintSheet * { visibility: visible; }
- #thermalPrintSheet { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: #fff !important; }
+ /* #app-shell (the sidebar/header/dashboard content) is hidden with
+ display:none, not visibility:hidden — visibility keeps an
+ element's layout box (and its scroll-height) intact even while
+ invisible, so the browser paginated the whole hidden dashboard into
+ blank pages after the real label sheet. display:none removes it
+ from the flow entirely, so only #thermalPrintSheet's own pages print. */
+ #app-shell { display: none !important; }
+ /* The toast stack is portaled straight to <body> (position: fixed),
+ same as the print sheet, so hiding #app-shell alone doesn't touch it —
+ without this it prints as a floating message box in the corner. */
+ .toast-stack { display: none !important; }
+ #thermalPrintSheet { display: block !important; position: static; width: 100%; margin: 0; padding: 0; background: #fff !important; }
  .print-page {
  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
  gap: 8mm; width: 100%; height: 280mm; page-break-after: always; box-sizing: border-box;
@@ -4119,7 +4154,14 @@ const bucketHistoryOptions = useMemo(() => ({
  />
 
  {/* Print sheet — 4 employee ID cards per page, 8 style barcodes per
- page (1 column, full page width), or 8 bucket labels at 100×70mm */}
+ page (1 column, full page width), or 8 bucket labels at 100×70mm.
+ Portaled straight onto <body>, outside #app-shell, so the print
+ media query can hard-hide the rest of the dashboard (sidebar, header,
+ the drawer list, every other tab) with `display: none`. Hiding it
+ the old way — `visibility: hidden` on the whole app — kept every
+ hidden element's layout box intact, so the browser still paginated
+ the app's full scroll height into blank pages after this sheet. */}
+ {createPortal(
  <div id="thermalPrintSheet" ref={printSheetRef} style={{ display: 'none' }}>
  {isBucketSheet
  ? chunkArray(printSheetItems, BUCKET_LABELS_PER_PAGE).map((group, pageIdx) => (
@@ -4186,7 +4228,9 @@ const bucketHistoryOptions = useMemo(() => ({
  })}
  </div>
  ))}
- </div>
+ </div>,
+ document.body
+ )}
 
  {/* Off-screen renderer used only to capture the bulk PNG/PDF export */}
  {bulkExportItems && (
