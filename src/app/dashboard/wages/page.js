@@ -1507,10 +1507,10 @@ function LedgerView({ token }) {
                       {run.run_id}
                     </p>
                     <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
-                      <div>
-                        <p className="text-[10px] font-bold text-slate-400">Total</p>
-                        <p className="font-black" style={{ color: '#10b981' }}><Money value={run.total_amount} /></p>
-                      </div>
+                      // <div>
+                      //   <p className="text-[10px] font-bold text-slate-400">Total</p>
+                      //   <p className="font-black" style={{ color: '#10b981' }}><Money value={run.total_amount} /></p>
+                      // </div>
                       <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-1 transition-all" />
                     </div>
                   </SpotlightCard>
