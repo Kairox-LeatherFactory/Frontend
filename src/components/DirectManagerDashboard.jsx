@@ -473,19 +473,24 @@ export default function DirectManagerDashboard() {
       const stageDataByKey = new Map(
         (activeDrillDownData?.stages || []).map((s) => [String(s.stage || s.name || '').toUpperCase(), s])
       );
-      // The order/style detail endpoint only reports `completed` (+ pct/status)
-      // per stage, never a pending/queue count — unlike the factory-wide
-      // pipeline list. Derive it: whatever finished the previous stage but
-      // hasn't finished this one is sitting in this stage's queue, starting
-      // from the order's total_quantity feeding stage #1's queue.
+      // The order/style detail endpoint now reports `pending`/`total` directly
+      // per stage — use those when present. Only derive a fallback (whatever
+      // finished the previous stage but hasn't finished this one, starting
+      // from the order's total_quantity feeding stage #1's queue) for a stage
+      // the backend didn't give a real pending count for. The old always-derive
+      // approach broke PARALLEL-kind stages (e.g. Lining Cutting running
+      // alongside Leather Cutting, not after it): previousCompleted carried
+      // over from Cutting's own completed count, so Lining's queue collapsed
+      // to 0 whenever Cutting hadn't finished anything yet.
       const totalQty = readNum(activeDrillDownData, ['total_quantity']) ?? 0;
       let previousCompleted = totalQty;
       base = pipelineList.map((st) => {
         const stageKey = st.stage || st.label;
         const match = stageDataByKey.get(String(stageKey).toUpperCase());
         const completed = match ? (readNum(match, ['completed', 'done']) ?? 0) : 0;
-        const pending = Math.max(0, previousCompleted - completed);
-        previousCompleted = completed;
+        const realPending = match ? readNum(match, ['pending', 'queue', 'total_pending']) : null;
+        const pending = realPending !== null ? realPending : Math.max(0, previousCompleted - completed);
+        if (match?.kind !== 'PARALLEL') previousCompleted = completed;
         return {
           stage: stageKey,
           label: st.label || formatStage(stageKey),
@@ -2007,7 +2012,12 @@ export default function DirectManagerDashboard() {
                /attendance/config's real shift_start/shift_length_hours), Actual Rate
                is the real pieces_per_hour_today field, and EOD Forecast stays as a
                field but always N/A since no forecasting endpoint exists in the API. ─── */}
-          {/* ─── DOCKED BOTTOM EXECUTIVE SUMMARY BAR (Exact Matching Sidebar Footer Color & Height) ─── */}
+          {/* ─── DOCKED BOTTOM EXECUTIVE SUMMARY BAR (Exact Matching Sidebar Footer Color & Height) ───
+               Disabled per request via a false-guard — kept in place, not deleted, so
+               it can be restored by flipping that guard back to true. A plain JSX
+               comment wrapper won't work here since this block contains its own
+               nested JSX comments, which would terminate an outer one early. ─── */}
+          {false && (
           <div
             className="w-[calc(100%+1.5rem)] sm:w-[calc(100%+2.5rem)] lg:w-[calc(100%+3.5rem)] -mx-3 sm:-mx-5 lg:-mx-7 -mb-3 sm:-mb-5 lg:-mb-7 min-h-[72px] text-white flex flex-wrap lg:flex-nowrap items-stretch divide-y sm:divide-y-0 sm:divide-x divide-[#c8834a]/20 border-t z-20 font-sans mt-6"
             style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderColor: 'rgba(200,131,74,0.25)' }}
@@ -2092,6 +2102,7 @@ export default function DirectManagerDashboard() {
               </div>
             </div>
           </div>
+          )}
 
         </motion.div>
       )}

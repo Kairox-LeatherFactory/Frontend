@@ -23,7 +23,7 @@ export default function AnimatedModal({
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className={`fixed inset-0 flex items-center justify-center p-4 ${overlayClassName}`}
+          className={`fixed inset-0 flex items-center justify-center p-4 overflow-y-auto ${overlayClassName}`}
           style={{ background: 'rgba(15, 23, 42, 0.6)', zIndex }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

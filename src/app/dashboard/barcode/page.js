@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
  Barcode, Printer, History, Search, X, Download, Zap, Send, Eye,
  RotateCcw, FileDown, ChevronRight, ChevronLeft, Users, Box, FileImage, FileText,
- Loader2, ScanLine, PackageSearch,
+ Loader2, ScanLine, PackageSearch, Package, Plus, Truck, CheckCircle2, AlertTriangle, Layers,
 } from 'lucide-react';
 import AnimatedModal from '@/components/AnimatedModal';
 import { useAuth } from '@/context/AuthContext';
@@ -13,6 +13,8 @@ import {
  apiGetEmployees, apiResolveBarcode, apiGetBarcodeDetail, apiPrintBarcodes,
  apiGetBarcodeOrders, apiGetOrderBarcodeSkus, apiGetOrderBarcodeAnalytics, apiGetOrderBarcodes,
  apiListDrawers,
+ apiGetMaterialSpec, apiCreateMaterialLot, apiGetMaterialLots, apiGetMaterialsStock,
+ apiReceiveMaterials, apiCreateSupplierOrder, apiPatchSupplierOrder, apiGetBarcodeMaterials,
 } from '@/lib/api';
 import { staggerContainer, fadeUpItem, tabFade } from '@/lib/motionVariants';
 
@@ -53,14 +55,23 @@ function getCompactBarcodeId(pieceCode) {
 // The same field set the "View" modal shows — shared so the on-screen card,
 // the single-card export, and the bulk export all render identically.
 function buildCardFields(barcode, labels) {
- if (!barcode) return [];
- return [
- [labels.orderIdLabel, barcode.orderId], [labels.clientLabel, barcode.client],
- [labels.styleLabel, barcode.style], ['Article', barcode.article],
- [labels.colorLabel, barcode.color],
- [labels.sizeLabel, barcode.size], ['Serial', barcode.serialStr],
- ['Batch', barcode.batchNo], ['Status', barcode.printStatus],
- ];
+  if (!barcode) return [];
+  const entries = [
+    [labels.orderIdLabel || 'Order ID', barcode.orderId],
+    [labels.clientLabel || 'Client', barcode.client],
+    [labels.styleLabel || 'Style', barcode.style],
+  ];
+  if (labels.styleLabel !== 'Article' && barcode.article) {
+    entries.push(['Article', barcode.article]);
+  }
+  entries.push(
+    [labels.colorLabel || 'Color', barcode.color],
+    [labels.sizeLabel || 'Size', barcode.size],
+    ['Serial', barcode.serialStr],
+    ['Batch', barcode.batchNo],
+    ['Status', barcode.printStatus]
+  );
+  return entries;
 }
 
 function chunkArray(arr, size) {
@@ -133,14 +144,66 @@ function stampPngDpi(buffer, dpi = BARCODE_SPEC.dpi) {
 // scale 2 gave ~192 DPI, which is soft once printed. Capturing at dpi/96
 // (4.167x for 400 DPI) means the exported card is genuinely 400 DPI.
 async function captureNodeToCanvas(node, { dpi = BARCODE_SPEC.dpi } = {}) {
- const { default: html2canvas } = await import('html2canvas');
- const canvas = await html2canvas(node, {
- backgroundColor: '#ffffff',
- scale: dpi / CSS_DPI,
- useCORS: true,
- });
- if (canvas?.dataset) canvas.dataset.dpi = String(dpi);
- return canvas;
+  const { default: html2canvas } = await import('html2canvas');
+  const canvas = await html2canvas(node, {
+    backgroundColor: '#ffffff',
+    scale: dpi / CSS_DPI,
+    useCORS: true,
+    logging: false,
+    onclone: (clonedDoc, clonedNode) => {
+      // 1. Sanitize all stylesheet rules in the cloned document that use modern color spaces (lab, oklch, oklab)
+      try {
+        const styles = clonedDoc.querySelectorAll('style');
+        styles.forEach((styleTag) => {
+          if (styleTag.textContent && (styleTag.textContent.includes('lab(') || styleTag.textContent.includes('oklch(') || styleTag.textContent.includes('oklab('))) {
+            styleTag.textContent = styleTag.textContent.replace(/(?:oklch|oklab|lab)\([^)]+\)/gi, '#4a5568');
+          }
+        });
+      } catch (e) {}
+
+      // 2. Sanitize computed color properties on the cloned DOM tree
+      try {
+        const helper = clonedDoc.createElement('canvas');
+        const ctx = helper.getContext('2d');
+        const sanitizeColor = (val) => {
+          if (!val || typeof val !== 'string') return val;
+          if (!val.includes('lab') && !val.includes('oklch') && !val.includes('color(') && !val.includes('oklab')) return val;
+          if (ctx) {
+            try {
+              ctx.fillStyle = '#000000';
+              ctx.fillStyle = val;
+              return ctx.fillStyle;
+            } catch {
+              return '#4a5568';
+            }
+          }
+          return '#4a5568';
+        };
+
+        const allEls = [clonedNode, ...clonedNode.querySelectorAll('*')];
+        const colorProps = ['color', 'backgroundColor', 'borderColor', 'borderTopColor', 'borderRightColor', 'borderBottomColor', 'borderLeftColor', 'outlineColor', 'fill', 'stroke'];
+        allEls.forEach((el) => {
+          try {
+            const comp = window.getComputedStyle(el);
+            colorProps.forEach((prop) => {
+              const val = comp[prop];
+              if (val && (val.includes('lab') || val.includes('oklch') || val.includes('color(') || val.includes('oklab'))) {
+                el.style[prop] = sanitizeColor(val);
+              }
+            });
+            if (el.getAttribute('style')) {
+              const s = el.getAttribute('style');
+              if (s.includes('lab') || s.includes('oklch') || s.includes('oklab')) {
+                el.setAttribute('style', s.replace(/(?:oklch|oklab|lab)\([^)]+\)/gi, '#4a5568'));
+              }
+            }
+          } catch (e) {}
+        });
+      } catch (e) {}
+    },
+  });
+  if (canvas?.dataset) canvas.dataset.dpi = String(dpi);
+  return canvas;
 }
 
 // Lets the user pick a destination folder + filename before saving (Chromium's
@@ -210,40 +273,91 @@ async function savePdfBlob(pdf, filename) {
  await saveBlob(pdf.output('blob'), `${filename}.pdf`, { description: 'PDF Document', accept: { 'application/pdf': ['.pdf'] } });
 }
 
+// ─── BARCODE STICKER LABEL (Base barcode with ID below it) ───────────────────
+function BarcodeStickerLabel({ barcode, cardRef, width }) {
+  const compactId = getCompactBarcodeId(barcode.pieceCode);
+
+  return (
+    <div
+      ref={cardRef}
+      className="barcode-sticker-label"
+      style={{
+        width: width || 380,
+        maxWidth: '100%',
+        background: '#ffffff',
+        border: '1.5px solid #cbd5e1',
+        borderRadius: 8,
+        padding: '16px 20px',
+        boxSizing: 'border-box',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        textAlign: 'center',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+      }}
+    >
+      <div className="w-full flex justify-center items-center overflow-hidden">
+        <BarcodeCanvas
+          code={compactId}
+          displayWidth={width ? Math.min(width - 40, 320) : 320}
+          height={65}
+          moduleWidth={2.0}
+          showText={true}
+          margin={8}
+        />
+      </div>
+    </div>
+  );
+}
+
 // Renders one printable ID card — barcode + code + the same fields grid as the
-// "View" modal. Used both inline (View modal) and off-screen (bulk export).
-// Style/Bucket categories only — Employee uses the monochrome EmployeeTicketCard below.
-function IdCard({ barcode, labels, cardRef, width }) {
- const fields = buildCardFields(barcode, labels);
- const compactId = getCompactBarcodeId(barcode.pieceCode);
- return (
- <div ref={cardRef} className="p-5 text-center" style={{ background: '#ffffff', ...(width ? { width } : null) }}>
-   {/* Bug #19: Compact barcode renders short compactId, but full spec is displayed below */}
-   <div className="p-3 rounded-lg mb-3 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
-     <BarcodeCanvas code={compactId} displayWidth={260} />
-   </div>
-   <div className="font-mono font-black text-sm mb-1" style={{ color: '#5a3518' }}>{compactId}</div>
-   {/* Full readable spec breakdown below barcode */}
-   <div className="flex flex-wrap justify-center gap-1.5 mb-3">
-     {barcode.orderId && <span className="text-[9px] bg-rose-50 text-rose-700 border border-rose-200 font-black px-2 py-0.5 rounded-full">#{barcode.orderId}</span>}
-     {barcode.client && <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 font-black px-2 py-0.5 rounded-full">{barcode.client}</span>}
-     {barcode.style && <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 font-black px-2 py-0.5 rounded-full">{barcode.style}</span>}
-     {barcode.article && <span className="text-[9px] bg-orange-50 text-orange-700 border border-orange-200 font-black px-2 py-0.5 rounded-full">{barcode.article}</span>}
-     {barcode.color && <span className="text-[9px] bg-slate-50 text-slate-700 border border-slate-200 font-black px-2 py-0.5 rounded-full">{barcode.color}</span>}
-     {barcode.size && <span className="text-[9px] bg-purple-50 text-purple-700 border border-purple-200 font-black px-2 py-0.5 rounded-full">Sz: {barcode.size}</span>}
-     {barcode.serialStr && <span className="text-[9px] bg-emerald-50 text-emerald-700 border border-emerald-200 font-black px-2 py-0.5 rounded-full">#{barcode.serialStr}</span>}
-   </div>
-   <div className="text-[8px] text-slate-400 font-mono truncate mb-3">{barcode.pieceCode}</div>
- <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-left text-sm p-3 rounded-lg" style={{ background: BRAND.bg }}>
- {fields.map(([label, value]) => (
- <div key={label} className="flex flex-col gap-0.5">
- <span className="text-[0.68rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{label}</span>
- <span className="font-semibold" style={{ color: BRAND.text }}>{value || '—'}</span>
- </div>
- ))}
- </div>
- </div>
- );
+// "View" modal.
+function IdCard({ barcode, labels, cardRef, width, showOnlyFields = false }) {
+  const fields = buildCardFields(barcode, labels);
+  const compactId = getCompactBarcodeId(barcode.pieceCode);
+
+  if (showOnlyFields) {
+    return (
+      <div className="w-full">
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5 text-left text-xs p-3 rounded-lg" style={{ background: BRAND.bg }}>
+          {fields.map(([label, value], idx) => (
+            <div key={`${label}-${idx}`} className="flex flex-col gap-0.5 min-w-0">
+              <span className="text-[0.62rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{label}</span>
+              <span className="font-semibold break-words" style={{ color: BRAND.text }}>{value || '—'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+  <div ref={cardRef} className="p-5 text-center" style={{ background: '#ffffff', ...(width ? { width } : null) }}>
+    <div className="p-3 rounded-lg mb-3 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
+      <BarcodeCanvas code={compactId} displayWidth={260} />
+    </div>
+    <div className="font-mono font-black text-sm mb-1" style={{ color: '#5a3518' }}>{compactId}</div>
+    <div className="flex flex-wrap justify-center gap-1.5 mb-3">
+      {barcode.orderId && <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fff1f2', color: '#be123c', border: '1px solid #fecdd3' }}>#{barcode.orderId}</span>}
+      {barcode.client && <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fffbeb', color: '#b45309', border: '1px solid #fde68a' }}>{barcode.client}</span>}
+      {barcode.style && <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}>{barcode.style}</span>}
+      {barcode.article && <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#fff7ed', color: '#c2410c', border: '1px solid #fed7aa' }}>{barcode.article}</span>}
+      {barcode.color && <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#f8fafc', color: '#334155', border: '1px solid #e2e8f0' }}>{barcode.color}</span>}
+      {barcode.size && <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#faf5ff', color: '#7e22ce', border: '1px solid #e9d5ff' }}>Sz: {barcode.size}</span>}
+      {barcode.serialStr && <span className="text-[9px] font-black px-2 py-0.5 rounded-full" style={{ backgroundColor: '#ecfdf5', color: '#047857', border: '1px solid #a7f3d0' }}>#{barcode.serialStr}</span>}
+    </div>
+    <div className="text-[8px] text-slate-400 font-mono truncate mb-3">{barcode.pieceCode}</div>
+  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-left text-sm p-3 rounded-lg" style={{ background: BRAND.bg }}>
+  {fields.map(([label, value], idx) => (
+  <div key={`${label}-${idx}`} className="flex flex-col gap-0.5">
+  <span className="text-[0.68rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{label}</span>
+  <span className="font-semibold" style={{ color: BRAND.text }}>{value || '—'}</span>
+  </div>
+  ))}
+  </div>
+  </div>
+  );
 }
 
 // ─── EMPLOYEE ID TICKET (black & white, receipt-style) ───────────────────────
@@ -384,6 +498,7 @@ const CATEGORIES = [
  { id: 'style', label: 'Style Barcodes', icon: Barcode },
  { id: 'employee', label: 'Employee Barcodes', icon: Users },
  { id: 'bucket', label: 'Bucket Barcodes', icon: Box },
+ { id: 'material', label: 'Material Barcodes', icon: Package },
 ];
 
 const CATEGORY_SUBTITLES = {
@@ -392,6 +507,7 @@ const CATEGORY_SUBTITLES = {
  // The bucket a piece travels in *is* a drawer server-side, so this category is
  // the live drawer pool off GET /api/v1/drawers — not a locally invented range.
  bucket: 'Print the live drawer/bucket label sheet straight off GET /api/v1/drawers — the whole 200-drawer pool in one pass.',
+ material: 'Create and print material lot barcodes (Leather, Lining, Accessories) with real-time stock & spec validation.',
 };
 
 const CATEGORY_LABELS = {
@@ -409,6 +525,11 @@ const CATEGORY_LABELS = {
  orderIdLabel: 'Drawer State', clientLabel: 'Drawer Code', styleLabel: 'Drawer / Code', colorLabel: 'State', sizeLabel: 'Drawer ID / UUID',
  groupHint: 'Grouped by Drawer State — click a card to view drawer barcodes',
  subGroupNounPlural: 'Drawers',
+ },
+ material: {
+ orderIdLabel: 'Lot Barcode', clientLabel: 'Category / Subtype', styleLabel: 'Article', colorLabel: 'Colour', sizeLabel: 'Quantity & UOM',
+ groupHint: 'Grouped by Material Category — click a card to view material lot barcodes',
+ subGroupNounPlural: 'Lots',
  },
 };
 
@@ -461,7 +582,7 @@ function ToastStack({ toasts }) {
  if (!mounted) return null;
 
  return createPortal(
- <div className="fixed top-5 right-5 z-[999] flex flex-col gap-2 pointer-events-none w-[300px]">
+ <div className="toast-stack fixed top-5 right-5 z-[999] flex flex-col gap-2 pointer-events-none w-[300px]">
  <AnimatePresence>
  {toasts.map((t) => (
  <motion.div
@@ -504,89 +625,104 @@ function formatRegistryValue(value) {
 // passthrough dict server-side, so this dumps whatever keys are present
 // instead of hard-coding fields that might not exist for every code type.
 function LiveBarcodeDetailModal({ open, loading, error, data, onClose }) {
- const barcodeRef = useRef(null);
- const [exporting, setExporting] = useState(null);
- const payload = data ? (data.piece || data.employee || data.drawer || data.lot) : null;
+  const barcodeRef = useRef(null);
+  const [exporting, setExporting] = useState(null);
+  const payload = data ? (data.piece || data.employee || data.drawer || data.lot) : null;
 
- // Downloads only the barcode symbol itself — not the surrounding card/field
- // grid — since this lookup modal is used for style barcodes, which only
- // ever need the printable symbol.
- const handleDownload = async (format) => {
- if (!barcodeRef.current || exporting || !data) return;
- setExporting(format);
- try {
- const canvas = await captureNodeToCanvas(barcodeRef.current);
- if (format === 'png') await saveCanvasAsPng(canvas, data.code);
- else await saveCanvasAsPdf(canvas, data.code);
- } finally {
- setExporting(null);
- }
- };
+  // Downloads only the barcode symbol itself — not the surrounding card/field
+  // grid — since this lookup modal is used for style barcodes, which only
+  // ever need the printable symbol.
+  const handleDownload = async (format) => {
+    if (!barcodeRef.current || exporting || !data) return;
+    setExporting(format);
+    try {
+      const canvas = await captureNodeToCanvas(barcodeRef.current);
+      if (format === 'png') await saveCanvasAsPng(canvas, data.code);
+      else await saveCanvasAsPdf(canvas, data.code);
+    } finally {
+      setExporting(null);
+    }
+  };
 
- return (
- <AnimatedModal
- isOpen={open}
- onClose={onClose}
- zIndex={2000}
- panelClassName="rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
- panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
- >
- <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
- <h3 className="font-bold flex items-center gap-2" style={{ color: '#5a3518' }}>
- <ScanLine className="w-4 h-4" style={{ color: BRAND.accent }} /> Barcode Registry Lookup
- </h3>
- <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
- </div>
+  return (
+    <AnimatedModal
+      isOpen={open}
+      onClose={onClose}
+      zIndex={2000}
+      panelClassName="rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
+      panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
+    >
+      <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+        <h3 className="font-bold flex items-center gap-2" style={{ color: '#5a3518' }}>
+          <ScanLine className="w-4 h-4" style={{ color: BRAND.accent }} /> Barcode Registry Lookup
+        </h3>
+        <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+      </div>
 
- {loading ? (
- <div className="py-16 flex flex-col items-center gap-2">
- <Loader2 className="w-6 h-6 animate-spin" style={{ color: BRAND.accent }} />
- <p className="text-sm" style={{ color: BRAND.textMuted }}>Resolving…</p>
- </div>
- ) : error ? (
- <div className="py-16 text-center px-6">
- <p className="font-bold" style={{ color: '#b91c1c' }}>{error}</p>
- </div>
- ) : data ? (
- <>
- <div className="p-6 text-center" style={{ background: '#ffffff' }}>
- <div ref={barcodeRef} className="p-4 rounded-lg mb-4 flex justify-center overflow-hidden" style={{ background: '#ffffff', border: `1px solid ${BRAND.border}` }}>
- <BarcodeCanvas code={data.code} displayWidth={260} />
- </div>
- <div className="font-mono font-bold mb-2" style={{ color: '#5a3518' }}>{data.code}</div>
- <div className="flex items-center justify-center gap-2 mb-4">
- <span className="text-[0.65rem] px-2.5 py-1 rounded-full font-black uppercase tracking-wide" style={{ background: BRAND.bg, color: BRAND.accent, border: `1px solid ${BRAND.border}` }}>
- {BARCODE_TYPE_LABELS[data.type] || data.type}
- </span>
- <span className={statusBadgeClass(data.active ? 'PRINTED' : 'PENDING')}>{data.active ? 'Active' : 'Retired'}</span>
- </div>
- {data.caption && <div className="text-sm font-semibold mb-4" style={{ color: BRAND.textMuted }}>{data.caption}</div>}
- {payload && Object.keys(payload).length > 0 ? (
- <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-left text-sm p-4 rounded-lg" style={{ background: BRAND.bg }}>
- {Object.entries(payload).map(([key, value]) => (
- <div key={key} className="flex flex-col gap-0.5">
- <span className="text-[0.68rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{humanizeKey(key)}</span>
- <span className="font-semibold break-words" style={{ color: BRAND.text }}>{formatRegistryValue(value)}</span>
- </div>
- ))}
- </div>
- ) : (
- <p className="text-xs" style={{ color: BRAND.textMuted }}>No additional detail on record for this code.</p>
- )}
- </div>
- <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
- <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
- <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
- <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
- </button>
- <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
- <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
- </button>
- </div>
- </>
- ) : null}
- </AnimatedModal>
- );
+      {loading ? (
+        <div className="py-16 flex flex-col items-center gap-2">
+          <Loader2 className="w-6 h-6 animate-spin" style={{ color: BRAND.accent }} />
+          <p className="text-sm" style={{ color: BRAND.textMuted }}>Resolving…</p>
+        </div>
+      ) : error ? (
+        <div className="py-16 text-center px-6">
+          <p className="font-bold" style={{ color: '#b91c1c' }}>{error}</p>
+        </div>
+      ) : data ? (
+        <>
+          <div className="p-6 flex-1 min-h-0 overflow-y-auto" style={{ background: '#ffffff' }}>
+            <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6 items-start">
+              {/* Left column: Barcode visual badge & status */}
+              <div className="flex flex-col items-center text-center p-4 rounded-xl border border-amber-100 bg-amber-50/30">
+                <div ref={barcodeRef} className="p-3 rounded-lg mb-3 flex justify-center overflow-hidden bg-white w-full" style={{ border: `1px solid ${BRAND.border}` }}>
+                  <BarcodeCanvas code={data.code} displayWidth={240} />
+                </div>
+                <div className="font-mono font-bold text-sm mb-1.5 break-all" style={{ color: '#5a3518' }}>{data.code}</div>
+                <div className="flex items-center justify-center gap-2 mb-2 flex-wrap">
+                  <span className="text-[0.65rem] px-2.5 py-1 rounded-full font-black uppercase tracking-wide" style={{ background: BRAND.bg, color: BRAND.accent, border: `1px solid ${BRAND.border}` }}>
+                    {BARCODE_TYPE_LABELS[data.type] || data.type}
+                  </span>
+                  <span className={statusBadgeClass(data.active ? 'PRINTED' : 'PENDING')}>{data.active ? 'Active' : 'Retired'}</span>
+                </div>
+                {data.caption && <div className="text-xs font-semibold text-slate-600 mt-1">{data.caption}</div>}
+              </div>
+
+              {/* Right column: Detailed specifications grid in multi-column layout */}
+              <div className="w-full min-w-0">
+                <div className="text-xs font-black uppercase tracking-wider text-[#9a7a5a] mb-2.5">
+                  Piece &amp; Production Details
+                </div>
+                {payload && Object.keys(payload).length > 0 ? (
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2.5 text-left text-xs p-4 rounded-xl" style={{ background: BRAND.bg }}>
+                    {Object.entries(payload).map(([key, value]) => (
+                      <div key={key} className="flex flex-col gap-0.5 min-w-0">
+                        <span className="text-[0.62rem] font-bold uppercase tracking-wide" style={{ color: BRAND.textMuted }}>{humanizeKey(key)}</span>
+                        <span className="font-semibold break-words text-slate-900" style={{ color: BRAND.text }}>{formatRegistryValue(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="p-6 text-center text-xs rounded-xl" style={{ background: BRAND.bg, color: BRAND.textMuted }}>
+                    No additional detail on record for this code.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 px-6 py-4 flex-wrap shrink-0" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
+            <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
+            <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
+            </button>
+            <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
+            </button>
+          </div>
+        </>
+      ) : null}
+    </AnimatedModal>
+  );
 }
 
 // Page-level "scan or type a code" lookup — GET /barcode/resolve. Available
@@ -1604,12 +1740,25 @@ function DrawerGenerationTab({
  {drw.state || 'active'}
  </span>
  </div>
+ {drw.state === 'merged' && drw.piece_code && (
+ <div className="mt-0.5 font-mono font-bold text-xs break-all" style={{ color: '#a86530' }}>
+ Piece: {drw.piece_code}
+ {drw.piece_serial && (
+ <span className="ml-2 font-sans font-semibold" style={{ color: BRAND.textMuted }}>(Serial #{drw.piece_serial})</span>
+ )}
+ {drw.needs_lining && (
+ <span className="ml-2 font-sans font-bold" style={{ color: '#b45309' }}>· needs lining</span>
+ )}
+ {drw.complete && (
+ <span className="ml-2 font-sans font-bold" style={{ color: '#047857' }}>· complete</span>
+ )}
+ </div>
+ )}
  <div className="text-xs font-mono mt-0.5" style={{ color: BRAND.textMuted }}>
- ID: <span className="font-semibold">{drw.drawer_id}</span>
  {drw.barcode ? (
- <span className="ml-2">· Barcode: <span className="text-[#a86530] font-bold">{drw.barcode}</span></span>
+ <span>Barcode: <span className="text-[#a86530] font-bold">{drw.barcode}</span></span>
  ) : (
- <span className="ml-2 font-sans font-semibold" style={{ color: '#b91c1c' }}>· no registry barcode — cannot be printed</span>
+ <span className="font-sans font-semibold" style={{ color: '#b91c1c' }}>no registry barcode — cannot be printed</span>
  )}
  </div>
  </div>
@@ -1682,6 +1831,1089 @@ function DrawerGenerationTab({
  </div>
  </div>
  );
+}
+
+// ─── MATERIAL LOT CREATION MODAL ─────────────────────────────────────────────
+function CreateMaterialLotModal({ open, onClose, token, showToast, onSuccess }) {
+  const [category, setCategory] = useState('LEATHER');
+  const [subtype, setSubtype] = useState('');
+  const [article, setArticle] = useState('');
+  const [colour, setColour] = useState('');
+  const [thickness, setThickness] = useState('');
+  const [size, setSize] = useState('');
+  const [uom, setUom] = useState('DCM');
+  const [onHand, setOnHand] = useState('');
+  const [supplierId, setSupplierId] = useState('');
+  const [spec, setSpec] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const subtypes = useMemo(() => {
+    if (category === 'LINING') return ['PLAIN_LINING', 'RIBS', 'KNIT'];
+    if (category === 'ACCESSORIES' || category === 'ACCESSORY') return ['BUTTON', 'ZIP', 'THREAD', 'OTHER'];
+    return [];
+  }, [category]);
+
+  useEffect(() => {
+    if (!open || !token) return;
+    let isCurrent = true;
+    setError(null);
+    apiGetMaterialSpec(token, { category, subtype: subtype || undefined })
+      .then((data) => {
+        if (!isCurrent) return;
+        setSpec(data);
+        if (data?.uom) setUom(data.uom);
+        else if (category === 'LEATHER') setUom('DCM');
+        else if (category === 'LINING') setUom('MTRS');
+        else setUom('PCS');
+      })
+      .catch(() => {
+        if (!isCurrent) return;
+        setSpec(null);
+        if (category === 'LEATHER') setUom('DCM');
+        else if (category === 'LINING') setUom('MTRS');
+        else setUom('PCS');
+      });
+    return () => { isCurrent = false; };
+  }, [open, token, category, subtype]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!article.trim()) {
+      setError('Article name is required.');
+      return;
+    }
+    const qtyNum = parseFloat(onHand);
+    if (isNaN(qtyNum) || qtyNum <= 0) {
+      setError('Opening quantity (on_hand) must be a positive number.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError(null);
+      const payload = {
+        category,
+        article: article.trim(),
+        on_hand: qtyNum,
+        uom: uom || (category === 'LEATHER' ? 'DCM' : category === 'LINING' ? 'MTRS' : 'PCS'),
+      };
+      if (subtype) payload.subtype = subtype;
+      if (colour.trim()) payload.colour = colour.trim();
+      if (category === 'LEATHER' && thickness.trim()) payload.thickness = thickness.trim();
+      if (category !== 'LEATHER' && size.trim()) payload.size = size.trim();
+      if (supplierId.trim()) payload.supplier_id = supplierId.trim();
+
+      const res = await apiCreateMaterialLot(token, payload);
+      showToast(`Material Lot created! Barcode: ${res?.barcode || res?.lot_id}`, 'success');
+      onSuccess?.(res, payload);
+      onClose();
+    } catch (err) {
+      setError(err?.message || 'Failed to create material lot.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <AnimatedModal
+      isOpen={open}
+      onClose={onClose}
+      zIndex={2000}
+      panelClassName="rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden"
+      panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
+    >
+      <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+        <div className="flex items-center gap-2">
+          <Package className="w-5 h-5" style={{ color: BRAND.accent }} />
+          <h3 className="font-bold text-base" style={{ color: '#5a3518' }}>Create Material Lot &amp; Barcode</h3>
+        </div>
+        <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+      </div>
+
+      <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+        <p className="text-xs" style={{ color: BRAND.textMuted }}>
+          Registers a child barcode in the registry and adds opening stock in one transaction (<code className="font-mono text-xs font-bold text-[#a86530]">POST /api/v1/materials/lots</code>).
+        </p>
+
+        {error && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Category *</label>
+            <select
+              value={category}
+              onChange={(e) => { setCategory(e.target.value); setSubtype(''); }}
+              className={selectCls}
+              style={fieldStyle}
+            >
+              <option value="LEATHER">LEATHER</option>
+              <option value="LINING">LINING</option>
+              <option value="ACCESSORIES">ACCESSORIES</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>
+              Subtype {subtypes.length > 0 ? '(Optional)' : ''}
+            </label>
+            {subtypes.length > 0 ? (
+              <select
+                value={subtype}
+                onChange={(e) => setSubtype(e.target.value)}
+                className={selectCls}
+                style={fieldStyle}
+              >
+                <option value="">Standard / None</option>
+                {subtypes.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <input
+                type="text"
+                placeholder="e.g. COW_HIDE"
+                value={subtype}
+                onChange={(e) => setSubtype(e.target.value)}
+                className={inputCls}
+                style={fieldStyle}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Article Name *</label>
+            <input
+              type="text"
+              placeholder="e.g. VINTAGE BROWN COWHIDE"
+              value={article}
+              onChange={(e) => setArticle(e.target.value)}
+              className={inputCls}
+              style={fieldStyle}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Colour</label>
+            <input
+              type="text"
+              placeholder="e.g. DARK BROWN / #4A2E18"
+              value={colour}
+              onChange={(e) => setColour(e.target.value)}
+              className={inputCls}
+              style={fieldStyle}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {category === 'LEATHER' ? (
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Thickness</label>
+              <input
+                type="text"
+                placeholder="e.g. 1.2 - 1.4 mm"
+                value={thickness}
+                onChange={(e) => setThickness(e.target.value)}
+                className={inputCls}
+                style={fieldStyle}
+              />
+            </div>
+          ) : (
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Size / Dimension</label>
+              <input
+                type="text"
+                placeholder="e.g. 5# / 32 / Medium"
+                value={size}
+                onChange={(e) => setSize(e.target.value)}
+                className={inputCls}
+                style={fieldStyle}
+              />
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Opening Qty (on_hand) *</label>
+            <input
+              type="number"
+              step="any"
+              min="0.01"
+              placeholder="e.g. 250"
+              value={onHand}
+              onChange={(e) => setOnHand(e.target.value)}
+              className={inputCls}
+              style={fieldStyle}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Unit of Measure (UOM)</label>
+            <select
+              value={uom}
+              onChange={(e) => setUom(e.target.value)}
+              className={selectCls}
+              style={fieldStyle}
+            >
+              <option value="DCM">DCM (Decimeters)</option>
+              <option value="MTRS">MTRS (Meters)</option>
+              <option value="PCS">PCS (Pieces)</option>
+              <option value="CONES">CONES (Thread Cones)</option>
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Supplier (Optional UUID or Reference)</label>
+          <input
+            type="text"
+            placeholder="e.g. SUP-TANNERY-01"
+            value={supplierId}
+            onChange={(e) => setSupplierId(e.target.value)}
+            className={inputCls}
+            style={fieldStyle}
+          />
+        </div>
+
+        {spec && (
+          <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200 text-[11px] space-y-1 text-amber-900">
+            <div className="font-bold flex items-center gap-1.5"><Layers className="w-3.5 h-3.5 text-amber-700" /> Category Spec Active</div>
+            <p className="text-amber-800">Standard UOM: <span className="font-mono font-bold">{spec.uom || uom}</span> · Required fields: <span className="font-bold">{Array.isArray(spec.required_to_add) ? spec.required_to_add.join(', ') : 'article, on_hand'}</span></p>
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Cancel</button>
+          <button type="submit" disabled={submitting} className="btn-warm-primary !min-h-0 !py-2.5 disabled:opacity-50">
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            <span>Create Lot &amp; Mint Barcode</span>
+          </button>
+        </div>
+      </form>
+    </AnimatedModal>
+  );
+}
+
+// ─── LIVE MATERIAL STOCK & SHORTFALL MODAL ────────────────────────────────────
+function MaterialStockModal({ open, onClose, token, showToast, onOpenSupplierOrder }) {
+  const [category, setCategory] = useState('LEATHER');
+  const [subtype, setSubtype] = useState('');
+  const [article, setArticle] = useState('');
+  const [colour, setColour] = useState('');
+  const [required, setRequired] = useState('');
+  const [stockResult, setStockResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleCheckStock = async (e) => {
+    if (e) e.preventDefault();
+    try {
+      setLoading(true);
+      setError(null);
+      const params = { category };
+      if (subtype) params.subtype = subtype;
+      if (article.trim()) params.article = article.trim();
+      if (colour.trim()) params.colour = colour.trim();
+      if (required) params.required = parseFloat(required);
+
+      const res = await apiGetMaterialsStock(token, params);
+      setStockResult(res);
+    } catch (err) {
+      setError(err?.message || 'Failed to fetch stock.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <AnimatedModal
+      isOpen={open}
+      onClose={onClose}
+      zIndex={2000}
+      panelClassName="rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden"
+      panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
+    >
+      <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+        <div className="flex items-center gap-2">
+          <Layers className="w-5 h-5" style={{ color: BRAND.accent }} />
+          <h3 className="font-bold text-base" style={{ color: '#5a3518' }}>Material Stock &amp; Shortfall Calculator</h3>
+        </div>
+        <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+      </div>
+
+      <div className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+        <p className="text-xs" style={{ color: BRAND.textMuted }}>
+          Stock equation: <span className="font-mono font-bold text-slate-800">Available = On Hand - Reserved</span>. Query live stock with shortfall computation (<code className="font-mono text-xs font-bold text-[#a86530]">GET /api/v1/materials/stock</code>).
+        </p>
+
+        {error && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleCheckStock} className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#faf6f0] p-4 rounded-xl border border-[rgba(200,131,74,0.2)]">
+          <div>
+            <label className="block text-[10px] font-bold uppercase mb-1 text-slate-600">Category</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className={selectCls} style={fieldStyle}>
+              <option value="LEATHER">LEATHER</option>
+              <option value="LINING">LINING</option>
+              <option value="ACCESSORIES">ACCESSORIES</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase mb-1 text-slate-600">Article Filter</label>
+            <input type="text" placeholder="e.g. GOAT SUEDE" value={article} onChange={(e) => setArticle(e.target.value)} className={inputCls} style={fieldStyle} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase mb-1 text-slate-600">Colour</label>
+            <input type="text" placeholder="e.g. BLACK" value={colour} onChange={(e) => setColour(e.target.value)} className={inputCls} style={fieldStyle} />
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase mb-1 text-slate-600">Required Quantity</label>
+            <input type="number" step="any" placeholder="e.g. 500" value={required} onChange={(e) => setRequired(e.target.value)} className={inputCls} style={fieldStyle} />
+          </div>
+          <div className="sm:col-span-2 flex justify-end">
+            <button type="submit" disabled={loading} className="btn-warm-primary !min-h-0 !py-2 !px-4 text-xs">
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+              <span>Check Live Stock</span>
+            </button>
+          </div>
+        </form>
+
+        {stockResult && (
+          <div className="space-y-3 pt-2">
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
+                <div className="text-[10px] font-bold text-slate-500 uppercase">On Hand</div>
+                <div className="text-xl font-black text-slate-900 font-mono mt-0.5">{stockResult.on_hand ?? 0}</div>
+                <div className="text-[9px] text-slate-400">Physically Present</div>
+              </div>
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
+                <div className="text-[10px] font-bold text-amber-700 uppercase">Reserved</div>
+                <div className="text-xl font-black text-amber-900 font-mono mt-0.5">{stockResult.reserved ?? 0}</div>
+                <div className="text-[9px] text-amber-600">Committed</div>
+              </div>
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+                <div className="text-[10px] font-bold text-emerald-700 uppercase">Available</div>
+                <div className="text-xl font-black text-emerald-900 font-mono mt-0.5">
+                  {stockResult.available ?? (stockResult.on_hand - (stockResult.reserved || 0))}
+                </div>
+                <div className="text-[9px] text-emerald-600">Derived Read</div>
+              </div>
+            </div>
+
+            {stockResult.short_by !== undefined && stockResult.short_by !== null && (
+              <div className={`p-4 rounded-xl border flex items-center justify-between flex-wrap gap-3 ${
+                stockResult.short_by > 0 ? 'bg-rose-50 border-rose-200 text-rose-900' : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              }`}>
+                <div>
+                  <div className="text-xs font-extrabold flex items-center gap-1.5">
+                    {stockResult.short_by > 0 ? <AlertTriangle className="w-4 h-4 text-rose-600" /> : <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                    <span>{stockResult.short_by > 0 ? `Shortfall of ${stockResult.short_by} units detected` : 'Sufficient stock available for requirement'}</span>
+                  </div>
+                  {stockResult.suggested_supplier && (
+                    <div className="text-[11px] text-slate-600 mt-1">
+                      Suggested Supplier: <strong className="text-slate-900">{stockResult.suggested_supplier.name || stockResult.suggested_supplier.id || JSON.stringify(stockResult.suggested_supplier)}</strong>
+                    </div>
+                  )}
+                </div>
+                {stockResult.short_by > 0 && (
+                  <button
+                    onClick={() => {
+                      onOpenSupplierOrder?.({
+                        category,
+                        article,
+                        colour,
+                        qty: stockResult.short_by,
+                        supplier_id: stockResult.suggested_supplier?.id,
+                      });
+                      onClose();
+                    }}
+                    className="btn-warm-primary !min-h-0 !py-2 !px-3 text-xs"
+                  >
+                    <Truck className="w-3.5 h-3.5" /> Order Shortfall ({stockResult.short_by})
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex justify-end pt-3 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
+        </div>
+      </div>
+    </AnimatedModal>
+  );
+}
+
+// ─── MATERIAL RECEIVING MODAL ────────────────────────────────────────────────
+function MaterialReceiveModal({ open, onClose, lot, token, showToast, onSuccess }) {
+  const [materialLotId, setMaterialLotId] = useState(lot?.lot_id || '');
+  const [supplierOrderId, setSupplierOrderId] = useState('');
+  const [approvedQty, setApprovedQty] = useState('');
+  const [rejectedQty, setRejectedQty] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (lot) {
+      setMaterialLotId(lot.lot_id || lot.pieceCode || '');
+    }
+  }, [lot]);
+
+  const handleReceive = async (e) => {
+    e.preventDefault();
+    const appNum = parseFloat(approvedQty);
+    if (isNaN(appNum) || appNum < 0) {
+      setError('Approved quantity must be a non-negative number.');
+      return;
+    }
+    const rejNum = rejectedQty ? parseFloat(rejectedQty) : 0;
+
+    try {
+      setSubmitting(true);
+      setError(null);
+      const payload = {
+        material_lot_id: materialLotId,
+        approved_qty: appNum,
+        rejected_qty: rejNum,
+      };
+      if (supplierOrderId.trim()) payload.supplier_order_id = supplierOrderId.trim();
+
+      const res = await apiReceiveMaterials(token, payload);
+      showToast(`Material received successfully! Added ${appNum} to stock.`, 'success');
+      onSuccess?.(res);
+      onClose();
+    } catch (err) {
+      setError(err?.message || 'Failed to record material receiving.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <AnimatedModal
+      isOpen={open}
+      onClose={onClose}
+      zIndex={2000}
+      panelClassName="rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+      panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
+    >
+      <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+        <div className="flex items-center gap-2">
+          <Truck className="w-5 h-5" style={{ color: BRAND.accent }} />
+          <h3 className="font-bold text-base" style={{ color: '#5a3518' }}>Record Material Receiving</h3>
+        </div>
+        <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+      </div>
+
+      <form onSubmit={handleReceive} className="p-6 space-y-4">
+        <p className="text-xs" style={{ color: BRAND.textMuted }}>
+          Approved quantity is added to the lot; rejected quantity is logged for supplier quality tracking (<code className="font-mono text-xs font-bold text-[#a86530]">POST /api/v1/materials/receive</code>).
+        </p>
+
+        {error && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Material Lot ID / Barcode *</label>
+          <input
+            type="text"
+            value={materialLotId}
+            onChange={(e) => setMaterialLotId(e.target.value)}
+            placeholder="e.g. LOT-UUID or LOT-BARCODE"
+            className={inputCls}
+            style={fieldStyle}
+            required
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Supplier Order ID (Optional)</label>
+          <input
+            type="text"
+            value={supplierOrderId}
+            onChange={(e) => setSupplierOrderId(e.target.value)}
+            placeholder="e.g. ORD-SUP-202608"
+            className={inputCls}
+            style={fieldStyle}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1 text-emerald-800">Approved Qty (Stocked) *</label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              placeholder="e.g. 200"
+              value={approvedQty}
+              onChange={(e) => setApprovedQty(e.target.value)}
+              className={inputCls}
+              style={fieldStyle}
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wide mb-1 text-rose-800">Rejected Qty (Quality Log)</label>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              placeholder="e.g. 5"
+              value={rejectedQty}
+              onChange={(e) => setRejectedQty(e.target.value)}
+              className={inputCls}
+              style={fieldStyle}
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+          <button type="button" onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Cancel</button>
+          <button type="submit" disabled={submitting} className="btn-warm-primary !min-h-0 !py-2.5 disabled:opacity-50">
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+            <span>Record Receiving</span>
+          </button>
+        </div>
+      </form>
+    </AnimatedModal>
+  );
+}
+
+// ─── MANUAL SUPPLIER ORDER MODAL ─────────────────────────────────────────────
+function SupplierOrderModal({ open, onClose, initialData, token, showToast, onSuccess }) {
+  const [category, setCategory] = useState(initialData?.category || 'LEATHER');
+  const [article, setArticle] = useState(initialData?.article || '');
+  const [colour, setColour] = useState(initialData?.colour || '');
+  const [qty, setQty] = useState(initialData?.qty || '');
+  const [uom, setUom] = useState(initialData?.uom || 'DCM');
+  const [supplierId, setSupplierId] = useState(initialData?.supplier_id || '');
+  const [submitting, setSubmitting] = useState(false);
+  const [createdOrder, setCreatedOrder] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (initialData) {
+      if (initialData.category) setCategory(initialData.category);
+      if (initialData.article) setArticle(initialData.article);
+      if (initialData.colour) setColour(initialData.colour);
+      if (initialData.qty) setQty(initialData.qty);
+      if (initialData.supplier_id) setSupplierId(initialData.supplier_id);
+    }
+  }, [initialData]);
+
+  const handleCreateOrder = async (e) => {
+    e.preventDefault();
+    const qtyNum = parseFloat(qty);
+    if (isNaN(qtyNum) || qtyNum <= 0) {
+      setError('Order quantity must be greater than 0.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      setError(null);
+      const payload = {
+        category,
+        article: article.trim(),
+        qty: qtyNum,
+        uom: uom || 'DCM',
+      };
+      if (colour.trim()) payload.colour = colour.trim();
+      if (supplierId.trim()) payload.supplier_id = supplierId.trim();
+
+      const res = await apiCreateSupplierOrder(token, payload);
+      setCreatedOrder(res);
+      showToast(`Supplier order raised! Status: ORDERED`, 'success');
+      onSuccess?.(res);
+    } catch (err) {
+      setError(err?.message || 'Failed to raise supplier order.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleMarkArrived = async (orderId) => {
+    try {
+      setSubmitting(true);
+      const res = await apiPatchSupplierOrder(token, orderId, 'arrived');
+      setCreatedOrder(res);
+      showToast(`Order marked as ARRIVED at gate!`, 'success');
+    } catch (err) {
+      showToast(err?.message || 'Failed to mark as arrived.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <AnimatedModal
+      isOpen={open}
+      onClose={onClose}
+      zIndex={2000}
+      panelClassName="rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
+      panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
+    >
+      <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+        <div className="flex items-center gap-2">
+          <Truck className="w-5 h-5" style={{ color: BRAND.accent }} />
+          <h3 className="font-bold text-base" style={{ color: '#5a3518' }}>Raise Supplier Order on Shortfall</h3>
+        </div>
+        <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+      </div>
+
+      <div className="p-6 space-y-4">
+        <p className="text-xs" style={{ color: BRAND.textMuted }}>
+          Raise a manual supplier order (<code className="font-mono text-xs font-bold text-[#a86530]">POST /api/v1/suppliers/orders</code>). State machine supports two states only: <strong className="text-amber-800">ORDERED &rarr; ARRIVED</strong>.
+        </p>
+
+        {error && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs font-bold flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        {createdOrder ? (
+          <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 space-y-3 text-emerald-950">
+            <div className="font-bold flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              <span>Supplier Order Active</span>
+            </div>
+            <div className="text-xs space-y-1 font-mono">
+              <div>Order ID: <strong className="text-emerald-900">{createdOrder.id || createdOrder.order_id}</strong></div>
+              <div>Status: <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 font-black uppercase text-[10px]">{createdOrder.status || 'ORDERED'}</span></div>
+              {createdOrder.arrived_at && <div>Arrived At: {new Date(createdOrder.arrived_at).toLocaleString()}</div>}
+            </div>
+
+            {createdOrder.status !== 'arrived' && (
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={() => handleMarkArrived(createdOrder.id || createdOrder.order_id)}
+                className="btn-warm-primary !min-h-0 !py-2 !px-4 text-xs w-full mt-2"
+              >
+                <Truck className="w-3.5 h-3.5" /> Mark Order as ARRIVED (Goods at Gate)
+              </button>
+            )}
+          </div>
+        ) : (
+          <form onSubmit={handleCreateOrder} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Category *</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)} className={selectCls} style={fieldStyle}>
+                  <option value="LEATHER">LEATHER</option>
+                  <option value="LINING">LINING</option>
+                  <option value="ACCESSORIES">ACCESSORIES</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Article *</label>
+                <input type="text" placeholder="e.g. GOAT SUEDE" value={article} onChange={(e) => setArticle(e.target.value)} className={inputCls} style={fieldStyle} required />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Colour</label>
+                <input type="text" placeholder="e.g. BLACK" value={colour} onChange={(e) => setColour(e.target.value)} className={inputCls} style={fieldStyle} />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Quantity *</label>
+                <input type="number" step="any" min="0.01" placeholder="e.g. 500" value={qty} onChange={(e) => setQty(e.target.value)} className={inputCls} style={fieldStyle} required />
+              </div>
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>UOM</label>
+                <select value={uom} onChange={(e) => setUom(e.target.value)} className={selectCls} style={fieldStyle}>
+                  <option value="DCM">DCM</option>
+                  <option value="MTRS">MTRS</option>
+                  <option value="PCS">PCS</option>
+                  <option value="CONES">CONES</option>
+                </select>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Supplier UUID / Name</label>
+              <input type="text" placeholder="e.g. SUP-TANNERY-01" value={supplierId} onChange={(e) => setSupplierId(e.target.value)} className={inputCls} style={fieldStyle} />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button type="button" onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Cancel</button>
+              <button type="submit" disabled={submitting} className="btn-warm-primary !min-h-0 !py-2.5 disabled:opacity-50">
+                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Truck className="w-4 h-4" />}
+                <span>Raise Supplier Order</span>
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </AnimatedModal>
+  );
+}
+
+// ─── MATERIAL LOTS: BATCH GENERATION TAB ──────────────────────────────────────
+function MaterialGenerationTab({
+  materials,
+  materialsLoading,
+  materialsError,
+  onRetryMaterials,
+  materialGenerated,
+  onGenerateSelected,
+  onGenerateAllRemaining,
+  onSendToPrintCenter,
+  onOpenDetail,
+  onPrintSingle,
+  token,
+  showToast,
+  onRefreshAll,
+}) {
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [stockModalOpen, setStockModalOpen] = useState(false);
+  const [receiveModalOpen, setReceiveModalOpen] = useState(false);
+  const [receiveTargetLot, setReceiveTargetLot] = useState(null);
+  const [supplierOrderModalOpen, setSupplierOrderModalOpen] = useState(false);
+  const [supplierOrderInitialData, setSupplierOrderInitialData] = useState(null);
+
+  const generatedCodes = useMemo(() => new Set(materialGenerated.map((r) => r.pieceCode || r.lotId)), [materialGenerated]);
+
+  const filteredMaterials = useMemo(() => {
+    let list = materials || [];
+    if (categoryFilter !== 'ALL') {
+      list = list.filter((m) => (m.category || '').toUpperCase() === categoryFilter.toUpperCase());
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((m) =>
+        (m.article || '').toLowerCase().includes(q) ||
+        (m.colour || '').toLowerCase().includes(q) ||
+        (m.barcode || '').toLowerCase().includes(q) ||
+        (m.lot_id || '').toLowerCase().includes(q) ||
+        (m.supplier_name || m.supplier_id || '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [materials, categoryFilter, search]);
+
+  const stats = useMemo(() => {
+    const list = materials || [];
+    const leather = list.filter((m) => (m.category || '').toUpperCase() === 'LEATHER').length;
+    const lining = list.filter((m) => (m.category || '').toUpperCase() === 'LINING').length;
+    const acc = list.filter((m) => (m.category || '').toUpperCase().startsWith('ACCESSOR')).length;
+    return { total: list.length, leather, lining, acc, generated: materialGenerated.length };
+  }, [materials, materialGenerated]);
+
+  const toggleSelect = (id) => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const selectAllVisible = () => setSelectedIds((prev) => {
+    const next = new Set(prev);
+    filteredMaterials.forEach((m) => {
+      const key = m.lot_id || m.barcode;
+      if (key) next.add(key);
+    });
+    return next;
+  });
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  const handleGenerateClick = () => {
+    const chosen = (materials || []).filter((m) => selectedIds.has(m.lot_id || m.barcode));
+    onGenerateSelected(chosen);
+    setSelectedIds(new Set());
+  };
+
+  const handleOpenReceive = (lot) => {
+    setReceiveTargetLot(lot);
+    setReceiveModalOpen(true);
+  };
+
+  return (
+    <div className="space-y-6 animate-fade-in">
+      {/* Overview Stat Cards */}
+      <div className="rounded-2xl p-6 shadow-sm flex items-center gap-6 flex-wrap" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Total Material Lots</p><p className="font-bold text-lg" style={{ color: BRAND.text }}>{stats.total}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Leather Lots</p><p className="font-bold text-lg" style={{ color: BRAND.text }}>{stats.leather}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Lining Lots</p><p className="font-bold text-lg" style={{ color: BRAND.text }}>{stats.lining}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Accessories</p><p className="font-bold text-lg" style={{ color: BRAND.text }}>{stats.acc}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Queued / Generated</p><p className="font-bold text-lg" style={{ color: BRAND.accent }}>{stats.generated}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Selected</p><p className="font-bold text-lg" style={{ color: '#d97706' }}>{selectedIds.size}</p></div>
+      </div>
+
+      {/* Action Header & Tools */}
+      <div className="rounded-2xl p-6 shadow-sm space-y-4" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 className="text-lg font-black flex items-center gap-2" style={{ color: BRAND.text }}>
+              <Package className="w-5 h-5 text-[#c8834a]" /> Material Barcode &amp; Lot Operations
+            </h3>
+            <p className="text-xs" style={{ color: BRAND.textMuted }}>
+              Create material lots with child barcodes (<code className="font-mono text-xs font-bold text-[#a86530]">POST /materials/lots</code>), check live stock &amp; shortfalls, record receiving, and raise supplier orders.
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => setCreateModalOpen(true)} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs shadow-md">
+              <Plus className="w-4 h-4" /> Create Material Lot &amp; Barcode
+            </button>
+            <button onClick={() => setStockModalOpen(true)} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">
+              <Layers className="w-4 h-4" /> Check Stock &amp; Shortfall
+            </button>
+            <button onClick={() => { setReceiveTargetLot(null); setReceiveModalOpen(true); }} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">
+              <Truck className="w-4 h-4" /> Receive Material
+            </button>
+            <button onClick={() => { setSupplierOrderInitialData(null); setSupplierOrderModalOpen(true); }} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">
+              <PackageSearch className="w-4 h-4" /> Raise Supplier Order
+            </button>
+          </div>
+        </div>
+
+        {/* Multi-Selection & Controls Bar */}
+        <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-[rgba(200,131,74,0.15)]">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="text-[0.68rem] font-bold uppercase whitespace-nowrap" style={{ color: BRAND.textMuted }}>Category:</span>
+              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={`${selectCls} !w-44`} style={fieldStyle}>
+                <option value="ALL">All Categories</option>
+                <option value="LEATHER">LEATHER</option>
+                <option value="LINING">LINING</option>
+                <option value="ACCESSORIES">ACCESSORIES</option>
+              </select>
+            </div>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />
+              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search article, color, barcode..." className={`${inputCls} !pl-8 !w-60 !py-2`} style={fieldStyle} />
+            </div>
+          </div>
+
+          <div className="flex gap-2 flex-wrap items-center">
+            <button onClick={handleGenerateClick} disabled={selectedIds.size === 0} className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs disabled:opacity-50">
+              <Zap className="w-3.5 h-3.5" /> Queue Selected ({selectedIds.size})
+            </button>
+            <button onClick={onGenerateAllRemaining} className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs">Queue All</button>
+            <button onClick={onSendToPrintCenter} className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs">
+              <Send className="w-3.5 h-3.5" /> Send All to Print Center
+            </button>
+            <button onClick={onRetryMaterials} className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs">
+              <RotateCcw className="w-3.5 h-3.5" /> Refresh
+            </button>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-xs" style={{ color: BRAND.textMuted }}>{filteredMaterials.length} material lot{filteredMaterials.length === 1 ? '' : 's'} found</p>
+          <div className="flex gap-2">
+            <button onClick={selectAllVisible} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Select All Visible</button>
+            <button onClick={clearSelection} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Clear</button>
+          </div>
+        </div>
+
+        {/* Material Lots Table List */}
+        <div className="rounded-lg overflow-hidden" style={{ border: `1px solid ${BRAND.border}` }}>
+          {materialsLoading ? (
+            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>Loading material lots from server…</div>
+          ) : materialsError ? (
+            <div className="text-center py-8 text-sm space-y-2" style={{ color: BRAND.textMuted }}>
+              <p style={{ color: '#b91c1c' }}>{materialsError}</p>
+              <button onClick={onRetryMaterials} className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs">Retry</button>
+            </div>
+          ) : filteredMaterials.length === 0 ? (
+            <div className="text-center py-8 text-sm" style={{ color: BRAND.textMuted }}>
+              {materials && materials.length === 0 ? 'No material lots registered in database yet. Click "Create Material Lot & Barcode" above.' : 'No materials match your search/filter.'}
+            </div>
+          ) : (
+            <div className="divide-y divide-[rgba(200,131,74,0.15)] max-h-96 overflow-y-auto">
+              {filteredMaterials.map((lot) => {
+                const uniqueKey = lot.lot_id || lot.barcode || `${lot.category}-${lot.article}`;
+                const hasBarcode = !!lot.barcode;
+                const isGenerated = generatedCodes.has(lot.barcode) || generatedCodes.has(lot.lot_id);
+                const isChecked = selectedIds.has(uniqueKey);
+
+                return (
+                  <label
+                    key={uniqueKey}
+                    className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-[#fdfaf5] transition-colors"
+                    style={{ background: isChecked ? '#faf3ea' : '#fff' }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleSelect(uniqueKey)}
+                        className="w-4 h-4 accent-[#c8834a] cursor-pointer"
+                      />
+                      <div>
+                        <div className="font-bold text-sm flex items-center gap-2" style={{ color: '#5a3518' }}>
+                          <span>{lot.article || 'Unnamed Article'}</span>
+                          {lot.colour && <span className="text-xs text-slate-600 font-semibold">({lot.colour})</span>}
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                            (lot.category || '').toUpperCase() === 'LEATHER' ? 'bg-amber-100 text-amber-900 border border-amber-200' :
+                            (lot.category || '').toUpperCase() === 'LINING' ? 'bg-rose-100 text-rose-900 border border-rose-200' :
+                            'bg-purple-100 text-purple-900 border border-purple-200'
+                          }`}>
+                            {lot.category}{lot.subtype ? ` · ${lot.subtype}` : ''}
+                          </span>
+                        </div>
+                        <div className="text-xs font-mono mt-0.5 flex items-center gap-2 flex-wrap" style={{ color: BRAND.textMuted }}>
+                          {hasBarcode ? (
+                            <span>Barcode: <strong className="text-[#a86530] font-mono">{lot.barcode}</strong></span>
+                          ) : (
+                            <span className="text-red-600 font-sans">No barcode registered</span>
+                          )}
+                          <span>· Stock: <strong className="text-emerald-700 font-mono">{lot.on_hand ?? lot.available ?? 0} {lot.uom || ''}</strong></span>
+                          {lot.reserved ? <span className="text-amber-700">(Reserved: {lot.reserved})</span> : null}
+                          {lot.supplier_name && <span>· Supplier: <span className="text-slate-700 font-sans">{lot.supplier_name}</span></span>}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenReceive(lot)}
+                        className="btn-warm-secondary !min-h-0 !py-1.5 !px-2.5 text-[11px]"
+                        title="Receive more material into this lot"
+                      >
+                        <Truck className="w-3 h-3" /> Receive
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onPrintSingle(lot.barcode || lot.lot_id)}
+                        className="btn-warm-primary !min-h-0 !py-1.5 !px-2.5 text-[11px]"
+                        title="Print single label"
+                      >
+                        <Printer className="w-3 h-3" /> Print
+                      </button>
+                      <span className={statusBadgeClass(isGenerated ? 'PRINTED' : 'PENDING')}>
+                        {isGenerated ? 'Queued / Ready' : 'Unqueued'}
+                      </span>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Generated Material Lot Barcodes Grid */}
+      <div>
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+          <div>
+            <h3 className="text-base font-black" style={{ color: BRAND.text }}>Generated Material Barcodes &amp; Labels</h3>
+            <p className="text-xs" style={{ color: BRAND.textMuted }}>Showing {materialGenerated.length} barcodes in queue</p>
+          </div>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Filter barcode/article..." className={`${inputCls} !pl-8 !w-52 !py-2`} style={fieldStyle} />
+          </div>
+        </div>
+
+        {materialGenerated.length === 0 ? (
+          <div className="text-center py-12 rounded-xl" style={{ background: '#fff', border: '1.5px dashed rgba(200,131,74,0.3)' }}>
+            <p className="font-bold" style={{ color: BRAND.textMuted }}>No material barcodes queued yet.</p>
+            <p className="text-xs mt-1" style={{ color: BRAND.textMuted }}>Select material lots above or click &quot;Create Material Lot &amp; Barcode&quot; to mint one.</p>
+          </div>
+        ) : (
+          <motion.div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+            {materialGenerated.map((b) => (
+              <motion.div
+                key={b.pieceCode}
+                whileHover={{ y: -6, scale: 1.02 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+                onClick={() => onOpenDetail(b.pieceCode)}
+                className="rounded-xl p-4 flex flex-col items-center gap-3 cursor-pointer"
+                style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}
+              >
+                <div className="w-full bg-white rounded-lg p-2 flex justify-center" style={{ border: '1px solid rgba(200,131,74,0.2)' }}>
+                  <BarcodeCanvas code={b.pieceCode} displayWidth={200} />
+                </div>
+                <div className="text-center w-full">
+                  <div className="font-mono font-bold text-xs break-all" style={{ color: '#5a3518' }}>{b.pieceCode}</div>
+                  <div className="flex items-center justify-center gap-1.5 mt-1.5 flex-wrap">
+                    <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>{b.style}</span>
+                    {b.color && <span className="text-[0.65rem] px-2 py-0.5 rounded font-semibold uppercase" style={{ background: BRAND.bg, color: BRAND.textMuted, border: '1px solid rgba(200,131,74,0.2)' }}>{b.color}</span>}
+                    <span className={statusBadgeClass(b.printStatus)}>{b.printStatus}</span>
+                  </div>
+                  <div className="text-[10px] font-bold text-emerald-800 mt-1 font-mono">
+                    Stock: {b.size}
+                  </div>
+                </div>
+                <div className="flex gap-2 w-full" onClick={(e) => e.stopPropagation()}>
+                  <button onClick={() => onOpenDetail(b.pieceCode)} className="flex-1 btn-warm-secondary !min-h-0 !py-1.5 text-xs">View</button>
+                  <button onClick={() => onPrintSingle(b.pieceCode)} className="flex-1 btn-warm-primary !min-h-0 !py-1.5 text-xs">Print</button>
+                </div>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
+      </div>
+
+      {/* Modals */}
+      <CreateMaterialLotModal
+        open={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        token={token}
+        showToast={showToast}
+        onSuccess={(res, payload) => {
+          onRetryMaterials();
+          if (res?.barcode) {
+            onGenerateSelected([{ ...payload, barcode: res.barcode, lot_id: res.lot_id }]);
+          }
+        }}
+      />
+
+      <MaterialStockModal
+        open={stockModalOpen}
+        onClose={() => setStockModalOpen(false)}
+        token={token}
+        showToast={showToast}
+        onOpenSupplierOrder={(data) => {
+          setSupplierOrderInitialData(data);
+          setSupplierOrderModalOpen(true);
+        }}
+      />
+
+      <MaterialReceiveModal
+        open={receiveModalOpen}
+        onClose={() => setReceiveModalOpen(false)}
+        lot={receiveTargetLot}
+        token={token}
+        showToast={showToast}
+        onSuccess={() => onRetryMaterials()}
+      />
+
+      <SupplierOrderModal
+        open={supplierOrderModalOpen}
+        onClose={() => setSupplierOrderModalOpen(false)}
+        initialData={supplierOrderInitialData}
+        token={token}
+        showToast={showToast}
+        onSuccess={() => onRetryMaterials()}
+      />
+    </div>
+  );
 }
 
 
@@ -1975,56 +3207,71 @@ function HistoryTab({ batchHistoryStore, filters, setFilter, resetFilters, optio
 
 // ─── MODALS ─────────────────────────────────────────────────────────────────────
 function DetailModal({ barcode, onClose, onPrint, labels = CATEGORY_LABELS.style, category = 'style' }) {
- const cardRef = useRef(null);
- const [exporting, setExporting] = useState(null); // 'png' | 'pdf' | null
- const isEmployee = category === 'employee';
- const isDrawer = category === 'bucket';
+  const cardRef = useRef(null);
+  const [exporting, setExporting] = useState(null); // 'png' | 'pdf' | null
+  const isEmployee = category === 'employee';
+  const isDrawer = category === 'bucket';
 
- const handleDownload = async (format) => {
- if (!cardRef.current || exporting) return;
- setExporting(format);
- try {
- const canvas = await captureNodeToCanvas(cardRef.current);
- if (format === 'png') await saveCanvasAsPng(canvas, barcode.pieceCode);
- else await saveCanvasAsPdf(canvas, barcode.pieceCode);
- } finally {
- setExporting(null);
- }
- };
+  const handleDownload = async (format) => {
+    if (!cardRef.current || exporting || !barcode) return;
+    setExporting(format);
+    try {
+      const canvas = await captureNodeToCanvas(cardRef.current);
+      if (format === 'png') await saveCanvasAsPng(canvas, barcode.pieceCode);
+      else await saveCanvasAsPdf(canvas, barcode.pieceCode);
+    } finally {
+      setExporting(null);
+    }
+  };
 
- return (
- <AnimatedModal
- isOpen={!!barcode}
- onClose={onClose}
- zIndex={2000}
- panelClassName="rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden"
- panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
- >
- {barcode && (
- <>
- <div className="flex items-center justify-between px-6 py-4" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
- <h3 className="font-bold" style={{ color: '#5a3518' }}>Barcode Specification</h3>
- <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
- </div>
- {isEmployee
- ? <div className="p-6 flex justify-center"><EmployeeTicketCard barcode={barcode} cardRef={cardRef} /></div>
- : isDrawer
- ? <div className="p-6 flex justify-center"><DrawerBarcodeLabel barcode={barcode} cardRef={cardRef} /></div>
- : <IdCard barcode={barcode} labels={labels} cardRef={cardRef} />}
- <div className="flex justify-end gap-2 px-6 py-4 flex-wrap" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
- <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
- <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
- <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
- </button>
- <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
- <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
- </button>
- <button onClick={() => onPrint(barcode.pieceCode)} className="btn-warm-primary !min-h-0 !py-2.5"><Printer className="w-4 h-4" /> Print Label</button>
- </div>
- </>
- )}
- </AnimatedModal>
- );
+  return (
+    <AnimatedModal
+      isOpen={!!barcode}
+      onClose={onClose}
+      zIndex={2000}
+      panelClassName="rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
+      panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
+    >
+      {barcode && (
+        <>
+          <div className="flex items-center justify-between px-6 py-4 shrink-0" style={{ background: BRAND.bg, borderBottom: `1.5px solid ${BRAND.border}` }}>
+            <h3 className="font-bold" style={{ color: '#5a3518' }}>Barcode Specification</h3>
+            <button onClick={onClose}><X className="w-5 h-5" style={{ color: BRAND.textMuted }} /></button>
+          </div>
+
+          <div className="p-5 grid gap-4 sm:grid-cols-[minmax(0,260px)_1fr] items-start flex-1 min-h-0 overflow-y-auto">
+            <div className="flex justify-center sm:sticky sm:top-0">
+              {isEmployee ? (
+                <EmployeeTicketCard barcode={barcode} cardRef={cardRef} />
+              ) : isDrawer ? (
+                <DrawerBarcodeLabel barcode={barcode} cardRef={cardRef} />
+              ) : (
+                <BarcodeStickerLabel barcode={barcode} cardRef={cardRef} width={260} />
+              )}
+            </div>
+
+            {!isEmployee && !isDrawer && (
+              <div className="w-full min-w-0">
+                <div className="text-xs font-black uppercase tracking-wider text-[#9a7a5a] mb-2 px-1">Lot & Specification Details</div>
+                <IdCard barcode={barcode} labels={labels} showOnlyFields={true} />
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2 px-6 py-4 flex-wrap shrink-0" style={{ background: BRAND.bg, borderTop: `1.5px solid ${BRAND.border}` }}>
+            <button onClick={onClose} className="btn-warm-secondary !min-h-0 !py-2.5">Close</button>
+            <button onClick={() => handleDownload('png')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileImage className="w-4 h-4" /> {exporting === 'png' ? 'Preparing…' : 'Download PNG'}
+            </button>
+            <button onClick={() => handleDownload('pdf')} disabled={!!exporting} className="btn-warm-secondary !min-h-0 !py-2.5 disabled:opacity-60">
+              <FileText className="w-4 h-4" /> {exporting === 'pdf' ? 'Preparing…' : 'Download PDF'}
+            </button>
+            <button onClick={() => onPrint(barcode.pieceCode)} className="btn-warm-primary !min-h-0 !py-2.5"><Printer className="w-4 h-4" /> Print Label</button>
+          </div>
+        </>
+      )}
+    </AnimatedModal>
+  );
 }
 
 function PrintPreviewModal({ open, codes, onClose, onConfirm }) {
@@ -2087,6 +3334,14 @@ export default function BarcodeManagementPage() {
  // Bucket / Drawer category data — fully separate store
  const [bucketStore, setBucketStore] = useState(() => ({ generated: [], history: [] }));
 
+ // Material category data — fully separate store
+ const [materialStore, setMaterialStore] = useState(() => ({ generated: [], history: [] }));
+ const [materialDirectory, setMaterialDirectory] = useState([]);
+ const [materialsLoading, setMaterialsLoading] = useState(false);
+ const [materialsError, setMaterialsError] = useState(null);
+ const [materialsReloadKey, setMaterialsReloadKey] = useState(0);
+ const reloadMaterials = useCallback(() => setMaterialsReloadKey((k) => k + 1), []);
+
  // Live Drawer roster from GET /api/v1/drawers
  const [drawerDirectory, setDrawerDirectory] = useState([]);
  const [drawerTotal, setDrawerTotal] = useState(0);
@@ -2099,12 +3354,12 @@ export default function BarcodeManagementPage() {
  const reloadDrawers = useCallback(() => setDrawerReloadKey((k) => k + 1), []);
 
  // Per-category UI state (selection/expansion/filters never bleed across categories)
- const [printSelections, setPrintSelections] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set() }));
- const [expandedOrdersByCat, setExpandedOrdersByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set() }));
- const [expandedGroupsByCat, setExpandedGroupsByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set() }));
- const [expandedHistoryOrdersByCat, setExpandedHistoryOrdersByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set() }));
+ const [printSelections, setPrintSelections] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set(), material: new Set() }));
+ const [expandedOrdersByCat, setExpandedOrdersByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set(), material: new Set() }));
+ const [expandedGroupsByCat, setExpandedGroupsByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set(), material: new Set() }));
+ const [expandedHistoryOrdersByCat, setExpandedHistoryOrdersByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set(), material: new Set() }));
  const [historyFiltersByCat, setHistoryFiltersByCat] = useState(() => ({
- style: { ...DEFAULT_HISTORY_FILTERS }, employee: { ...DEFAULT_HISTORY_FILTERS }, bucket: { ...DEFAULT_HISTORY_FILTERS },
+ style: { ...DEFAULT_HISTORY_FILTERS }, employee: { ...DEFAULT_HISTORY_FILTERS }, bucket: { ...DEFAULT_HISTORY_FILTERS }, material: { ...DEFAULT_HISTORY_FILTERS },
  }));
 
  const [detailCode, setDetailCode] = useState(null);
@@ -2127,8 +3382,8 @@ export default function BarcodeManagementPage() {
 
  // ─── Derived: whichever category is active right now (style is live-fetched
  // by StyleRegistryPanel itself and never touches these local stores) ───
- const activeGenerated = category === 'employee' ? employeeStore.generated : category === 'bucket' ? bucketStore.generated : EMPTY_LIST;
- const activeHistory = category === 'employee' ? employeeStore.history : category === 'bucket' ? bucketStore.history : EMPTY_LIST;
+ const activeGenerated = category === 'employee' ? employeeStore.generated : category === 'bucket' ? bucketStore.generated : category === 'material' ? materialStore.generated : EMPTY_LIST;
+ const activeHistory = category === 'employee' ? employeeStore.history : category === 'bucket' ? bucketStore.history : category === 'material' ? materialStore.history : EMPTY_LIST;
  const activeSelectedPrint = printSelections[category];
  const activeExpandedOrders = expandedOrdersByCat[category];
  const activeExpandedGroups = expandedGroupsByCat[category];
@@ -2178,6 +3433,34 @@ export default function BarcodeManagementPage() {
  }, 100);
  return () => { cancelled = true; clearTimeout(timer); };
  }, [category, token, drawerReloadKey, drawerStateFilter, drawerSeqFrom, drawerSeqTo, hasMounted]);
+
+ // ─── Live Material lots fetch: GET /api/v1/barcode/materials or /api/v1/materials/lots ───
+ useEffect(() => {
+ if (!hasMounted || category !== 'material' || !token) return;
+ let cancelled = false;
+ const timer = setTimeout(async () => {
+ setMaterialsLoading(true);
+ setMaterialsError(null);
+ try {
+ let res;
+ try {
+ res = await apiGetBarcodeMaterials(token, { active_only: false });
+ } catch (e) {
+ res = await apiGetMaterialLots(token);
+ }
+ if (cancelled) return;
+ const items = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+ setMaterialDirectory(items);
+ } catch (err) {
+ if (cancelled) return;
+ setMaterialDirectory([]);
+ setMaterialsError(err?.message || 'Failed to load materials from server.');
+ } finally {
+ if (!cancelled) setMaterialsLoading(false);
+ }
+ }, 100);
+ return () => { cancelled = true; clearTimeout(timer); };
+ }, [category, token, materialsReloadKey, hasMounted]);
 
  // ─── Employee roster fetch: GET /api/v1/employees (active roster only) ───
  useEffect(() => {
@@ -2267,6 +3550,78 @@ export default function BarcodeManagementPage() {
  showToast(`Queued ${codes.length} employee barcodes to Print Center!`, 'success');
  setActiveTab('print');
  }, [employeeStore, showToast]);
+
+ // ─── MATERIAL generation handlers ───
+ const generateMaterialLots = useCallback((lots) => {
+ const alreadyGenCodes = new Set(materialStore.generated.map((r) => r.pieceCode));
+ const pending = lots.filter((l) => !alreadyGenCodes.has(l.barcode || l.lot_id));
+ if (pending.length === 0) {
+ showToast(`${lots.length === 1 ? 'This material lot' : 'These material lots'} already ${lots.length === 1 ? 'has' : 'have'} a barcode queued!`, 'info');
+ return;
+ }
+ const batchId = `MAT-BATCH-${Date.now().toString().slice(-6)}`;
+ const newRecords = pending.map((lot, idx) => ({
+ pieceCode: lot.barcode || `LOT-${(lot.category || 'MAT').slice(0, 3)}-${String(lot.lot_id || idx + 1).slice(0, 8).toUpperCase()}`,
+ orderId: lot.category || 'MATERIAL',
+ client: `${lot.category || 'MATERIAL'}${lot.subtype ? ` / ${lot.subtype}` : ''}`,
+ style: lot.article || 'Unnamed Article',
+ color: lot.colour || '—',
+ size: `${lot.on_hand ?? lot.available ?? 0} ${lot.uom || ''}`,
+ serial: idx + 1,
+ serialStr: String(idx + 1).padStart(3, '0'),
+ batchNo: batchId,
+ createdDate: new Date().toLocaleString(),
+ generatedBy: operatorLabel,
+ printStatus: 'PENDING',
+ printCount: 0,
+ lotId: lot.lot_id,
+ thickness: lot.thickness || lot.size,
+ onHand: lot.on_hand,
+ available: lot.available,
+ reserved: lot.reserved,
+ uom: lot.uom,
+ supplierName: lot.supplier_name || lot.supplier_id || '—',
+ }));
+
+ const historyEntry = {
+ batchNo: batchId,
+ orderId: pending[0].category || 'MATERIAL',
+ client: pending[0].category || 'MATERIAL',
+ style: pending.length === 1 ? pending[0].article : `${pending.length} Material Lots`,
+ color: pending.length === 1 ? (pending[0].colour || '—') : '',
+ size: pending.length === 1 ? `${pending[0].on_hand ?? 0} ${pending[0].uom || ''}` : '—',
+ qty: pending.length,
+ generatedBy: operatorLabel,
+ createdDate: new Date().toLocaleString(),
+ printStatus: 'PENDING',
+ };
+
+ setMaterialStore((prev) => ({
+ generated: [...prev.generated, ...newRecords],
+ history: [historyEntry, ...prev.history],
+ }));
+
+ showToast(pending.length === 1 ? `Generated barcode for Lot ${pending[0].barcode || pending[0].article}!` : `Generated ${pending.length} Material Lot barcodes!`, 'success');
+ }, [materialStore, showToast, operatorLabel]);
+
+ const generateAllRemainingMaterials = useCallback(() => {
+ if (materialDirectory.length === 0) {
+ showToast('No material lots available to generate barcodes for!', 'error');
+ return;
+ }
+ generateMaterialLots(materialDirectory);
+ }, [materialDirectory, generateMaterialLots, showToast]);
+
+ const sendMaterialsToPrintCenter = useCallback(() => {
+ if (materialStore.generated.length === 0) {
+ showToast('No generated material barcodes to send to Print Center!', 'error');
+ return;
+ }
+ const allCodes = new Set(materialStore.generated.map((b) => b.pieceCode));
+ setPrintSelections((prev) => ({ ...prev, material: allCodes }));
+ setActiveTab('print');
+ showToast(`Loaded ${allCodes.size} material barcodes into Print Center!`, 'info');
+ }, [materialStore.generated, showToast]);
 
  // ─── BUCKET / DRAWER generation handlers (live GET /api/v1/drawers) ───
  // Nothing is minted client-side here: `barcode` is the code the registry
@@ -2487,7 +3842,15 @@ const bucketHistoryOptions = useMemo(() => ({
 		operators: Array.from(new Set(bucketStore.history.map((b) => b.generatedBy))),
 	}), [bucketStore.history]);
 
- const activeHistoryOptions = category === 'employee' ? employeeHistoryOptions : bucketHistoryOptions;
+  const materialHistoryOptions = useMemo(() => ({
+    orderIds: Array.from(new Set(materialStore.history.map((b) => b.orderId))),
+    clients: Array.from(new Set(materialStore.history.map((b) => b.client))),
+    styles: Array.from(new Set(materialStore.history.map((b) => b.style))),
+    sizes: Array.from(new Set(materialStore.history.map((b) => b.size))),
+    operators: Array.from(new Set(materialStore.history.map((b) => b.generatedBy))),
+  }), [materialStore.history]);
+
+ const activeHistoryOptions = category === 'employee' ? employeeHistoryOptions : category === 'bucket' ? bucketHistoryOptions : category === 'material' ? materialHistoryOptions : [];
 
  const handleViewFromHistory = useCallback(() => {
  setActiveTab('generation');
@@ -2541,9 +3904,18 @@ const bucketHistoryOptions = useMemo(() => ({
  @media print {
  /* 4mm margins so two 98mm labels fit across A4 (210mm) and Letter (215.9mm) */
  @page { size: A4 portrait; margin: 4mm; }
- body * { visibility: hidden; }
- #thermalPrintSheet, #thermalPrintSheet * { visibility: visible; }
- #thermalPrintSheet { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 0; background: #fff !important; }
+ /* #app-shell (the sidebar/header/dashboard content) is hidden with
+ display:none, not visibility:hidden — visibility keeps an
+ element's layout box (and its scroll-height) intact even while
+ invisible, so the browser paginated the whole hidden dashboard into
+ blank pages after the real label sheet. display:none removes it
+ from the flow entirely, so only #thermalPrintSheet's own pages print. */
+ #app-shell { display: none !important; }
+ /* The toast stack is portaled straight to <body> (position: fixed),
+ same as the print sheet, so hiding #app-shell alone doesn't touch it —
+ without this it prints as a floating message box in the corner. */
+ .toast-stack { display: none !important; }
+ #thermalPrintSheet { display: block !important; position: static; width: 100%; margin: 0; padding: 0; background: #fff !important; }
  .print-page {
  display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
  gap: 8mm; width: 100%; height: 280mm; page-break-after: always; box-sizing: border-box;
@@ -2715,6 +4087,24 @@ const bucketHistoryOptions = useMemo(() => ({
  />
  )}
 
+ {activeTab === 'generation' && category === 'material' && (
+ <MaterialGenerationTab
+ materials={materialDirectory}
+ materialsLoading={materialsLoading}
+ materialsError={token ? materialsError : 'Sign in to load material lots.'}
+ onRetryMaterials={reloadMaterials}
+ materialGenerated={materialStore.generated}
+ onGenerateSelected={generateMaterialLots}
+ onGenerateAllRemaining={generateAllRemainingMaterials}
+ onSendToPrintCenter={sendMaterialsToPrintCenter}
+ onOpenDetail={setDetailCode}
+ onPrintSingle={handlePrintSingle}
+ token={token}
+ showToast={showToast}
+ onRefreshAll={reloadMaterials}
+ />
+ )}
+
  {activeTab === 'print' && (
  <PrintTab
  generatedBarcodesStore={activeGenerated}
@@ -2764,7 +4154,14 @@ const bucketHistoryOptions = useMemo(() => ({
  />
 
  {/* Print sheet — 4 employee ID cards per page, 8 style barcodes per
- page (1 column, full page width), or 8 bucket labels at 100×70mm */}
+ page (1 column, full page width), or 8 bucket labels at 100×70mm.
+ Portaled straight onto <body>, outside #app-shell, so the print
+ media query can hard-hide the rest of the dashboard (sidebar, header,
+ the drawer list, every other tab) with `display: none`. Hiding it
+ the old way — `visibility: hidden` on the whole app — kept every
+ hidden element's layout box intact, so the browser still paginated
+ the app's full scroll height into blank pages after this sheet. */}
+ {createPortal(
  <div id="thermalPrintSheet" ref={printSheetRef} style={{ display: 'none' }}>
  {isBucketSheet
  ? chunkArray(printSheetItems, BUCKET_LABELS_PER_PAGE).map((group, pageIdx) => (
@@ -2778,6 +4175,25 @@ const bucketHistoryOptions = useMemo(() => ({
  style={{ left: `${(i % 2) * BUCKET_LABEL.widthMm}mm`, top: `${Math.floor(i / 2) * BUCKET_LABEL.heightMm}mm` }}
  >
  <DrawerBarcodeLabel barcode={b} />
+ </div>
+ ))}
+ </div>
+ ))
+ : category === 'material'
+ ? chunkArray(printSheetItems, 8).map((group, pageIdx) => (
+ <div className="print-label-page" key={pageIdx}>
+ {group.map((b, i) => (
+ <div
+ key={b.pieceCode}
+ className="print-label-slot"
+ style={{ left: `${(i % 2) * BUCKET_LABEL.widthMm}mm`, top: `${Math.floor(i / 2) * BUCKET_LABEL.heightMm}mm` }}
+ >
+ <div className="bucket-label flex flex-col items-center justify-center p-2 text-center">
+ <BarcodeCanvas code={b.pieceCode} height={50} moduleWidth={1.8} margin={2} />
+ <div className="text-[10px] font-black font-mono mt-1">{b.pieceCode}</div>
+ <div className="text-[8px] font-bold text-slate-800">{b.client} · {b.style}</div>
+ {b.color && <div className="text-[7px] text-slate-600">{b.color} · Qty: {b.size}</div>}
+ </div>
  </div>
  ))}
  </div>
@@ -2812,26 +4228,26 @@ const bucketHistoryOptions = useMemo(() => ({
  })}
  </div>
  ))}
- </div>
+ </div>,
+ document.body
+ )}
 
  {/* Off-screen renderer used only to capture the bulk PNG/PDF export */}
  {bulkExportItems && (
  <div style={{ position: 'fixed', top: 0, left: '-99999px', background: '#fff' }}>
  <div ref={bulkExportRef}>
- {chunkArray(bulkExportItems, 4).map((group, pageIdx) => (
+ {chunkArray(bulkExportItems, 8).map((group, pageIdx) => (
  <div
  key={pageIdx}
  className="export-page"
- // Bucket labels are a fixed physical size, so the export page
- // widens to fit two of them rather than scaling them down.
- style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, width: isBucketSheet ? 828 : 800, padding: 24, background: '#fff' }}
+ style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gridTemplateRows: 'repeat(4, auto)', gap: 16, width: isBucketSheet ? 828 : 794, minHeight: 1123, padding: 24, boxSizing: 'border-box', background: '#fff', alignContent: 'start' }}
  >
  {group.map((b) => (
  category === 'employee'
  ? <EmployeeTicketCard key={b.pieceCode} barcode={b} width={340} />
  : isBucketSheet
  ? <DrawerBarcodeLabel key={b.pieceCode} barcode={b} />
- : <IdCard key={b.pieceCode} barcode={b} labels={activeLabels} width={340} />
+ : <BarcodeStickerLabel key={b.pieceCode} barcode={b} width={360} />
  ))}
  </div>
  ))}
