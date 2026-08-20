@@ -665,9 +665,6 @@ export default function ManualDoorSection({
       } else {
         setErrorMsg(`⚠️ ${result.message || 'Nothing new was logged — pieces may already be recorded at this stage.'}`);
       }
-      if (result.skill_warnings?.length) {
-        setErrorMsg(prev => `${prev ? prev + ' ' : ''}${result.skill_warnings[0].note}`);
-      }
       const extractSeq = (code) => {
         const n = parseInt(String(code).split('-').pop(), 10);
         return isNaN(n) ? null : n;

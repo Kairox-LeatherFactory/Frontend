@@ -305,11 +305,6 @@ export default function BarcodeDoorSection({
         throw new Error(realBlockers[0].reason || 'Scan blocked by server');
       }
 
-      // Skill mismatch is a WARNING per the API docs, never a hard block.
-      const skillWarning = (pieceState?.actor?.skill_ok === false && pieceState.actor?.skill_note)
-        ? ` ⚠️ ${pieceState.actor.skill_note}`
-        : '';
-
       // Local UI update only — this piece's real identity + current/next stage.
       setBarcodeSelectedSku({
         piece_id: piece.piece_id,
@@ -342,7 +337,7 @@ export default function BarcodeDoorSection({
         size: piece.size,
         order_number: piece.order_number,
       }]);
-      setSuccessMsg(`✅ Piece ${piece.code} verified — next stage: ${targetStage}${skillWarning}`);
+      setSuccessMsg(`✅ Piece ${piece.code} verified — next stage: ${targetStage}`);
     } catch (err) {
       setErrorMsg(err.message);
       setBarcodeSkuInput('');
@@ -667,10 +662,6 @@ export default function BarcodeDoorSection({
         });
       } else {
         setErrorMsg(result?.message || 'No pieces were logged.');
-      }
-
-      if (result?.skill_warnings?.length) {
-        setErrorMsg(prev => `${prev ? prev + ' ' : ''}${result.skill_warnings[0].note}`);
       }
 
       setBarcodeBatchPieces([]);

@@ -73,14 +73,37 @@ function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCo
                 <p className="text-lg font-black text-slate-800 truncate">{group.po}</p>
               </div>
               <div className="rounded-xl bg-slate-50 p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Styles</p>
-                <p className="text-lg font-black text-slate-800">{treeData?.style_count || 0}</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Styles Released</p>
+                <p className="text-lg font-black text-slate-800">
+                  {(treeData?.styles || []).filter((s) => !s.production_status || s.production_status === 'RELEASED').length || 0}
+                </p>
               </div>
               <div className="rounded-xl bg-slate-50 p-4">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Pieces</p>
                 <p className="text-lg font-black text-slate-800">{treeData?.piece_count || 0}</p>
               </div>
             </div>
+
+            {treeData?.store && (
+              <div className="mt-5 pt-5 border-t border-slate-100">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2.5">Store Holding</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { key: 'holding_leather', label: 'Holding Leather', cls: 'bg-amber-50 text-amber-700 border-amber-200' },
+                    { key: 'holding_lining', label: 'Holding Lining', cls: 'bg-blue-50 text-blue-700 border-blue-200' },
+                    { key: 'holding_both', label: 'Holding Both', cls: 'bg-purple-50 text-purple-700 border-purple-200' },
+                    { key: 'received', label: 'Received', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+                    { key: 'sended', label: 'Sent', cls: 'bg-slate-100 text-slate-700 border-slate-200' },
+                    { key: 'awaiting_parts', label: 'Awaiting Parts', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+                    { key: 'no_drawer', label: 'No Drawer', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+                  ].map(({ key, label, cls }) => (
+                    <span key={key} className={`text-xs font-black px-3 py-1.5 rounded-full border ${cls}`}>
+                      {label}: {treeData.store[key] ?? 0}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -182,6 +205,30 @@ function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCo
                 <span className="text-emerald-700 font-black bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full text-xs">{pieceDetail.current_stage}</span>
               </div>
             </div>
+
+            {pieceDetail.store && (
+              <div className="bg-blue-50/60 rounded-xl p-5 border border-blue-100">
+                <p className="text-xs font-black uppercase text-blue-700 mb-3 tracking-widest">Store Status</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="bg-white rounded-lg p-3 border border-blue-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Drawer</p>
+                    <p className="text-sm font-black text-slate-800 font-mono">{pieceDetail.store.drawer_code || '—'}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-blue-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Holding</p>
+                    <p className="text-sm font-black text-slate-800">{pieceDetail.store.holding || '—'}</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-3 border border-blue-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Awaiting</p>
+                    <p className="text-sm font-black text-slate-800">
+                      {Array.isArray(pieceDetail.store.awaiting) && pieceDetail.store.awaiting.length > 0
+                        ? pieceDetail.store.awaiting.join(', ')
+                        : 'Nothing'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
               <p className="text-xs font-black uppercase text-slate-400 mb-4 tracking-widest">Stage History Details</p>
@@ -552,7 +599,12 @@ function OrdersExplorer() {
         </div>
         {orderGroups.map((group) => {
           const fetchedTree = orderTrees[group.rawId];
-          const displayStyles = fetchedTree?.styles || group.styles || [];
+          // Analytics tracks real production — a style still sitting DRAFT
+          // (never released) has no minted pieces to explore, so only
+          // released styles belong in this list.
+          const displayStyles = (fetchedTree?.styles || group.styles || []).filter(
+            (s) => !s.production_status || s.production_status === 'RELEASED'
+          );
 
           return (
             <div key={group.id} className="flex flex-col gap-0.5">
