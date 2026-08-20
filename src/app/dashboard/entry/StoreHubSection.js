@@ -823,6 +823,14 @@ export default function StoreHubSection({
                       style={{ paddingLeft: barcodeWorkerInput ? '1rem' : '3.25rem', paddingRight: '3rem' }}
                       className="w-full h-14 bg-white/10 text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border-2 border-[#c8834a]/40 rounded-2xl focus:outline-none focus:border-[#f5d4a4] transition-all"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setCameraScanTarget('worker')}
+                      className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/50 hover:bg-[#c8834a]/50 active:scale-95 transition-all cursor-pointer z-10"
+                      title="Scan Worker Barcode with Mobile Camera"
+                    >
+                      <Camera className="w-5 h-5" />
+                    </button>
                   </div>
                   <button
                     type="button"
