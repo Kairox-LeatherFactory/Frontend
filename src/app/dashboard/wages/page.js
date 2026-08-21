@@ -1093,10 +1093,10 @@ function ComputationView({ token }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-slate-900 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden border border-slate-800">
               <div className="absolute top-0 right-0 p-8 opacity-10"><Coins className="w-32 h-32 text-white" /></div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Amount</p>
-              <h2 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200">
+              {/* <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Amount</p> */}
+              {/* <h2 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200">
                 <Money value={breakdown.total_amount} />
-              </h2>
+              </h2> */}
             </div>
             <div className="bg-white rounded-[2rem] p-8 shadow-xl border flex flex-col justify-center" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
               <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: '#9a7a5a' }}>Total Pieces</p>
@@ -1129,7 +1129,7 @@ function ComputationView({ token }) {
                       <h5 className="font-black text-lg" style={{ color: '#2d1f0e' }}>{s.style_name || s.style_code}</h5>
                       <p className="text-[10px] font-black uppercase text-slate-400">{s.style_code} · {s.pieces ?? 0} pieces</p>
                     </div>
-                    <p className="font-black text-xl text-emerald-600"><Money value={s.amount} /></p>
+                    {/* <p className="font-black text-xl text-emerald-600"><Money value={s.amount} /></p> */}
                   </div>
                   {Array.isArray(s.stages) && s.stages.length > 0 && (
                     <div className="pt-3 mt-3 border-t border-slate-100 space-y-1.5">
@@ -1507,10 +1507,10 @@ function LedgerView({ token }) {
                       {run.run_id}
                     </p>
                     <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
-                      <div>
+                      {/* <div>
                         <p className="text-[10px] font-bold text-slate-400">Total</p>
                         <p className="font-black" style={{ color: '#10b981' }}><Money value={run.total_amount} /></p>
-                      </div>
+                      </div> */}
                       <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-1 transition-all" />
                     </div>
                   </SpotlightCard>
@@ -1663,31 +1663,31 @@ function LedgerView({ token }) {
                           <button onClick={() => { setPieceFilterStage(''); setPieceFilterEmployee(''); }} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Clear column filters</button>
                         )}
                       </div>
-                    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-                      <table className="w-full text-left text-xs">
-                        <thead>
-                          <tr className="font-bold uppercase tracking-wider" style={{ color: '#9a7a5a', borderBottom: '2px solid rgba(200,131,74,0.15)' }}>
-                            <th className="py-3 px-3">Piece</th>
-                            <th className="py-3 px-3">Stage</th>
-                            <th className="py-3 px-3">Employee</th>
-                            <th className="py-3 px-3 flex items-center gap-1"><BarcodeIcon className="w-3 h-3" /> Barcode</th>
-                            <th className="py-3 px-3">Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filteredPieces.map((p, i) => (
-                            <tr key={i}>
-                              <td className="py-2.5 px-3 font-mono font-bold text-slate-700">{p.piece_code}</td>
-                              <td className="py-2.5 px-3 font-bold text-slate-500">{p.operation_label || p.operation_code}</td>
-                              <td className="py-2.5 px-3 font-bold text-slate-700">{p.employee_name || '—'}</td>
-                              <td className="py-2.5 px-3 font-mono text-slate-400">{p.employee_barcode || '—'}</td>
-                              <td className="py-2.5 px-3 font-black text-emerald-600"><Money value={p.amount} /></td>
+                      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="font-bold uppercase tracking-wider" style={{ color: '#9a7a5a', borderBottom: '2px solid rgba(200,131,74,0.15)' }}>
+                              <th className="py-3 px-3">Piece</th>
+                              <th className="py-3 px-3">Stage</th>
+                              <th className="py-3 px-3">Employee</th>
+                              <th className="py-3 px-3 flex items-center gap-1"><BarcodeIcon className="w-3 h-3" /> Barcode</th>
+                              <th className="py-3 px-3">Amount</th>
                             </tr>
-                          ))}
-                          {filteredPieces.length === 0 && <tr><td colSpan="5" className="py-8 text-center text-slate-400 font-bold">{searchNorm ? 'No matches.' : 'No piece-level data.'}</td></tr>}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredPieces.map((p, i) => (
+                              <tr key={i}>
+                                <td className="py-2.5 px-3 font-mono font-bold text-slate-700">{p.piece_code}</td>
+                                <td className="py-2.5 px-3 font-bold text-slate-500">{p.operation_label || p.operation_code}</td>
+                                <td className="py-2.5 px-3 font-bold text-slate-700">{p.employee_name || '—'}</td>
+                                <td className="py-2.5 px-3 font-mono text-slate-400">{p.employee_barcode || '—'}</td>
+                                <td className="py-2.5 px-3 font-black text-emerald-600"><Money value={p.amount} /></td>
+                              </tr>
+                            ))}
+                            {filteredPieces.length === 0 && <tr><td colSpan="5" className="py-8 text-center text-slate-400 font-bold">{searchNorm ? 'No matches.' : 'No piece-level data.'}</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </>

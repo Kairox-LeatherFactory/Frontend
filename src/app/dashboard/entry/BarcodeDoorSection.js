@@ -705,6 +705,18 @@ export default function BarcodeDoorSection({
           }}
         />
       )}
+      {cameraScanTarget === 'piece' && (
+        <CameraScannerModal
+          title="Scan Piece Barcode"
+          onClose={() => setCameraScanTarget(null)}
+          onScan={(scannedCode) => {
+            const cleanCode = String(scannedCode || '').replace(/[\r\n]+/g, '').trim();
+            if (!cleanCode) return;
+            setBarcodePieceInput(cleanCode);
+            setTimeout(() => handleBarcodePieceScan(cleanCode), 50);
+          }}
+        />
+      )}
       <div className="space-y-8 animate-fade-in">
 
         {/* STEP 1: WORKER BARCODE SCAN & ATTENDANCE GATE */}
@@ -1252,11 +1264,20 @@ export default function BarcodeDoorSection({
                           handleBarcodePieceScan();
                         }
                       }}
-                      style={{ paddingLeft: barcodePieceInput ? '1rem' : '3.25rem', paddingRight: '1rem' }}
+                      style={{ paddingLeft: barcodePieceInput ? '1rem' : '3.25rem', paddingRight: '3rem' }}
                       className="w-full h-14 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       disabled={!barcodeWorker || barcodePieceResolving || barcodePieceValidating}
                       autoFocus
                     />
+                    <button
+                      type="button"
+                      onClick={() => setCameraScanTarget('piece')}
+                      disabled={!barcodeWorker || barcodePieceResolving || barcodePieceValidating}
+                      className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-amber-50 text-[#c8834a] border border-[#c8834a]/30 hover:bg-amber-100 active:scale-95 transition-all cursor-pointer z-10 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Scan Piece Barcode with Mobile Camera"
+                    >
+                      <Camera className="w-5 h-5" />
+                    </button>
                   </div>
                   <button
                     type="button"

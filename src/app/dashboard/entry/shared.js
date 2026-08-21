@@ -17,6 +17,22 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
     let scanner;
     let isStopped = false;
 
+    // getUserMedia is only exposed by the browser on a secure origin
+    // (https:// or localhost). Loaded over plain http:// — e.g. a phone
+    // hitting the dev machine's LAN IP directly, which is exactly how this
+    // gets tested from a real device — `navigator.mediaDevices` is simply
+    // undefined on most mobile browsers: no permission prompt, no error
+    // from html5-qrcode, nothing. Catch that up front with a clear message
+    // instead of leaving the tap looking like it did nothing at all.
+    if (typeof window !== 'undefined' && !window.isSecureContext) {
+      setCameraError("Camera access needs a secure connection. This page is loaded over http:// — open it via https:// (or localhost on the same machine) to use the camera, or type the barcode manually.");
+      return;
+    }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError("This browser doesn't expose camera access here. Please type the barcode manually.");
+      return;
+    }
+
     import('html5-qrcode').then(({ Html5Qrcode, Html5QrcodeSupportedFormats }) => {
       if (isStopped) return;
 
