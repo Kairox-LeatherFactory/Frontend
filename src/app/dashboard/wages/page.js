@@ -1129,7 +1129,7 @@ function ComputationView({ token }) {
                       <h5 className="font-black text-lg" style={{ color: '#2d1f0e' }}>{s.style_name || s.style_code}</h5>
                       <p className="text-[10px] font-black uppercase text-slate-400">{s.style_code} · {s.pieces ?? 0} pieces</p>
                     </div>
-                    {/* <p className="font-black text-xl text-emerald-600"><Money value={s.amount} /></p> */}
+                    <p className="font-black text-xl text-emerald-600"><Money value={s.amount} /></p>
                   </div>
                   {Array.isArray(s.stages) && s.stages.length > 0 && (
                     <div className="pt-3 mt-3 border-t border-slate-100 space-y-1.5">
@@ -1507,10 +1507,10 @@ function LedgerView({ token }) {
                       {run.run_id}
                     </p>
                     <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
-                      {/* <div>
+                      <div>
                         <p className="text-[10px] font-bold text-slate-400">Total</p>
                         <p className="font-black" style={{ color: '#10b981' }}><Money value={run.total_amount} /></p>
-                      </div> */}
+                      </div>
                       <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-1 transition-all" />
                     </div>
                   </SpotlightCard>
