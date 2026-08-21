@@ -1093,10 +1093,10 @@ function ComputationView({ token }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-slate-900 rounded-[2rem] p-8 shadow-2xl relative overflow-hidden border border-slate-800">
               <div className="absolute top-0 right-0 p-8 opacity-10"><Coins className="w-32 h-32 text-white" /></div>
-              {/* <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Amount</p> */}
-              {/* <h2 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Total Amount</p>
+              <h2 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-200">
                 <Money value={breakdown.total_amount} />
-              </h2> */}
+              </h2>
             </div>
             <div className="bg-white rounded-[2rem] p-8 shadow-xl border flex flex-col justify-center" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
               <p className="text-[10px] font-black uppercase tracking-widest mb-1" style={{ color: '#9a7a5a' }}>Total Pieces</p>
@@ -1507,10 +1507,10 @@ function LedgerView({ token }) {
                       {run.run_id}
                     </p>
                     <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
-                      <div>
+                      {/* <div>
                         <p className="text-[10px] font-bold text-slate-400">Total</p>
                         <p className="font-black" style={{ color: '#10b981' }}><Money value={run.total_amount} /></p>
-                      </div>
+                      </div> */}
                       <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-1 transition-all" />
                     </div>
                   </SpotlightCard>
