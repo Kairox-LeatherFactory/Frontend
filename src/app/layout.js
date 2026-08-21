@@ -19,7 +19,7 @@ const playfair = Playfair_Display({
 });
 
 export const metadata = {
-  title: 'Kairox Leather Intelligence Platform',
+  title: 'PTE Leather Intelligence Platform',
   description: 'Real-time leather factory production tracking, wage management, and traceability system.',
 };
 

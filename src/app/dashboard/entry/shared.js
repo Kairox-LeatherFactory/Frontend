@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Camera, X, AlertTriangle, ChevronDown } from 'lucide-react';
+import { Camera, X, AlertTriangle, ChevronDown, Zap, ZapOff, Sun } from 'lucide-react';
 
 // Mobile camera barcode scanner — a shared modal used by all three doors
 // (Barcode Gun's SKU/piece scan, Store Hub's drawer/piece scan, and the
@@ -12,6 +12,28 @@ import { Camera, X, AlertTriangle, ChevronDown } from 'lucide-react';
 // page.js can't do that once the doors are split into separate components.
 export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) {
   const [cameraError, setCameraError] = useState(null);
+  const [torchAvailable, setTorchAvailable] = useState(false);
+  const [torchOn, setTorchOn] = useState(false);
+  const [brightnessBoost, setBrightnessBoost] = useState(false);
+  const trackRef = useRef(null);
+
+  const handleToggleTorch = async () => {
+    const track = trackRef.current;
+    if (!track) return;
+    try {
+      const nextState = !torchOn;
+      await track.applyConstraints({
+        advanced: [{ torch: nextState }]
+      });
+      setTorchOn(nextState);
+    } catch (err) {
+      console.warn("Could not toggle flashlight:", err);
+    }
+  };
+
+  const handleToggleBrightness = () => {
+    setBrightnessBoost(prev => !prev);
+  };
 
   useEffect(() => {
     let scanner;
@@ -38,15 +60,14 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
 
       scanner = new Html5Qrcode("entry-camera-reader");
 
-      // Printed CODE128 SKU tags are thin, dense barcodes — without an explicit
-      // resolution request the browser can hand back a low-res stream that
-      // looks fine to the eye but is too blurry for the decoder to ever
-      // resolve the bars, so the camera runs but nothing is ever detected.
+      // Printed CODE128 SKU tags are thin, dense barcodes — request optimal
+      // resolution with continuous exposure and balanced aspect ratio so factory
+      // and mobile lighting conditions remain bright and sharp.
       const buildConfig = (facingMode) => ({
-        fps: 20,
+        fps: 15,
         qrbox: (viewfinderWidth, viewfinderHeight) => ({
-          width: Math.min(320, Math.floor(viewfinderWidth * 0.9)),
-          height: Math.min(180, Math.floor(viewfinderHeight * 0.5))
+          width: Math.min(320, Math.floor(viewfinderWidth * 0.88)),
+          height: Math.min(200, Math.floor(viewfinderHeight * 0.65))
         }),
         formatsToSupport: [
           Html5QrcodeSupportedFormats.CODE_128,
@@ -62,8 +83,8 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
         ],
         videoConstraints: {
           facingMode: { ideal: facingMode },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          width: { ideal: 1280, min: 640 },
+          height: { ideal: 720, min: 480 },
         },
       });
 
@@ -74,19 +95,38 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
           (text) => {
             if (scanner && scanner.isScanning) {
               scanner.stop().then(() => {
+                try { scanner.clear(); } catch (_) {}
                 onScan(text);
                 onClose();
               }).catch(() => {
+                try { scanner.clear(); } catch (_) {}
                 onScan(text);
                 onClose();
               });
             } else {
+              try { scanner.clear(); } catch (_) {}
               onScan(text);
               onClose();
             }
           },
-          (err) => { }
-        );
+          () => { }
+        ).then(() => {
+          // Detect flashlight (torch) capability on the active camera track
+          setTimeout(() => {
+            const videoElem = document.querySelector("#entry-camera-reader video");
+            if (videoElem && videoElem.srcObject) {
+              const stream = videoElem.srcObject;
+              const videoTrack = stream.getVideoTracks ? stream.getVideoTracks()[0] : null;
+              if (videoTrack) {
+                trackRef.current = videoTrack;
+                const capabilities = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
+                if (capabilities.torch) {
+                  setTorchAvailable(true);
+                }
+              }
+            }
+          }, 300);
+        });
       };
 
       startScanner("environment").catch(() => {
@@ -107,14 +147,51 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
 
     return () => {
       isStopped = true;
+      if (trackRef.current && torchOn) {
+        trackRef.current.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
+      }
       if (scanner && scanner.isScanning) {
-        scanner.stop().catch(e => console.warn(e));
+        scanner.stop().then(() => {
+          try { scanner.clear(); } catch (_) {}
+        }).catch(e => console.warn(e));
+      } else if (scanner) {
+        try { scanner.clear(); } catch (_) {}
       }
     };
-  }, [onScan, onClose]);
+  }, [onScan, onClose, torchOn]);
 
   return createPortal(
     <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/85 backdrop-blur-md p-4 animate-fade-in">
+      <style>{`
+        #entry-camera-reader {
+          position: relative !important;
+          background: #000 !important;
+        }
+        #entry-camera-reader video {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          border-radius: 1rem !important;
+          filter: ${brightnessBoost ? 'brightness(1.35) contrast(1.15) saturate(1.1)' : 'brightness(1.18) contrast(1.08) saturate(1.05)'} !important;
+          transition: filter 0.25s ease !important;
+        }
+        #entry-camera-reader #qr-shaded-region {
+          opacity: 0.28 !important;
+          border-color: rgba(200, 131, 74, 0.7) !important;
+        }
+        #entry-camera-reader canvas {
+          border-radius: 1rem !important;
+        }
+        @keyframes scanBeamAnim {
+          0% { top: 18%; opacity: 0.7; }
+          50% { top: 80%; opacity: 1; }
+          100% { top: 18%; opacity: 0.7; }
+        }
+        .scanner-beam-line {
+          animation: scanBeamAnim 2.2s ease-in-out infinite;
+        }
+      `}</style>
+
       <div className="bg-white rounded-3xl p-5 max-w-sm w-full space-y-4 text-center relative shadow-2xl border-2 border-[#c8834a]">
         <div className="flex items-center justify-between border-b pb-3 border-slate-100">
           <h3 className="font-extrabold text-sm text-[#2d1f0e] flex items-center gap-2">
@@ -150,11 +227,48 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
             </button>
           </div>
         ) : (
-          <div id="entry-camera-reader" className="w-full h-64 rounded-2xl overflow-hidden border-2 border-[#c8834a]/30 bg-black shadow-inner" />
+          <div className="relative w-full h-72 rounded-2xl overflow-hidden border-2 border-[#c8834a]/40 bg-black shadow-inner">
+            <div id="entry-camera-reader" className="w-full h-full" />
+            <div className="absolute inset-x-4 pointer-events-none z-20 h-0.5 bg-gradient-to-r from-transparent via-[#e8a06a] to-transparent shadow-[0_0_12px_#e8a06a] scanner-beam-line" />
+          </div>
+        )}
+
+        {/* Camera Enhancement Controls: Flashlight & Brightness Boost */}
+        {!cameraError && (
+          <div className="flex items-center justify-center gap-2 pt-0.5">
+            {torchAvailable && (
+              <button
+                type="button"
+                onClick={handleToggleTorch}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
+                  torchOn
+                    ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-300'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+                title="Toggle Mobile Flashlight / Torch"
+              >
+                {torchOn ? <ZapOff className="w-3.5 h-3.5 text-amber-900" /> : <Zap className="w-3.5 h-3.5 text-amber-600" />}
+                <span>{torchOn ? 'Torch ON' : 'Torch'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleToggleBrightness}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
+                brightnessBoost
+                  ? 'bg-[#c8834a] text-white ring-2 ring-amber-300'
+                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+              }`}
+              title="Toggle High Brightness & Contrast Boost for Dim Environments"
+            >
+              <Sun className={`w-3.5 h-3.5 ${brightnessBoost ? 'text-white' : 'text-amber-600'}`} />
+              <span>{brightnessBoost ? 'Bright Mode ON' : 'Bright Mode'}</span>
+            </button>
+          </div>
         )}
 
         <p className="text-xs text-slate-500 font-bold">
-          Point camera at Barcode / QR Code
+          Point camera directly at Barcode / QR Code
         </p>
 
         <button

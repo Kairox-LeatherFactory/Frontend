@@ -13,6 +13,7 @@ import {
   apiGrowDrawerPool,
   apiAllocateWaitingDrawers,
 } from '@/lib/api';
+import { StyleAccessoriesPanel } from '../entry/AccessoriesSpec';
 import {
   Search, Lock, Loader2, Package, CheckCircle2, XCircle, AlertTriangle,
   Trash2, Save, Rocket, Ban, Boxes, RefreshCw, X, Barcode as BarcodeIcon, ArrowLeft,
@@ -451,6 +452,33 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
                         onDeleted={() => loadBreakdown(activeOrderNumber)}
                       />
                     ))}
+
+                    <StyleAccessoriesPanel
+                      styleId={style.style_id}
+                      canEdit={canRelease && isDraft && style.editable !== false}
+                      token={token}
+                      showToast={showToast}
+                    />
+
+                    {/* Total Piece Count Summary at bottom of Style details */}
+                    <div className="mt-3 pt-3 border-t border-slate-200/80 flex items-center justify-between px-4 py-3 rounded-xl bg-gradient-to-r from-[#faf6f0] to-[#fdfbf7] border border-[#c8834a]/25 shadow-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-[#4a3a2a]">
+                          {style.style_name || style.style_code} Total
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-[#c8834a]/10 text-[#a86022]">
+                          {(style.skus || []).length} SKUs
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                          Total Pieces:
+                        </span>
+                        <span className="font-mono font-black text-sm px-3 py-1 rounded-lg bg-white border border-[#c8834a]/30 shadow-sm" style={{ color: '#a86022' }}>
+                          {(style.skus || []).reduce((sum, s) => sum + (Number(s.qty_ordered) || 0), 0) || style.qty_ordered || 0} pcs
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 )}
               </div>
@@ -541,7 +569,14 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
                   <p className="text-xs font-black text-amber-800 mb-1">{releaseResult.rejected.length} style(s) rejected</p>
                   {releaseResult.rejected.map((r, i) => (
-                    <p key={i} className="text-[11px] text-amber-700">{r.style_code}: {r.reason}</p>
+                    <div key={i} className="text-[11px] text-amber-700 mb-1 last:mb-0">
+                      <p className="font-bold">{r.style_code}: {r.reason}</p>
+                      {r.blockers?.length > 0 && (
+                        <ul className="list-disc list-inside pl-1 mt-0.5 space-y-0.5">
+                          {r.blockers.map((b, j) => <li key={j}>{b}</li>)}
+                        </ul>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}

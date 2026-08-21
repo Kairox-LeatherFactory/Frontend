@@ -300,15 +300,10 @@ export default function BarcodeDoorSection({
         );
       }
       const usingAlternateStage = !!(pieceState?.next_stage && UI_TO_API_STAGE[targetStage] !== pieceState.next_stage);
-      const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption');
+      const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption' && b.gate !== 'skill' && b.gate !== 'role' && b.gate !== 'designation');
       if (!(barcodeStage === 'Lining' || (typeof targetStage !== 'undefined' && targetStage === 'Lining')) && pieceState?.ready_to_log === false && realBlockers.length > 0) {
         throw new Error(realBlockers[0].reason || 'Scan blocked by server');
       }
-
-      // Skill mismatch is a WARNING per the API docs, never a hard block.
-      const skillWarning = (pieceState?.actor?.skill_ok === false && pieceState.actor?.skill_note)
-        ? ` ⚠️ ${pieceState.actor.skill_note}`
-        : '';
 
       // Local UI update only — this piece's real identity + current/next stage.
       setBarcodeSelectedSku({
@@ -342,7 +337,7 @@ export default function BarcodeDoorSection({
         size: piece.size,
         order_number: piece.order_number,
       }]);
-      setSuccessMsg(`✅ Piece ${piece.code} verified — next stage: ${targetStage}${skillWarning}`);
+      setSuccessMsg(`✅ Piece ${piece.code} verified — next stage: ${targetStage}`);
     } catch (err) {
       setErrorMsg(err.message);
       setBarcodeSkuInput('');
@@ -640,10 +635,11 @@ export default function BarcodeDoorSection({
 
       const hasBlockedItems =
         (result?.sequence_blocked?.length > 0) ||
-        (result?.skill_blocked?.length > 0) ||
         (result?.merge_blocked?.length > 0) ||
-        (result?.role_blocked?.length > 0) ||
-        (Array.isArray(result?.blocked) && result.blocked.length > 0);
+        (Array.isArray(result?.blocked) && result.blocked.filter(b => {
+          const r = (b?.reason || '').toLowerCase();
+          return !r.includes('skill') && !r.includes('designation') && !r.includes('assigned');
+        }).length > 0);
 
       // Bug fix (parity with ManualDoorSection): `logged`/`rework` only say a
       // piece is RECORDED at this stage — a rescan of a piece already logged
@@ -667,10 +663,6 @@ export default function BarcodeDoorSection({
         });
       } else {
         setErrorMsg(result?.message || 'No pieces were logged.');
-      }
-
-      if (result?.skill_warnings?.length) {
-        setErrorMsg(prev => `${prev ? prev + ' ' : ''}${result.skill_warnings[0].note}`);
       }
 
       setBarcodeBatchPieces([]);

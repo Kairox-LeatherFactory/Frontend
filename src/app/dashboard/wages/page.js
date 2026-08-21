@@ -79,7 +79,7 @@ export default function PieceRatesAndWages() {
           <ComputationView token={token} />
         </div>
         <div className={`transition-all duration-500 ${activeTab === 'ledger' ? 'opacity-100 translate-y-0 relative' : 'opacity-0 translate-y-4 absolute inset-x-0 pointer-events-none'}`}>
-          <LedgerView token={token} />
+          <LedgerView token={token} isActive={activeTab === 'ledger'} />
         </div>
       </div>
     </div>
@@ -492,6 +492,7 @@ function OrdersStylesView({ token }) {
                         newRates[idx].rate = e.target.value;
                         setRates(newRates);
                       }}
+                      onWheel={(e) => e.target.blur()}
                       placeholder="0.00"
                     />
                   </div>
@@ -1385,9 +1386,10 @@ function ComputationView({ token }) {
 }
 
 // ─── 3. LEDGER — searchable, latest-computed-first ───────────────────────────
-function LedgerView({ token }) {
+function LedgerView({ token, isActive }) {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
   const [styleSearch, setStyleSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -1409,8 +1411,11 @@ function LedgerView({ token }) {
   const [pieceFilterStage, setPieceFilterStage] = useState('');
   const [pieceFilterEmployee, setPieceFilterEmployee] = useState('');
 
-  const loadLedger = () => {
-    setLoading(true);
+  // `background` skips the full-page spinner so the auto-refresh-on-tab-switch
+  // below doesn't flash the whole list to a loading state — only the manual
+  // Refresh button and the initial mount show that.
+  const loadLedger = (background = false) => {
+    if (background) setIsRefreshing(true); else setLoading(true);
     apiGetWageLedger(token, {
       orderNumber: orderSearch || undefined,
       styleCode: styleSearch || undefined,
@@ -1421,7 +1426,7 @@ function LedgerView({ token }) {
     })
       .then((data) => setRuns(Array.isArray(data?.items) ? data.items : []))
       .catch(() => setRuns([]))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setIsRefreshing(false); });
   };
 
   useEffect(() => {
@@ -1436,6 +1441,17 @@ function LedgerView({ token }) {
       .finally(() => setStyleOptionsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // Ledger stays mounted (just hidden) when another Payroll tab is active, so
+  // a run computed while on Run Engine never shows up here until this fires —
+  // re-pull the list every time the operator switches back into this tab.
+  const isFirstActivate = useRef(true);
+  useEffect(() => {
+    if (!isActive) return;
+    if (isFirstActivate.current) { isFirstActivate.current = false; return; }
+    loadLedger(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   // Group latest-first ledger rows by scope (order / style / whole
   // factory) for the "order card -> date -> style" nesting the spec asks
@@ -1598,8 +1614,17 @@ function LedgerView({ token }) {
               { value: 'closed', label: 'Frozen' },
             ]}
           />
-          <button onClick={loadLedger} className="h-12 px-4 rounded-xl font-black text-xs uppercase text-white shrink-0" style={{ background: '#c8834a' }}>
+          <button onClick={() => loadLedger()} className="h-12 px-4 rounded-xl font-black text-xs uppercase text-white shrink-0" style={{ background: '#c8834a' }}>
             <Search className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => loadLedger(true)}
+            disabled={isRefreshing}
+            title="Refresh ledger"
+            className="h-12 px-4 rounded-xl font-black text-xs uppercase shrink-0 bg-white border disabled:opacity-50"
+            style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>

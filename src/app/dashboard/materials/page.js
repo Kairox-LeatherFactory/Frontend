@@ -19,7 +19,7 @@ import {
 import {
   Package, Search, Plus, Loader2, CheckCircle2, XCircle, AlertTriangle,
   ChevronRight, X, Truck, Pencil, Trash2, PackagePlus, Printer,
-  Lock, ArrowUpRight, ArrowDownRight, Boxes, ChevronDown,
+  Lock, ArrowUpRight, ArrowDownRight, Boxes, ChevronDown, Check,
 } from 'lucide-react';
 
 const CATEGORY_SUBTYPES = {
@@ -117,6 +117,201 @@ function ScreenSafeSelect({ value, options, onChange, placeholder, className }) 
   );
 }
 
+// Selectable Filter Combobox — a rich selectable dropdown and searchable filter
+// populated with live data on file (articles, colours, thicknesses, sizes, lots).
+// Supports one-click selection from dropdown, search filtering, clear button (X),
+// and typing custom values.
+function SelectableFilterCombobox({
+  value,
+  onChange,
+  options = [],
+  placeholder = 'Select or type…',
+  className = '',
+  onSelectLot,
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) {
+        setOpen(false);
+        setSearch('');
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const q = search.toLowerCase().trim();
+  const filtered = useMemo(() => {
+    if (!q) return options;
+    return options.filter((opt) => {
+      const text = typeof opt === 'string' ? opt : `${opt.label || ''} ${opt.value || ''} ${opt.sub || ''}`;
+      return text.toLowerCase().includes(q);
+    });
+  }, [options, q]);
+
+  return (
+    <div className="relative min-w-[140px] flex-1" ref={ref}>
+      <div className="relative flex items-center">
+        <input
+          value={value || ''}
+          onChange={(e) => {
+            onChange(e.target.value);
+            setSearch(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => {
+            setSearch('');
+            setOpen(true);
+          }}
+          placeholder={placeholder}
+          autoComplete="off"
+          className={`w-full h-9 pl-3 pr-14 bg-slate-50 border rounded-lg text-xs font-bold outline-none transition-colors focus:border-[#c8834a] focus:bg-white ${className}`}
+          style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+        />
+        <div className="absolute right-1 flex items-center gap-0.5">
+          {value ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+                setSearch('');
+              }}
+              className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 cursor-pointer"
+              title="Clear"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="p-1 rounded-md text-slate-400 hover:text-[#c8834a] cursor-pointer"
+            tabIndex={-1}
+          >
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-150 ${open ? 'rotate-180 text-[#c8834a]' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div
+          className="absolute left-0 right-0 z-[100] mt-1 max-h-64 overflow-y-auto rounded-xl border bg-white shadow-xl py-1 divide-y divide-slate-100 min-w-[190px]"
+          style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+        >
+          {filtered.length > 0 ? (
+            filtered.map((opt, idx) => {
+              const val = typeof opt === 'string' ? opt : opt.value;
+              const lbl = typeof opt === 'string' ? opt : (opt.label || opt.value);
+              const sub = typeof opt === 'object' ? opt.sub : null;
+              const isSelected = value === val;
+              return (
+                <button
+                  key={`${val}-${idx}`}
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => {
+                    onChange(val);
+                    if (onSelectLot && opt.lot) onSelectLot(opt.lot);
+                    setOpen(false);
+                    setSearch('');
+                  }}
+                  className={`w-full text-left px-3 py-2 text-xs font-bold transition-colors cursor-pointer flex items-center justify-between gap-2 hover:bg-[#faf6f0] ${
+                    isSelected ? 'text-[#c8834a] bg-[#fff3e8]' : 'text-slate-700'
+                  }`}
+                >
+                  <div className="min-w-0 flex-1 truncate">
+                    <span className="block truncate">{lbl}</span>
+                    {sub && <span className="block text-[10px] font-medium text-slate-400 truncate">{sub}</span>}
+                  </div>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />}
+                </button>
+              );
+            })
+          ) : (
+            <div className="px-3 py-2 text-[11px] font-bold text-slate-400 text-center">
+              {q ? `Use custom: "${q}"` : 'No items on file'}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Strict lot picker — must resolve to a real existing lot (Receiving posts
+// against a specific lot_id, unlike Article/Colour above which can
+// legitimately be brand new). Typing filters the list by barcode / article /
+// colour / thickness / size; only clicking a listed row actually selects one.
+function LotPickerCombobox({ value, lots, selectedLabel, onSelect, placeholder }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = lots.find((l) => l.lot_id === value);
+  const q = query.toLowerCase().trim();
+  const filtered = !q ? lots : lots.filter((l) =>
+    `${l.barcode || ''} ${l.article || ''} ${l.colour || ''} ${l.thickness || ''} ${l.size || ''}`.toLowerCase().includes(q)
+  );
+  const closedLabel = selected
+    ? `${selected.barcode} — ${selected.article} · ${selected.colour}`
+    : (value ? (selectedLabel || value) : null);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full h-9 px-3 bg-white border rounded-lg text-xs font-bold outline-none flex items-center justify-between gap-2 text-left cursor-pointer"
+        style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+      >
+        <span className={`truncate ${closedLabel ? '' : 'text-slate-400'}`}>{closedLabel || placeholder}</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 z-50 mt-1 rounded-xl border bg-white shadow-lg p-2 space-y-1" style={{ borderColor: '#c8834a' }}>
+          <input
+            autoFocus
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search barcode, article, colour…"
+            className="w-full h-8 px-2 bg-[#faf6f0] border rounded-lg text-xs font-bold outline-none"
+            style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+          />
+          <div className="max-h-56 overflow-y-auto space-y-0.5">
+            {filtered.length === 0 && <div className="p-2 text-center text-[11px] font-bold text-slate-400">No lots match.</div>}
+            {filtered.slice(0, 100).map((l) => (
+              <button
+                key={l.lot_id}
+                type="button"
+                onClick={() => { onSelect(l); setOpen(false); setQuery(''); }}
+                className={`w-full p-2 text-left rounded-lg text-xs cursor-pointer transition-colors ${value === l.lot_id ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+              >
+                <div className="font-mono font-black">{l.barcode}</div>
+                <div className={`text-[10px] font-bold ${value === l.lot_id ? 'text-amber-100' : 'text-slate-400'}`}>
+                  {l.article} · {l.colour}{l.thickness ? ` · ${l.thickness}` : ''}{l.size ? ` · ${l.size}` : ''} — {l.available} {l.uom} avail
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CategoryPicker({ category, subtype, onCategory, onSubtype, subtypeRequired }) {
   const subs = CATEGORY_SUBTYPES[category] || [];
   return (
@@ -159,6 +354,7 @@ function StockHubScreen({ token, showToast, canOrder, onOpenOrder, canEdit, canA
   const [required, setRequired] = useState('');
   const [loading, setLoading] = useState(false);
   const [lots, setLots] = useState([]);
+  const [availableLots, setAvailableLots] = useState([]);
   const [detailLot, setDetailLot] = useState(null);
 
   const openDetail = async (lotId) => {
@@ -172,6 +368,51 @@ function StockHubScreen({ token, showToast, canOrder, onOpenOrder, canEdit, canA
     if (!category) return;
     apiGetMaterialSpec(token, { category, subtype }).then(setSpec).catch(() => setSpec(null));
   }, [token, category, subtype]);
+
+  // Load all available lots for this category/subtype to feed filter dropdowns
+  useEffect(() => {
+    if (!category) { setAvailableLots([]); return; }
+    apiGetMaterialLots(token, { category, subtype: subtype || undefined })
+      .then((res) => setAvailableLots(res?.lots || []))
+      .catch(() => setAvailableLots([]));
+  }, [token, category, subtype]);
+
+  const getFilterOptions = (field) => {
+    if (!availableLots.length) return [];
+    if (field === 'article') {
+      const map = new Map();
+      availableLots.forEach((l) => {
+        if (!l.article) return;
+        if (!map.has(l.article)) {
+          map.set(l.article, { count: 0, avail: 0, uom: l.uom || '' });
+        }
+        const item = map.get(l.article);
+        item.count += 1;
+        item.avail += (Number(l.available) || 0);
+      });
+      return Array.from(map.entries()).map(([art, info]) => ({
+        value: art,
+        label: art,
+        sub: `${info.count} lot(s) · ${info.avail.toFixed(1)} ${info.uom} avail`,
+      }));
+    }
+    if (field === 'colour') {
+      const filtered = filters.article
+        ? availableLots.filter((l) => l.article?.toLowerCase() === filters.article.toLowerCase())
+        : availableLots;
+      const set = new Set(filtered.map((l) => l.colour).filter(Boolean));
+      return Array.from(set).sort().map((c) => ({ value: c, label: c }));
+    }
+    if (field === 'thickness') {
+      const set = new Set(availableLots.map((l) => l.thickness).filter(Boolean));
+      return Array.from(set).sort().map((t) => ({ value: t, label: t }));
+    }
+    if (field === 'size') {
+      const set = new Set(availableLots.map((l) => l.size).filter(Boolean));
+      return Array.from(set).sort().map((s) => ({ value: s, label: s }));
+    }
+    return [];
+  };
 
   const runCheck = useCallback(async () => {
     if (!category) return;
@@ -200,14 +441,25 @@ function StockHubScreen({ token, showToast, canOrder, onOpenOrder, canEdit, canA
   return (
     <div className="space-y-5">
       <div className="bg-white p-5 rounded-3xl shadow-sm border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-        <CategoryPicker category={category} subtype={subtype} onCategory={(c) => { setCategory(c); setSubtype(''); }} onSubtype={setSubtype} subtypeRequired={category === 'ACCESSORY'} />
+        <CategoryPicker
+          category={category}
+          subtype={subtype}
+          onCategory={(c) => { setCategory(c); setSubtype(''); setFilters({ article: '', colour: '', thickness: '', size: '' }); }}
+          onSubtype={(s) => { setSubtype(s); setFilters({ article: '', colour: '', thickness: '', size: '' }); }}
+          subtypeRequired={category === 'ACCESSORY'}
+        />
         {spec && spec.filters.length > 0 && (
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {spec.filters.map((f) => (
-              <input key={f} placeholder={f[0].toUpperCase() + f.slice(1)} value={filters[f] || ''} onChange={(e) => setFilters((p) => ({ ...p, [f]: e.target.value }))}
-                className="h-9 px-3 bg-slate-50 border rounded-lg text-xs font-bold outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
+              <SelectableFilterCombobox
+                key={f}
+                placeholder={`Filter ${f[0].toUpperCase() + f.slice(1)}…`}
+                value={filters[f] || ''}
+                onChange={(val) => setFilters((p) => ({ ...p, [f]: val }))}
+                options={getFilterOptions(f)}
+              />
             ))}
-            <button onClick={runCheck} className="h-9 px-4 rounded-lg font-black text-[10px] uppercase text-white flex items-center gap-1.5" style={{ background: '#c8834a' }}>
+            <button onClick={runCheck} className="h-9 px-4 rounded-lg font-black text-[10px] uppercase text-white flex items-center gap-1.5 shrink-0" style={{ background: '#c8834a' }}>
               {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Check
             </button>
           </div>
@@ -453,6 +705,7 @@ function LotListScreen({ token, showToast, canEdit, canAdjust, onReceive }) {
   const [spec, setSpec] = useState(null);
   const [filters, setFilters] = useState({ article: '', colour: '', thickness: '', size: '' });
   const [lots, setLots] = useState([]);
+  const [availableLots, setAvailableLots] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
 
@@ -460,6 +713,37 @@ function LotListScreen({ token, showToast, canEdit, canAdjust, onReceive }) {
     if (!category) return;
     apiGetMaterialSpec(token, { category, subtype }).then(setSpec).catch(() => setSpec(null));
   }, [token, category, subtype]);
+
+  useEffect(() => {
+    if (!category) { setAvailableLots([]); return; }
+    apiGetMaterialLots(token, { category, subtype: subtype || undefined })
+      .then((res) => setAvailableLots(res?.lots || []))
+      .catch(() => setAvailableLots([]));
+  }, [token, category, subtype]);
+
+  const getFilterOptions = (field) => {
+    if (!availableLots.length) return [];
+    if (field === 'article') {
+      const set = new Set(availableLots.map((l) => l.article).filter(Boolean));
+      return Array.from(set).sort().map((a) => ({ value: a, label: a }));
+    }
+    if (field === 'colour') {
+      const filtered = filters.article
+        ? availableLots.filter((l) => l.article?.toLowerCase() === filters.article.toLowerCase())
+        : availableLots;
+      const set = new Set(filtered.map((l) => l.colour).filter(Boolean));
+      return Array.from(set).sort().map((c) => ({ value: c, label: c }));
+    }
+    if (field === 'thickness') {
+      const set = new Set(availableLots.map((l) => l.thickness).filter(Boolean));
+      return Array.from(set).sort().map((t) => ({ value: t, label: t }));
+    }
+    if (field === 'size') {
+      const set = new Set(availableLots.map((l) => l.size).filter(Boolean));
+      return Array.from(set).sort().map((s) => ({ value: s, label: s }));
+    }
+    return [];
+  };
 
   const load = useCallback(async () => {
     if (!category) return;
@@ -489,14 +773,14 @@ function LotListScreen({ token, showToast, canEdit, canAdjust, onReceive }) {
           everything", Stock Hub is "check one spec". */}
       <div className="flex flex-wrap gap-2">
         {['LEATHER', 'LINING', 'ACCESSORY'].map((c) => (
-          <button key={c} onClick={() => { setCategory(c); setSubtype(''); }}
+          <button key={c} onClick={() => { setCategory(c); setSubtype(''); setFilters({ article: '', colour: '', thickness: '', size: '' }); }}
             className={`h-9 px-4 rounded-full font-black text-xs uppercase transition-all ${category === c ? 'text-white shadow-sm' : 'text-slate-500 bg-white border'}`}
             style={category === c ? { background: '#c8834a' } : { borderColor: 'rgba(200,131,74,0.2)' }}>
             {c}
           </button>
         ))}
         {(CATEGORY_SUBTYPES[category] || []).map((s) => (
-          <button key={s} onClick={() => setSubtype(subtype === s ? '' : s)}
+          <button key={s} onClick={() => { setSubtype(subtype === s ? '' : s); setFilters({ article: '', colour: '', thickness: '', size: '' }); }}
             className={`h-9 px-3 rounded-full font-bold text-[11px] transition-all ${subtype === s ? 'text-white' : 'text-slate-400 bg-slate-50'}`}
             style={subtype === s ? { background: '#a86022' } : {}}>
             {s}
@@ -508,8 +792,14 @@ function LotListScreen({ token, showToast, canEdit, canAdjust, onReceive }) {
         <div className="flex flex-wrap gap-2 items-center bg-slate-50 p-3 rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
           <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1" />
           {spec.filters.map((f) => (
-            <input key={f} placeholder={f[0].toUpperCase() + f.slice(1) + '…'} value={filters[f] || ''} onChange={(e) => setFilters((p) => ({ ...p, [f]: e.target.value }))}
-              className="h-9 px-3 bg-white border rounded-lg text-xs font-bold outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
+            <SelectableFilterCombobox
+              key={f}
+              placeholder={`Filter ${f[0].toUpperCase() + f.slice(1)}…`}
+              value={filters[f] || ''}
+              onChange={(val) => setFilters((p) => ({ ...p, [f]: val }))}
+              options={getFilterOptions(f)}
+              className="bg-white"
+            />
           ))}
           <button onClick={load} className="h-9 px-4 rounded-lg font-black text-[10px] uppercase text-white flex items-center gap-1.5 ml-auto" style={{ background: '#c8834a' }}>
             {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Refine'}
@@ -567,12 +857,66 @@ function AddMaterialScreen({ token, showToast, onDuplicate }) {
   const [supplierName, setSupplierName] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
+  const [availableLots, setAvailableLots] = useState([]);
 
   useEffect(() => {
-    if (!category) { setSpec(null); return; }
-    if (category === 'ACCESSORY' && !subtype) { setSpec(null); return; }
+    if (!category) { setSpec(null); setAvailableLots([]); return; }
+    if (category === 'ACCESSORY' && !subtype) { setSpec(null); setAvailableLots([]); return; }
     apiGetMaterialSpec(token, { category, subtype }).then(setSpec).catch(() => setSpec(null));
+    apiGetMaterialLots(token, { category, subtype: subtype || undefined })
+      .then((res) => setAvailableLots(res?.lots || []))
+      .catch(() => setAvailableLots([]));
   }, [token, category, subtype]);
+
+  // Derive unique article options with lot details
+  const articleOptions = useMemo(() => {
+    if (!availableLots.length) return [];
+    const map = new Map();
+    availableLots.forEach((l) => {
+      if (!l.article) return;
+      if (!map.has(l.article)) {
+        map.set(l.article, { count: 0, avail: 0, uom: l.uom || '', colours: new Set(), lot: l });
+      }
+      const item = map.get(l.article);
+      item.count += 1;
+      item.avail += (Number(l.available) || 0);
+      if (l.colour) item.colours.add(l.colour);
+    });
+    return Array.from(map.entries()).map(([art, info]) => ({
+      value: art,
+      label: art,
+      sub: `${info.count} lot(s) · ${info.avail.toFixed(1)} ${info.uom} · Colours: ${Array.from(info.colours).slice(0, 3).join(', ')}`,
+      lot: info.lot,
+    }));
+  }, [availableLots]);
+
+  // Derive unique colour options for selected article
+  const colourOptions = useMemo(() => {
+    const filtered = article
+      ? availableLots.filter((l) => l.article?.toLowerCase() === article.toLowerCase())
+      : availableLots;
+    const set = new Set(filtered.map((l) => l.colour).filter(Boolean));
+    return Array.from(set).sort().map((c) => ({ value: c, label: c }));
+  }, [availableLots, article]);
+
+  // Derive attribute options (thickness, size)
+  const getAttrOptions = (attrKey) => {
+    const set = new Set(availableLots.map((l) => l[attrKey] || l.attributes?.[attrKey]).filter(Boolean));
+    return Array.from(set).sort().map((v) => ({ value: v, label: String(v) }));
+  };
+
+  // Quick Lot auto-population
+  const handleQuickPickLot = (lot) => {
+    if (!lot) return;
+    if (lot.article) setArticle(lot.article);
+    if (lot.colour) setColour(lot.colour);
+    const newAttrs = { ...attrs };
+    if (lot.thickness) newAttrs.thickness = lot.thickness;
+    if (lot.size) newAttrs.size = lot.size;
+    setAttrs(newAttrs);
+    if (lot.supplier_id) setSupplierId(lot.supplier_id);
+    if (lot.supplier_name) setSupplierName(lot.supplier_name);
+  };
 
   const canSubmit = spec && spec.required_to_add.length >= 0 && article.trim() && colour.trim()
     && spec.required_to_add.every((k) => attrs[k] !== undefined && attrs[k] !== '');
@@ -583,18 +927,12 @@ function AddMaterialScreen({ token, showToast, onDuplicate }) {
       const res = await apiCreateMaterialLot(token, {
         category, subtype: subtype || undefined, article: article.trim(), colour: colour.trim(),
         attributes: attrs, supplier_id: supplierId || undefined,
-        // supplier_name isn't in the API guide yet — the backend team said
-        // they'll add it later. Sent alongside supplier_id so it's captured
-        // now; harmless extra field until the backend recognizes it.
         supplier_name: supplierName || undefined,
       });
       setResult(res);
     } catch (e) {
       showToast(errMsg(e), 'error');
       if (e.status === 409 && onDuplicate) {
-        // Per the API guide: don't regex the lot_id out of the error
-        // message — re-query with the identical spec filters. One lot per
-        // spec guarantees this returns exactly the colliding row.
         try {
           const params = { category, subtype: subtype || undefined, article: article.trim(), colour: colour.trim(), thickness: attrs.thickness || undefined, size: attrs.size || undefined };
           Object.keys(params).forEach((k) => { if (!params[k]) delete params[k]; });
@@ -602,7 +940,7 @@ function AddMaterialScreen({ token, showToast, onDuplicate }) {
           const existing = res.lots?.[0];
           if (existing) onDuplicate({ lotId: existing.lot_id, article: existing.article });
         } catch {
-          // Lookup itself failed — nothing more we can do than the toast above.
+          // Lookup failed
         }
       }
     } finally { setSubmitting(false); }
@@ -627,43 +965,93 @@ function AddMaterialScreen({ token, showToast, onDuplicate }) {
     <div className="bg-white p-6 rounded-3xl shadow-sm border space-y-5 max-w-xl mx-auto" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
       <div>
         <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Step 1 — Class</div>
-        <CategoryPicker category={category} subtype={subtype} onCategory={(c) => { setCategory(c); setSubtype(''); setAttrs({}); }} onSubtype={(s) => { setSubtype(s); setAttrs({}); }} subtypeRequired={category === 'ACCESSORY'} />
+        <CategoryPicker category={category} subtype={subtype} onCategory={(c) => { setCategory(c); setSubtype(''); setAttrs({}); setArticle(''); setColour(''); }} onSubtype={(s) => { setSubtype(s); setAttrs({}); setArticle(''); setColour(''); }} subtypeRequired={category === 'ACCESSORY'} />
       </div>
 
       {spec && (
-        <div className="space-y-3 pt-4 border-t" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+        <div className="space-y-4 pt-4 border-t" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+          {availableLots.length > 0 && (
+            <div className="p-3 rounded-2xl bg-[#faf6f0] border border-[#c8834a]/25 space-y-1.5">
+              <span className="text-[10px] font-black uppercase tracking-wider text-[#a86022] flex items-center gap-1.5">
+                <Boxes className="w-3.5 h-3.5" /> Quick Autofill from Existing Lot on File
+              </span>
+              <SelectableFilterCombobox
+                placeholder="Choose existing Lot barcode / Material to autofill spec…"
+                value=""
+                onChange={() => {}}
+                onSelectLot={handleQuickPickLot}
+                options={availableLots.map((l) => ({
+                  value: l.lot_id,
+                  label: `${l.barcode} — ${l.article} · ${l.colour}`,
+                  sub: `${l.thickness ? `${l.thickness} · ` : ''}${l.size ? `${l.size} · ` : ''}${l.available} ${l.uom} on hand`,
+                  lot: l,
+                }))}
+                className="bg-white"
+              />
+            </div>
+          )}
+
           <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Step 2 — Fields</div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[10px] font-bold text-slate-400">Article *</label>
-              <input value={article} onChange={(e) => setArticle(e.target.value)} className="w-full h-9 px-3 border rounded-lg text-xs font-bold mt-1" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+              <label className="text-[10px] font-bold text-slate-400">Article / Material Name *</label>
+              <SelectableFilterCombobox
+                value={article}
+                onChange={setArticle}
+                placeholder="Select or type material…"
+                options={articleOptions}
+                onSelectLot={handleQuickPickLot}
+                className="mt-1"
+              />
             </div>
             <div>
               <label className="text-[10px] font-bold text-slate-400">Colour *</label>
-              <input value={colour} onChange={(e) => setColour(e.target.value)} className="w-full h-9 px-3 border rounded-lg text-xs font-bold mt-1" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+              <SelectableFilterCombobox
+                value={colour}
+                onChange={setColour}
+                placeholder="Select or type colour…"
+                options={colourOptions}
+                className="mt-1"
+              />
             </div>
             {spec.required_to_add.map((k) => (
               <div key={k}>
                 <label className="text-[10px] font-bold text-slate-400 capitalize">
                   {k}{k === spec.quantity_field ? ` (${spec.uom}) *` : ' *'}
                 </label>
-                <input type={k === spec.quantity_field ? 'number' : 'text'} value={attrs[k] ?? ''} onChange={(e) => setAttrs((p) => ({ ...p, [k]: e.target.value }))}
-                  className="w-full h-9 px-3 border rounded-lg text-xs font-bold mt-1" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+                {k === spec.quantity_field ? (
+                  <input
+                    type="number"
+                    value={attrs[k] ?? ''}
+                    onChange={(e) => setAttrs((p) => ({ ...p, [k]: e.target.value }))}
+                    placeholder={`Enter ${spec.uom}…`}
+                    className="w-full h-9 px-3 border rounded-lg text-xs font-bold mt-1 bg-slate-50 focus:bg-white outline-none focus:border-[#c8834a]"
+                    style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                  />
+                ) : (
+                  <SelectableFilterCombobox
+                    value={attrs[k] ?? ''}
+                    onChange={(val) => setAttrs((p) => ({ ...p, [k]: val }))}
+                    placeholder={`Select or type ${k}…`}
+                    options={getAttrOptions(k)}
+                    className="mt-1"
+                  />
+                )}
               </div>
             ))}
             <div>
               <label className="text-[10px] font-bold text-slate-400">Supplier ID (optional)</label>
-              <input value={supplierId} onChange={(e) => setSupplierId(e.target.value)} placeholder="leave blank if unknown" className="w-full h-9 px-3 border rounded-lg text-xs font-bold mt-1" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+              <input value={supplierId} onChange={(e) => setSupplierId(e.target.value)} placeholder="leave blank if unknown" className="w-full h-9 px-3 border rounded-lg text-xs font-bold mt-1 bg-slate-50 focus:bg-white outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
             </div>
             <div>
               <label className="text-[10px] font-bold text-slate-400">Supplier Name (optional)</label>
-              <input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="not in the API guide yet — backend adding it later" className="w-full h-9 px-3 border rounded-lg text-xs font-bold mt-1" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+              <input value={supplierName} onChange={(e) => setSupplierName(e.target.value)} placeholder="e.g. Kanpur Leather Works" className="w-full h-9 px-3 border rounded-lg text-xs font-bold mt-1 bg-slate-50 focus:bg-white outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
             </div>
           </div>
           {spec.required_to_add.length === 0 && (
             <p className="text-[11px] font-bold text-amber-600">This category/subtype combination isn&apos;t configured yet — submit is blocked.</p>
           )}
-          <button onClick={handleSubmit} disabled={!canSubmit || submitting} className="w-full h-11 rounded-xl font-black text-xs uppercase text-white disabled:opacity-40 flex items-center justify-center gap-2" style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
+          <button onClick={handleSubmit} disabled={!canSubmit || submitting} className="w-full h-11 rounded-xl font-black text-xs uppercase text-white disabled:opacity-40 flex items-center justify-center gap-2 cursor-pointer shadow-md" style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
             {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <PackagePlus className="w-4 h-4" />} Create Lot
           </button>
         </div>

@@ -169,7 +169,7 @@ function EmployeeIdCardModal({ employee, onClose }) {
         <div className="p-6 bg-[#faf6f0] flex flex-col items-center gap-4 text-center">
           <div className="w-full bg-white border-2 border-[#c8834a]/30 rounded-2xl p-5 shadow-lg space-y-3 relative overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="text-[10px] font-black uppercase text-[#9a7a5a] tracking-widest">KairoX Leather ERP</span>
+              <span className="text-[10px] font-black uppercase text-[#9a7a5a] tracking-widest">PTE Leather ERP</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">ACTIVE</span>
             </div>
             <div className="space-y-0.5">

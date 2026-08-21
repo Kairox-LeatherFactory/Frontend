@@ -155,7 +155,7 @@ function Preloader({ onComplete }) {
           }}
           transition={{ duration: 0.8, ease: 'easeInOut' }}
         >
-          KAIROX
+          PTE
         </motion.span>
       </motion.h1>
       <div className="w-48 h-[1px] bg-[#222] relative overflow-hidden">
@@ -264,14 +264,14 @@ export default function Home() {
 
       <div className="min-h-screen bg-[#050505] text-white overflow-x-hidden overflow-y-auto relative selection:bg-[#c8b09b]/30">
 
-        {/* KAIROX wordmark top-left */}
+        {/* PTE wordmark top-left */}
         <motion.div
           className="absolute top-6 left-6 md:top-10 md:left-12 z-40"
           initial={{ opacity: 0 }}
           animate={loadingComplete && !activePanel ? { opacity: 1 } : { opacity: 0 }}
           transition={{ duration: 1 }}
         >
-          <span className="text-xl tracking-[0.3em]"><AnimatedGoldText text="KAIROX" /></span>
+          <span className="text-xl tracking-[0.3em] font-black"><AnimatedGoldText text="PTE" /></span>
           <p className="text-[9px] tracking-[0.2em] uppercase mt-1 text-white/40 font-sans">
             Intelligence
           </p>

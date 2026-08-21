@@ -395,7 +395,7 @@ export default function DashboardLayout({ children }) {
         <div className="flex items-center gap-2">
           <Factory className="w-7 h-7" style={{ color: '#c8834a' }} />
           <div>
-            <span className="text-xl font-black tracking-widest text-white">KAIROX</span>
+            <span className="text-xl font-black tracking-widest text-white">PTE</span>
             <p className="text-[10px] font-bold tracking-wider uppercase" style={{ color: '#c8834a' }}>Leather Intelligence</p>
           </div>
         </div>
@@ -440,7 +440,7 @@ export default function DashboardLayout({ children }) {
 
       {/* Sidebar Footer */}
       <div className="p-6 border-t text-xs text-center" style={{ borderColor: 'rgba(200,131,74,0.15)', color: '#a88a6a' }}>
-        <p className="font-bold">Kairox Leather Platform</p>
+        <p className="font-bold">PTE Leather Platform</p>
         <p className="mt-1 opacity-70">Touch-Optimized Operations</p>
       </div>
     </>

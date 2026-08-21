@@ -20,10 +20,10 @@ export async function POST(req) {
     });
 
     const mailOptions = {
-      from: `"Kairox Procurement" <${process.env.SMTP_EMAIL}>`,
+      from: `"PTE Procurement" <${process.env.SMTP_EMAIL}>`,
       to: toEmail || process.env.SMTP_EMAIL,
       subject: subject || `Urgent: Stock Shortage Alert`,
-      text: text || `Hello,\n\nWe have detected a stock shortage.\n\nRegards,\nKairox Procurement Team`,
+      text: text || `Hello,\n\nWe have detected a stock shortage.\n\nRegards,\nPTE Procurement Team`,
     };
 
     const info = await transporter.sendMail(mailOptions);
