@@ -599,12 +599,18 @@ function OrdersExplorer() {
         </div>
         {orderGroups.map((group) => {
           const fetchedTree = orderTrees[group.rawId];
+          const isReleasedOnly = (s) => !s.production_status || s.production_status === 'RELEASED';
           // Analytics tracks real production — a style still sitting DRAFT
           // (never released) has no minted pieces to explore, so only
-          // released styles belong in this list.
-          const displayStyles = (fetchedTree?.styles || group.styles || []).filter(
-            (s) => !s.production_status || s.production_status === 'RELEASED'
-          );
+          // released styles belong in this list. While the real per-order
+          // tree is still loading, group.styles (from the lighter overview
+          // fetch) doesn't carry production_status at all, so every style
+          // passes the filter and the full unreleased list flashes for a
+          // moment before narrowing once fetchedTree arrives — show nothing
+          // during that window instead of the misleading full list.
+          const displayStyles = fetchedTree
+            ? (fetchedTree.styles || []).filter(isReleasedOnly)
+            : loadingTree[group.id] ? [] : (group.styles || []).filter(isReleasedOnly);
 
           return (
             <div key={group.id} className="flex flex-col gap-0.5">
