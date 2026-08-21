@@ -14,7 +14,7 @@ import {
   apiGeneratePOs,
   apiSubmitPO,
   apiApprovePO,
-  apiSendPO
+  mockApiSendPO as apiSendPO
 } from '@/lib/api';
 
 const STATUS_CONFIG = {

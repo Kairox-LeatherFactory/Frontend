@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiOpenSubmission, apiUploadSlot, apiGetSubmission, apiSendPO } from '@/lib/api';
+import { apiOpenSubmission, apiUploadSlot, apiGetSubmission, mockApiSendPO as apiSendPO } from '@/lib/api';
 
 function DropZone({ label, accept, icon: Icon, file, onFile, onClear, description, disabled }) {
   const inputRef = useRef(null);

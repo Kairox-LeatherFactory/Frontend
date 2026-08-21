@@ -896,6 +896,18 @@ export async function apiSendPO(token, poId) {
   return res.json();
 }
 
+/**
+ * MOCK — the whole Procurement module runs on mock data (submissions, BOM,
+ * inventory, POs are all hardcoded), so sending a PO to a real backend
+ * endpoint that doesn't have that fake PO id fails. Fakes the same
+ * shape/delay as a real send without touching the network — swap the two
+ * call sites back to apiSendPO once Procurement is wired to a real backend.
+ */
+export async function mockApiSendPO(token, poId) {
+  await new Promise((r) => setTimeout(r, 600));
+  return { id: poId, status: 'sent', sent_at: new Date().toISOString() };
+}
+
 
 
 // ─── WAGES API ENDPOINTS ──────────────────────────────────────────────────────
