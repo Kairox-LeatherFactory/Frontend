@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import {
@@ -19,7 +19,7 @@ import {
 import {
   Package, Search, Plus, Loader2, CheckCircle2, XCircle, AlertTriangle,
   ChevronRight, X, Truck, Pencil, Trash2, PackagePlus, Printer,
-  Lock, ArrowUpRight, ArrowDownRight, Boxes,
+  Lock, ArrowUpRight, ArrowDownRight, Boxes, ChevronDown,
 } from 'lucide-react';
 
 const CATEGORY_SUBTYPES = {
@@ -69,21 +69,81 @@ function Tile({ label, value, uom, primary }) {
   );
 }
 
+// Native <select> option popups size themselves to their widest option text,
+// independent of the closed control's own (responsive) width, and can render
+// past the viewport edge on a tablet — this is a fully custom dropdown
+// instead: the open panel is pinned left:0/right:0 against its own button,
+// so its width always matches the button's own (already on-screen) width.
+function ScreenSafeSelect({ value, options, onChange, placeholder, className }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${className} flex items-center justify-between gap-2 text-left cursor-pointer`}
+        style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+      >
+        <span className={`truncate ${selected ? '' : 'text-slate-400'}`}>{selected ? selected.label : placeholder}</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border bg-white shadow-lg py-1" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+          {options.map((opt, idx) => (
+            <button
+              key={`${opt.value}-${idx}`}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs font-bold truncate cursor-pointer hover:bg-[#faf6f0] ${value === opt.value ? 'text-[#c8834a] bg-[#fff3e8]' : 'text-slate-700'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CategoryPicker({ category, subtype, onCategory, onSubtype, subtypeRequired }) {
   const subs = CATEGORY_SUBTYPES[category] || [];
   return (
     <div className="flex flex-wrap gap-2">
-      <select value={category} onChange={(e) => onCategory(e.target.value)} className="h-10 px-3 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
-        <option value="">Category…</option>
-        <option value="LEATHER">LEATHER</option>
-        <option value="LINING">LINING</option>
-        <option value="ACCESSORY">ACCESSORY</option>
-      </select>
+      <div className="w-36">
+        <ScreenSafeSelect
+          value={category}
+          onChange={onCategory}
+          placeholder="Category…"
+          className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
+          options={[
+            { value: 'LEATHER', label: 'LEATHER' },
+            { value: 'LINING', label: 'LINING' },
+            { value: 'ACCESSORY', label: 'ACCESSORY' },
+          ]}
+        />
+      </div>
       {subs.length > 0 && (
-        <select value={subtype} onChange={(e) => onSubtype(e.target.value)} className="h-10 px-3 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
-          <option value="">{subtypeRequired ? 'Subtype (required)…' : 'Subtype (optional → PLAIN_LINING)…'}</option>
-          {subs.map((s) => <option key={s} value={s}>{s}</option>)}
-        </select>
+        <div className="w-64">
+          <ScreenSafeSelect
+            value={subtype}
+            onChange={onSubtype}
+            placeholder={subtypeRequired ? 'Subtype (required)…' : 'Subtype (optional → PLAIN_LINING)…'}
+            className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
+            options={subs.map((s) => ({ value: s, label: s }))}
+          />
+        </div>
       )}
     </div>
   );

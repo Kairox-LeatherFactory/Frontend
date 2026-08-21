@@ -9,7 +9,7 @@ import {
   apiGetMaterialLots,
 } from '@/lib/api';
 import { Lock, CheckCircle2, Rocket, Scissors, X, Loader2, AlertTriangle, Barcode, Check, PackageCheck, Camera } from 'lucide-react';
-import { manualStages, UI_TO_API_STAGE, API_TO_UI_STAGE, PREREQUISITE_MAP, PIPELINE_STAGE_ORDER, useRoleAccess, CameraScannerModal } from './shared';
+import { manualStages, UI_TO_API_STAGE, API_TO_UI_STAGE, PREREQUISITE_MAP, PIPELINE_STAGE_ORDER, useRoleAccess, CameraScannerModal, WorkerPickerDropdown } from './shared';
 
 // Extracted from src/app/dashboard/entry/page.js (Barcode Gun Scanner door:
 // Cutting/Lining DCM screen + Fusing->Package Export pipeline scan). Props
@@ -799,19 +799,7 @@ export default function BarcodeDoorSection({
               {/* Quick Select Worker Dropdown Fallback */}
               <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-xs text-[#e2d5c3]/70">
                 <span className="shrink-0">Or select active worker:</span>
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) handleVerifyBarcodeWorker(e.target.value);
-                  }}
-                  className="w-full sm:w-auto max-w-full min-w-0 bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
-                >
-                  <option value="" className="bg-[#1c1207] text-white">-- Choose Worker --</option>
-                  {workers.map(w => (
-                    <option key={w.id} value={w.id} className="bg-[#1c1207] text-white">
-                      {w.name} ({w.designation || 'Worker'})
-                    </option>
-                  ))}
-                </select>
+                <WorkerPickerDropdown workers={workers} onSelect={handleVerifyBarcodeWorker} />
               </div>
             </div>
           ) : (

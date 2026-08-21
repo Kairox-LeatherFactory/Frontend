@@ -12,7 +12,7 @@ import {
   apiStoreDrawerScan,
 } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Barcode, Check, Layers, PackageCheck, ChevronRight, ChevronDown, Camera, Send, RefreshCw, X, Loader2 } from 'lucide-react';
-import { CameraScannerModal } from './shared';
+import { CameraScannerModal, WorkerPickerDropdown } from './shared';
 
 // Shared by the list endpoint (GET /drawers, item shape) and the single-drawer
 // endpoints (GET /drawers/{id}, GET /drawers/by-code/{code} — full detail
@@ -838,19 +838,7 @@ export default function StoreHubSection({
                 {/* Quick Select Worker Dropdown Fallback — same as Barcode Scanner page */}
                 <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-xs text-[#e2d5c3]/70">
                   <span className="shrink-0">Or select active worker:</span>
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) handleVerifyBarcodeWorker(e.target.value);
-                    }}
-                    className="w-full sm:w-auto max-w-full min-w-0 bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
-                  >
-                    <option value="" className="bg-[#1c1207] text-white">-- Choose Worker --</option>
-                    {workers.map(w => (
-                      <option key={w.id} value={w.id} className="bg-[#1c1207] text-white">
-                        {w.name} ({w.designation || 'Worker'})
-                      </option>
-                    ))}
-                  </select>
+                  <WorkerPickerDropdown workers={workers} onSelect={handleVerifyBarcodeWorker} />
                 </div>
               </div>
             ) : (

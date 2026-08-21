@@ -208,6 +208,137 @@ function SearchCombobox({ placeholder, value, options, getKey, getLabel, getSub,
   );
 }
 
+// Native <select> option popups size themselves to their widest option text,
+// independent of the closed control's own (responsive) width, and can render
+// past the viewport edge on a tablet. A fully custom dropdown instead: the
+// open panel is pinned left:0/right:0 against its own button, so its width
+// always matches the button's own (already on-screen) width.
+function SimpleSelect({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div className="relative flex-1" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full h-12 px-3 bg-slate-50 font-bold border rounded-xl text-xs outline-none transition-all flex items-center justify-between gap-1 text-left cursor-pointer"
+        style={{ borderColor: 'rgba(200,131,74,0.15)' }}
+      >
+        <span className="truncate" style={{ color: '#2d1f0e' }}>{selected ? selected.label : ''}</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: '#c8834a' }} />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-[calc(100%+6px)] left-0 right-0 bg-white border-2 rounded-2xl shadow-2xl p-1.5 space-y-0.5" style={{ borderColor: '#c8834a' }}>
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full p-2 text-left rounded-lg text-xs font-bold truncate cursor-pointer transition-colors ${value === opt.value ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Same screen-safe custom dropdown idea as SimpleSelect, but portaled to
+// document.body: the Run Detail modal that hosts this select has
+// `overflow-hidden` on its outer card (rounds its corners), which would clip
+// an in-place absolutely-positioned panel — so this one renders on
+// document.body instead, positioned at the button's live screen coordinates.
+function PortalPillSelect({ value, options, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const buttonRef = useRef(null);
+  const panelRef = useRef(null);
+
+  const updateRect = () => {
+    if (!buttonRef.current) return;
+    const r = buttonRef.current.getBoundingClientRect();
+    setRect({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 160) });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    updateRect();
+    window.addEventListener('scroll', updateRect, true);
+    window.addEventListener('resize', updateRect);
+    return () => {
+      window.removeEventListener('scroll', updateRect, true);
+      window.removeEventListener('resize', updateRect);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (buttonRef.current?.contains(e.target)) return;
+      if (panelRef.current?.contains(e.target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a] flex items-center gap-1.5 cursor-pointer max-w-[180px]"
+        style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
+      >
+        <span className="truncate">{selected ? selected.label : placeholder}</span>
+        <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && rect && createPortal(
+        <div
+          ref={panelRef}
+          className="fixed z-[999999] max-h-64 overflow-y-auto rounded-xl border-2 bg-white shadow-2xl p-1.5 space-y-0.5"
+          style={{ top: rect.top, left: rect.left, width: rect.width, borderColor: '#c8834a' }}
+        >
+          <button
+            type="button"
+            onClick={() => { onChange(''); setOpen(false); }}
+            className={`w-full p-2 text-left rounded-lg text-xs font-bold truncate cursor-pointer transition-colors ${value === '' ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+          >
+            {placeholder}
+          </button>
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full p-2 text-left rounded-lg text-xs font-bold truncate cursor-pointer transition-colors ${value === opt.value ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+}
+
 // ─── 1. ORDERS -> STYLES -> RATE EDITOR ──────────────────────────────────────
 function OrdersStylesView({ token }) {
   const [orders, setOrders] = useState([]);
@@ -1458,11 +1589,15 @@ function LedgerView({ token }) {
         <input type="date" placeholder="From" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
         <input type="date" placeholder="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
         <div className="flex gap-2">
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="flex-1 h-12 px-3 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a] cursor-pointer" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-            <option value="">All Status</option>
-            <option value="open">Draft</option>
-            <option value="closed">Frozen</option>
-          </select>
+          <SimpleSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: '', label: 'All Status' },
+              { value: 'open', label: 'Draft' },
+              { value: 'closed', label: 'Frozen' },
+            ]}
+          />
           <button onClick={loadLedger} className="h-12 px-4 rounded-xl font-black text-xs uppercase text-white shrink-0" style={{ background: '#c8834a' }}>
             <Search className="w-4 h-4" />
           </button>
@@ -1651,14 +1786,18 @@ function LedgerView({ token }) {
                   {detailTab === 'pieces' && (
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <select value={pieceFilterStage} onChange={(e) => setPieceFilterStage(e.target.value)} className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
-                          <option value="">All Stages</option>
-                          {pieceStageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                        <select value={pieceFilterEmployee} onChange={(e) => setPieceFilterEmployee(e.target.value)} className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
-                          <option value="">All Employees</option>
-                          {pieceEmployeeOptions.map((e) => <option key={e} value={e}>{e}</option>)}
-                        </select>
+                        <PortalPillSelect
+                          value={pieceFilterStage}
+                          onChange={setPieceFilterStage}
+                          placeholder="All Stages"
+                          options={pieceStageOptions.map((s) => ({ value: s, label: s }))}
+                        />
+                        <PortalPillSelect
+                          value={pieceFilterEmployee}
+                          onChange={setPieceFilterEmployee}
+                          placeholder="All Employees"
+                          options={pieceEmployeeOptions.map((e) => ({ value: e, label: e }))}
+                        />
                         {(pieceFilterStage || pieceFilterEmployee) && (
                           <button onClick={() => { setPieceFilterStage(''); setPieceFilterEmployee(''); }} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Clear column filters</button>
                         )}

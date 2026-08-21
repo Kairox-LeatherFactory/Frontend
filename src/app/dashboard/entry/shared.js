@@ -1,8 +1,8 @@
 'use client';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
-import { Camera, X, AlertTriangle } from 'lucide-react';
+import { Camera, X, AlertTriangle, ChevronDown } from 'lucide-react';
 
 // Mobile camera barcode scanner — a shared modal used by all three doors
 // (Barcode Gun's SKU/piece scan, Store Hub's drawer/piece scan, and the
@@ -167,6 +167,85 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
       </div>
     </div>,
     document.body
+  );
+}
+
+// "Or select active worker" fallback dropdown on the Worker Barcode
+// Verification card — shared by the Barcode Gun Scanner and Store Manager
+// Hub doors (same card, same worker list, on both). A plain <select> here
+// sizes its native option popup to its widest label (worker name +
+// designation), which can render past the viewport edge on a tablet. This is
+// a fully custom dropdown instead: the open panel is portaled to
+// document.body (the verification card it lives in has `overflow-hidden`,
+// clipping the decorative background glow — an in-place absolutely
+// positioned panel would get clipped by that same rule) and sized to match
+// its own button's on-screen width exactly, so every row truncates with
+// real CSS ellipsis and the panel can never extend past the screen.
+export function WorkerPickerDropdown({ workers = [], onSelect }) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const buttonRef = useRef(null);
+  const panelRef = useRef(null);
+
+  const updateRect = useCallback(() => {
+    if (!buttonRef.current) return;
+    const r = buttonRef.current.getBoundingClientRect();
+    setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    updateRect();
+    window.addEventListener('scroll', updateRect, true);
+    window.addEventListener('resize', updateRect);
+    return () => {
+      window.removeEventListener('scroll', updateRect, true);
+      window.removeEventListener('resize', updateRect);
+    };
+  }, [open, updateRect]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (buttonRef.current?.contains(e.target)) return;
+      if (panelRef.current?.contains(e.target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative w-full">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
+      >
+        <span className="truncate">-- Choose Worker --</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && rect && createPortal(
+        <div
+          ref={panelRef}
+          className="fixed z-[999999] max-h-56 overflow-y-auto rounded-xl border border-[#c8834a]/30 bg-[#1c1207] shadow-2xl py-1"
+          style={{ top: rect.top, left: rect.left, width: rect.width }}
+        >
+          {workers.map((w) => (
+            <button
+              key={w.id}
+              type="button"
+              title={`${w.name} (${w.designation || 'Worker'})`}
+              onClick={() => { onSelect(w.id); setOpen(false); }}
+              className="w-full text-left px-3 py-1.5 text-xs font-bold text-white truncate cursor-pointer hover:bg-white/10"
+            >
+              {w.name} ({w.designation || 'Worker'})
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
   );
 }
 
