@@ -176,7 +176,9 @@ function MaterialSpecLine({ line, styleId, token, showToast, canEdit, onChanged,
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  const isLeather = line.category === 'LEATHER';
+  // LEATHER and LINING both record thickness, not size; only ACCESSORY
+  // lines use size.
+  const usesThickness = line.category === 'LEATHER' || line.category === 'LINING';
   const noun = line.category === 'LEATHER' ? 'Leather' : line.category === 'LINING' ? 'Lining' : 'Accessory';
 
   const handleSave = async () => {
@@ -186,7 +188,7 @@ function MaterialSpecLine({ line, styleId, token, showToast, canEdit, onChanged,
         article: article.trim() || undefined,
         colour: colour.trim() || undefined,
         size: size.trim() || undefined,
-        thickness: isLeather ? (thickness.trim() || undefined) : undefined,
+        thickness: usesThickness ? (thickness.trim() || undefined) : undefined,
         qty_per_piece: qty === '' ? undefined : Number(qty),
       });
       showToast(`${noun} line updated.`, 'success');
@@ -230,14 +232,14 @@ function MaterialSpecLine({ line, styleId, token, showToast, canEdit, onChanged,
       ) : (
         <span className="text-slate-500">{line.colour || '—'}</span>
       )}
-      {isLeather && (
+      {usesThickness && (
         editing ? (
           <input value={thickness} onChange={(e) => setThickness(e.target.value)} className="w-16 h-7 px-1.5 border rounded text-center font-bold" style={{ borderColor: 'rgba(200,131,74,0.3)' }} placeholder="Thickness" />
         ) : (
           <span className="text-slate-500 w-16 text-center">{line.thickness || '—'}</span>
         )
       )}
-      {!isLeather && (
+      {!usesThickness && (
         editing ? (
           <input value={size} onChange={(e) => setSize(e.target.value)} className="w-16 h-7 px-1.5 border rounded text-center font-bold" style={{ borderColor: 'rgba(200,131,74,0.3)' }} placeholder="Size" />
         ) : (
@@ -644,8 +646,8 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
       <MaterialCategorySection
         category="LINING" label="Lining" accentColor="#2563eb"
         lines={liningLines} styleId={styleId} token={token} showToast={showToast} canEdit={canEdit} onChanged={load} pieceCount={pieceCount}
-        subtypes={LINING_SUBTYPES} showThickness={false} minimalFields
-        defaultForm={{ subtype: LINING_SUBTYPES[0], article: '', colour: '', size: '', qty_per_piece: '', sku_id: '', material_lot_id: '' }}
+        subtypes={LINING_SUBTYPES} showThickness minimalFields
+        defaultForm={{ subtype: LINING_SUBTYPES[0], article: '', colour: '', thickness: '', size: '', qty_per_piece: '', sku_id: '', material_lot_id: '' }}
       />
 
       <MaterialCategorySection
