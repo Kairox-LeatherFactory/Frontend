@@ -1437,23 +1437,37 @@ export default function StoreHubSection({
                     // "Send to Line Stitching" look ready before lining had
                     // even been scanned.
                     <div className="pt-4 border-t border-slate-200">
-                      <button
-                        type="button"
-                        onClick={handleSendToLineStitching}
-                        disabled={storeReceiveStatus === 'sended' || storeApiLoading || storeVerifyResult?.can_send === false}
-                        title={storeVerifyResult?.can_send === false ? (storeVerifyResult?.lining_reason || 'Not ready — this drawer is still awaiting a part.') : ''}
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
-                      >
-                        {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : storeReceiveStatus === 'sended' ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                        {storeReceiveStatus === 'sended' ? 'Sent to Line Stitching ✅' : 'Send to Line Stitching'}
-                      </button>
-                      {storeVerifyResult?.can_send === false && storeReceiveStatus !== 'sended' && (
-                        <p className="text-[10px] text-slate-400 font-bold pt-1.5">
-                          {storeVerifyResult?.lining_reason || (Array.isArray(storeVerifyResult?.awaiting) && storeVerifyResult.awaiting.length > 0
-                            ? `Waiting on: ${storeVerifyResult.awaiting.join(', ')}`
-                            : 'Not ready to send yet.')}
-                        </p>
-                      )}
+                      {(() => {
+                        // The kit block only says PENDING/PARTIAL when this
+                        // style actually needs accessories — `can_send` from
+                        // the backend doesn't factor that in yet, so a piece
+                        // holding both leather and lining could look sendable
+                        // here while its accessory kit was never issued.
+                        const kitNotReady = storeVerifyResult?.kit && ['PENDING', 'PARTIAL'].includes(storeVerifyResult.kit.status);
+                        const blocked = storeVerifyResult?.can_send === false || kitNotReady;
+                        const reason = storeVerifyResult?.can_send === false
+                          ? (storeVerifyResult?.lining_reason || (Array.isArray(storeVerifyResult?.awaiting) && storeVerifyResult.awaiting.length > 0 ? `Waiting on: ${storeVerifyResult.awaiting.join(', ')}` : 'Not ready to send yet.'))
+                          : kitNotReady
+                            ? 'Accessory kit not issued yet — issue it from the drawer card below before sending.'
+                            : '';
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handleSendToLineStitching}
+                              disabled={storeReceiveStatus === 'sended' || storeApiLoading || blocked}
+                              title={blocked ? reason : ''}
+                              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
+                            >
+                              {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : storeReceiveStatus === 'sended' ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                              {storeReceiveStatus === 'sended' ? 'Sent to Line Stitching ✅' : 'Send to Line Stitching'}
+                            </button>
+                            {blocked && storeReceiveStatus !== 'sended' && (
+                              <p className="text-[10px] text-slate-400 font-bold pt-1.5">{reason}</p>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <div className="pt-4 border-t border-slate-200">
@@ -1711,12 +1725,31 @@ export default function StoreHubSection({
                                             </div>
                                           )}
                                         </div>
-                                        <AccessoryKitCard
-                                          drawer={drawer}
-                                          token={token}
-                                          employee={barcodeWorker}
-                                          onIssued={() => { pinDrawer(drawer.drawer_id); fetchLiveDrawers(); }}
-                                        />
+                                        {/* Full-width row of its own — the Qty/Status table
+                                            columns need more room than a Leather/Lining-sized
+                                            third of the grid gives them. */}
+                                        <div className="sm:col-span-2 xl:col-span-3">
+                                          <AccessoryKitCard
+                                            drawer={drawer}
+                                            token={token}
+                                            employee={barcodeWorker}
+                                            onIssued={() => {
+                                              pinDrawer(drawer.drawer_id);
+                                              fetchLiveDrawers();
+                                              // The top scan-verify panel's `storeVerifyResult` is
+                                              // frozen from the original scan — issuing the kit from
+                                              // this drawer's own card down here wouldn't otherwise
+                                              // be reflected up there, leaving its Send button stuck
+                                              // disabled on stale PENDING/PARTIAL kit data.
+                                              setStoreVerifyResult((prev) => {
+                                                if (!prev || !prev.kit) return prev;
+                                                const sameDrawer = (prev.drawer_id && prev.drawer_id === drawer.drawer_id) || (prev.drawer_code && prev.drawer_code === drawer.id);
+                                                if (!sameDrawer) return prev;
+                                                return { ...prev, kit: { ...prev.kit, status: 'ISSUED' } };
+                                              });
+                                            }}
+                                          />
+                                        </div>
                                       </div>
 
                                       {/* Bug #20: send this one drawer directly from its own

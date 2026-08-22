@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
@@ -27,6 +28,7 @@ export default function BarcodeDoorSection({
   handleVerifyBarcodeWorker, barcodeNotCheckedInModal, setBarcodeNotCheckedInModal, workerInputRef,
   cameraScanTarget, setCameraScanTarget,
 }) {
+  const router = useRouter();
   const { token, user } = useAuth();
   const { workers } = useData();
   const { allowedOperations, isFullAccess, isStageAllowedForRole } = useRoleAccess();

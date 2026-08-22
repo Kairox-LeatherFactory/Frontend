@@ -458,6 +458,7 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
                       canEdit={canRelease && isDraft && style.editable !== false}
                       token={token}
                       showToast={showToast}
+                      pieceCount={(style.skus || []).reduce((sum, s) => sum + (Number(s.qty_ordered) || 0), 0) || style.qty_ordered}
                     />
 
                     {/* Total Piece Count Summary at bottom of Style details */}
