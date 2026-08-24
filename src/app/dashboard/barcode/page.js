@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
  Barcode, Printer, History, Search, X, Download, Zap, Send, Eye,
- RotateCcw, FileDown, ChevronRight, ChevronLeft, Users, Box, FileImage, FileText,
+ RotateCcw, FileDown, ChevronRight, ChevronLeft, ChevronDown, Users, Box, FileImage, FileText,
  Loader2, ScanLine, PackageSearch, Package, Plus, Truck, CheckCircle2, AlertTriangle, Layers,
 } from 'lucide-react';
 import AnimatedModal from '@/components/AnimatedModal';
