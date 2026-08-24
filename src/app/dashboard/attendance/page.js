@@ -124,38 +124,6 @@ function normalizeRosterArray(rosterData) {
  return [];
 }
 
-// ─── GPS HOOK ─────────────────────────────────────────────────────────────────
-function useGps() {
- const [state, setState] = useState({ lat: null, lon: null, error: null, loading: false });
- const getPosition = useCallback(() => {
- return new Promise((resolve, reject) => {
- setState((s) => ({ ...s, loading: true, error: null }));
- if (!navigator.geolocation) {
- const err = 'Geolocation is not supported by this browser.';
- setState((s) => ({ ...s, loading: false, error: err }));
- return reject(err);
- }
- navigator.geolocation.getCurrentPosition(
- (pos) => {
- const coords = { lat: pos.coords.latitude, lon: pos.coords.longitude };
- setState({ ...coords, loading: false, error: null });
- resolve(coords);
- },
- (err) => {
- const msg =
- err.code === 1
- ? 'Location access denied. Enable GPS to check in/out.'
- : 'Unable to retrieve location. Please try again.';
- setState({ lat: null, lon: null, loading: false, error: msg });
- reject(msg);
- },
- { timeout: 10000, maximumAge: 30000 }
- );
- });
- }, []);
- return { ...state, getPosition };
-}
-
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
 function Badge({ label, type }) {
  const map = {
@@ -213,16 +181,6 @@ function AlertBanner({ type, message, onClose }) {
  );
 }
 
-function GpsWarning({ error }) {
- if (!error) return null;
- return (
- <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-semibold">
- <WifiOff className="w-5 h-5 flex-shrink-0" />
- <span>{error}</span>
- </div>
- );
-}
-
 function Paginator({ page, totalPages, setPage, total, perPage }) {
  if (totalPages <= 1) return null;
  return (
@@ -254,7 +212,6 @@ function Paginator({ page, totalPages, setPage, total, perPage }) {
 // VIEW A — MY ATTENDANCE
 // ═══════════════════════════════════════════════════════════════════════════════
 function MyAttendanceView({ token }) {
- const gps = useGps();
  const { user } = useAuth();
  const isManagingDirector = user === 'managing_director';
  const isFloorManager = user === 'stitching_manager' || user === 'cutting_manager' || user === 'lining_manager';
@@ -329,13 +286,12 @@ function MyAttendanceView({ token }) {
  const handleCheckIn = async () => {
  setActionLoading(true);
  try {
- const coords = await gps.getPosition();
- await apiFetch(`${API}/check-in`, { method: 'POST', body: JSON.stringify(coords) }, token);
+ await apiFetch(`${API}/check-in`, { method: 'POST', body: JSON.stringify({}) }, token);
  showAlert('success', 'Checked in successfully!');
  await fetchStatus();
  await fetchHistory();
  } catch (e) {
- if (e.status === 403) showAlert('error', `Geofence violation — ${e.message}`);
+ if (e.status === 403) showAlert('error', `Check-in denied: ${e.message}`);
  else showAlert('error', typeof e === 'string' ? e : e.message || 'Check-in failed.');
  } finally {
  setActionLoading(false);
@@ -345,14 +301,13 @@ function MyAttendanceView({ token }) {
  const handleCheckOut = async () => {
  setActionLoading(true);
  try {
- const coords = await gps.getPosition();
- await apiFetch(`${API}/check-out`, { method: 'POST', body: JSON.stringify(coords) }, token);
+ await apiFetch(`${API}/check-out`, { method: 'POST', body: JSON.stringify({}) }, token);
  showAlert('success', 'Checked out. Shift complete!');
  clearInterval(intervalRef.current);
  await fetchStatus();
  await fetchHistory();
  } catch (e) {
- if (e.status === 403) showAlert('error', `Geofence violation — ${e.message}`);
+ if (e.status === 403) showAlert('error', `Check-out denied: ${e.message}`);
  else showAlert('error', typeof e === 'string' ? e : e.message || 'Check-out failed.');
  } finally {
  setActionLoading(false);
@@ -363,8 +318,7 @@ function MyAttendanceView({ token }) {
  const totalPages = Math.ceil(history.length / PER_PAGE);
  const checkedIn = status?.checked_in ?? false;
  const checkedOut = status?.checked_out ?? false;
- const gpsBlocked = !!gps.error;
- const busy = actionLoading || gps.loading;
+ const busy = actionLoading;
 
  return (
  <motion.div className="space-y-6">
@@ -374,7 +328,6 @@ function MyAttendanceView({ token }) {
  </div>
 
  <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
- <GpsWarning error={gps.error} />
 
  {/* Hero row — Managing Director */}
  {!isManagingDirector && (
@@ -424,26 +377,24 @@ function MyAttendanceView({ token }) {
  </h3>
  <div className="flex flex-col gap-3">
  <button onClick={handleCheckIn}
- disabled={checkedIn || gpsBlocked || busy}
+ disabled={checkedIn || busy}
  className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm text-white transition-all shadow-lg shadow-emerald-200 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation hover:-translate-y-0.5 active:translate-y-0"
  style={{ background: 'linear-gradient(135deg, #38a169, #48bb78)' }}>
  {busy && !checkedIn
- ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
+ ? <><Loader2 className="w-5 h-5 animate-spin" /> Checking in…</>
  : <><LogIn className="w-5 h-5" /> Check In</>}
  </button>
  <button onClick={handleCheckOut}
- disabled={!checkedIn || checkedOut || gpsBlocked || busy}
+ disabled={!checkedIn || checkedOut || busy}
  className="w-full flex items-center justify-center gap-3 h-14 sm:h-16 min-h-[56px] rounded-2xl font-black text-base sm:text-sm text-white transition-all shadow-lg shadow-red-200 disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation hover:-translate-y-0.5 active:translate-y-0"
  style={{ background: 'linear-gradient(135deg, #e53e3e, #f56565)' }}>
  {busy && checkedIn && !checkedOut
- ? <><Loader2 className="w-5 h-5 animate-spin" /> Fetching GPS…</>
+ ? <><Loader2 className="w-5 h-5 animate-spin" /> Checking out…</>
  : <><LogOut className="w-5 h-5" /> Check Out</>}
  </button>
  </div>
  <div className="flex items-center gap-2 text-[11px] font-semibold" style={{ color: '#9a7a5a' }}>
- {gps.lat
- ? <><MapPin className="w-3.5 h-3.5" style={{ color: '#38a169' }} /> GPS active — {gps.lat.toFixed(5)}, {gps.lon.toFixed(5)}</>
- : <><MapPin className="w-3.5 h-3.5" style={{ color: '#d1d5db' }} /> GPS coordinates resolved on action</>}
+ <Clock className="w-3.5 h-3.5" style={{ color: '#c8834a' }} /> One-Tap Attendance Terminal
  </div>
  {checkedIn && (
  <div className="flex flex-wrap gap-2 pt-4" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
@@ -576,8 +527,6 @@ function MyAttendanceView({ token }) {
 // VIEW B — FLOOR COMMAND
 // ═══════════════════════════════════════════════════════════════════════════════
 function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
- const gps = useGps();
-
  const [search, setSearch] = useState('');
  const [selected, setSelected] = useState(new Set());
  const scanLockRef = useRef(false);
@@ -654,26 +603,11 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
 
  const direction = !isAlreadyIn ? 'in' : 'out';
 
- let coords = null;
- let reason = undefined;
- try {
- coords = await gps.getPosition();
- } catch (e) {
- reason = "GPS unavailable";
- }
-
  const payload = {
  employee_barcode: targetCode,
  proxy: false,
  direction: direction
  };
-
- if (coords) {
- payload.lat = coords.lat;
- payload.lon = coords.lon;
- } else {
- payload.reason = reason;
- }
 
  const response = await apiFetch(`${API}/scan-check-in`, {
  method: 'POST',
@@ -752,8 +686,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  }
  setAddLoading(true);
  try {
- await gps.getPosition();
-
  const payload = {
  name: name.trim(),
  designation: designation.trim(),
@@ -774,8 +706,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  if (onWorkerAdded)
  onWorkerAdded();
  } catch (e) {
- if (e.status === 403) showAlert('error', `Geofence check failed: ${e.message}`);
- else showAlert('error', typeof e === 'string' ? e : e.message || 'Failed to add worker.');
+ showAlert('error', typeof e === 'string' ? e : e.message || 'Failed to add worker.');
  } finally {
  setAddLoading(false);
  }
@@ -809,11 +740,10 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  try {
  const requestedIds = [...selected];
 
- const coords = await gps.getPosition();
  const endpoint = type === 'check-in' ? `${API}/proxy/check-in` : `${API}/proxy/check-out`;
  const result = await apiFetch(endpoint, {
  method: 'POST',
- body: JSON.stringify({ employee_ids: requestedIds, lat: coords.lat, lon: coords.lon }),
+ body: JSON.stringify({ employee_ids: requestedIds }),
  }, token);
 
  const succeededIds = new Set(result.map((r) => String(r.employee_id)));
@@ -830,8 +760,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  setSelected(new Set());
  setTimeout(() => setDiffModal({ type, succeeded, failed }), 0);
  } catch (e) {
- if (e.status === 403) showAlert('error', `Geofence: ${e.message}`);
- else showAlert('error', typeof e === 'string' ? e : e.message || 'Batch action failed.');
+ showAlert('error', typeof e === 'string' ? e : e.message || 'Batch action failed.');
  } finally {
  setActionLoading(false);
  }
@@ -853,7 +782,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  </div>
 
  <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
- <GpsWarning error={gps.error} />
 
  {/* AUTOMATIC BARCODE GUN ATTENDANCE SCANNER HEADER BAR */}
  <div className="bg-gradient-to-r from-[#2d1f0e] via-[#3a2817] to-[#1c1207] p-5 sm:p-6 rounded-3xl shadow-2xl text-white relative overflow-hidden border border-[#c8834a]/30">
@@ -985,11 +913,11 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  />
  {isSelected &&  (
  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-20" onClick={(e) => e.stopPropagation()}>
- <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-in'); }} disabled={actionLoading || !!gps.error || checkedInIds.has(String(w.id))}
+ <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-in'); }} disabled={actionLoading || checkedInIds.has(String(w.id))}
  className={`bg-blue-600 hover:bg-blue-500 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer ${checkedInIds.has(String(w.id)) ? 'opacity-50' : ''}`}>
  {checkedInIds.has(String(w.id)) ? 'Checked In' : 'Check-In'}
  </button>
- <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-out'); }} disabled={actionLoading || !!gps.error || !checkedInIds.has(String(w.id)) || checkedOutIds.has(String(w.id))}
+ <button onClick={() => { setSelected(new Set([w.id])); batchAction('check-out'); }} disabled={actionLoading || !checkedInIds.has(String(w.id)) || checkedOutIds.has(String(w.id))}
  className={`bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black px-2.5 py-1.5 rounded-lg shadow-md transition-colors cursor-pointer ${checkedOutIds.has(String(w.id)) ? 'opacity-50' : ''}`}>
  {checkedOutIds.has(String(w.id)) ? 'Checked Out' : 'Check-Out'}
  </button>
@@ -1062,9 +990,6 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  </div>
 
  <div className="space-y-4">
- <p className="text-xs text-slate-500 font-semibold leading-relaxed">
- GPS location will be verified before submission — floor-only onboarding rule.
- </p>
  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
  <div className="sm:col-span-2">
  <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Full Name *</label>
