@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
  Barcode, Printer, History, Search, X, Download, Zap, Send, Eye,
- RotateCcw, FileDown, ChevronRight, ChevronLeft, ChevronDown, Users, Box, FileImage, FileText,
+ RotateCcw, FileDown, ChevronRight, ChevronLeft, Users, Box, FileImage, FileText,
  Loader2, ScanLine, PackageSearch, Package, Plus, Truck, CheckCircle2, AlertTriangle, Layers,
 } from 'lucide-react';
 import AnimatedModal from '@/components/AnimatedModal';
@@ -2043,16 +2043,16 @@ function CreateMaterialLotModal({ open, onClose, token, showToast, onSuccess }) 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Category *</label>
-            <ScreenSafeSelect
+            <select
               value={category}
-              onChange={(v) => { setCategory(v); setSubtype(''); }}
-              portal
-              options={[
-                { value: 'LEATHER', label: 'LEATHER' },
-                { value: 'LINING', label: 'LINING' },
-                { value: 'ACCESSORIES', label: 'ACCESSORIES' },
-              ]}
-            />
+              onChange={(e) => { setCategory(e.target.value); setSubtype(''); }}
+              className={selectCls}
+              style={fieldStyle}
+            >
+              <option value="LEATHER">LEATHER</option>
+              <option value="LINING">LINING</option>
+              <option value="ACCESSORIES">ACCESSORIES</option>
+            </select>
           </div>
 
           <div>
@@ -2060,13 +2060,15 @@ function CreateMaterialLotModal({ open, onClose, token, showToast, onSuccess }) 
               Subtype {subtypes.length > 0 ? '(Optional)' : ''}
             </label>
             {subtypes.length > 0 ? (
-              <ScreenSafeSelect
+              <select
                 value={subtype}
-                onChange={setSubtype}
-                placeholder="Standard / None"
-                portal
-                options={[{ value: '', label: 'Standard / None' }, ...subtypes.map((s) => ({ value: s, label: s }))]}
-              />
+                onChange={(e) => setSubtype(e.target.value)}
+                className={selectCls}
+                style={fieldStyle}
+              >
+                <option value="">Standard / None</option>
+                {subtypes.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
             ) : (
               <input
                 type="text"
@@ -2151,17 +2153,17 @@ function CreateMaterialLotModal({ open, onClose, token, showToast, onSuccess }) 
 
           <div>
             <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Unit of Measure (UOM)</label>
-            <ScreenSafeSelect
+            <select
               value={uom}
-              onChange={setUom}
-              portal
-              options={[
-                { value: 'DCM', label: 'DCM (Decimeters)' },
-                { value: 'MTRS', label: 'MTRS (Meters)' },
-                { value: 'PCS', label: 'PCS (Pieces)' },
-                { value: 'CONES', label: 'CONES (Thread Cones)' },
-              ]}
-            />
+              onChange={(e) => setUom(e.target.value)}
+              className={selectCls}
+              style={fieldStyle}
+            >
+              <option value="DCM">DCM (Decimeters)</option>
+              <option value="MTRS">MTRS (Meters)</option>
+              <option value="PCS">PCS (Pieces)</option>
+              <option value="CONES">CONES (Thread Cones)</option>
+            </select>
           </div>
         </div>
 
@@ -2258,16 +2260,11 @@ function MaterialStockModal({ open, onClose, token, showToast, onOpenSupplierOrd
         <form onSubmit={handleCheckStock} className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-[#faf6f0] p-4 rounded-xl border border-[rgba(200,131,74,0.2)]">
           <div>
             <label className="block text-[10px] font-bold uppercase mb-1 text-slate-600">Category</label>
-            <ScreenSafeSelect
-              value={category}
-              onChange={setCategory}
-              portal
-              options={[
-                { value: 'LEATHER', label: 'LEATHER' },
-                { value: 'LINING', label: 'LINING' },
-                { value: 'ACCESSORIES', label: 'ACCESSORIES' },
-              ]}
-            />
+            <select value={category} onChange={(e) => setCategory(e.target.value)} className={selectCls} style={fieldStyle}>
+              <option value="LEATHER">LEATHER</option>
+              <option value="LINING">LINING</option>
+              <option value="ACCESSORIES">ACCESSORIES</option>
+            </select>
           </div>
           <div>
             <label className="block text-[10px] font-bold uppercase mb-1 text-slate-600">Article Filter</label>
@@ -2618,16 +2615,11 @@ function SupplierOrderModal({ open, onClose, initialData, token, showToast, onSu
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Category *</label>
-                <ScreenSafeSelect
-                  value={category}
-                  onChange={setCategory}
-                  portal
-                  options={[
-                    { value: 'LEATHER', label: 'LEATHER' },
-                    { value: 'LINING', label: 'LINING' },
-                    { value: 'ACCESSORIES', label: 'ACCESSORIES' },
-                  ]}
-                />
+                <select value={category} onChange={(e) => setCategory(e.target.value)} className={selectCls} style={fieldStyle}>
+                  <option value="LEATHER">LEATHER</option>
+                  <option value="LINING">LINING</option>
+                  <option value="ACCESSORIES">ACCESSORIES</option>
+                </select>
               </div>
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>Article *</label>
@@ -2646,17 +2638,12 @@ function SupplierOrderModal({ open, onClose, initialData, token, showToast, onSu
               </div>
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wide mb-1" style={{ color: BRAND.textMuted }}>UOM</label>
-                <ScreenSafeSelect
-                  value={uom}
-                  onChange={setUom}
-                  portal
-                  options={[
-                    { value: 'DCM', label: 'DCM' },
-                    { value: 'MTRS', label: 'MTRS' },
-                    { value: 'PCS', label: 'PCS' },
-                    { value: 'CONES', label: 'CONES' },
-                  ]}
-                />
+                <select value={uom} onChange={(e) => setUom(e.target.value)} className={selectCls} style={fieldStyle}>
+                  <option value="DCM">DCM</option>
+                  <option value="MTRS">MTRS</option>
+                  <option value="PCS">PCS</option>
+                  <option value="CONES">CONES</option>
+                </select>
               </div>
             </div>
 
@@ -2805,17 +2792,12 @@ function MaterialGenerationTab({
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
               <span className="text-[0.68rem] font-bold uppercase whitespace-nowrap" style={{ color: BRAND.textMuted }}>Category:</span>
-              <ScreenSafeSelect
-                value={categoryFilter}
-                onChange={setCategoryFilter}
-                className={`${selectCls} !w-44`}
-                options={[
-                  { value: 'ALL', label: 'All Categories' },
-                  { value: 'LEATHER', label: 'LEATHER' },
-                  { value: 'LINING', label: 'LINING' },
-                  { value: 'ACCESSORIES', label: 'ACCESSORIES' },
-                ]}
-              />
+              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={`${selectCls} !w-44`} style={fieldStyle}>
+                <option value="ALL">All Categories</option>
+                <option value="LEATHER">LEATHER</option>
+                <option value="LINING">LINING</option>
+                <option value="ACCESSORIES">ACCESSORIES</option>
+              </select>
             </div>
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />

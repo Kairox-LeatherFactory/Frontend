@@ -452,7 +452,7 @@ export default function DashboardLayout({ children }) {
   return (
     <div
       id="app-shell"
-      className="min-h-screen flex flex-col lg:flex-row lg:h-screen lg:overflow-hidden"
+      className="min-h-screen flex flex-col md:flex-row"
       style={{
         background: '#faf6f0',
       }}
