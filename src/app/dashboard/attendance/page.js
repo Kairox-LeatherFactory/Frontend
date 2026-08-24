@@ -698,6 +698,7 @@ function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  } catch (err) {
  playBeep(220, 'sawtooth');
  showAlert('error', err.message || 'Scan attendance failed');
+ setScanInput('');
  } finally {
  setIsResolvingScan(false);
  scanLockRef.current = false;

@@ -540,6 +540,92 @@ const selectCls = 'w-full px-3 py-2.5 rounded-lg text-sm font-semibold outline-n
 const inputCls = 'w-full px-3 py-2.5 rounded-lg text-sm font-medium outline-none border transition-all focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a]';
 const fieldStyle = { background: '#faf6f0', borderColor: 'rgba(200,131,74,0.3)', color: '#2d1f0e' };
 
+// Native <select> option popups size themselves to their widest option text,
+// independent of the closed control's own (responsive) width, and can render
+// past the viewport edge on a tablet — every filter dropdown across the 4
+// Barcode Management tabs (Style/Employee/Bucket/Material) used a plain
+// <select>. This is a fully custom dropdown instead: the open panel is
+// pinned left:0/right:0 against its own button, so its width always matches
+// the button's own (already on-screen) width, and every row truncates with
+// real CSS ellipsis rather than relying on the browser's native popup.
+// `portal`: set true when an ancestor card clips overflow (rounded corners
+// etc.) — renders the panel on document.body at the button's live screen
+// coordinates instead of in place, so it can't get clipped.
+function ScreenSafeSelect({ value, options, onChange, placeholder, className = selectCls, style = fieldStyle, portal = false }) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const buttonRef = useRef(null);
+  const panelRef = useRef(null);
+
+  const updateRect = useCallback(() => {
+    if (!buttonRef.current) return;
+    const r = buttonRef.current.getBoundingClientRect();
+    setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+  }, []);
+
+  useEffect(() => {
+    if (!portal || !open) return;
+    updateRect();
+    window.addEventListener('scroll', updateRect, true);
+    window.addEventListener('resize', updateRect);
+    return () => {
+      window.removeEventListener('scroll', updateRect, true);
+      window.removeEventListener('resize', updateRect);
+    };
+  }, [portal, open, updateRect]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (buttonRef.current?.contains(e.target)) return;
+      if (panelRef.current?.contains(e.target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => String(o.value) === String(value));
+  const label = selected ? selected.label : (placeholder ?? '');
+
+  const panel = (
+    <div
+      ref={panelRef}
+      className={portal
+        ? 'fixed z-[999999] max-h-64 overflow-y-auto rounded-lg border shadow-2xl py-1 bg-white'
+        : 'absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-lg border shadow-lg py-1 bg-white'}
+      style={portal ? { top: rect?.top, left: rect?.left, width: rect?.width, borderColor: 'rgba(200,131,74,0.3)' } : { borderColor: 'rgba(200,131,74,0.3)' }}
+    >
+      {options.map((opt, idx) => (
+        <button
+          key={`${opt.value}-${idx}`}
+          type="button"
+          title={opt.title || opt.label}
+          onClick={() => { onChange(opt.value); setOpen(false); }}
+          className={`w-full text-left px-3 py-1.5 text-sm font-semibold truncate cursor-pointer hover:bg-[#faf6f0] ${String(value) === String(opt.value) ? 'text-[#c8834a] bg-[#fff3e8]' : 'text-[#2d1f0e]'}`}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${className} flex items-center justify-between gap-2 text-left cursor-pointer`}
+        style={style}
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (portal ? (rect && createPortal(panel, document.body)) : panel)}
+    </div>
+  );
+}
+
 function statusBadgeClass(status) {
  if (status === 'PRINTED') return 'badge badge-success';
  if (status === 'PARTIAL') return 'badge badge-info';
@@ -1234,12 +1320,14 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  ) : orders.length === 0 ? (
  <p className="text-sm" style={{ color: BRAND.textMuted }}>No orders have generated barcodes yet.</p>
  ) : (
- <select className={`${selectCls} sm:!w-[420px]`} style={fieldStyle} value={selectedOrderId} onChange={(e) => handleSelectOrder(e.target.value)}>
- <option value="">-- Select an order --</option>
- {orders.map((o) => (
- <option key={o.order_id} value={o.order_id}>{o.order_number} — {o.client_name} ({o.minted} pcs)</option>
- ))}
- </select>
+ <div className="sm:!w-[420px]">
+ <ScreenSafeSelect
+ value={selectedOrderId}
+ onChange={handleSelectOrder}
+ placeholder="-- Select an order --"
+ options={orders.map((o) => ({ value: o.order_id, label: `${o.order_number} — ${o.client_name} (${o.minted} pcs)` }))}
+ />
+ </div>
  )}
  </div>
  </div>
@@ -1288,25 +1376,34 @@ function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems })
  <div className="rounded-2xl p-5 shadow-sm grid gap-4 items-end" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}`, gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
  <div>
  <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Style</label>
- <select className={selectCls} style={fieldStyle} value={filters.styleId} onChange={(e) => setFilter('styleId', e.target.value)}>
- <option value="ALL">All Styles</option>
- {styleFilterOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
- </select>
+ <ScreenSafeSelect
+ value={filters.styleId}
+ onChange={(v) => setFilter('styleId', v)}
+ placeholder="All Styles"
+ options={[{ value: 'ALL', label: 'All Styles' }, ...styleFilterOptions.map(([id, name]) => ({ value: id, label: name }))]}
+ />
  </div>
  <div>
  <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Size</label>
- <select className={selectCls} style={fieldStyle} value={filters.size} onChange={(e) => setFilter('size', e.target.value)}>
- <option value="ALL">All Sizes</option>
- {sizeFilterOptions.map((sz) => <option key={sz} value={sz}>{sz}</option>)}
- </select>
+ <ScreenSafeSelect
+ value={filters.size}
+ onChange={(v) => setFilter('size', v)}
+ placeholder="All Sizes"
+ options={[{ value: 'ALL', label: 'All Sizes' }, ...sizeFilterOptions.map((sz) => ({ value: sz, label: sz }))]}
+ />
  </div>
  <div>
  <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Status</label>
- <select className={selectCls} style={fieldStyle} value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
- <option value="ALL">All Statuses</option>
- <option value="active">Active</option>
- <option value="retired">Retired</option>
- </select>
+ <ScreenSafeSelect
+ value={filters.status}
+ onChange={(v) => setFilter('status', v)}
+ placeholder="All Statuses"
+ options={[
+ { value: 'ALL', label: 'All Statuses' },
+ { value: 'active', label: 'Active' },
+ { value: 'retired', label: 'Retired' },
+ ]}
+ />
  </div>
  <button onClick={resetFilters} className="btn-warm-secondary !min-h-0 !py-2.5"><RotateCcw className="w-4 h-4" /> Reset</button>
  </div>
@@ -1411,10 +1508,13 @@ function EmployeeGenerationTab({ employees, employeesLoading, employeesError, on
  <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
  <div className="flex items-center gap-2">
  <span className="text-[0.68rem] font-bold uppercase whitespace-nowrap" style={{ color: BRAND.textMuted }}>Designation:</span>
- <select value={designationFilter} onChange={(e) => setDesignationFilter(e.target.value)} className={`${selectCls} !w-56`} style={fieldStyle}>
- <option value="ALL">All Designations</option>
- {designations.map((d) => <option key={d} value={d}>{d}</option>)}
- </select>
+ <ScreenSafeSelect
+ value={designationFilter}
+ onChange={setDesignationFilter}
+ placeholder="All Designations"
+ className={`${selectCls} !w-56`}
+ options={[{ value: 'ALL', label: 'All Designations' }, ...designations.map((d) => ({ value: d, label: d }))]}
+ />
  </div>
  <div className="relative">
  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: BRAND.textMuted }} />
@@ -1641,15 +1741,12 @@ function DrawerGenerationTab({
  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
  <div>
  <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>1. Drawer State Filter</label>
- <select
+ <ScreenSafeSelect
  value={stateFilter}
- onChange={(e) => setStateFilter(e.target.value)}
- className={selectCls}
- style={fieldStyle}
- >
- <option value="ALL">All States (All Drawers)</option>
- {stateOptions.map((s) => <option key={s} value={s}>{s}</option>)}
- </select>
+ onChange={setStateFilter}
+ placeholder="All States (All Drawers)"
+ options={[{ value: 'ALL', label: 'All States (All Drawers)' }, ...stateOptions.map((s) => ({ value: s, label: s }))]}
+ />
  </div>
 
  <div>
@@ -2950,16 +3047,15 @@ function PrintTab({
  <button onClick={onSelectAll} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">Select All</button>
  <button onClick={onClearAll} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">Clear Selection</button>
  <button onClick={onOpenPreview} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs"><Eye className="w-4 h-4" /> Preview</button>
- <select
+ <ScreenSafeSelect
  value={downloadFormat}
- onChange={(e) => setDownloadFormat(e.target.value)}
- className="h-[42px] px-3 rounded-lg text-xs font-bold outline-none border cursor-pointer"
- style={fieldStyle}
- title="Download format for 'Download All'"
- >
- <option value="png">PNG</option>
- <option value="pdf">PDF</option>
- </select>
+ onChange={setDownloadFormat}
+ className="h-[42px] px-3 rounded-lg text-xs font-bold outline-none border cursor-pointer !w-24"
+ options={[
+ { value: 'png', label: 'PNG' },
+ { value: 'pdf', label: 'PDF' },
+ ]}
+ />
  <button
  onClick={() => onDownloadAll?.(downloadFormat)}
  disabled={bulkExporting || selectedPrintBarcodes.size === 0}
@@ -3092,10 +3188,11 @@ function HistoryTab({ batchHistoryStore, filters, setFilter, resetFilters, optio
  const FilterSelect = ({ label, field, opts }) => (
  <div>
  <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>{label}</label>
- <select className={selectCls} style={fieldStyle} value={filters[field]} onChange={(e) => setFilter(field, e.target.value)}>
- <option value="ALL">All {label}</option>
- {opts.map((o) => <option key={o} value={o}>{o}</option>)}
- </select>
+ <ScreenSafeSelect
+ value={filters[field]}
+ onChange={(v) => setFilter(field, v)}
+ options={[{ value: 'ALL', label: `All ${label}` }, ...opts.map((o) => ({ value: o, label: o }))]}
+ />
  </div>
  );
 
@@ -3109,20 +3206,28 @@ function HistoryTab({ batchHistoryStore, filters, setFilter, resetFilters, optio
  <FilterSelect label="Operator" field="operator" opts={options.operators} />
  <div>
  <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Print Status</label>
- <select className={selectCls} style={fieldStyle} value={filters.status} onChange={(e) => setFilter('status', e.target.value)}>
- <option value="ALL">All Statuses</option>
- <option value="PRINTED">Printed</option>
- <option value="PENDING">Pending</option>
- <option value="PARTIAL">Partial</option>
- </select>
+ <ScreenSafeSelect
+ value={filters.status}
+ onChange={(v) => setFilter('status', v)}
+ options={[
+ { value: 'ALL', label: 'All Statuses' },
+ { value: 'PRINTED', label: 'Printed' },
+ { value: 'PENDING', label: 'Pending' },
+ { value: 'PARTIAL', label: 'Partial' },
+ ]}
+ />
  </div>
  <div>
  <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Sort By</label>
- <select className={selectCls} style={fieldStyle} value={filters.sort} onChange={(e) => setFilter('sort', e.target.value)}>
- <option value="NEWEST">Date (Newest First)</option>
- <option value="OLDEST">Date (Oldest First)</option>
- <option value="QTY_HIGH">Qty (High to Low)</option>
- </select>
+ <ScreenSafeSelect
+ value={filters.sort}
+ onChange={(v) => setFilter('sort', v)}
+ options={[
+ { value: 'NEWEST', label: 'Date (Newest First)' },
+ { value: 'OLDEST', label: 'Date (Oldest First)' },
+ { value: 'QTY_HIGH', label: 'Qty (High to Low)' },
+ ]}
+ />
  </div>
  <button onClick={resetFilters} className="btn-warm-secondary !min-h-0 !py-2.5"><RotateCcw className="w-4 h-4" /> Reset</button>
  </div>

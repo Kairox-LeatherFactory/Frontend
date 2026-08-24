@@ -4,32 +4,7 @@ import { createPortal } from 'react-dom';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiImportPreview, apiImportCommit as realApiImportCommit, apiGetBarcodeOrders, apiBarcodeResolve } from '@/lib/api';
-
-/**
- * TEMPORARY MOCK — real backend `POST /imports/commit` still mints
- * barcodes + drawers immediately on commit (the OLD one-step behavior);
- * the new two-phase flow (`release_required: true`, DRAFT-only, no mint)
- * from the 17-Aug change set isn't deployed yet. Testing against the real
- * endpoint burns real permanent barcodes/drawers for every test upload —
- * confirmed live (one test commit minted 1425 real drawers). Mock the
- * commit response here so the redirect-to-Breakdown-Review flow can be
- * tested without touching the real backend. Delete this block (and
- * restore the plain `apiImportCommit` import above) once the two-phase
- * endpoint is actually live.
- */
-const MOCK_IMPORT_COMMIT = false;
-async function mockApiImportCommit(token, file, orderNumber) {
-  await new Promise((r) => setTimeout(r, 400)); // feel like a real request
-  return {
-    release_required: true,
-    pieces_minted: 0,
-    order_number: orderNumber,
-    message: `Parsed and staged as DRAFT — nothing minted yet. Review and release from the Breakdown screen.`,
-  };
-}
-const apiImportCommit = MOCK_IMPORT_COMMIT ? mockApiImportCommit : realApiImportCommit;
-/** END TEMPORARY MOCK */
+import { apiImportPreview, apiImportCommit, apiGetBarcodeOrders, apiBarcodeResolve } from '@/lib/api';
 import { Lock, CheckCircle2, XCircle, Users, FileSpreadsheet, X, Upload, Barcode, Loader2, Store, Camera, AlertTriangle } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useRoleAccess, CameraScannerModal, normalizeRosterArray } from './shared';
@@ -209,6 +184,14 @@ export default function ProductionLogEntry() {
 
   const workerInputRef = useRef(null);
 
+  // Reset worker verification state when navigating between doors/tabs so each slide requires a fresh scan
+  useEffect(() => {
+    setBarcodeWorker(null);
+    setBarcodeWorkerInput('');
+    setBarcodeNotCheckedInModal(null);
+    setErrorMsg('');
+  }, [activeDoor]);
+
   const recordStageCompletion = (stage, pieceOrSkuKey) => {
     if (!stage || !pieceOrSkuKey) return;
     const rawKey = String(pieceOrSkuKey).toUpperCase().trim();
@@ -287,6 +270,7 @@ export default function ProductionLogEntry() {
             workerId: targetWorker.id,
             barcode: targetWorker.employee_barcode || query
           });
+          setBarcodeWorkerInput('');
           setBarcodeWorkerChecking(false);
           setTimeout(() => workerInputRef.current?.focus(), 100);
           return;
@@ -305,6 +289,7 @@ export default function ProductionLogEntry() {
       }
     } catch (err) {
       setErrorMsg(`Worker verification failed: ${err.message}`);
+      setBarcodeWorkerInput('');
       setTimeout(() => workerInputRef.current?.focus(), 100);
     } finally {
       setBarcodeWorkerChecking(false);
@@ -664,6 +649,7 @@ export default function ProductionLogEntry() {
             setBucketResult={setBucketResult} setShowBucketModal={setShowBucketModal}
             barcodeWorker={barcodeWorker} setBarcodeWorker={setBarcodeWorker} barcodeWorkerInput={barcodeWorkerInput} setBarcodeWorkerInput={setBarcodeWorkerInput} barcodeWorkerChecking={barcodeWorkerChecking}
             handleVerifyBarcodeWorker={handleVerifyBarcodeWorker} barcodeNotCheckedInModal={barcodeNotCheckedInModal} setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal} workerInputRef={workerInputRef}
+            cameraScanTarget={cameraScanTarget}
             setCameraScanTarget={setCameraScanTarget}
           />
         )}
@@ -802,57 +788,56 @@ export default function ProductionLogEntry() {
           commit response (what was actually saved), not a re-show of the
           pre-commit preview. */}
       {mounted && showCommitConfirmation && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-2xl max-h-[90vh] flex flex-col relative overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600" />
-                  Committed to Database
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-1">
-                  File: {fileName} — saved as DRAFT, styles now awaiting release.
-                </p>
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden border-t-4 border-amber-500">
+            <div className="p-6 pb-4 text-center">
+              <div className="w-14 h-14 rounded-full bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center mx-auto mb-3">
+                <CheckCircle2 className="w-7 h-7 text-emerald-600" />
               </div>
+              <h3 className="text-lg font-black text-slate-950">Committed to Database</h3>
+              <p className="text-xs text-slate-500 font-medium mt-1">
+                File: {fileName} — saved as DRAFT, styles now awaiting release.
+              </p>
             </div>
 
-            <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
+            <div className="px-6 pb-2">
               {commitResult ? (
-                <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
-                  <div className="flex items-center justify-between border-b pb-3">
-                    <span className="text-xs font-black uppercase text-emerald-700 bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-200">
-                      Order {commitResult.order_number}
-                    </span>
-                    <span className="text-xs font-black uppercase px-3 py-1 rounded-lg border" style={commitResult.release_required
-                      ? { color: '#a86022', background: 'rgba(200,131,74,0.08)', borderColor: 'rgba(200,131,74,0.25)' }
-                      : { color: '#047857', background: '#ecfdf5', borderColor: '#a7f3d0' }}>
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                  <p className="text-[11px] font-black uppercase tracking-wide text-amber-800 text-center">
+                    Please review what was saved before continuing
+                  </p>
+                  <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-100">
+                    <span className="text-xs font-black text-slate-700">Order {commitResult.order_number}</span>
+                    <span className="text-[10px] font-black uppercase px-2 py-1 rounded-md" style={commitResult.release_required
+                      ? { color: '#a86022', background: 'rgba(200,131,74,0.12)' }
+                      : { color: '#047857', background: '#ecfdf5' }}>
                       {commitResult.release_required ? 'Release Required' : 'No Release Needed'}
                     </span>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 text-center">
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Styles</p>
-                      <p className="text-lg font-black text-slate-800">{commitResult.styles ?? 0}</p>
+                  <div className="grid grid-cols-2 gap-2 text-center">
+                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">Styles</p>
+                      <p className="text-base font-black text-slate-800">{commitResult.styles ?? 0}</p>
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">SKUs Created</p>
-                      <p className="text-lg font-black text-emerald-600">{commitResult.skus_created ?? 0}</p>
+                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">Pieces Minted</p>
+                      <p className="text-base font-black text-slate-800">{commitResult.pieces_minted ?? 0}</p>
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">SKUs Updated</p>
-                      <p className="text-lg font-black text-amber-600">{commitResult.skus_updated ?? 0}</p>
+                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">SKUs Created</p>
+                      <p className="text-base font-black text-emerald-600">{commitResult.skus_created ?? 0}</p>
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Pieces Minted</p>
-                      <p className="text-lg font-black text-slate-800">{commitResult.pieces_minted ?? 0}</p>
+                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">SKUs Updated</p>
+                      <p className="text-base font-black text-amber-600">{commitResult.skus_updated ?? 0}</p>
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Operations</p>
-                      <p className="text-lg font-black text-slate-800">{commitResult.operations ?? 0}</p>
+                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">Operations</p>
+                      <p className="text-base font-black text-slate-800">{commitResult.operations ?? 0}</p>
                     </div>
-                    <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">Rates</p>
-                      <p className="text-lg font-black text-slate-800">{commitResult.rates ?? 0}</p>
+                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                      <p className="text-[9px] font-bold text-slate-400 uppercase">Rates</p>
+                      <p className="text-base font-black text-slate-800">{commitResult.rates ?? 0}</p>
                     </div>
                   </div>
                 </div>
@@ -861,7 +846,7 @@ export default function ProductionLogEntry() {
               )}
             </div>
 
-            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
+            <div className="p-6 pt-4">
               <button
                 onClick={() => {
                   setShowCommitConfirmation(false);
@@ -870,7 +855,7 @@ export default function ProductionLogEntry() {
                   setPendingBreakdownOrder(null);
                   setCommitResult(null);
                 }}
-                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                className="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
               >
                 Continue to Breakdown Review
               </button>
@@ -1031,28 +1016,6 @@ export default function ProductionLogEntry() {
                 </div>
               )}
 
-              {/* Skill Blocked Bucket */}
-              {bucketResult.skill_blocked && bucketResult.skill_blocked.length > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
-                  <div className="flex items-center gap-2 font-black text-xs text-red-800 uppercase tracking-wider">
-                    <Lock className="w-4 h-4 text-red-500" />
-                    Skill / Designation Blocked ({bucketResult.skill_blocked.length})
-                  </div>
-                  <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
-                    {bucketResult.skill_blocked.map((msg, i) => {
-                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
-                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
-                      return (
-                        <li key={i}>
-                          <span>{pieceStr}</span>
-                          {reasonObj && <div className="text-[10px] text-red-500 font-medium mt-0.5">{reasonObj.reason}</div>}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-
               {/* Merge Blocked Bucket */}
               {bucketResult.merge_blocked && bucketResult.merge_blocked.length > 0 && (
                 <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-2">
@@ -1115,7 +1078,8 @@ export default function ProductionLogEntry() {
           storeSendedSkus={storeSendedSkus} setStoreSendedSkus={setStoreSendedSkus}
           storeReceiveStatus={storeReceiveStatus} setStoreReceiveStatus={setStoreReceiveStatus}
           barcodeWorker={barcodeWorker} setBarcodeWorker={setBarcodeWorker} barcodeWorkerInput={barcodeWorkerInput} setBarcodeWorkerInput={setBarcodeWorkerInput} barcodeWorkerChecking={barcodeWorkerChecking}
-          handleVerifyBarcodeWorker={handleVerifyBarcodeWorker} workerInputRef={workerInputRef}
+          handleVerifyBarcodeWorker={handleVerifyBarcodeWorker} barcodeNotCheckedInModal={barcodeNotCheckedInModal} setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal} workerInputRef={workerInputRef}
+          cameraScanTarget={cameraScanTarget}
           setCameraScanTarget={setCameraScanTarget}
         />
       )}

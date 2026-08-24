@@ -1,18 +1,22 @@
 'use client';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import {
   apiBarcodeResolve,
   apiListDrawers,
   apiGetDrawer,
+  apiGetDrawerPool,
   apiGetPieceState,
   apiReceiveDrawer,
   apiSendDrawers,
   apiStoreDrawerScan,
 } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Barcode, Check, Layers, PackageCheck, ChevronRight, ChevronDown, Camera, Send, RefreshCw, X, Loader2 } from 'lucide-react';
-import { CameraScannerModal } from './shared';
+import { Lock, CheckCircle2, XCircle, Barcode, Check, Layers, PackageCheck, ChevronRight, ChevronDown, Camera, Send, RefreshCw, X, Loader2, AlertTriangle } from 'lucide-react';
+import { CameraScannerModal, WorkerPickerDropdown } from './shared';
+import { AccessoryKitCard, KitStatusMini } from './AccessoriesSpec';
 
 // Shared by the list endpoint (GET /drawers, item shape) and the single-drawer
 // endpoints (GET /drawers/{id}, GET /drawers/by-code/{code} — full detail
@@ -77,6 +81,12 @@ function mapDrawerRecord(d) {
     lining_piece_code: d.lining_piece_code || d.lining?.piece_code || d.piece_code || d.piece?.code || d.piece?.label_line || null,
     lining_article: d.lining_article || d.lining?.article || d.article || null,
     lining_colour: d.lining_colour || d.lining_color || d.lining?.colour || d.lining?.color || d.colour || d.color || null,
+    // Accessory kit — GET /drawers and GET /drawers/{id} gain these two
+    // booleans; the full checklist (outstanding lines, Issue Kit action)
+    // is fetched separately via GET /barcode/resolve's `material_requirement`
+    // block (AccessoryKitCard), same pattern as the leather/lining pair above.
+    accessories_in: !!d.accessories_in,
+    kit_required: !!d.kit_required,
   };
 }
 
@@ -107,11 +117,15 @@ export default function StoreHubSection({
   storeSendedSkus, setStoreSendedSkus,
   storeReceiveStatus, setStoreReceiveStatus,
   barcodeWorker, setBarcodeWorker, barcodeWorkerInput, setBarcodeWorkerInput, barcodeWorkerChecking,
-  handleVerifyBarcodeWorker, workerInputRef,
+  handleVerifyBarcodeWorker, barcodeNotCheckedInModal, setBarcodeNotCheckedInModal, workerInputRef,
   cameraScanTarget, setCameraScanTarget,
 }) {
+  const router = useRouter();
   const { token } = useAuth();
   const { workers } = useData();
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const [storeDrawerInput, setStoreDrawerInput] = useState('');
   const [storePieceInput, setStorePieceInput] = useState('');
@@ -159,6 +173,27 @@ export default function StoreHubSection({
   // Item 6 (17-Aug delta): production view only needs the 10 latest drawers,
   // not the whole pool — the backend now supports a real `limit`, so a huge
   // default fetch is no longer the only way to have something to show.
+  // Bug fix: the analytics cards below used to derive "Total Drawers" from
+  // this same 10-row page (storeDrawers.length), which is why the card
+  // always read 10 even when the factory had 200+ drawers — GET /drawers
+  // returns { total, count, items } and `total` (the real pool size across
+  // ALL drawers, not just this page) was being thrown away entirely.
+  const [drawersTotal, setDrawersTotal] = useState(null);
+
+  // Drawers the operator just verified/received/sent stay pinned to the top
+  // of the list — but only for the one render right after the action, since
+  // fetchLiveDrawers REPLACES storeDrawers wholesale from the backend's
+  // "latest 10" page each time it runs. A manual Refresh (or the next
+  // mount/poll) re-fetches that same backend-ordered page and the pin is
+  // gone — the drawer just silently slides back to wherever the backend
+  // puts it (or off the page). A ref (not state) survives across fetches
+  // without needing to be a dependency that would re-trigger effects.
+  const pinnedIdsRef = useRef([]); // drawer_id UUIDs, most-recently-touched first
+  const pinDrawer = useCallback((drawerId) => {
+    if (!drawerId) return;
+    pinnedIdsRef.current = [drawerId, ...pinnedIdsRef.current.filter((id) => id !== drawerId)].slice(0, 10);
+  }, []);
+
   const fetchLiveDrawers = useCallback(async () => {
     if (!token) return;
     setStoreLoading(true);
@@ -166,9 +201,32 @@ export default function StoreHubSection({
       const res = await apiListDrawers(token, { limit: 10 });
       console.log('[Store Hub] GET /api/v1/drawers?limit=10 response:', res);
       const drawerItems = res?.items || (Array.isArray(res) ? res : []);
-      if (Array.isArray(drawerItems)) {
-        setStoreDrawers(drawerItems.map(mapDrawerRecord));
+      let mapped = Array.isArray(drawerItems) ? drawerItems.map(mapDrawerRecord) : [];
+      if (typeof res?.total === 'number') setDrawersTotal(res.total);
+
+      // Re-apply any pinned (recently touched) drawers on top of this fresh
+      // page — fetch full detail for whichever pins didn't happen to land
+      // in this page's backend-chosen ordering.
+      const pins = pinnedIdsRef.current;
+      if (pins.length > 0) {
+        const byUuid = new Map(mapped.map((d) => [d.drawer_id, d]));
+        const missing = pins.filter((uuid) => !byUuid.has(uuid));
+        if (missing.length > 0) {
+          const fetchedMissing = await Promise.all(missing.map(async (uuid) => {
+            try { return mapDrawerRecord(await apiGetDrawer(token, uuid)); }
+            catch { return null; }
+          }));
+          fetchedMissing.forEach((d) => { if (d) byUuid.set(d.drawer_id, d); });
+        }
+        const pinnedFirst = pins.map((uuid) => byUuid.get(uuid)).filter(Boolean);
+        // Drop any pin that no longer resolves (drawer gone / fetch failed)
+        // so it doesn't keep getting retried forever.
+        pinnedIdsRef.current = pinnedFirst.map((d) => d.drawer_id);
+        const rest = mapped.filter((d) => !pins.includes(d.drawer_id));
+        mapped = [...pinnedFirst, ...rest];
       }
+
+      setStoreDrawers(mapped);
     } catch (err) {
       console.warn('[Store Hub] GET /api/v1/drawers:', err);
       if (err.message && err.message.includes('401')) {
@@ -179,7 +237,23 @@ export default function StoreHubSection({
     }
   }, [token]);
 
-  useEffect(() => { fetchLiveDrawers(); }, [fetchLiveDrawers]);
+  // GET /drawers/pool — the "Drawers Free" card and the "Empty Drawers"
+  // filter count need a factory-wide free count, not just however many of
+  // the 10 loaded rows happen to be empty. This also supplies a real
+  // "Upcoming Bundles" number (pieces_waiting_for_drawer) — that card used
+  // to be a hardcoded literal 8, not live data.
+  const [drawerPool, setDrawerPool] = useState(null);
+  const fetchDrawerPool = useCallback(async () => {
+    if (!token) return;
+    try {
+      const pool = await apiGetDrawerPool(token);
+      setDrawerPool(pool);
+    } catch (err) {
+      console.warn('[Store Hub] GET /api/v1/drawers/pool:', err);
+    }
+  }, [token]);
+
+  useEffect(() => { fetchLiveDrawers(); fetchDrawerPool(); }, [fetchLiveDrawers, fetchDrawerPool]);
 
   const resolveDrawerUuid = async (input) => {
     const isUUID = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '');
@@ -224,6 +298,7 @@ export default function StoreHubSection({
         : (res?.piece?.drawer?.code || res?.drawer?.drawer_code || null);
       if (!drawerCode) {
         setErrorMsg(`No drawer is assigned to '${val}' yet.`);
+        setPieceLookupInput('');
         return;
       }
 
@@ -247,8 +322,10 @@ export default function StoreHubSection({
       setStoreDrawerInput(drawerCode.toUpperCase());
       if (target) setExpandedDrawer(target.id);
       setSuccessMsg(`📦 '${val}' is assigned to drawer ${drawerCode}.`);
+      setPieceLookupInput('');
     } catch (err) {
       setErrorMsg(err.message || `'${val}' was not found.`);
+      setPieceLookupInput('');
     } finally {
       setPieceLookupLoading(false);
     }
@@ -372,27 +449,36 @@ export default function StoreHubSection({
       setStoreReceiveStatus(res.auto_received ? 'received' : 'pending');
       setSuccessMsg(`Scan logged successfully! (${res.state || 'OK'})`);
 
-      // Refresh the live (latest-10) drawers list first, THEN pin the
-      // just-verified drawer to the top — otherwise this refresh (which
-      // replaces the whole list) would stomp over the pin if it ran after.
-      await fetchLiveDrawers();
+      // Auto-reset entire scan state and employee scan for leather intake so system is ready for next transaction
+      if (storeScanPart === 'LEATHER') {
+        setTimeout(() => {
+          setStoreDrawerInput('');
+          setStorePieceInput('');
+          setStoreVerifyResult(null);
+          setStoreCurrentScan('');
+          setBarcodeWorker(null);
+          setBarcodeWorkerInput('');
+          setTimeout(() => workerInputRef.current?.focus(), 150);
+        }, 1800);
+      }
 
       // Team request: the drawer just verified should be pinned to the top
       // of the list below, not wherever it happens to land in a re-fetch —
       // with the default view cut to the latest 10 (Item 6), a drawer that
       // isn't recently-created could vanish from the list entirely even
-      // though it was JUST scanned. Fetch its full detail directly (we
-      // already have drawerUuid resolved above) and prepend it.
+      // though it was JUST scanned. `pinDrawer` registers it so this holds
+      // across every future refresh too, not just this one.
       if (drawerUuid) {
         try {
           const freshDetail = await apiGetDrawer(token, drawerUuid);
           const mapped = mapDrawerRecord(freshDetail);
-          setStoreDrawers(prev => [mapped, ...prev.filter(d => d.id !== mapped.id)]);
+          pinDrawer(mapped.drawer_id);
           setExpandedDrawer(mapped.id);
         } catch {
-          // Non-critical — the list still refreshed above.
+          // Non-critical — fetchLiveDrawers below still refreshes the list.
         }
       }
+      await fetchLiveDrawers();
     } catch (err) {
       // Show the backend's real reason (e.g. "piece is not merged to drawer
       // X — scan the drawer the upload assigned to this piece") instead of a
@@ -415,42 +501,95 @@ export default function StoreHubSection({
   // & Log Scan" — auto-firing on the 2nd scan used to submit before the
   // operator had even chosen/confirmed the correct Leather/Lining tab.
   const [storeScanResolving, setStoreScanResolving] = useState(false);
-  const handleStoreScanInput = async (val) => {
+  const handleStoreScanInput = async (rawVal) => {
+    const val = String(rawVal || '').trim();
     if (!val || storeScanResolving) return;
     setStoreCurrentScan('');
     setStoreScanResolving(true);
     setErrorMsg('');
+
     try {
       let resolvedType = null;
+      let resolveData = null;
       try {
-        const resolved = await apiBarcodeResolve(token, val);
-        resolvedType = resolved?.type || null;
+        resolveData = await apiBarcodeResolve(token, val);
+        resolvedType = resolveData?.type || null;
       } catch {
-        // Code not yet in the registry (e.g. a drawer label printed but not
-        // scanned before) — fall back to the ordinal guess rather than
-        // blocking the whole flow on an unresolvable lookup.
+        // Fall back to pattern guessing if not found in registry
         resolvedType = null;
       }
 
-      // Trust the registry's resolved type when known. When the code isn't
-      // registered yet, guess from whichever slot is still open — if the
-      // Drawer slot is empty, assume this scan fills it; otherwise it must
-      // be the Piece.
-      const kind = resolvedType || (!storeDrawerInput ? 'DRAWER' : 'PIECE');
+      const valUpper = val.toUpperCase();
+      const isDrawerCode = resolvedType === 'DRAWER' ||
+        valUpper.startsWith('DRW-') ||
+        valUpper.startsWith('DRAWER');
+
+      const kind = isDrawerCode ? 'DRAWER' : (resolvedType === 'PIECE' ? 'PIECE' : (!storeDrawerInput ? 'DRAWER' : 'PIECE'));
 
       if (kind === 'DRAWER') {
-        setStoreDrawerInput(val);
-        setSuccessMsg(storePieceInput
-          ? `✅ Drawer '${val}' detected! Both scanned — press "Verify & Log Scan" to submit.`
-          : `✅ Drawer '${val}' detected! Now scan the piece barcode.`);
+        const drawerVal = valUpper;
+
+        // Immediate Validation against already scanned Piece
+        if (storePieceInput) {
+          let expectedDrawerCode = null;
+          try {
+            const pRes = await apiBarcodeResolve(token, storePieceInput);
+            expectedDrawerCode = (pRes?.piece?.drawer?.code || pRes?.drawer?.drawer_code || pRes?.drawer?.code || '').toUpperCase();
+            if (!expectedDrawerCode) {
+              const pState = await apiGetPieceState(token, { code: storePieceInput });
+              expectedDrawerCode = (pState?.piece?.drawer?.code || pState?.drawer?.code || pState?.piece?.drawer_code || '').toUpperCase();
+            }
+          } catch (_) {}
+
+          if (expectedDrawerCode && expectedDrawerCode !== drawerVal) {
+            setErrorMsg(`⚠️ Mismatch Detected: Scanned Drawer '${drawerVal}' does NOT match Piece '${storePieceInput}' (Assigned Drawer: '${expectedDrawerCode}'). Please rescan the correct Drawer.`);
+            setStoreCurrentScan('');
+            setTimeout(() => storeInputRef.current?.focus(), 150);
+            return;
+          }
+        }
+
+        setStoreDrawerInput(drawerVal);
+        setStoreDrawerSearch(drawerVal);
+        if (storePieceInput) {
+          setSuccessMsg(`✅ Drawer '${drawerVal}' and Piece '${storePieceInput}' verified! Ready to Log Scan.`);
+        } else {
+          setSuccessMsg(`✅ Drawer '${drawerVal}' detected! Now scan the piece barcode.`);
+        }
       } else {
-        setStorePieceInput(val);
-        setSuccessMsg(storeDrawerInput
-          ? `✅ Piece '${val}' detected! Both scanned — press "Verify & Log Scan" to submit.`
-          : `✅ Piece '${val}' detected! Now scan the drawer barcode.`);
+        const pieceVal = val;
+
+        // Immediate Validation against already scanned Drawer
+        if (storeDrawerInput) {
+          let pieceAssignedDrawer = null;
+          try {
+            const pRes = resolveData?.type === 'PIECE' ? resolveData : await apiBarcodeResolve(token, pieceVal);
+            pieceAssignedDrawer = (pRes?.piece?.drawer?.code || pRes?.drawer?.drawer_code || pRes?.drawer?.code || '').toUpperCase();
+            if (!pieceAssignedDrawer) {
+              const pState = await apiGetPieceState(token, { code: pieceVal });
+              pieceAssignedDrawer = (pState?.piece?.drawer?.code || pState?.drawer?.code || pState?.piece?.drawer_code || '').toUpperCase();
+            }
+          } catch (_) {}
+
+          if (pieceAssignedDrawer && pieceAssignedDrawer !== storeDrawerInput.toUpperCase()) {
+            setErrorMsg(`⚠️ Mismatch Detected: Scanned Piece '${pieceVal}' belongs to '${pieceAssignedDrawer}' (not Drawer '${storeDrawerInput}'). Please rescan the correct Piece.`);
+            setStoreCurrentScan('');
+            setTimeout(() => storeInputRef.current?.focus(), 150);
+            return;
+          }
+        }
+
+        setStorePieceInput(pieceVal);
+        if (storeDrawerInput) {
+          setSuccessMsg(`✅ Piece '${pieceVal}' and Drawer '${storeDrawerInput}' verified! Ready to Log Scan.`);
+        } else {
+          setSuccessMsg(`✅ Piece '${pieceVal}' detected! Now scan the drawer barcode.`);
+        }
       }
 
       setTimeout(() => storeInputRef.current?.focus(), 150);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to process barcode scan.');
     } finally {
       setStoreScanResolving(false);
     }
@@ -519,6 +658,7 @@ export default function StoreHubSection({
 
       setStoreReceiveStatus(transition.toLowerCase());
       setSuccessMsg(`Drawer ${drawerCode} transitioned to ${transition} successfully!`);
+      pinDrawer(finalUuid);
       fetchLiveDrawers();
 
       if (transition === 'SENDED') {
@@ -538,7 +678,11 @@ export default function StoreHubSection({
           setStoreDrawerInput('');
           setStorePieceInput('');
           setStoreVerifyResult(null);
+          setStoreCurrentScan('');
           setStoreDrawerSearch(''); // Clear list filter after reset
+          setBarcodeWorker(null);
+          setBarcodeWorkerInput('');
+          setTimeout(() => workerInputRef.current?.focus(), 150);
         }, 1500);
       }
     } catch (err) {
@@ -655,6 +799,9 @@ export default function StoreHubSection({
         setErrorMsg('No drawers were sent.');
       }
 
+      // Keep the just-sent drawer(s) pinned at the top across future
+      // refreshes too, same as a single verify/receive.
+      drawerIds.forEach(pinDrawer);
       await fetchLiveDrawers();
     } catch (err) {
       setErrorMsg('Batch send failed: ' + (err.message || 'Unknown error'));
@@ -664,16 +811,58 @@ export default function StoreHubSection({
   };
 
   // Resolution handler for universal scan input
-  const storeTotal = storeDrawers.length;
-  const { storeFree, storeLeather, storeLining, storeBoth } = useMemo(() => ({
-    storeFree: storeDrawers.filter(d => d.status === 'Free').length,
+  // Bug fix: "Total Drawers" and "Drawers Free" now come from GET
+  // /drawers/pool (factory-wide) instead of counting only the 10 loaded
+  // rows — falls back to the local sample while the pool call is in flight
+  // or if it fails, so the cards never show nothing.
+  const storeTotal = drawerPool?.pool_size ?? drawersTotal ?? storeDrawers.length;
+  const storeFree = drawerPool?.free_drawers ?? storeDrawers.filter(d => d.type === 'Empty').length;
+  const { storeLeather, storeLining, storeBoth } = useMemo(() => ({
     storeLeather: storeDrawers.filter(d => d.type === 'Leather').length,
     storeLining: storeDrawers.filter(d => d.type === 'Lining').length,
     storeBoth: storeDrawers.filter(d => d.type === 'Both').length,
   }), [storeDrawers]);
 
+  // Bug fix: the "Empty Drawers" filter used to just re-filter whichever 10
+  // drawers were already loaded (the "latest activity" page) — since those
+  // are almost always the recently-occupied ones, the filter would come back
+  // empty even though the factory has plenty of free drawers (per the pool
+  // card above). When "Free" is selected, fetch the real empty drawers from
+  // the backend (GET /drawers?has_piece=false) instead of re-slicing the
+  // same 10-row page.
+  const [freeDrawers, setFreeDrawers] = useState([]);
+  const [freeDrawersLoading, setFreeDrawersLoading] = useState(false);
+  const fetchFreeDrawers = useCallback(async () => {
+    if (!token) return;
+    setFreeDrawersLoading(true);
+    try {
+      const res = await apiListDrawers(token, { has_piece: false, limit: 200 });
+      const items = res?.items || (Array.isArray(res) ? res : []);
+      setFreeDrawers(Array.isArray(items) ? items.map(mapDrawerRecord) : []);
+    } catch (err) {
+      console.warn('[Store Hub] GET /api/v1/drawers?has_piece=false:', err);
+      setFreeDrawers([]);
+    } finally {
+      setFreeDrawersLoading(false);
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (storeFilterType === 'Free') fetchFreeDrawers();
+  }, [storeFilterType, fetchFreeDrawers]);
+
+  // Manual "Reload Live Drawers" click should refresh everything this view
+  // shows, not just the latest-10 sample — the pool totals and (if that
+  // filter is active) the real free-drawer list too.
+  const handleRefreshDrawers = () => {
+    fetchLiveDrawers();
+    fetchDrawerPool();
+    if (storeFilterType === 'Free') fetchFreeDrawers();
+  };
+
   const filteredStoreDrawers = useMemo(() => {
-    return storeDrawers
+    const source = storeFilterType === 'Free' ? freeDrawers : storeDrawers;
+    return source
       .filter(d => {
         if (!storeDrawerSearch.trim()) return true;
         const q = storeDrawerSearch.trim().toLowerCase();
@@ -686,10 +875,10 @@ export default function StoreHubSection({
       })
       .filter(d => {
         if (storeFilterType === 'All') return true;
-        if (storeFilterType === 'Free') return d.status === 'Free';
+        if (storeFilterType === 'Free') return d.type === 'Empty';
         return d.type === storeFilterType;
       });
-  }, [storeDrawers, storeDrawerSearch, storeFilterType]);
+  }, [storeDrawers, freeDrawers, storeDrawerSearch, storeFilterType]);
 
   // Bug #17: whichever side of the pair hasn't been scanned yet, look up
   // what it SHOULD be from the already-loaded drawers?limit=500 list — pure
@@ -838,19 +1027,7 @@ export default function StoreHubSection({
                 {/* Quick Select Worker Dropdown Fallback — same as Barcode Scanner page */}
                 <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-xs text-[#e2d5c3]/70">
                   <span className="shrink-0">Or select active worker:</span>
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) handleVerifyBarcodeWorker(e.target.value);
-                    }}
-                    className="w-full sm:w-auto max-w-full min-w-0 bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
-                  >
-                    <option value="" className="bg-[#1c1207] text-white">-- Choose Worker --</option>
-                    {workers.map(w => (
-                      <option key={w.id} value={w.id} className="bg-[#1c1207] text-white">
-                        {w.name} ({w.designation || 'Worker'})
-                      </option>
-                    ))}
-                  </select>
+                  <WorkerPickerDropdown workers={workers} onSelect={handleVerifyBarcodeWorker} />
                 </div>
               </div>
             ) : (
@@ -874,6 +1051,51 @@ export default function StoreHubSection({
               </div>
             )}
           </div>
+
+          {/* WORKER NOT CHECKED IN POPUP MODAL */}
+          {barcodeNotCheckedInModal && mounted && createPortal(
+            <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/80 backdrop-blur-md animate-fade-in p-4">
+              <div className="bg-gradient-to-b from-slate-900 to-rose-950 text-white rounded-3xl shadow-2xl border-2 border-rose-500/50 w-full max-w-md p-6 space-y-5 text-center relative overflow-hidden">
+                <div className="w-16 h-16 rounded-full bg-rose-500/20 border-2 border-rose-500/50 flex items-center justify-center mx-auto shadow-inner">
+                  <AlertTriangle className="w-8 h-8 text-rose-400" />
+                </div>
+
+                <div className="space-y-2">
+                  <h3 className="text-xl font-black text-rose-400 uppercase tracking-wide">
+                    Worker Not Checked-In!
+                  </h3>
+                  <p className="text-xs font-semibold text-slate-200">
+                    Worker <strong className="text-white text-sm font-black">{barcodeNotCheckedInModal.workerName}</strong> has not completed Attendance Check-In for today.
+                  </p>
+                  <p className="text-[11px] text-rose-200/80">
+                    Factory Rule: Store Hub operations are restricted to active checked-in workers.
+                  </p>
+                </div>
+
+                <div className="pt-3 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => router.push('/dashboard/attendance')}
+                    className="w-full py-3.5 rounded-xl font-black text-xs text-white bg-rose-600 hover:bg-rose-500 transition-all shadow-lg cursor-pointer"
+                  >
+                    Go to Attendance Check-In Page
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBarcodeNotCheckedInModal(null);
+                      setTimeout(() => workerInputRef.current?.focus(), 100);
+                    }}
+                    className="w-full py-3 rounded-xl font-bold text-xs text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  >
+                    Close &amp; Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
+
           {/* Header & Metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4">
             <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
@@ -898,7 +1120,7 @@ export default function StoreHubSection({
             </div>
             <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
               <div className="text-xs text-indigo-700 font-bold mb-1">Upcoming Bundles</div>
-              <div className="text-2xl font-black text-indigo-800">8</div>
+              <div className="text-2xl font-black text-indigo-800">{drawerPool?.pieces_waiting_for_drawer ?? '—'}</div>
             </div>
           </div>
 
@@ -1045,27 +1267,89 @@ export default function StoreHubSection({
                   </form>
                 </div>
 
-                {/* Status Badges — when one side is still empty but the other
-                    side's scanned code matches a known drawer, show the
-                    expected code here too as a second, always-visible
-                    reference point (mirrors the guidance card above). */}
-                <div className="flex items-center gap-3">
-                  <div className={`flex-1 p-3 rounded-lg border flex flex-col gap-0.5 ${storeDrawerInput ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold uppercase">Drawer</span>
-                      <span className="font-mono text-xs font-black">{storeDrawerInput || 'Waiting...'}</span>
+                {/* Status Badges with Independent Remove / Rescan buttons */}
+                <div className="flex flex-col sm:flex-row items-stretch gap-3">
+                  {/* Drawer Slot Badge */}
+                  <div className={`flex-1 p-3.5 rounded-2xl border-2 flex flex-col justify-between gap-1 transition-all ${
+                    storeDrawerInput
+                      ? 'bg-emerald-50/90 border-emerald-300 text-emerald-900 shadow-sm'
+                      : 'bg-slate-50 border-slate-200 text-slate-400'
+                  }`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        📦 Drawer Slot
+                      </span>
+                      {storeDrawerInput && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStoreDrawerInput('');
+                            setStoreVerifyResult(null);
+                            setTimeout(() => storeInputRef.current?.focus(), 100);
+                          }}
+                          className="px-2 py-0.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Remove Drawer and Rescan"
+                        >
+                          <X className="w-3 h-3" />
+                          <span>Rescan</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className={`font-mono text-sm font-black ${storeDrawerInput ? 'text-emerald-950' : 'text-slate-400'}`}>
+                        {storeDrawerInput || 'Waiting for Drawer...'}
+                      </span>
+                      {storeDrawerInput && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                      )}
                     </div>
                     {!storeDrawerInput && storeExpectedMatch?.forSide === 'DRAWER' && (
-                      <span className="text-sm font-bold text-amber-700">Expected: <span className="font-mono font-black">{storeExpectedMatch.value}</span></span>
+                      <div className="pt-1 mt-1 border-t border-amber-200 text-xs font-bold text-amber-800 flex items-center gap-1">
+                        <span>Expected:</span>
+                        <span className="font-mono font-black">{storeExpectedMatch.value}</span>
+                      </div>
                     )}
                   </div>
-                  <div className={`flex-1 p-3 rounded-lg border flex flex-col gap-0.5 ${storePieceInput ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-bold uppercase">Piece</span>
-                      <span className="font-mono text-xs font-black">{storePieceInput || 'Waiting...'}</span>
+
+                  {/* Piece Slot Badge */}
+                  <div className={`flex-1 p-3.5 rounded-2xl border-2 flex flex-col justify-between gap-1 transition-all ${
+                    storePieceInput
+                      ? 'bg-emerald-50/90 border-emerald-300 text-emerald-900 shadow-sm'
+                      : 'bg-slate-50 border-slate-200 text-slate-400'
+                  }`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        🏷️ Piece Slot
+                      </span>
+                      {storePieceInput && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStorePieceInput('');
+                            setStoreVerifyResult(null);
+                            setTimeout(() => storeInputRef.current?.focus(), 100);
+                          }}
+                          className="px-2 py-0.5 rounded-lg bg-red-100 hover:bg-red-200 text-red-700 text-[10px] font-black flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Remove Piece and Rescan"
+                        >
+                          <X className="w-3 h-3" />
+                          <span>Rescan</span>
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between mt-1">
+                      <span className={`font-mono text-sm font-black truncate max-w-[200px] ${storePieceInput ? 'text-emerald-950' : 'text-slate-400'}`}>
+                        {storePieceInput || 'Waiting for Piece...'}
+                      </span>
+                      {storePieceInput && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                      )}
                     </div>
                     {!storePieceInput && storeExpectedMatch?.forSide === 'PIECE' && (
-                      <span className="text-sm font-bold text-amber-700">Expected: <span className="font-mono font-black">{storeExpectedMatch.value}</span></span>
+                      <div className="pt-1 mt-1 border-t border-amber-200 text-xs font-bold text-amber-800 flex items-center gap-1 truncate">
+                        <span>Expected:</span>
+                        <span className="font-mono font-black truncate">{storeExpectedMatch.value}</span>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1129,6 +1413,11 @@ export default function StoreHubSection({
                     </div>
                   )}
 
+                  {/* Backend now returns a `kit` block on every scan
+                      (leather or lining), not just accessory scans — the
+                      checklist rides every scan per the spec. */}
+                  <KitStatusMini kit={storeVerifyResult?.kit} />
+
                   {/* Team request: the Leather tab is a receiving step only —
                       no Send action there regardless of can_send (even a
                       needs_lining:false piece that's already sendable right
@@ -1148,23 +1437,37 @@ export default function StoreHubSection({
                     // "Send to Line Stitching" look ready before lining had
                     // even been scanned.
                     <div className="pt-4 border-t border-slate-200">
-                      <button
-                        type="button"
-                        onClick={handleSendToLineStitching}
-                        disabled={storeReceiveStatus === 'sended' || storeApiLoading || storeVerifyResult?.can_send === false}
-                        title={storeVerifyResult?.can_send === false ? (storeVerifyResult?.lining_reason || 'Not ready — this drawer is still awaiting a part.') : ''}
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
-                      >
-                        {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : storeReceiveStatus === 'sended' ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                        {storeReceiveStatus === 'sended' ? 'Sent to Line Stitching ✅' : 'Send to Line Stitching'}
-                      </button>
-                      {storeVerifyResult?.can_send === false && storeReceiveStatus !== 'sended' && (
-                        <p className="text-[10px] text-slate-400 font-bold pt-1.5">
-                          {storeVerifyResult?.lining_reason || (Array.isArray(storeVerifyResult?.awaiting) && storeVerifyResult.awaiting.length > 0
-                            ? `Waiting on: ${storeVerifyResult.awaiting.join(', ')}`
-                            : 'Not ready to send yet.')}
-                        </p>
-                      )}
+                      {(() => {
+                        // The kit block only says PENDING/PARTIAL when this
+                        // style actually needs accessories — `can_send` from
+                        // the backend doesn't factor that in yet, so a piece
+                        // holding both leather and lining could look sendable
+                        // here while its accessory kit was never issued.
+                        const kitNotReady = storeVerifyResult?.kit && ['PENDING', 'PARTIAL'].includes(storeVerifyResult.kit.status);
+                        const blocked = storeVerifyResult?.can_send === false || kitNotReady;
+                        const reason = storeVerifyResult?.can_send === false
+                          ? (storeVerifyResult?.lining_reason || (Array.isArray(storeVerifyResult?.awaiting) && storeVerifyResult.awaiting.length > 0 ? `Waiting on: ${storeVerifyResult.awaiting.join(', ')}` : 'Not ready to send yet.'))
+                          : kitNotReady
+                            ? 'Accessory kit not issued yet — issue it from the drawer card below before sending.'
+                            : '';
+                        return (
+                          <>
+                            <button
+                              type="button"
+                              onClick={handleSendToLineStitching}
+                              disabled={storeReceiveStatus === 'sended' || storeApiLoading || blocked}
+                              title={blocked ? reason : ''}
+                              className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm rounded-xl transition-all disabled:opacity-50 disabled:grayscale flex items-center justify-center gap-2 shadow-md cursor-pointer disabled:cursor-not-allowed"
+                            >
+                              {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : storeReceiveStatus === 'sended' ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                              {storeReceiveStatus === 'sended' ? 'Sent to Line Stitching ✅' : 'Send to Line Stitching'}
+                            </button>
+                            {blocked && storeReceiveStatus !== 'sended' && (
+                              <p className="text-[10px] text-slate-400 font-bold pt-1.5">{reason}</p>
+                            )}
+                          </>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <div className="pt-4 border-t border-slate-200">
@@ -1237,12 +1540,12 @@ export default function StoreHubSection({
                       </select>
                       <button
                         type="button"
-                        onClick={fetchLiveDrawers}
-                        disabled={storeLoading}
+                        onClick={handleRefreshDrawers}
+                        disabled={storeLoading || freeDrawersLoading}
                         className="shrink-0 px-3 py-1.5 bg-[#c8834a] hover:bg-[#b07038] text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
                         title="Reload Live Drawers"
                       >
-                        <RefreshCw className={`w-3.5 h-3.5 ${storeLoading ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`w-3.5 h-3.5 ${(storeLoading || freeDrawersLoading) ? 'animate-spin' : ''}`} />
                         <span className="hidden sm:inline">Refresh</span>
                       </button>
                     </div>
@@ -1288,6 +1591,11 @@ export default function StoreHubSection({
                 })()}
 
                 <div className="divide-y divide-slate-100">
+                  {storeFilterType === 'Free' && freeDrawersLoading && (
+                    <div className="px-5 py-8 flex items-center justify-center gap-2 text-slate-400 text-xs font-bold">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Loading empty drawers...
+                    </div>
+                  )}
                   {filteredStoreDrawers
                     .slice(0, storeVisibleCount)
                     .map(drawer => {
@@ -1390,7 +1698,7 @@ export default function StoreHubSection({
                                         whether it's physically in the drawer yet. */}
                                     <div className="pt-3 border-t border-slate-100 space-y-2">
                                       <div className="text-[10px] font-black text-slate-400 uppercase tracking-wide mb-2">Part Breakdown</div>
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2">
                                         <div className={`p-3 rounded-xl border space-y-1.5 ${drawer.leather_in ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
                                           <div className="flex items-center gap-2">
                                             {drawer.leather_in ? <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" /> : <XCircle className="w-4 h-4 text-slate-300 shrink-0" />}
@@ -1416,6 +1724,31 @@ export default function StoreHubSection({
                                               <div>{drawer.lining_article || '—'} {drawer.lining_colour ? `· ${drawer.lining_colour}` : ''}</div>
                                             </div>
                                           )}
+                                        </div>
+                                        {/* Full-width row of its own — the Qty/Status table
+                                            columns need more room than a Leather/Lining-sized
+                                            third of the grid gives them. */}
+                                        <div className="sm:col-span-2 xl:col-span-3">
+                                          <AccessoryKitCard
+                                            drawer={drawer}
+                                            token={token}
+                                            employee={barcodeWorker}
+                                            onIssued={() => {
+                                              pinDrawer(drawer.drawer_id);
+                                              fetchLiveDrawers();
+                                              // The top scan-verify panel's `storeVerifyResult` is
+                                              // frozen from the original scan — issuing the kit from
+                                              // this drawer's own card down here wouldn't otherwise
+                                              // be reflected up there, leaving its Send button stuck
+                                              // disabled on stale PENDING/PARTIAL kit data.
+                                              setStoreVerifyResult((prev) => {
+                                                if (!prev || !prev.kit) return prev;
+                                                const sameDrawer = (prev.drawer_id && prev.drawer_id === drawer.drawer_id) || (prev.drawer_code && prev.drawer_code === drawer.id);
+                                                if (!sameDrawer) return prev;
+                                                return { ...prev, kit: { ...prev.kit, status: 'ISSUED' } };
+                                              });
+                                            }}
+                                          />
                                         </div>
                                       </div>
 

@@ -665,9 +665,6 @@ export default function ManualDoorSection({
       } else {
         setErrorMsg(`⚠️ ${result.message || 'Nothing new was logged — pieces may already be recorded at this stage.'}`);
       }
-      if (result.skill_warnings?.length) {
-        setErrorMsg(prev => `${prev ? prev + ' ' : ''}${result.skill_warnings[0].note}`);
-      }
       const extractSeq = (code) => {
         const n = parseInt(String(code).split('-').pop(), 10);
         return isNaN(n) ? null : n;
@@ -834,7 +831,8 @@ export default function ManualDoorSection({
           ...(isCutStage ? { consumption: { dcm: Number(barcodeDcm || 10) } } : {})
         };
         bucketRes = await apiProductionLogTwoDoor(token, logPayload);
-        if (bucketRes && (bucketRes.logged || bucketRes.sequence_blocked || bucketRes.skill_blocked || bucketRes.merge_blocked)) {
+        const hasRealBlocks = (bucketRes?.sequence_blocked?.length > 0) || (bucketRes?.merge_blocked?.length > 0) || (bucketRes?.not_found?.length > 0);
+        if (bucketRes && hasRealBlocks) {
           setBucketResult(bucketRes);
           setShowBucketModal(true);
         }

@@ -19,10 +19,10 @@ export async function POST(req) {
     });
 
     const mailOptions = {
-      from: `"Kairox Leather Factory" <${SMTP_EMAIL}>`,
+      from: `"PTE Leather Factory" <${SMTP_EMAIL}>`,
       to: toEmail || SUPPLIER_EMAIL,
       subject: subject || `[URGENT ALERT] Stock Shortage - Action Required for PO-${bomId}`,
-      text: text || `Hello Supplier,\n\nURGENT: We have detected a critical stock shortage for the upcoming production run.\n\nPlease find the attached Purchase Order / BOM Form (PO-${bomId}) with the required material details.\n\nKindly confirm the material availability and your fastest delivery lead time immediately to avoid production delays.\n\nRegards,\nKairox Procurement Team`,
+      text: text || `Hello Supplier,\n\nURGENT: We have detected a critical stock shortage for the upcoming production run.\n\nPlease find the attached Purchase Order / BOM Form (PO-${bomId}) with the required material details.\n\nKindly confirm the material availability and your fastest delivery lead time immediately to avoid production delays.\n\nRegards,\nPTE Procurement Team`,
       attachments: [
         {
           filename: `PO_Form_${bomId}.pdf`,
