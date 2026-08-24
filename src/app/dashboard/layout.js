@@ -395,11 +395,11 @@ export default function DashboardLayout({ children }) {
         <div className="flex items-center gap-2">
           <Factory className="w-7 h-7" style={{ color: '#c8834a' }} />
           <div>
-            <span className="text-xl font-black tracking-widest text-white">KAIROX</span>
+            <span className="text-xl font-black tracking-widest text-white">PTE</span>
             <p className="text-[10px] font-bold tracking-wider uppercase" style={{ color: '#c8834a' }}>Leather Intelligence</p>
           </div>
         </div>
-        <button type="button" onClick={() => setMobileMenuOpen(false)} className="md:hidden p-2 focus:outline-none" style={{ color: '#ffffff' }} aria-label="Close menu">
+        <button type="button" onClick={() => setMobileMenuOpen(false)} className="lg:hidden p-2 focus:outline-none" style={{ color: '#ffffff' }} aria-label="Close menu">
           <X className="w-5 h-5" />
         </button>
       </div>
@@ -440,7 +440,7 @@ export default function DashboardLayout({ children }) {
 
       {/* Sidebar Footer */}
       <div className="p-6 border-t text-xs text-center" style={{ borderColor: 'rgba(200,131,74,0.15)', color: '#a88a6a' }}>
-        <p className="font-bold">Kairox Leather Platform</p>
+        <p className="font-bold">PTE Leather Platform</p>
         <p className="mt-1 opacity-70">Touch-Optimized Operations</p>
       </div>
     </>
@@ -458,24 +458,25 @@ export default function DashboardLayout({ children }) {
       }}
     >
       {/* ================================================
-          DESKTOP SIDEBAR
+          DESKTOP SIDEBAR (persistent, lg+ only — tablets get the
+          collapsible overlay sidebar below, same as mobile)
           ================================================ */}
-      <aside className="hidden md:flex flex-col static inset-auto z-auto w-72 shadow-2xl" style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
+      <aside className="hidden lg:flex flex-col static inset-auto z-auto w-72 shadow-2xl" style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
         {desktopSidebar}
       </aside>
 
       {/* ================================================
-          MOBILE SIDEBAR (Instant Unmount)
+          MOBILE / TABLET SIDEBAR (Instant Unmount, < lg)
           ================================================ */}
       {mobileMenuOpen && (
         <>
           <div
             onClick={() => setMobileMenuOpen(false)}
-            className="fixed inset-0 z-40 bg-black/40 md:hidden"
+            className="fixed inset-0 z-40 bg-black/40 lg:hidden"
             aria-hidden="true"
           />
           <aside
-            className="md:hidden fixed inset-y-0 left-0 z-50 w-72 flex flex-col shadow-2xl"
+            className="lg:hidden fixed inset-y-0 left-0 z-50 w-72 flex flex-col shadow-2xl"
             style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}
           >
             {mobileSidebar}
@@ -486,7 +487,7 @@ export default function DashboardLayout({ children }) {
       {/* ================================================
           MAIN CONTENT
           ================================================ */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen md:min-h-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen lg:min-h-0 lg:overflow-hidden">
         {/* Header */}
 
         <motion.header
@@ -523,7 +524,7 @@ export default function DashboardLayout({ children }) {
                   (previous) => !previous
                 )
               }
-              className="md:hidden text-2xl p-2 rounded-lg"
+              className="lg:hidden text-2xl p-2 rounded-lg"
               style={{
                 color: '#2d1f0e',
                 background:
@@ -699,7 +700,7 @@ export default function DashboardLayout({ children }) {
             ================================================ */}
 
         <main
-          className="flex-1 p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full min-h-screen overflow-y-auto z-0 mx-auto relative"
+          className="flex-1 p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full min-h-screen lg:min-h-0 overflow-y-auto z-0 mx-auto relative"
           style={{ background: '#faf6f0' }}
         >
           {children}

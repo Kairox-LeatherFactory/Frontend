@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, Suspense } from 'react';
+import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -12,6 +12,7 @@ import {
   X,
   Zap,
   Info,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -56,9 +57,18 @@ function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates
 
   const isSelected = (dayStr) => selectedDate === dayStr;
   const hasPieces = (dayStr) => availableDates.includes(dayStr);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setIsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -67,13 +77,13 @@ function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates
       >
         <span className="truncate flex items-center gap-1">
           <span>📅</span>
-          <span>{selectedDate === 'all' ? 'All Dates' : selectedDate}</span>
+          <span className="truncate">{selectedDate === 'all' ? 'All Dates' : selectedDate}</span>
         </span>
-        <span className="text-[10px] text-slate-400 font-bold">▼</span>
+        <span className="text-[10px] text-slate-400 font-bold shrink-0">▼</span>
       </button>
 
       {isOpen && (
-        <div className="absolute top-full mt-2 left-0 z-50 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xl w-80 animate-fade-in text-slate-800">
+        <div className="absolute top-full mt-2 left-0 right-0 sm:right-auto z-50 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xl w-full sm:w-80 max-w-[calc(100vw-2rem)] animate-fade-in text-slate-800">
           <div className="grid grid-cols-3 gap-1.5 mb-3 pb-2.5 border-b border-slate-100 text-[11px] font-bold">
             <button
               onClick={() => { onSelectDate('all'); setIsOpen(false); }}
@@ -155,6 +165,66 @@ function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates
               className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 focus:outline-none focus:border-rose-600 cursor-pointer"
             />
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Native <select> option popups size themselves to their widest option text,
+// independent of the closed control's own (responsive) width — on real data
+// (order numbers, operator names) that popup can render past the viewport
+// edge on a tablet. This is a fully custom dropdown instead: the open panel
+// is pinned left:0/right:0 against its own button, so its width is always
+// exactly the button's width (already on-screen), and every row truncates
+// with real CSS ellipsis rather than relying on the browser's native popup.
+function ScreenSafeSelect({ value, options, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+  const label = value === 'all' || !selected ? placeholder : selected.label;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#e11d48] cursor-pointer"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+          {placeholder && (
+            <button
+              type="button"
+              onClick={() => { onChange('all'); setOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs font-bold truncate cursor-pointer hover:bg-slate-50 ${value === 'all' ? 'text-[#e11d48] bg-rose-50' : 'text-slate-700'}`}
+            >
+              {placeholder}
+            </button>
+          )}
+          {options.map((opt, idx) => (
+            <button
+              key={`${opt.value}-${idx}`}
+              type="button"
+              title={opt.title || opt.label}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs font-bold truncate cursor-pointer hover:bg-slate-50 ${value === opt.value ? 'text-[#e11d48] bg-rose-50' : 'text-slate-700'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -770,88 +840,62 @@ function DashboardInner() {
 
           {/* Order Filter (server-side: order_id) */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterOrder}
-              onChange={(e) => { setFilterOrder(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#e11d48]"
-            >
-              <option value="all">📦 All Orders</option>
-              {ordersList.map((ord, idx) => (
-                <option key={`lining-ord-opt-${ord.id || ord.order_number}-${idx}`} value={ord.id}>
-                  {ord.client ? `${ord.client} - ` : ''}PO: {ord.order_number}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterOrder(v); setCurrentPage(1); }}
+              placeholder="📦 All Orders"
+              options={ordersList.map((ord) => ({ value: ord.id, label: `${ord.client ? `${ord.client} - ` : ''}PO: ${ord.order_number}` }))}
+            />
           </div>
 
           {/* Style Filter (client-side) */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterStyle}
-              onChange={(e) => { setFilterStyle(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#e11d48]"
-            >
-              <option value="all">👗 All Styles</option>
-              {availableStyles.map((s, idx) => (
-                <option key={`lining-style-opt-${s.id || s.name}-${idx}`} value={s.name}>{s.name}</option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterStyle(v); setCurrentPage(1); }}
+              placeholder="👗 All Styles"
+              options={availableStyles.map((s) => ({ value: s.name, label: s.name }))}
+            />
           </div>
 
           {/* Lining Lot Filter */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterLot}
-              onChange={(e) => { setFilterLot(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#e11d48]"
-            >
-              <option value="all">🧵 All Lots</option>
-              {availableLots.map((lot, idx) => (
-                <option key={`lining-lot-opt-${lot.id || lot.label}-${idx}`} value={lot.id}>{lot.label}</option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterLot(v); setCurrentPage(1); }}
+              placeholder="🧵 All Lots"
+              options={availableLots.map((lot) => ({ value: lot.id, label: lot.label }))}
+            />
           </div>
 
           {/* Operator Filter (server-side: employee_id) */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterEmployee}
-              onChange={(e) => { setFilterEmployee(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#e11d48]"
-            >
-              <option value="all">👷 All Operators</option>
-              {availableEmployees.map((c, idx) => (
-                <option key={`lining-emp-opt-${c.id || c.name}-${idx}`} value={c.id}>{c.name}</option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterEmployee(v); setCurrentPage(1); }}
+              placeholder="👷 All Operators"
+              options={availableEmployees.map((c) => ({ value: c.id, label: c.name }))}
+            />
           </div>
 
           {/* Stage / Status Filter */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterStage}
-              onChange={(e) => { setFilterStage(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#e11d48]"
-            >
-              <option value="all">⚡ Stage</option>
-              {availableStages.map((st, idx) => (
-                <option key={`lining-stage-opt-${st}-${idx}`} value={st}>{formatStage(st)}</option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterStage(v); setCurrentPage(1); }}
+              placeholder="⚡ Stage"
+              options={availableStages.map((st) => ({ value: st, label: formatStage(st) }))}
+            />
           </div>
 
           {/* Size Filter */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterSize}
-              onChange={(e) => { setFilterSize(e.target.value); setCurrentPage(1); }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#e11d48]"
-            >
-              <option value="all">📏 Size</option>
-              {availableSizes.map((sz, idx) => (
-                <option key={`lining-size-opt-${sz}-${idx}`} value={sz}>Size {sz}</option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterSize(v); setCurrentPage(1); }}
+              placeholder="📏 Size"
+              options={availableSizes.map((sz) => ({ value: sz, label: `Size ${sz}` }))}
+            />
           </div>
         </div>
       </section>
@@ -1135,17 +1179,17 @@ function DashboardInner() {
 
           {/* CUTTING → LINING HANDOFF QUEUE (from data.upcoming) */}
           <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
                 <h3 className="text-sm font-extrabold text-slate-900">Upcoming: Awaiting Lining</h3>
                 <p className="text-xs text-slate-500">Size/colour groups where cutting is complete but lining hasn&rsquo;t started yet, straight from the backend queue</p>
               </div>
-              <span className="text-xs font-bold px-3 py-1 rounded-full bg-rose-50 text-[#e11d48] border border-rose-200">
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-rose-50 text-[#e11d48] border border-rose-200 shrink-0 self-start sm:self-auto">
                 {filteredUpcoming.length} groups queued
               </span>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-xs md:text-sm text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Order #</th>
@@ -1210,7 +1254,7 @@ function DashboardInner() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-xs md:text-sm text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Style</th>
@@ -1373,7 +1417,7 @@ function DashboardInner() {
       {activeTab === 'tab-inventory' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
           <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Lining Inventory Stock & Lot Allocation (MTRS / DCM)</h3>
                 <p className="text-xs text-slate-500">
@@ -1382,13 +1426,13 @@ function DashboardInner() {
                     : 'Available lining fabric inventory and consumption'}
                 </p>
               </div>
-              <span className="text-xs font-bold text-slate-500">
+              <span className="text-xs font-bold text-slate-500 shrink-0">
                 Total Stock: <strong className="text-slate-900">{(liningKpis?.total_available_lining ?? liningKpis?.total_available_leather ?? 0).toLocaleString()} DCM / MTRS</strong>
               </span>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-xs md:text-sm text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Lot #</th>
@@ -1418,7 +1462,7 @@ function DashboardInner() {
                         <td className="py-3.5 px-4 font-mono">{lot.thickness || '—'}</td>
                         <td className="py-3.5 px-4 uppercase text-slate-500">{lot.uom || 'MTRS'}</td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{(lot.available ?? lot.total_stock_meters ?? 0).toLocaleString()}</td>
-                        <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{typeof lot.allocated === 'number' ? lot.allocated : <NotAvailableBadge />}</td>
+                        <td className="py-3.5 px-4 text-right font-mono text-blue-700 font-semibold">{typeof lot.allocated === 'number' ? lot.allocated : <div className="flex justify-end"><NotAvailableBadge /></div>}</td>
                         <td className="py-3.5 px-4 text-right font-mono text-purple-700 font-bold">{(lot.used ?? lot.consumed ?? 0).toLocaleString()}</td>
                         <td className={`py-3.5 px-4 text-right font-mono font-black ${(lot.remaining ?? 0) < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                           {(lot.remaining ?? 0).toLocaleString()}
@@ -1499,15 +1543,15 @@ function DashboardInner() {
                   <div>
                     <div className="flex items-center gap-3 mb-4">
                       {emp.photo ? (
-                        <img src={emp.photo} alt={emp.name} className="w-12 h-12 rounded-full object-cover border border-slate-200" />
+                        <img src={emp.photo} alt={emp.name} className="w-12 h-12 rounded-full object-cover border border-slate-200 shrink-0" />
                       ) : (
-                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#e11d48] to-[#be123c] flex items-center justify-center text-white font-black text-sm">
+                        <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#e11d48] to-[#be123c] flex items-center justify-center text-white font-black text-sm shrink-0">
                           {initials(emp.name)}
                         </div>
                       )}
-                      <div>
-                        <h4 className="text-sm font-extrabold text-slate-900">{emp.name}</h4>
-                        <p className="text-xs text-slate-500">{emp.designation || emp.role || 'Lining Operator'}</p>
+                      <div className="min-w-0">
+                        <h4 className="text-sm font-extrabold text-slate-900 truncate">{emp.name}</h4>
+                        <p className="text-xs text-slate-500 truncate">{emp.designation || emp.role || 'Lining Operator'}</p>
                       </div>
                     </div>
 
@@ -1602,21 +1646,23 @@ function DashboardInner() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500">Rows per page:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
-                  className="bg-[#f8fafc] border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800"
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
+                <span className="text-xs font-bold text-slate-500 shrink-0">Rows per page:</span>
+                <div className="w-20">
+                  <ScreenSafeSelect
+                    value={pageSize}
+                    onChange={(v) => { setPageSize(Number(v)); setCurrentPage(1); }}
+                    options={[
+                      { value: 10, label: '10' },
+                      { value: 25, label: '25' },
+                      { value: 50, label: '50' },
+                    ]}
+                  />
+                </div>
               </div>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-xs md:text-sm text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Piece Code</th>
@@ -1649,7 +1695,7 @@ function DashboardInner() {
                         {typeof p.actual_consumption === 'number' ? `${p.actual_consumption.toFixed(1)} DCM` : '—'}
                       </td>
                       <td className="py-3.5 px-4 text-right font-mono text-slate-500">
-                        {typeof p.expected_consumption === 'number' ? `${p.expected_consumption.toFixed(1)} DCM` : <NotAvailableBadge label="N/A" />}
+                        {typeof p.expected_consumption === 'number' ? `${p.expected_consumption.toFixed(1)} DCM` : <div className="flex justify-end"><NotAvailableBadge label="N/A" /></div>}
                       </td>
                       <td className="py-3.5 px-4 text-right font-mono font-bold">
                         {typeof p.variance === 'number' ? (
@@ -1657,7 +1703,7 @@ function DashboardInner() {
                             {p.variance > 0 ? `+${p.variance.toFixed(1)}` : p.variance.toFixed(1)} DCM
                           </span>
                         ) : (
-                          <NotAvailableBadge label="N/A" />
+                          <div className="flex justify-end"><NotAvailableBadge label="N/A" /></div>
                         )}
                       </td>
                       <td className="py-3.5 px-4 text-center">
@@ -1917,27 +1963,27 @@ function DashboardInner() {
               exit={{ scale: 0.92, opacity: 0 }}
               className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4"
             >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3 min-w-0">
                   {selectedEmployeeModal.photo ? (
-                    <img src={selectedEmployeeModal.photo} alt={selectedEmployeeModal.name} className="w-10 h-10 rounded-full object-cover border border-slate-200" />
+                    <img src={selectedEmployeeModal.photo} alt={selectedEmployeeModal.name} className="w-10 h-10 rounded-full object-cover border border-slate-200 shrink-0" />
                   ) : (
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#e11d48] to-[#be123c] flex items-center justify-center text-white font-black text-xs">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#e11d48] to-[#be123c] flex items-center justify-center text-white font-black text-xs shrink-0">
                       {initials(selectedEmployeeModal.name)}
                     </div>
                   )}
-                  <div>
-                    <h3 className="text-sm font-extrabold text-slate-900">{selectedEmployeeModal.name}</h3>
-                    <p className="text-xs text-slate-500">{selectedEmployeeModal.designation || selectedEmployeeModal.role || 'Lining Operator'} &bull; Assigned: {selectedEmployeeModal.assigned_pieces ?? 0} pcs</p>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-extrabold text-slate-900 truncate">{selectedEmployeeModal.name}</h3>
+                    <p className="text-xs text-slate-500 truncate">{selectedEmployeeModal.designation || selectedEmployeeModal.role || 'Lining Operator'} &bull; Assigned: {selectedEmployeeModal.assigned_pieces ?? 0} pcs</p>
                   </div>
                 </div>
-                <button onClick={() => setSelectedEmployeeModal(null)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200">
+                <button onClick={() => setSelectedEmployeeModal(null)} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 shrink-0">
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               <div className="overflow-y-auto max-h-[300px]">
-                <table className="w-full text-xs text-left">
+                <table className="w-full text-xs md:text-sm text-left">
                   <thead>
                     <tr className="bg-[#f8fafc] text-slate-600 font-bold border-y border-slate-200">
                       <th className="py-2.5 px-3 text-right">Seq</th>

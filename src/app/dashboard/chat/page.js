@@ -7,7 +7,7 @@ const MOCK_CHAT_HISTORY = [
   {
     id: 1,
     role: 'bot',
-    content: "Hello! I'm Kairox AI, your factory intelligence assistant. I can help you analyze orders, track delays, or find air-freight risks. How can I help you today?",
+    content: "Hello! I'm PTE AI, your factory intelligence assistant. I can help you analyze orders, track delays, or find air-freight risks. How can I help you today?",
     time: '09:00 AM'
   },
   {
@@ -118,7 +118,7 @@ export default function AIChatPage() {
                 <div className={`flex flex-col gap-1.5 ${isBot ? 'items-start' : 'items-end'}`}>
                   <div className="flex items-center gap-2 px-1">
                     <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>
-                      {isBot ? 'Kairox AI' : 'You'}
+                      {isBot ? 'PTE AI' : 'You'}
                     </span>
                     <span className="text-[10px] font-semibold" style={{ color: 'rgba(154,122,90,0.6)' }}>{msg.time}</span>
                   </div>
