@@ -3,6 +3,7 @@ import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { DataProvider } from '@/context/DataContext';
 import CustomCursor from '@/components/CustomCursor';
+import NumberInputWheelGuard from '@/components/NumberInputWheelGuard';
 
 const lato = Lato({
   subsets: ['latin'],
@@ -30,6 +31,7 @@ export default function RootLayout({ children }) {
         <AuthProvider>
           <DataProvider>
             <CustomCursor />
+            <NumberInputWheelGuard />
             {children}
           </DataProvider>
         </AuthProvider>

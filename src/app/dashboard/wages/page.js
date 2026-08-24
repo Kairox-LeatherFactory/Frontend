@@ -785,6 +785,14 @@ function ComputationView({ token }) {
   const [isClosingById, setIsClosingById] = useState(false);
   const [showRecomputeAreYouSure, setShowRecomputeAreYouSure] = useState(false); // general "are you sure?" before every recompute attempt
 
+  // Pick the run by the style code the operator actually remembers instead
+  // of a raw run id — selecting a style looks up its runs via the ledger and
+  // either auto-fills runActionId (single match) or lists candidates to
+  // choose from (multiple runs computed for that style over time).
+  const [runActionStyleCode, setRunActionStyleCode] = useState('');
+  const [runActionStyleSearching, setRunActionStyleSearching] = useState(false);
+  const [runActionStyleMatches, setRunActionStyleMatches] = useState([]);
+
   // "Find a run" picker — team asked why the operator needs to know a raw
   // run_id at all. They still do (the recompute/close/reopen endpoints are
   // keyed on it), but this lets them search by order/style/date instead of
@@ -821,7 +829,10 @@ function ComputationView({ token }) {
         .catch(() => setOrderOptions([]))
         .finally(() => setOrderOptionsLoading(false));
     }
-    if ((scopeType === 'style' || showRunFinder) && styleOptions.length === 0) {
+    // Style options are always needed now — the Run Actions style picker
+    // below is visible up front, not gated behind a scope choice or the
+    // Find a Run toggle.
+    if (styleOptions.length === 0) {
       setStyleOptionsLoading(true);
       apiGetWageStyles(token, {})
         .then((data) => setStyleOptions(Array.isArray(data) ? data : []))
@@ -959,6 +970,39 @@ function ComputationView({ token }) {
     setFinderStyleCode('');
     setFinderDateFrom('');
     setFinderDateTo('');
+  };
+
+  // Style select for Run Actions: look up that style's runs and either
+  // auto-fill runActionId (one match) or list candidates to pick from.
+  const handleSelectRunActionStyle = async (s) => {
+    setRunActionStyleCode(s ? s.style_code : '');
+    setRunActionId('');
+    setRun(null);
+    setRunActionStyleMatches([]);
+    if (!s) return;
+    setRunActionStyleSearching(true);
+    try {
+      const data = await apiGetWageLedger(token, { styleCode: s.style_code, limit: 20 });
+      const items = Array.isArray(data?.items) ? data.items : [];
+      if (items.length === 1) {
+        setRunActionId(items[0].run_id);
+        setRun(items[0]);
+      } else if (items.length > 1) {
+        setRunActionStyleMatches(items);
+      } else {
+        showToast(`No runs found for style ${s.style_code}.`, 'error');
+      }
+    } catch (e) {
+      showToast(e.message || 'Failed to search runs for this style.', 'error');
+    } finally {
+      setRunActionStyleSearching(false);
+    }
+  };
+
+  const handlePickRunActionMatch = (r) => {
+    setRunActionId(r.run_id);
+    setRun(r);
+    setRunActionStyleMatches([]);
   };
 
   return (
@@ -1185,13 +1229,50 @@ function ComputationView({ token }) {
           </div>
         )}
 
-        <input
-          value={runActionId}
-          onChange={(e) => setRunActionId(e.target.value)}
-          placeholder="Run id…"
-          className="w-full h-11 px-4 bg-[#faf6f0] border rounded-xl font-mono text-xs font-bold outline-none focus:border-[#c8834a]"
-          style={{ borderColor: 'rgba(200,131,74,0.2)' }}
-        />
+        <div className="space-y-2">
+          <label className="text-[10px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>Style Code</label>
+          <SearchCombobox
+            placeholder="Search and select a style..."
+            value={runActionStyleCode}
+            options={styleOptions}
+            getKey={(s) => s.style_code}
+            getLabel={(s) => s.style_code}
+            getSub={(s) => s.style_name}
+            onSelect={handleSelectRunActionStyle}
+            loading={styleOptionsLoading || runActionStyleSearching}
+            allowClear
+          />
+        </div>
+
+        {runActionStyleMatches.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-slate-400">Multiple runs found for this style — pick one:</p>
+            {runActionStyleMatches.map((r) => (
+              <button
+                key={r.run_id}
+                type="button"
+                onClick={() => handlePickRunActionMatch(r)}
+                className="w-full flex items-center justify-between gap-3 p-3 rounded-xl bg-white border hover:border-[#c8834a] transition-all text-left"
+                style={{ borderColor: 'rgba(200,131,74,0.15)' }}
+              >
+                <div className="min-w-0">
+                  <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
+                    {r.scope_order_number || r.scope_style_code || 'Whole Factory'}
+                  </p>
+                  <p className="text-[10px] font-bold text-slate-400">{r.period_start} → {r.period_end}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <StatusBadge status={r.status} />
+                  <ChevronRight className="w-4 h-4 text-slate-300" />
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {runActionId && (
+          <p className="text-[10px] font-mono font-bold text-slate-400 truncate">Run ID: {runActionId}</p>
+        )}
         {run && (run.id || run.run_id) === runActionId.trim() && (
           <div className="flex items-center gap-3">
             <StatusBadge status={run.status} />
