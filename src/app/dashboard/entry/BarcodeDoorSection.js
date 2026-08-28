@@ -1,5 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
@@ -9,7 +10,7 @@ import {
   apiGetMaterialLots,
 } from '@/lib/api';
 import { Lock, CheckCircle2, Rocket, Scissors, X, Loader2, AlertTriangle, Barcode, Check, PackageCheck, Camera } from 'lucide-react';
-import { manualStages, UI_TO_API_STAGE, API_TO_UI_STAGE, PREREQUISITE_MAP, PIPELINE_STAGE_ORDER, useRoleAccess, CameraScannerModal } from './shared';
+import { manualStages, UI_TO_API_STAGE, API_TO_UI_STAGE, PREREQUISITE_MAP, PIPELINE_STAGE_ORDER, useRoleAccess, CameraScannerModal, WorkerPickerDropdown } from './shared';
 
 // Extracted from src/app/dashboard/entry/page.js (Barcode Gun Scanner door:
 // Cutting/Lining DCM screen + Fusing->Package Export pipeline scan). Props
@@ -27,6 +28,7 @@ export default function BarcodeDoorSection({
   handleVerifyBarcodeWorker, barcodeNotCheckedInModal, setBarcodeNotCheckedInModal, workerInputRef,
   cameraScanTarget, setCameraScanTarget,
 }) {
+  const router = useRouter();
   const { token, user } = useAuth();
   const { workers } = useData();
   const { allowedOperations, isFullAccess, isStageAllowedForRole } = useRoleAccess();
@@ -300,7 +302,7 @@ export default function BarcodeDoorSection({
         );
       }
       const usingAlternateStage = !!(pieceState?.next_stage && UI_TO_API_STAGE[targetStage] !== pieceState.next_stage);
-      const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption');
+      const realBlockers = (pieceState?.blockers || []).filter(b => b.gate !== 'consumption' && b.gate !== 'skill' && b.gate !== 'role' && b.gate !== 'designation');
       if (!(barcodeStage === 'Lining' || (typeof targetStage !== 'undefined' && targetStage === 'Lining')) && pieceState?.ready_to_log === false && realBlockers.length > 0) {
         throw new Error(realBlockers[0].reason || 'Scan blocked by server');
       }
@@ -635,10 +637,11 @@ export default function BarcodeDoorSection({
 
       const hasBlockedItems =
         (result?.sequence_blocked?.length > 0) ||
-        (result?.skill_blocked?.length > 0) ||
         (result?.merge_blocked?.length > 0) ||
-        (result?.role_blocked?.length > 0) ||
-        (Array.isArray(result?.blocked) && result.blocked.length > 0);
+        (Array.isArray(result?.blocked) && result.blocked.filter(b => {
+          const r = (b?.reason || '').toLowerCase();
+          return !r.includes('skill') && !r.includes('designation') && !r.includes('assigned');
+        }).length > 0);
 
       // Bug fix (parity with ManualDoorSection): `logged`/`rework` only say a
       // piece is RECORDED at this stage — a rescan of a piece already logged
@@ -693,6 +696,18 @@ export default function BarcodeDoorSection({
             if (!cleanCode) return;
             setBarcodeSkuInput(cleanCode);
             setTimeout(() => handleVerifySkuBarcode(cleanCode), 50);
+          }}
+        />
+      )}
+      {cameraScanTarget === 'piece' && (
+        <CameraScannerModal
+          title="Scan Piece Barcode"
+          onClose={() => setCameraScanTarget(null)}
+          onScan={(scannedCode) => {
+            const cleanCode = String(scannedCode || '').replace(/[\r\n]+/g, '').trim();
+            if (!cleanCode) return;
+            setBarcodePieceInput(cleanCode);
+            setTimeout(() => handleBarcodePieceScan(cleanCode), 50);
           }}
         />
       )}
@@ -778,19 +793,7 @@ export default function BarcodeDoorSection({
               {/* Quick Select Worker Dropdown Fallback */}
               <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-xs text-[#e2d5c3]/70">
                 <span className="shrink-0">Or select active worker:</span>
-                <select
-                  onChange={(e) => {
-                    if (e.target.value) handleVerifyBarcodeWorker(e.target.value);
-                  }}
-                  className="w-full sm:w-auto max-w-full min-w-0 bg-white/10 text-white font-bold text-xs py-1.5 px-3 rounded-xl border border-[#c8834a]/30 focus:outline-none cursor-pointer"
-                >
-                  <option value="" className="bg-[#1c1207] text-white">-- Choose Worker --</option>
-                  {workers.map(w => (
-                    <option key={w.id} value={w.id} className="bg-[#1c1207] text-white">
-                      {w.name} ({w.designation || 'Worker'})
-                    </option>
-                  ))}
-                </select>
+                <WorkerPickerDropdown workers={workers} onSelect={handleVerifyBarcodeWorker} />
               </div>
             </div>
           ) : (
@@ -1243,11 +1246,20 @@ export default function BarcodeDoorSection({
                           handleBarcodePieceScan();
                         }
                       }}
-                      style={{ paddingLeft: barcodePieceInput ? '1rem' : '3.25rem', paddingRight: '1rem' }}
+                      style={{ paddingLeft: barcodePieceInput ? '1rem' : '3.25rem', paddingRight: '3rem' }}
                       className="w-full h-14 bg-white font-mono font-bold text-sm text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       disabled={!barcodeWorker || barcodePieceResolving || barcodePieceValidating}
                       autoFocus
                     />
+                    <button
+                      type="button"
+                      onClick={() => setCameraScanTarget('piece')}
+                      disabled={!barcodeWorker || barcodePieceResolving || barcodePieceValidating}
+                      className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-amber-50 text-[#c8834a] border border-[#c8834a]/30 hover:bg-amber-100 active:scale-95 transition-all cursor-pointer z-10 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title="Scan Piece Barcode with Mobile Camera"
+                    >
+                      <Camera className="w-5 h-5" />
+                    </button>
                   </div>
                   <button
                     type="button"

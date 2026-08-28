@@ -37,7 +37,25 @@ function getPieces(sDetail) {
   return [];
 }
 
-function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCode, pieceDetail, onSelectPiece }) {
+// Stage ranking ensuring Lining Cutting comes directly after Leather Cutting
+function getStageRank(st) {
+  const rawKey = String(st?.stage || st?.stage_code || st?.label || st?.stage_label || st?.stage_name || '')
+    .toUpperCase()
+    .replace(/[\s-]+/g, '_');
+
+  if (rawKey.includes('LEATHER_CUT') || rawKey === 'CUTTING') return 1;
+  if (rawKey.includes('LINING_CUT') || rawKey === 'LINING' || rawKey.includes('LINE_CUT')) return 2;
+  if (rawKey.includes('FUS')) return 3;
+  if (rawKey.includes('PAST')) return 4;
+  if (rawKey.includes('LINE_STITCH')) return 5;
+  if (rawKey.includes('SHELL_STITCH') || rawKey.includes('STITCH')) return 6;
+  if (rawKey.includes('FINAL_FINISH') || rawKey.includes('FINISH')) return 7;
+  if (rawKey.includes('INSPECT')) return 8;
+  if (rawKey.includes('EXPORT') || rawKey.includes('PACKAGE')) return 9;
+  return 99;
+}
+
+function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCode, pieceDetail, onSelectPiece, loadingPiece }) {
   if (!activeItem) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center h-full text-center py-16 animate-fade-in">
@@ -53,6 +71,11 @@ function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCo
 
   const style = activeItem.type === 'style' ? activeItem.data : null;
   const sDetail = style ? styleDetails[style.style_id || style.id] : null;
+
+  const sortedStages = useMemo(() => {
+    if (!pieceDetail?.stages || !Array.isArray(pieceDetail.stages)) return [];
+    return [...pieceDetail.stages].sort((a, b) => getStageRank(a) - getStageRank(b));
+  }, [pieceDetail?.stages]);
 
   return (
     <div className="space-y-6 pb-20">
@@ -187,23 +210,38 @@ function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCo
       )}
 
       {/* LEVEL 3: Piece Data */}
-      {selectedPieceCode && pieceDetail && (
+      {selectedPieceCode && (
         <div className="bg-white rounded-2xl border border-emerald-500/30 shadow-lg overflow-hidden animate-fade-in relative mt-4">
           <div className="bg-emerald-50 border-b border-emerald-200 px-5 py-3.5 flex justify-between items-center gap-2">
             <div className="flex items-center gap-2.5">
               <Activity className="w-4 h-4 text-emerald-600" />
-              <span className="text-xs font-black uppercase tracking-widest text-emerald-700">Level 3 · Piece</span>
+              <span className="text-xs font-black uppercase tracking-widest text-emerald-700">Level 3 · Piece Traveler</span>
             </div>
-            <button onClick={() => onSelectPiece(null)} className="text-xs font-black bg-white border border-emerald-200 text-emerald-700 px-3.5 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors shrink-0">Close View</button>
+            <button onClick={() => onSelectPiece(null)} className="text-xs font-black bg-white border border-emerald-200 text-emerald-700 px-3.5 py-1.5 rounded-lg hover:bg-emerald-100 transition-colors shrink-0 cursor-pointer">Close View</button>
           </div>
-          <div className="p-6 space-y-6">
-            <div>
-              <p className="text-xl font-black text-[#2d1f0e] font-mono">{pieceDetail.bundle_id}</p>
-              <div className="flex flex-wrap items-center gap-3 mt-2">
-                <span className="text-sm text-slate-500 font-semibold">{pieceDetail.colour} / {pieceDetail.size}</span>
-                <span className="text-emerald-700 font-black bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full text-xs">{pieceDetail.current_stage}</span>
-              </div>
+          {loadingPiece ? (
+            <div className="p-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+              <Loader2 className="w-6 h-6 animate-spin text-emerald-600" />
+              <span className="text-xs font-bold">Loading Piece Details…</span>
             </div>
+          ) : pieceDetail ? (
+            <div className="p-6 space-y-6">
+              <div>
+                <p className="text-xl font-black text-[#2d1f0e] font-mono">{pieceDetail.bundle_id || pieceDetail.piece_code || pieceDetail.code || pieceDetail.piece_id || selectedPieceCode}</p>
+                <div className="flex flex-wrap items-center gap-3 mt-2">
+                  {(pieceDetail.style_name || pieceDetail.style) && (
+                    <span className="text-sm text-slate-700 font-bold">{pieceDetail.style_name || pieceDetail.style}</span>
+                  )}
+                  {(pieceDetail.colour || pieceDetail.color || pieceDetail.size) && (
+                    <span className="text-sm text-slate-500 font-semibold">{pieceDetail.colour || pieceDetail.color} {pieceDetail.size ? `/ ${pieceDetail.size}` : ''}</span>
+                  )}
+                  {(pieceDetail.current_stage || pieceDetail.current_stage_label || pieceDetail.status) && (
+                    <span className="text-emerald-700 font-black bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-full text-xs">
+                      {pieceDetail.current_stage_label || pieceDetail.current_stage || pieceDetail.status}
+                    </span>
+                  )}
+                </div>
+              </div>
 
             {pieceDetail.store && (
               <div className="bg-blue-50/60 rounded-xl p-5 border border-blue-100">
@@ -229,30 +267,52 @@ function HierarchyViewer({ activeItem, orderTrees, styleDetails, selectedPieceCo
               </div>
             )}
 
-            <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
-              <p className="text-xs font-black uppercase text-slate-400 mb-4 tracking-widest">Stage History Details</p>
-              <div className="space-y-3">
-                {pieceDetail.stages?.map((st, idx) => (
-                  <div key={idx} className="p-4 rounded-xl bg-white border border-slate-200 flex justify-between items-center shadow-sm gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-black text-slate-700 text-sm">{st.stage_label || st.stage_code}</span>
-                        {st.is_rework && <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-md font-bold text-[10px]">REWORK</span>}
+              <div className="bg-slate-50 rounded-xl p-5 border border-slate-200">
+                <p className="text-xs font-black uppercase text-slate-400 mb-4 tracking-widest">Stage History Details</p>
+                <div className="space-y-3">
+                  {sortedStages.map((st, idx) => (
+                    <div key={idx} className="p-4 rounded-xl bg-white border border-slate-200 flex justify-between items-center shadow-sm gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-slate-700 text-sm">
+                            {st.label || st.stage_label || st.stage_name || st.stage || st.stage_code}
+                          </span>
+                          {st.is_rework && <span className="bg-red-100 text-red-600 px-2 py-0.5 rounded-md font-bold text-[10px]">REWORK</span>}
+                          {st.state && (
+                            <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] uppercase ${
+                              st.state === 'completed'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : st.state === 'in_progress'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {st.state}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-slate-500 mt-1 font-medium text-sm">By {st.employee_name || st.worker_name || 'N/A'}</div>
                       </div>
-                      <div className="text-slate-500 mt-1 font-medium text-sm">By {st.employee_name || 'N/A'}</div>
+                      <div className="text-right text-slate-400 shrink-0">
+                        <div className="font-bold text-sm">{st.work_date || st.date}</div>
+                        <div className="text-xs mt-0.5">
+                          {st.logged_at
+                            ? (isNaN(new Date(st.logged_at).getTime())
+                                ? st.logged_at
+                                : new Date(st.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))
+                            : (st.time || '')}
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-right text-slate-400 shrink-0">
-                      <div className="font-bold text-sm">{st.work_date}</div>
-                      <div className="text-xs mt-0.5">{st.logged_at ? new Date(st.logged_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</div>
-                    </div>
-                  </div>
-                ))}
-                {(!pieceDetail.stages || pieceDetail.stages.length === 0) && (
-                  <div className="p-4 text-center text-slate-400 italic text-sm">No stage history logged yet.</div>
-                )}
+                  ))}
+                  {sortedStages.length === 0 && (
+                    <div className="p-4 text-center text-slate-400 italic text-sm">No stage history logged yet.</div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-8 text-center text-slate-400 italic text-sm">Could not load piece details.</div>
+          )}
         </div>
       )}
     </div>
@@ -598,6 +658,7 @@ function OrdersExplorer() {
         </div>
         {orderGroups.map((group) => {
           const fetchedTree = orderTrees[group.rawId];
+          const isTreeLoading = !!loadingTree[group.id];
           const isReleasedOnly = (s) => !s.production_status || s.production_status === 'RELEASED';
           // Analytics tracks real production — a style still sitting DRAFT
           // (never released) has no minted pieces to explore, so only
@@ -609,7 +670,7 @@ function OrdersExplorer() {
           // during that window instead of the misleading full list.
           const displayStyles = fetchedTree
             ? (fetchedTree.styles || []).filter(isReleasedOnly)
-            : loadingTree[group.id] ? [] : (group.styles || []).filter(isReleasedOnly);
+            : isTreeLoading ? [] : (group.styles || []).filter(isReleasedOnly);
 
           return (
             <div key={group.id} className="flex flex-col gap-0.5">
@@ -629,77 +690,83 @@ function OrdersExplorer() {
                 <span className={`font-bold text-sm truncate select-none ${activeItem?.data?.id === group.id ? 'text-[#2d1f0e]' : 'text-slate-600 group-hover:text-slate-800'} transition-colors`}>
                   {group.id}
                 </span>
-                {loadingTree[group.id] && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c8834a] ml-auto" />}
+                {isTreeLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c8834a] ml-auto" />}
               </div>
 
               {expandedOrders[group.id] && (
                 <div className="pl-5 flex flex-col gap-0.5 ml-3 border-l border-slate-200/50 mt-0.5">
-                  {displayStyles.length === 0 && !loadingTree[group.id] && (
-                    <span className="text-xs text-slate-400 p-2 italic">No styles found</span>
-                  )}
-                  {displayStyles.map((style, sIdx) => {
-                    const styleId = style.style_id || style.id || `style-${sIdx}`;
-                    const styleName = style.style_name || style.style || style.style_code || 'Unknown Style';
+                  {isTreeLoading ? (
+                    <div className="flex items-center gap-2 p-2.5 text-xs text-slate-400 font-bold animate-pulse">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c8834a]" />
+                      <span>Loading minted styles…</span>
+                    </div>
+                  ) : displayStyles.length === 0 ? (
+                    <span className="text-xs text-slate-400 p-2 italic">No minted styles found</span>
+                  ) : (
+                    displayStyles.map((style, sIdx) => {
+                      const styleId = style.style_id || style.id || `style-${sIdx}`;
+                      const styleName = style.style_name || style.style || style.style_code || 'Unknown Style';
 
-                    return (
-                      <div key={styleId} className="flex flex-col gap-0.5" ref={el => styleRefs.current[styleId] = el}>
-                        <div
-                          onClick={() => toggleStyle(style, group)}
-                          className="flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-all duration-200 group"
-                          style={{
-                            background: activeItem?.data?.style_id === styleId ? 'rgba(255,255,255,0.8)' : 'transparent',
-                            border: activeItem?.data?.style_id === styleId ? '1px solid #c8834a' : '1px solid transparent',
-                          }}
-                        >
-                          <div className="flex items-center gap-2 truncate">
-                            {expandedStyles[styleId]
-                              ? <ChevronDown className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
-                              : <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0 transition-colors" />}
-                            <Package className="w-3.5 h-3.5 text-amber-500/80 shrink-0" />
-                            <span className="font-semibold text-xs truncate text-slate-700">
-                              {styleName}
-                            </span>
+                      return (
+                        <div key={styleId} className="flex flex-col gap-0.5" ref={el => styleRefs.current[styleId] = el}>
+                          <div
+                            onClick={() => toggleStyle(style, group)}
+                            className="flex items-center justify-between p-2.5 rounded-lg cursor-pointer transition-all duration-200 group"
+                            style={{
+                              background: activeItem?.data?.style_id === styleId ? 'rgba(255,255,255,0.8)' : 'transparent',
+                              border: activeItem?.data?.style_id === styleId ? '1px solid #c8834a' : '1px solid transparent',
+                            }}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              {expandedStyles[styleId]
+                                ? <ChevronDown className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
+                                : <ArrowRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 shrink-0 transition-colors" />}
+                              <Package className="w-3.5 h-3.5 text-amber-500/80 shrink-0" />
+                              <span className="font-semibold text-xs truncate text-slate-700">
+                                {styleName}
+                              </span>
+                            </div>
+                            {loadingStyleDetail[styleId] && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c8834a] shrink-0" />}
                           </div>
-                          {loadingStyleDetail[styleId] && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c8834a] shrink-0" />}
+
+                          {/* Level 3: Pieces list under this style in sidebar */}
+                          {expandedStyles[styleId] && styleDetails[styleId] && (
+                            <div className="pl-4 flex flex-col gap-0.5 ml-3 border-l border-amber-200/60 mt-0.5">
+                              {getPieces(styleDetails[styleId]).length === 0 && (
+                                <span className="text-xs text-slate-400 p-2 italic">No pieces found</span>
+                              )}
+                              {getPieces(styleDetails[styleId]).map((piece) => {
+                                const pieceCode = piece.bundle_id || piece.piece_code || piece.piece_id;
+                                const isActivePiece = selectedPieceCode === pieceCode;
+                                return (
+                                  <div
+                                    key={pieceCode}
+                                    onClick={() => {
+                                      setActiveItem({ type: 'piece', data: piece, parentStyle: style, parentGroup: group });
+                                      handleSelectPiece(pieceCode);
+                                    }}
+                                    className="flex items-center gap-2 p-2 rounded-md cursor-pointer transition-all duration-150 group"
+                                    style={{
+                                      background: isActivePiece ? 'rgba(16,185,129,0.08)' : 'transparent',
+                                      border: isActivePiece ? '1px solid rgba(16,185,129,0.3)' : '1px solid transparent',
+                                    }}
+                                  >
+                                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: isActivePiece ? '#10b981' : '#cbd5e1' }} />
+                                    <span className={`text-xs font-mono truncate ${isActivePiece ? 'text-emerald-700 font-bold' : 'text-slate-500 group-hover:text-slate-700'}`}>
+                                      {pieceCode}
+                                    </span>
+                                    <span className="ml-auto text-[10px] font-bold shrink-0" style={{ color: '#c8834a' }}>
+                                      #{piece.seq}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-
-                        {/* Level 3: Pieces list under this style in sidebar */}
-                        {expandedStyles[styleId] && styleDetails[styleId] && (
-                          <div className="pl-4 flex flex-col gap-0.5 ml-3 border-l border-amber-200/60 mt-0.5">
-                            {getPieces(styleDetails[styleId]).length === 0 && (
-                              <span className="text-xs text-slate-400 p-2 italic">No pieces found</span>
-                            )}
-                            {getPieces(styleDetails[styleId]).map((piece) => {
-                              const pieceCode = piece.bundle_id || piece.piece_code || piece.piece_id;
-                              const isActivePiece = selectedPieceCode === pieceCode;
-                              return (
-                                <div
-                                  key={pieceCode}
-                                  onClick={() => {
-                                    setActiveItem({ type: 'piece', data: piece, parentStyle: style, parentGroup: group });
-                                    handleSelectPiece(pieceCode);
-                                  }}
-                                  className="flex items-center gap-2 p-2 rounded-md cursor-pointer transition-all duration-150 group"
-                                  style={{
-                                    background: isActivePiece ? 'rgba(16,185,129,0.08)' : 'transparent',
-                                    border: isActivePiece ? '1px solid rgba(16,185,129,0.3)' : '1px solid transparent',
-                                  }}
-                                >
-                                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: isActivePiece ? '#10b981' : '#cbd5e1' }} />
-                                  <span className={`text-xs font-mono truncate ${isActivePiece ? 'text-emerald-700 font-bold' : 'text-slate-500 group-hover:text-slate-700'}`}>
-                                    {pieceCode}
-                                  </span>
-                                  <span className="ml-auto text-[10px] font-bold shrink-0" style={{ color: '#c8834a' }}>
-                                    #{piece.seq}
-                                  </span>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
               )}
             </div>

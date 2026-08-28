@@ -184,6 +184,14 @@ export default function ProductionLogEntry() {
 
   const workerInputRef = useRef(null);
 
+  // Reset worker verification state when navigating between doors/tabs so each slide requires a fresh scan
+  useEffect(() => {
+    setBarcodeWorker(null);
+    setBarcodeWorkerInput('');
+    setBarcodeNotCheckedInModal(null);
+    setErrorMsg('');
+  }, [activeDoor]);
+
   const recordStageCompletion = (stage, pieceOrSkuKey) => {
     if (!stage || !pieceOrSkuKey) return;
     const rawKey = String(pieceOrSkuKey).toUpperCase().trim();
@@ -262,6 +270,7 @@ export default function ProductionLogEntry() {
             workerId: targetWorker.id,
             barcode: targetWorker.employee_barcode || query
           });
+          setBarcodeWorkerInput('');
           setBarcodeWorkerChecking(false);
           setTimeout(() => workerInputRef.current?.focus(), 100);
           return;
@@ -280,6 +289,7 @@ export default function ProductionLogEntry() {
       }
     } catch (err) {
       setErrorMsg(`Worker verification failed: ${err.message}`);
+      setBarcodeWorkerInput('');
       setTimeout(() => workerInputRef.current?.focus(), 100);
     } finally {
       setBarcodeWorkerChecking(false);
@@ -1005,28 +1015,6 @@ export default function ProductionLogEntry() {
                 </div>
               )}
 
-              {/* Skill Blocked Bucket */}
-              {bucketResult.skill_blocked && bucketResult.skill_blocked.length > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
-                  <div className="flex items-center gap-2 font-black text-xs text-red-800 uppercase tracking-wider">
-                    <Lock className="w-4 h-4 text-red-500" />
-                    Skill / Designation Blocked ({bucketResult.skill_blocked.length})
-                  </div>
-                  <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
-                    {bucketResult.skill_blocked.map((msg, i) => {
-                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
-                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
-                      return (
-                        <li key={i}>
-                          <span>{pieceStr}</span>
-                          {reasonObj && <div className="text-[10px] text-red-500 font-medium mt-0.5">{reasonObj.reason}</div>}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-
               {/* Merge Blocked Bucket */}
               {bucketResult.merge_blocked && bucketResult.merge_blocked.length > 0 && (
                 <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-2">
@@ -1089,7 +1077,7 @@ export default function ProductionLogEntry() {
           storeSendedSkus={storeSendedSkus} setStoreSendedSkus={setStoreSendedSkus}
           storeReceiveStatus={storeReceiveStatus} setStoreReceiveStatus={setStoreReceiveStatus}
           barcodeWorker={barcodeWorker} setBarcodeWorker={setBarcodeWorker} barcodeWorkerInput={barcodeWorkerInput} setBarcodeWorkerInput={setBarcodeWorkerInput} barcodeWorkerChecking={barcodeWorkerChecking}
-          handleVerifyBarcodeWorker={handleVerifyBarcodeWorker} workerInputRef={workerInputRef}
+          handleVerifyBarcodeWorker={handleVerifyBarcodeWorker} barcodeNotCheckedInModal={barcodeNotCheckedInModal} setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal} workerInputRef={workerInputRef}
           cameraScanTarget={cameraScanTarget} setCameraScanTarget={setCameraScanTarget}
         />
       )}

@@ -831,7 +831,8 @@ export default function ManualDoorSection({
           ...(isCutStage ? { consumption: { dcm: Number(barcodeDcm || 10) } } : {})
         };
         bucketRes = await apiProductionLogTwoDoor(token, logPayload);
-        if (bucketRes && (bucketRes.logged || bucketRes.sequence_blocked || bucketRes.skill_blocked || bucketRes.merge_blocked)) {
+        const hasRealBlocks = (bucketRes?.sequence_blocked?.length > 0) || (bucketRes?.merge_blocked?.length > 0) || (bucketRes?.not_found?.length > 0);
+        if (bucketRes && hasRealBlocks) {
           setBucketResult(bucketRes);
           setShowBucketModal(true);
         }

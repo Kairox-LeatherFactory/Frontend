@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Factory,
@@ -29,6 +29,7 @@ import {
   Target,
   Box,
   FileText,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -149,9 +150,243 @@ const DEPARTMENT_DISPLAY_ORDER = ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Sto
 // "LINING", corresponding to the Leather Cutting / Lining Cutting stages.
 const MATERIAL_TYPE_TO_STAGE = { LEATHER: 'LEATHER_CUTTING', LINING: 'LINING_CUTTING' };
 
+// Native <select> option popups size themselves to their widest option
+// text, independent of the closed control's own (responsive) width and
+// outside CSS's control — on real data (order numbers, employee names +
+// designation) that popup can render past the viewport edge, especially on
+// a tablet-width screen. This is a fully custom dropdown instead: the
+// open panel is absolutely positioned with left:0/right:0 against its own
+// button, so its width is always exactly the button's width (already
+// responsive/on-screen) — every row truncates with real CSS ellipsis
+// rather than relying on the browser's native popup layout.
+function ScreenSafeSelect({ value, options, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+  const label = value === 'all' || !selected ? placeholder : selected.label;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600 cursor-pointer"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg py-1" role="listbox">
+          <button
+            type="button"
+            onClick={() => { onChange('all'); setOpen(false); }}
+            className={`w-full text-left px-3 py-1.5 text-xs font-bold truncate cursor-pointer hover:bg-slate-50 ${value === 'all' ? 'text-indigo-600 bg-indigo-50' : 'text-slate-700'}`}
+          >
+            {placeholder}
+          </button>
+          {options.map((opt, idx) => {
+            const showGroupHeader = opt.group && opt.group !== options[idx - 1]?.group;
+            return (
+              <React.Fragment key={`${opt.value}-${idx}`}>
+                {showGroupHeader && (
+                  <div className="px-3 pt-2 pb-1 mt-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 border-t border-slate-100">
+                    {opt.group}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  title={opt.title || opt.label}
+                  onClick={() => { onChange(opt.value); setOpen(false); }}
+                  className={`w-full text-left px-3 py-1.5 text-xs font-bold truncate cursor-pointer hover:bg-slate-50 ${value === opt.value ? 'text-indigo-600 bg-indigo-50' : 'text-slate-700'}`}
+                >
+                  {opt.label}
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Interactive Monthly Calendar Filter Picker Component — same widget used by
+// the Cutting/Lining/Stitching/Store manager dashboards, kept here as its own
+// local copy (matching this codebase's existing per-dashboard convention)
+// with an indigo theme to match this dashboard's own filter-bar accent color.
+function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates = [], themeColor = '#4f46e5' }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setIsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const year = currentMonth.getFullYear();
+  const month = currentMonth.getMonth();
+  const firstDayIndex = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const handlePrevMonth = (e) => {
+    e.stopPropagation();
+    setCurrentMonth(new Date(year, month - 1, 1));
+  };
+  const handleNextMonth = (e) => {
+    e.stopPropagation();
+    setCurrentMonth(new Date(year, month + 1, 1));
+  };
+
+  const isSelected = (dayStr) => selectedDate === dayStr;
+  const hasPieces = (dayStr) => availableDates.includes(dayStr);
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:border-indigo-500 focus:outline-none flex items-center justify-between gap-1 shadow-sm transition-all cursor-pointer"
+        title="Open full interactive calendar"
+      >
+        <span className="truncate flex items-center gap-1">
+          <span>📅</span>
+          <span className="truncate">{selectedDate === 'all' ? 'All Dates' : selectedDate}</span>
+        </span>
+        <span className="text-[10px] text-slate-400 font-bold shrink-0">▼</span>
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full mt-2 left-0 right-0 z-50 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xl w-auto max-w-[calc(100vw-2rem)] animate-fade-in text-slate-800">
+          <div className="grid grid-cols-3 gap-1.5 mb-3 pb-2.5 border-b border-slate-100 text-[11px] font-bold">
+            <button
+              onClick={() => { onSelectDate('all'); setIsOpen(false); }}
+              className={`px-2 py-1 rounded-lg transition-all truncate ${selectedDate === 'all' ? 'text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+              style={selectedDate === 'all' ? { background: themeColor } : undefined}
+            >
+              All Dates
+            </button>
+            <button
+              onClick={() => { onSelectDate(new Date().toISOString().slice(0, 10)); setIsOpen(false); }}
+              className={`px-2 py-1 rounded-lg transition-all truncate ${selectedDate === new Date().toISOString().slice(0, 10) ? 'text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
+              style={selectedDate === new Date().toISOString().slice(0, 10) ? { background: themeColor } : undefined}
+            >
+              ⚡ Today
+            </button>
+            <button
+              onClick={() => {
+                const y = new Date();
+                y.setDate(y.getDate() - 1);
+                onSelectDate(y.toISOString().slice(0, 10));
+                setIsOpen(false);
+              }}
+              className="px-2 py-1 rounded-lg bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all truncate"
+            >
+              Yesterday
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between mb-2">
+            <button onClick={handlePrevMonth} className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 font-black text-sm">&larr;</button>
+            <span className="text-xs font-extrabold text-slate-900">{monthNames[month]} {year}</span>
+            <button onClick={handleNextMonth} className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 font-black text-sm">&rarr;</button>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-extrabold text-slate-400 mb-1">
+            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
+          </div>
+
+          <div className="grid grid-cols-7 gap-1 text-center text-xs">
+            {Array.from({ length: firstDayIndex }).map((_, i) => (
+              <div key={`empty-${i}`} className="p-1"></div>
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const d = i + 1;
+              const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+              const active = isSelected(dayStr);
+              const pieceActivity = hasPieces(dayStr);
+              return (
+                <button
+                  key={d}
+                  onClick={() => {
+                    onSelectDate(dayStr);
+                    setIsOpen(false);
+                  }}
+                  className={`p-1.5 rounded-xl font-bold transition-all relative flex flex-col items-center justify-center ${
+                    active
+                      ? 'text-white shadow-md scale-105 font-black'
+                      : pieceActivity
+                      ? 'bg-indigo-50 text-indigo-900 hover:bg-indigo-100 font-extrabold'
+                      : 'hover:bg-slate-100 text-slate-700'
+                  }`}
+                  style={active ? { background: themeColor } : undefined}
+                >
+                  <span>{d}</span>
+                  {pieceActivity && !active && (
+                    <span className="w-1 h-1 rounded-full mt-0.5" style={{ background: themeColor }}></span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold text-slate-400">Pick any date:</span>
+            <input
+              type="date"
+              value={selectedDate === 'all' ? '' : selectedDate}
+              onChange={(e) => {
+                onSelectDate(e.target.value || 'all');
+                if (e.target.value) setIsOpen(false);
+              }}
+              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 focus:outline-none focus:border-indigo-600 cursor-pointer"
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function departmentSortIndex(name = '') {
   const idx = DEPARTMENT_DISPLAY_ORDER.findIndex((d) => d.toLowerCase() === String(name).toLowerCase());
   return idx === -1 ? DEPARTMENT_DISPLAY_ORDER.length : idx;
+}
+
+// Best-effort mapping from a real employee `designation` (a free-text field
+// on GET /api/v1/employees — e.g. CUTTER, FUSER, PASTER, TAILOR,
+// STITCHING_MANAGER, HR) to the same department bucket names the backend's
+// own departments[] array + pipeline stages use. Lets the universal
+// Department filter narrow the Employees tab too, not just the pipeline/
+// department views. Administrative roles (HR, Security, Accountant, generic
+// Manager, Chemical Technician…) have no floor department and map to null —
+// they simply won't match any department-bucket filter, which is correct.
+function designationToDepartment(designation = '') {
+  const norm = String(designation).toUpperCase();
+  if (norm.includes('LINING')) return 'Lining';
+  if (norm.includes('CUT') || norm.includes('TRIM') || norm.includes('LEATHER')) return 'Cutting';
+  if (norm.includes('STORE') || norm.includes('DRAWER') || norm.includes('KEEPER')) return 'Store';
+  if (norm.includes('QUALITY') || norm.includes('INSPECT') || norm.includes('QC')) return 'Quality';
+  if (norm.includes('PACK')) return 'Packaging';
+  if (norm.includes('TAILOR') || norm.includes('STITCH') || norm.includes('FUS') || norm.includes('PAST') || norm.includes('FINISH')) return 'Stitching';
+  return null;
 }
 
 export default function DirectManagerDashboard() {
@@ -417,6 +652,26 @@ export default function DirectManagerDashboard() {
     [pipelineList]
   );
 
+  // Every distinct real designation from GET /api/v1/employees (Cutter,
+  // Tailor, Stitching Manager, HR, …) — appended to the same filter as
+  // individually selectable entries so one exact role (e.g. a specific
+  // manager title) can be isolated, not just its whole department bucket.
+  const designationOptions = useMemo(
+    () => Array.from(new Set(realEmployees.map((e) => e.designation).filter(Boolean))).sort(),
+    [realEmployees]
+  );
+
+  // filterDepartment holds either a department bucket name (from
+  // departmentOptions) or a raw designation (from designationOptions).
+  // Pipeline/department-table views only understand buckets, so resolve
+  // whatever is selected down to the nearest bucket ('all' if none applies —
+  // e.g. an administrative designation like HR or Security).
+  const effectiveDeptBucket = useMemo(() => {
+    if (filterDepartment === 'all') return 'all';
+    if (departmentOptions.includes(filterDepartment)) return filterDepartment;
+    return designationToDepartment(filterDepartment) || 'all';
+  }, [filterDepartment, departmentOptions]);
+
   // Real order_progress rows narrowed by the universal filter bar — drives the
   // Orders & Styles table, its KPI tiles, and the style-wise chart together so
   // picking an order/style actually changes what those show.
@@ -473,19 +728,24 @@ export default function DirectManagerDashboard() {
       const stageDataByKey = new Map(
         (activeDrillDownData?.stages || []).map((s) => [String(s.stage || s.name || '').toUpperCase(), s])
       );
-      // The order/style detail endpoint only reports `completed` (+ pct/status)
-      // per stage, never a pending/queue count — unlike the factory-wide
-      // pipeline list. Derive it: whatever finished the previous stage but
-      // hasn't finished this one is sitting in this stage's queue, starting
-      // from the order's total_quantity feeding stage #1's queue.
+      // The order/style detail endpoint now reports `pending`/`total` directly
+      // per stage — use those when present. Only derive a fallback (whatever
+      // finished the previous stage but hasn't finished this one, starting
+      // from the order's total_quantity feeding stage #1's queue) for a stage
+      // the backend didn't give a real pending count for. The old always-derive
+      // approach broke PARALLEL-kind stages (e.g. Lining Cutting running
+      // alongside Leather Cutting, not after it): previousCompleted carried
+      // over from Cutting's own completed count, so Lining's queue collapsed
+      // to 0 whenever Cutting hadn't finished anything yet.
       const totalQty = readNum(activeDrillDownData, ['total_quantity']) ?? 0;
       let previousCompleted = totalQty;
       base = pipelineList.map((st) => {
         const stageKey = st.stage || st.label;
         const match = stageDataByKey.get(String(stageKey).toUpperCase());
         const completed = match ? (readNum(match, ['completed', 'done']) ?? 0) : 0;
-        const pending = Math.max(0, previousCompleted - completed);
-        previousCompleted = completed;
+        const realPending = match ? readNum(match, ['pending', 'queue', 'total_pending']) : null;
+        const pending = realPending !== null ? realPending : Math.max(0, previousCompleted - completed);
+        if (match?.kind !== 'PARALLEL') previousCompleted = completed;
         return {
           stage: stageKey,
           label: st.label || formatStage(stageKey),
@@ -496,9 +756,9 @@ export default function DirectManagerDashboard() {
     } else {
       base = pipelineList;
     }
-    if (filterDepartment === 'all') return base;
-    return base.filter((st) => inferDepartment(st.stage || st.label) === filterDepartment);
-  }, [isDrillDownActive, activeDrillDownData, pipelineList, filterDepartment]);
+    if (effectiveDeptBucket === 'all') return base;
+    return base.filter((st) => inferDepartment(st.stage || st.label) === effectiveDeptBucket);
+  }, [isDrillDownActive, activeDrillDownData, pipelineList, effectiveDeptBucket]);
 
   const effectiveBlockedStage = selectedOrderRow ? orderDetailData?.blocked_stage : null;
 
@@ -613,6 +873,13 @@ export default function DirectManagerDashboard() {
   const filteredEmployees = useMemo(() => {
     return realEmployees.filter((e) => {
       if (filterEmployee !== 'all' && e.name !== filterEmployee) return false;
+      if (filterDepartment !== 'all') {
+        if (departmentOptions.includes(filterDepartment)) {
+          if (designationToDepartment(e.designation) !== filterDepartment) return false;
+        } else if ((e.designation || '') !== filterDepartment) {
+          return false;
+        }
+      }
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const m = (e.name && e.name.toLowerCase().includes(q)) || (e.designation && e.designation.toLowerCase().includes(q));
@@ -620,7 +887,7 @@ export default function DirectManagerDashboard() {
       }
       return true;
     });
-  }, [realEmployees, filterEmployee, searchQuery]);
+  }, [realEmployees, filterEmployee, filterDepartment, departmentOptions, searchQuery]);
 
   const filteredTraceability = useMemo(() => {
     return traceabilityData.filter((t) => {
@@ -758,11 +1025,11 @@ export default function DirectManagerDashboard() {
   }, [departmentsList]);
 
   const displayDeptTable = useMemo(() => {
-    if (filterDepartment === 'all') return deptPerformanceTable;
+    if (effectiveDeptBucket === 'all') return deptPerformanceTable;
     return deptPerformanceTable.filter(
-      (d) => d.department.toLowerCase() === filterDepartment.toLowerCase()
+      (d) => d.department.toLowerCase() === effectiveDeptBucket.toLowerCase()
     );
-  }, [deptPerformanceTable, filterDepartment]);
+  }, [deptPerformanceTable, effectiveDeptBucket]);
 
   const totalDeptCompleted = useMemo(
     () => displayDeptTable.reduce((s, r) => s + (r.completed || 0), 0),
@@ -805,12 +1072,12 @@ export default function DirectManagerDashboard() {
   }, [pipelineWithStore, isDrillDownActive, effectiveBlockedStage, bottleneck]);
 
   const filteredDeptStageCards = useMemo(() => {
-    if (filterDepartment === 'all') return deptStageCardsData;
+    if (effectiveDeptBucket === 'all') return deptStageCardsData;
     return deptStageCardsData.filter((card) =>
-      card.label.toLowerCase().includes(filterDepartment.toLowerCase()) ||
-      inferDepartment(card.stageKey).toLowerCase() === filterDepartment.toLowerCase()
+      card.label.toLowerCase().includes(effectiveDeptBucket.toLowerCase()) ||
+      inferDepartment(card.stageKey).toLowerCase() === effectiveDeptBucket.toLowerCase()
     );
-  }, [deptStageCardsData, filterDepartment]);
+  }, [deptStageCardsData, effectiveDeptBucket]);
 
   const deptComparativeData = useMemo(() => {
     return deptStageCardsData.map((d) => ({
@@ -1016,7 +1283,7 @@ export default function DirectManagerDashboard() {
       };
     }
     if (filterDepartment !== 'all') {
-      const row = displayDeptTable.find((d) => d.department.toLowerCase() === filterDepartment.toLowerCase());
+      const row = displayDeptTable.find((d) => d.department.toLowerCase() === effectiveDeptBucket.toLowerCase());
       return {
         mode: 'department',
         label: filterDepartment,
@@ -1034,7 +1301,7 @@ export default function DirectManagerDashboard() {
       achievementPct: kpiData.targetPct,
       pending: kpiData.remainingTarget,
     };
-  }, [isDrillDownActive, selectedStyleRow, selectedOrderRow, effectiveProduced, effectiveTargetPieces, effectiveAchievementPct, effectivePending, filterDepartment, displayDeptTable, kpiData]);
+  }, [isDrillDownActive, selectedStyleRow, selectedOrderRow, effectiveProduced, effectiveTargetPieces, effectiveAchievementPct, effectivePending, filterDepartment, effectiveDeptBucket, displayDeptTable, kpiData]);
 
   // ─── Orders At Risk — real order_progress rows flagged by the real
   // delay_status field, narrowed by the same universal Order/Style/Search
@@ -1334,64 +1601,54 @@ export default function DirectManagerDashboard() {
           </div>
 
           <div>
-            <select
-              value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
-            >
-              <option value="all">📅 All Dates</option>
-              {availableDatesList.map((d, idx) => <option key={`date-opt-${d}-${idx}`} value={d}>{d}</option>)}
-            </select>
+            <CompleteDateCalendarPicker
+              selectedDate={filterDate}
+              onSelectDate={setFilterDate}
+              availableDates={availableDatesList}
+              themeColor="#4f46e5"
+            />
           </div>
 
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterOrder}
-              onChange={(e) => setFilterOrder(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
-            >
-              <option value="all">📦 All Orders</option>
-              {Array.from(new Set(orderProgressList.map((o) => o.order_number).filter(Boolean))).map((n, idx) => (
-                <option key={`ord-opt-${n}-${idx}`} value={n}>{n}</option>
-              ))}
-            </select>
+              onChange={setFilterOrder}
+              placeholder="📦 All Orders"
+              options={Array.from(new Set(orderProgressList.map((o) => o.order_number).filter(Boolean))).map((n) => ({ value: n, label: n }))}
+            />
           </div>
 
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterStyle}
-              onChange={(e) => setFilterStyle(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
-            >
-              <option value="all">👗 All Styles</option>
-              {availableStyles.map((s, idx) => <option key={`style-opt-${s}-${idx}`} value={s}>{s}</option>)}
-            </select>
+              onChange={setFilterStyle}
+              placeholder="👗 All Styles"
+              options={availableStyles.map((s) => ({ value: s, label: s }))}
+            />
           </div>
 
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterDepartment}
-              onChange={(e) => setFilterDepartment(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
-            >
-              <option value="all">🏢 All Departments</option>
-              {departmentOptions.map((name, idx) => (
-                <option key={`dept-opt-${name}-${idx}`} value={name}>{name}</option>
-              ))}
-            </select>
+              onChange={setFilterDepartment}
+              placeholder="🏢 All Departments"
+              options={[
+                ...departmentOptions.map((name) => ({ value: name, label: name })),
+                ...designationOptions.map((d) => ({ value: d, label: d, group: '👤 By Designation' })),
+              ]}
+            />
           </div>
 
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterEmployee}
-              onChange={(e) => setFilterEmployee(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
-            >
-              <option value="all">👷 All Employees</option>
-              {realEmployees.map((emp, idx) => (
-                <option key={`emp-opt-${emp.id || emp.name}-${idx}`} value={emp.name}>{emp.name} ({emp.designation || 'Floor'})</option>
-              ))}
-            </select>
+              onChange={setFilterEmployee}
+              placeholder="👷 All Employees"
+              options={realEmployees.map((emp) => ({
+                value: emp.name,
+                label: `${emp.name} (${emp.designation || 'Floor'})`,
+              }))}
+            />
           </div>
         </div>
       </section>
@@ -1457,14 +1714,14 @@ export default function DirectManagerDashboard() {
           )}
 
           {/* ─── TOP 6 KPI METRIC CARDS (In App Theme) ─── */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
             {/* 1. TOTAL PRODUCTION */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center gap-2 text-slate-500 mb-2">
+              <div className="flex items-center gap-2 text-slate-500 mb-2 min-w-0">
                 <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600 border border-purple-100">
                   <Clock className="w-4 h-4" />
                 </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">
                   {overviewScope.mode === 'factory' ? 'Total Production' : `Production — ${overviewScope.label}`}
                 </span>
               </div>
@@ -1487,11 +1744,11 @@ export default function DirectManagerDashboard() {
 
             {/* 2. TARGET ACHIEVEMENT */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center gap-2 text-slate-500 mb-2">
+              <div className="flex items-center gap-2 text-slate-500 mb-2 min-w-0">
                 <span className="p-1.5 rounded-lg bg-cyan-50 text-cyan-600 border border-cyan-100">
                   <Target className="w-4 h-4" />
                 </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Achievement</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">Achievement</span>
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
                 {overviewScope.achievementPct !== null ? `${overviewScope.achievementPct}%` : '—'}
@@ -1515,11 +1772,11 @@ export default function DirectManagerDashboard() {
 
             {/* 3. ORDERS IN PROGRESS */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center gap-2 text-slate-500 mb-2">
+              <div className="flex items-center gap-2 text-slate-500 mb-2 min-w-0">
                 <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 border border-indigo-100">
                   <Box className="w-4 h-4" />
                 </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">
                   {overviewScope.mode === 'order' ? 'Selected Order' : 'Active Orders'}
                 </span>
               </div>
@@ -1550,12 +1807,12 @@ export default function DirectManagerDashboard() {
 
             {/* 4. EMPLOYEE PRODUCTIVITY */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center gap-2 text-slate-500 mb-2">
+              <div className="flex items-center gap-2 text-slate-500 mb-2 min-w-0">
                 <span className="p-1.5 rounded-lg bg-blue-50 text-blue-600 border border-blue-100">
                   <Activity className="w-4 h-4" />
                 </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Productivity</span>
-                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto">FACTORY-WIDE</span>}
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">Productivity</span>
+                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto shrink-0">FACTORY-WIDE</span>}
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
                 {kpiData.productivity !== null ? `${kpiData.productivity}` : '—'} <span className="text-xs font-semibold text-slate-400">pcs/employee</span>
@@ -1572,12 +1829,12 @@ export default function DirectManagerDashboard() {
 
             {/* 5. QUALITY (PASS %) */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center gap-2 text-slate-500 mb-2">
+              <div className="flex items-center gap-2 text-slate-500 mb-2 min-w-0">
                 <span className="p-1.5 rounded-lg bg-rose-50 text-rose-600 border border-rose-100">
                   <ShieldCheck className="w-4 h-4" />
                 </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Quality Pass</span>
-                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto">FACTORY-WIDE</span>}
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">Quality Pass</span>
+                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto shrink-0">FACTORY-WIDE</span>}
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
                 {kpiData.qualityPassPct !== null ? `${kpiData.qualityPassPct}%` : <NotAvailableBadge label="no quality table" />}
@@ -1589,12 +1846,12 @@ export default function DirectManagerDashboard() {
 
             {/* 6. ATTENDANCE */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div className="flex items-center gap-2 text-slate-500 mb-2">
+              <div className="flex items-center gap-2 text-slate-500 mb-2 min-w-0">
                 <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600 border border-purple-100">
                   <Users className="w-4 h-4" />
                 </span>
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-600">Attendance</span>
-                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto">FACTORY-WIDE</span>}
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">Attendance</span>
+                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto shrink-0">FACTORY-WIDE</span>}
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
                 {kpiData.presentWorkers ?? '—'} <span className="text-xs font-medium text-slate-400">/ {kpiData.totalWorkers ?? '—'}</span>
@@ -2007,7 +2264,12 @@ export default function DirectManagerDashboard() {
                /attendance/config's real shift_start/shift_length_hours), Actual Rate
                is the real pieces_per_hour_today field, and EOD Forecast stays as a
                field but always N/A since no forecasting endpoint exists in the API. ─── */}
-          {/* ─── DOCKED BOTTOM EXECUTIVE SUMMARY BAR (Exact Matching Sidebar Footer Color & Height) ─── */}
+          {/* ─── DOCKED BOTTOM EXECUTIVE SUMMARY BAR (Exact Matching Sidebar Footer Color & Height) ───
+               Disabled per request via a false-guard — kept in place, not deleted, so
+               it can be restored by flipping that guard back to true. A plain JSX
+               comment wrapper won't work here since this block contains its own
+               nested JSX comments, which would terminate an outer one early. ─── */}
+          {false && (
           <div
             className="w-[calc(100%+1.5rem)] sm:w-[calc(100%+2.5rem)] lg:w-[calc(100%+3.5rem)] -mx-3 sm:-mx-5 lg:-mx-7 -mb-3 sm:-mb-5 lg:-mb-7 min-h-[72px] text-white flex flex-wrap lg:flex-nowrap items-stretch divide-y sm:divide-y-0 sm:divide-x divide-[#c8834a]/20 border-t z-20 font-sans mt-6"
             style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderColor: 'rgba(200,131,74,0.25)' }}
@@ -2092,6 +2354,7 @@ export default function DirectManagerDashboard() {
               </div>
             </div>
           </div>
+          )}
 
         </motion.div>
       )}

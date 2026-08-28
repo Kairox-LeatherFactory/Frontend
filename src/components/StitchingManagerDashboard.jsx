@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect, Suspense } from 'react';
+import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -16,6 +16,7 @@ import {
   Tag,
   ArrowRight,
   User,
+  ChevronDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -40,6 +41,15 @@ import {
 function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates = [], themeColor = '#4f46e5' }) {
   const [isOpen, setIsOpen] = useState(false);
   const [currentMonth, setCurrentMonth] = useState(() => new Date(2026, 7, 1));
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setIsOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const year = currentMonth.getFullYear();
   const month = currentMonth.getMonth();
@@ -58,7 +68,7 @@ function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates
   const hasActivity = (dayStr) => availableDates.includes(dayStr);
 
   return (
-    <div className="relative">
+    <div className="relative" ref={containerRef}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -67,13 +77,13 @@ function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates
       >
         <span className="truncate flex items-center gap-1">
           <span>📅</span>
-          <span>{selectedDate === 'all' ? 'All Dates' : selectedDate}</span>
+          <span className="truncate">{selectedDate === 'all' ? 'All Dates' : selectedDate}</span>
         </span>
-        <span className="text-[10px] text-slate-400 font-bold">▼</span>
+        <span className="text-[10px] text-slate-400 font-bold shrink-0">▼</span>
       </button>
 
       {isOpen && (
-        <div className="absolute top-full mt-2 left-0 z-50 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xl w-80 animate-fade-in text-slate-800">
+        <div className="absolute top-full mt-2 left-0 right-0 sm:right-auto z-50 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xl w-full sm:w-80 max-w-[calc(100vw-2rem)] animate-fade-in text-slate-800">
           <div className="grid grid-cols-3 gap-1.5 mb-3 pb-2.5 border-b border-slate-100 text-[11px] font-bold">
             <button
               onClick={() => { onSelectDate('all'); setIsOpen(false); }}
@@ -147,6 +157,66 @@ function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates
               className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 focus:outline-none focus:border-indigo-600 cursor-pointer"
             />
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Native <select> option popups size themselves to their widest option text,
+// independent of the closed control's own (responsive) width — on real data
+// (order numbers, operator names) that popup can render past the viewport
+// edge on a tablet. This is a fully custom dropdown instead: the open panel
+// is pinned left:0/right:0 against its own button, so its width is always
+// exactly the button's width (already on-screen), and every row truncates
+// with real CSS ellipsis rather than relying on the browser's native popup.
+function ScreenSafeSelect({ value, options, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+  const label = value === 'all' || !selected ? placeholder : selected.label;
+
+  return (
+    <div className="relative" ref={containerRef}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5] cursor-pointer"
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 z-50 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-lg py-1">
+          {placeholder && (
+            <button
+              type="button"
+              onClick={() => { onChange('all'); setOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs font-bold truncate cursor-pointer hover:bg-slate-50 ${value === 'all' ? 'text-[#4f46e5] bg-indigo-50' : 'text-slate-700'}`}
+            >
+              {placeholder}
+            </button>
+          )}
+          {options.map((opt, idx) => (
+            <button
+              key={`${opt.value}-${idx}`}
+              type="button"
+              title={opt.title || opt.label}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-1.5 text-xs font-bold truncate cursor-pointer hover:bg-slate-50 ${value === opt.value ? 'text-[#4f46e5] bg-indigo-50' : 'text-slate-700'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
       )}
     </div>
@@ -774,58 +844,42 @@ function StitchingDashboardContent() {
 
           {/* Order Filter (server-side: order_id) */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterOrder}
-              onChange={(e) => { setFilterOrder(e.target.value); setOrderPage(1); }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
-            >
-              <option value="all">📦 All Orders</option>
-              {ordersList.map((ord, idx) => (
-                <option key={`ord-opt-${ord.id}-${idx}`} value={ord.id}>PO: {ord.order_number}</option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterOrder(v); setOrderPage(1); }}
+              placeholder="📦 All Orders"
+              options={ordersList.map((ord) => ({ value: ord.id, label: `PO: ${ord.order_number}` }))}
+            />
           </div>
 
           {/* Style Filter (client-side) */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterStyle}
-              onChange={(e) => { setFilterStyle(e.target.value); setOrderPage(1); }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
-            >
-              <option value="all">👗 All Styles</option>
-              {availableStyles.map((s, idx) => (
-                <option key={`style-opt-${s.id || s.name}-${idx}`} value={s.name}>{s.name}</option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterStyle(v); setOrderPage(1); }}
+              placeholder="👗 All Styles"
+              options={availableStyles.map((s) => ({ value: s.name, label: s.name }))}
+            />
           </div>
 
           {/* Stage Filter */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterStage}
-              onChange={(e) => setFilterStage(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
-            >
-              <option value="all">🪡 All Stages</option>
-              {availableStages.map((st, idx) => (
-                <option key={`stage-opt-${st}-${idx}`} value={st}>{formatStage(st)}</option>
-              ))}
-            </select>
+              onChange={setFilterStage}
+              placeholder="🪡 All Stages"
+              options={availableStages.map((st) => ({ value: st, label: formatStage(st) }))}
+            />
           </div>
 
           {/* Operator Filter */}
           <div>
-            <select
+            <ScreenSafeSelect
               value={filterEmployee}
-              onChange={(e) => { setFilterEmployee(e.target.value); setEmpPage(1); }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#4f46e5]"
-            >
-              <option value="all">👷 All Operators</option>
-              {availableEmployees.map((emp, idx) => (
-                <option key={`emp-opt-${emp.id}-${idx}`} value={emp.id}>{emp.name}</option>
-              ))}
-            </select>
+              onChange={(v) => { setFilterEmployee(v); setEmpPage(1); }}
+              placeholder="👷 All Operators"
+              options={availableEmployees.map((emp) => ({ value: emp.id, label: emp.name }))}
+            />
           </div>
         </div>
       </section>
@@ -1214,7 +1268,7 @@ function StitchingDashboardContent() {
             )}
 
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-xs md:text-sm text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Stage Name</th>
@@ -1247,7 +1301,7 @@ function StitchingDashboardContent() {
                           <span className={highBacklog ? 'text-amber-600 font-black text-sm' : 'text-slate-800'}>{st.pending_pieces ?? 0} pcs</span>
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono">
-                          {typeof st.daily_target === 'number' ? `${st.daily_target} pcs` : <NotAvailableBadge label="N/A" />}
+                          {typeof st.daily_target === 'number' ? `${st.daily_target} pcs` : <div className="flex justify-end"><NotAvailableBadge label="N/A" /></div>}
                         </td>
                         <td className="py-3.5 px-4 text-center">
                           <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider inline-flex items-center justify-center gap-1.5 shadow-sm ${highBacklog ? 'bg-amber-500 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
@@ -1351,16 +1405,16 @@ function StitchingDashboardContent() {
       {activeTab === 'tab-orders' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
           <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Order &amp; Style Progress Matrix</h3>
                 <p className="text-xs text-slate-500">Every order/style in the pipeline, from order_progress</p>
               </div>
-              <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-50 text-indigo-700">{filteredOrderProgress.length} rows</span>
+              <span className="text-xs font-bold px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 shrink-0 self-start sm:self-auto">{filteredOrderProgress.length} rows</span>
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-xs md:text-sm text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Order #</th>
@@ -1473,7 +1527,7 @@ function StitchingDashboardContent() {
               </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-xs md:text-sm text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Employee</th>
@@ -1506,7 +1560,7 @@ function StitchingDashboardContent() {
                       <td className="py-3 px-4 text-right font-mono">{e.assigned_today ?? 0} / {e.completed_today ?? 0}</td>
                       <td className="py-3 px-4 text-right font-mono">{e.rework_today ?? 0}</td>
                       <td className="py-3 px-4 text-right font-mono">
-                        {typeof e.daily_target === 'number' ? e.daily_target : <NotAvailableBadge label="N/A" />}
+                        {typeof e.daily_target === 'number' ? e.daily_target : <div className="flex justify-end"><NotAvailableBadge label="N/A" /></div>}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <button onClick={() => handleOpenEmployeeModal(e)} className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-[10px] hover:bg-indigo-100">
@@ -1623,7 +1677,7 @@ function StitchingDashboardContent() {
                 <div>
                   <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider mb-2">Stage History &mdash; Who Worked This Piece</h4>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-xs text-left">
+                    <table className="w-full text-xs md:text-sm text-left">
                       <thead>
                         <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                           <th className="py-3 px-4">Stage</th>
@@ -1691,7 +1745,7 @@ function StitchingDashboardContent() {
 
             <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2">Per-Stage Breakdown</h4>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+              <table className="w-full text-xs md:text-sm text-left">
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Stage</th>
@@ -1864,9 +1918,9 @@ function StitchingDashboardContent() {
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-extrabold text-slate-900">{selectedStageDetail.label || formatStage(selectedStageDetail.stage)}</h3>
-                <button onClick={() => setSelectedStageDetail(null)} className="text-slate-400 hover:text-slate-700"><X className="w-4 h-4" /></button>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h3 className="text-base font-extrabold text-slate-900 truncate min-w-0">{selectedStageDetail.label || formatStage(selectedStageDetail.stage)}</h3>
+                <button onClick={() => setSelectedStageDetail(null)} className="text-slate-400 hover:text-slate-700 shrink-0"><X className="w-4 h-4" /></button>
               </div>
               <div className="space-y-2 text-xs">
                 {[
@@ -1900,9 +1954,9 @@ function StitchingDashboardContent() {
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-base font-extrabold text-slate-900">{selectedOrderRow.style_name}</h3>
-                <button onClick={() => setSelectedOrderRow(null)} className="text-slate-400 hover:text-slate-700"><X className="w-4 h-4" /></button>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h3 className="text-base font-extrabold text-slate-900 truncate min-w-0">{selectedOrderRow.style_name}</h3>
+                <button onClick={() => setSelectedOrderRow(null)} className="text-slate-400 hover:text-slate-700 shrink-0"><X className="w-4 h-4" /></button>
               </div>
               <div className="space-y-2 text-xs">
                 {[
@@ -1939,17 +1993,17 @@ function StitchingDashboardContent() {
               onClick={(e) => e.stopPropagation()}
               className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6"
             >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-black">
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-black shrink-0">
                     {initials(selectedEmployeeModal.name)}
                   </div>
-                  <div>
-                    <h3 className="text-sm font-extrabold text-slate-900">{selectedEmployeeModal.name}</h3>
-                    <p className="text-xs text-slate-500">{selectedEmployeeModal.designation || ''}</p>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-extrabold text-slate-900 truncate">{selectedEmployeeModal.name}</h3>
+                    <p className="text-xs text-slate-500 truncate">{selectedEmployeeModal.designation || ''}</p>
                   </div>
                 </div>
-                <button onClick={() => setSelectedEmployeeModal(null)} className="text-slate-400 hover:text-slate-700"><X className="w-4 h-4" /></button>
+                <button onClick={() => setSelectedEmployeeModal(null)} className="text-slate-400 hover:text-slate-700 shrink-0"><X className="w-4 h-4" /></button>
               </div>
 
               {employeeTraceLoading && <div className="text-center py-6 text-xs text-slate-400 font-semibold">Loading trace…</div>}

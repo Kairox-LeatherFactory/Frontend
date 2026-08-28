@@ -20,7 +20,6 @@ import {
   Eye,
   X,
   Plus,
-  Play,
   BarChart3,
   Calendar,
   Activity,
@@ -57,14 +56,19 @@ import {
   apiGetStoreDrawerMovement,
   apiGetStoreTraceability,
 } from '@/lib/api';
-import {
-  STORE_KPIS,
-  STORE_CURRENT_STYLES,
-  STORE_DRAWERS_LIST,
-  STORE_HELD_DRAWERS,
-  STORE_EMPTY_DRAWERS,
-  STORE_DAILY_LOGS
-} from '@/lib/storeData';
+
+// Badge shown wherever the live backend has no data for a field yet
+// (see meta.unsupported.* on the /dashboard/store response).
+function NotAvailableBadge({ label = 'Not tracked yet' }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200"
+      title="This field is not yet supported by the backend"
+    >
+      — {label}
+    </span>
+  );
+}
 
 // Interactive Monthly Calendar Filter Picker Component
 function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates = [], themeColor = '#0891b2' }) {
@@ -218,19 +222,22 @@ function StoreDashboardContent() {
   const { token } = useAuth();
   const { orders: contextOrders } = useData();
 
-  // State initialized with fallback data
+  // State — populated entirely from the live /api/v1/dashboard/store family of endpoints
   const [activeTab, setActiveTab] = useState('tab-today');
-  const [kpis, setKpis] = useState(() => STORE_KPIS || null);
-  const [drawersList, setDrawersList] = useState(() => STORE_DRAWERS_LIST || []);
-  const [stylesList, setStylesList] = useState(() => STORE_CURRENT_STYLES || []);
-  const [heldList, setHeldList] = useState(() => STORE_HELD_DRAWERS || []);
-  const [emptyList, setEmptyList] = useState(() => STORE_EMPTY_DRAWERS || []);
-  const [dailyLogs, setDailyLogs] = useState(() => STORE_DAILY_LOGS || []);
+  const [meta, setMeta] = useState(null);
+  const [kpis, setKpis] = useState(null);
+  const [drawersList, setDrawersList] = useState([]);
+  const [stylesList, setStylesList] = useState([]);
   const [ordersList, setOrdersList] = useState(() => contextOrders || []);
   const [activeOrder, setActiveOrder] = useState(() => contextOrders?.[0] || null);
 
+  const [traceabilityList, setTraceabilityList] = useState([]);
+  const [traceabilityLoading, setTraceabilityLoading] = useState(false);
+  const [traceabilityError, setTraceabilityError] = useState(null);
+
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Sync context orders
   useEffect(() => {
@@ -243,7 +250,6 @@ function StoreDashboardContent() {
   // Universal Filters
   const [filterDate, setFilterDate] = useState('all');
   const [filterStyle, setFilterStyle] = useState('all');
-  const [filterOrder, setFilterOrder] = useState('all');
   const [filterMaterial, setFilterMaterial] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -269,7 +275,7 @@ function StoreDashboardContent() {
   const availableStyles = useMemo(() => {
     const map = new Map();
     stylesList.forEach((s) => {
-      const name = s.style_name || s.name || s.style;
+      const name = s.style || s.style_name || s.name;
       if (name) map.set(name, { id: s.id || s.style_id || name, name });
     });
     drawersList.forEach((d) => {
@@ -303,13 +309,11 @@ function StoreDashboardContent() {
       if (d.received_at) set.add(d.received_at.slice(0, 10));
       if (d.sended_at) set.add(d.sended_at.slice(0, 10));
     });
-    dailyLogs.forEach((l) => { if (l.work_date || l.date) set.add(l.work_date || l.date); });
     return Array.from(set).filter(Boolean);
-  }, [drawersList, dailyLogs]);
+  }, [drawersList]);
 
   // Filtered drawers computed dynamically based on ALL cross-filters
   const filteredDrawers = useMemo(() => {
-    const selectedOrderObj = filterOrder !== 'all' ? ordersList.find((o) => o.id === filterOrder || o.order_number === filterOrder || o.po_number === filterOrder) : null;
     return drawersList.filter((d) => {
       // Search query
       if (searchQuery) {
@@ -319,7 +323,6 @@ function StoreDashboardContent() {
           (d.style && d.style.toLowerCase().includes(q)) ||
           (d.piece_code && d.piece_code.toLowerCase().includes(q)) ||
           (d.order_number && d.order_number.toLowerCase().includes(q)) ||
-          (d.cut_by && d.cut_by.toLowerCase().includes(q)) ||
           (d.status_label && d.status_label.toLowerCase().includes(q));
         if (!matchesQuery) return false;
       }
@@ -331,11 +334,6 @@ function StoreDashboardContent() {
       }
       // Style
       if (filterStyle !== 'all' && d.style !== filterStyle) return false;
-      // Order
-      if (filterOrder !== 'all') {
-        const matchesOrder = d.order_id === filterOrder || d.order_number === filterOrder || (selectedOrderObj && (d.order_number === selectedOrderObj.order_number || d.order_id === selectedOrderObj.id || d.order_number === selectedOrderObj.po_number));
-        if (!matchesOrder) return false;
-      }
       // Material
       if (filterMaterial !== 'all') {
         if (filterMaterial === 'LEATHER' && d.material_type !== 'LEATHER') return false;
@@ -347,7 +345,29 @@ function StoreDashboardContent() {
 
       return true;
     });
-  }, [drawersList, ordersList, searchQuery, filterDate, filterStyle, filterOrder, filterMaterial, filterStatus]);
+  }, [drawersList, searchQuery, filterDate, filterStyle, filterMaterial, filterStatus]);
+
+  // Styles in Store table narrowed by the Style cross-filter — previously the
+  // filter only highlighted the matching row here instead of actually
+  // reducing the list to it.
+  const filteredStylesList = useMemo(() => {
+    if (filterStyle === 'all') return stylesList;
+    return stylesList.filter((st) => (st.style || st.style_name || st.name) === filterStyle);
+  }, [stylesList, filterStyle]);
+
+  // Held / empty drawers aren't separate endpoints — they're subsets of the
+  // filtered drawers list, split by the state the backend already assigned.
+  // Sourced from filteredDrawers (not the raw drawersList) so the universal
+  // cross-filter (date/style/material/status/search) reaches the Held
+  // and Empty tabs too, not just the Drawer Master table.
+  const heldList = useMemo(
+    () => filteredDrawers.filter((d) => d.status_label === 'Held'),
+    [filteredDrawers]
+  );
+  const emptyList = useMemo(
+    () => filteredDrawers.filter((d) => d.contents === 'EMPTY' && d.status_label !== 'Held'),
+    [filteredDrawers]
+  );
 
   // Paginated drawers
   const paginatedDrawers = useMemo(() => {
@@ -361,7 +381,8 @@ function StoreDashboardContent() {
   const dynamicDailyChartData = useMemo(() => {
     const map = new Map();
     filteredDrawers.forEach((d) => {
-      const date = d.received_at ? d.received_at.slice(0, 10) : (d.sended_at ? d.sended_at.slice(0, 10) : '2026-08-14');
+      const date = d.received_at ? d.received_at.slice(0, 10) : (d.sended_at ? d.sended_at.slice(0, 10) : null);
+      if (!date) return; // no timestamp to bucket by (e.g. an untouched waiting drawer)
       if (!map.has(date)) {
         map.set(date, {
           work_date: date,
@@ -374,11 +395,10 @@ function StoreDashboardContent() {
       const row = map.get(date);
       if (d.state === 'received' || d.status_label === 'In Store' || d.status_label === 'Ready to Send') row.received += 1;
       if (d.state === 'sended' || d.status_label === 'Sent to Production') row.sent += 1;
-      if (d.state === 'held' || d.status_label === 'Held') row.held += 1;
+      if (d.state === 'merged' || d.status_label === 'Held') row.held += 1;
     });
-    if (map.size === 0) return dailyLogs;
     return Array.from(map.values()).sort((a, b) => b.work_date.localeCompare(a.work_date));
-  }, [filteredDrawers, dailyLogs]);
+  }, [filteredDrawers]);
 
   // LIVE BACKEND CALL: /api/v1/dashboard/store
   useEffect(() => {
@@ -389,22 +409,24 @@ function StoreDashboardContent() {
         setLoading(true);
         setApiError(null);
         const params = {};
-        if (filterStyle && filterStyle !== 'all') params.style_id = filterStyle;
-        if (filterStatus && filterStatus !== 'all') params.state = filterStatus;
+        // filterStyle holds a style NAME (for client-side row filtering + the
+        // Styles tab's click-to-filter); resolve it to the real style_id the
+        // backend expects.
+        if (filterStyle && filterStyle !== 'all') {
+          const styleObj = stylesList.find((s) => (s.style || s.style_name || s.name) === filterStyle);
+          if (styleObj?.style_id) params.style_id = styleObj.style_id;
+        }
         if (filterMaterial && filterMaterial !== 'all') params.material_type = filterMaterial;
-        
+        // filterStatus is a derived status_label ("In Store"/"Held"/...), not
+        // the backend's `state` enum (received/sended/merged/holding_both/...)
+        // — status filtering is applied client-side in filteredDrawers instead.
+
         const data = await apiGetStoreDashboard(token, params);
         if (isMounted && data) {
+          setMeta(data.meta || null);
           setKpis(data.kpis || null);
           setDrawersList(Array.isArray(data.drawers) ? data.drawers : []);
-          setStylesList(Array.isArray(data.current_styles) ? data.current_styles : (Array.isArray(data.order_progress) ? data.order_progress : []));
-          setHeldList(Array.isArray(data.held) ? data.held : []);
-          setEmptyList(Array.isArray(data.empty) ? data.empty : []);
-          setDailyLogs(Array.isArray(data.daily_production) ? data.daily_production : (Array.isArray(data.daily_logs) ? data.daily_logs : []));
-          if (data.orders && Array.isArray(data.orders)) {
-            setOrdersList(data.orders);
-            if (data.orders.length > 0 && !activeOrder) setActiveOrder(data.orders[0]);
-          }
+          setStylesList(Array.isArray(data.current_styles) ? data.current_styles : []);
         }
       } catch (err) {
         console.warn('Backend API /api/v1/dashboard/store notice:', err.message);
@@ -415,7 +437,43 @@ function StoreDashboardContent() {
     }
     fetchStoreDashboard();
     return () => { isMounted = false; };
-  }, [token, filterStyle, filterStatus, filterMaterial]);
+  }, [token, filterStyle, filterMaterial, refreshKey]);
+
+  // LIVE BACKEND CALL: /api/v1/dashboard/store/traceability (Cutter Traceability tab)
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchTraceability() {
+      if (!token || activeTab !== 'tab-employees') return;
+      try {
+        setTraceabilityLoading(true);
+        setTraceabilityError(null);
+        const params = {};
+        if (filterStyle && filterStyle !== 'all') {
+          const styleObj = stylesList.find((s) => (s.style || s.style_name || s.name) === filterStyle);
+          if (styleObj?.style_id) params.style_id = styleObj.style_id;
+        }
+        if (filterMaterial && filterMaterial !== 'all') params.material_type = filterMaterial;
+        if (searchQuery) params.piece_code = searchQuery;
+
+        const data = await apiGetStoreTraceability(token, params);
+        if (isMounted && data) {
+          setTraceabilityList(
+            Array.isArray(data.pieces) ? data.pieces
+              : Array.isArray(data.traceability) ? data.traceability
+              : Array.isArray(data) ? data
+              : []
+          );
+        }
+      } catch (err) {
+        console.warn('Backend API /api/v1/dashboard/store/traceability notice:', err.message);
+        if (isMounted) setTraceabilityError(err.message);
+      } finally {
+        if (isMounted) setTraceabilityLoading(false);
+      }
+    }
+    fetchTraceability();
+    return () => { isMounted = false; };
+  }, [token, activeTab, filterStyle, filterMaterial, searchQuery, stylesList]);
 
   // Handler to inspect drawer and call /api/v1/dashboard/store/drawers/{drawer_id} & movement
   const handleOpenDrawerModal = async (drawer) => {
@@ -430,7 +488,12 @@ function StoreDashboardContent() {
         setSelectedDrawerModal((prev) => ({ ...prev, ...detail.value }));
       }
       if (movement.status === 'fulfilled' && movement.value) {
-        setSelectedDrawerModal((prev) => ({ ...prev, movement_history: movement.value }));
+        const history = Array.isArray(movement.value) ? movement.value
+          : Array.isArray(movement.value?.movement) ? movement.value.movement
+          : Array.isArray(movement.value?.history) ? movement.value.history
+          : Array.isArray(movement.value?.events) ? movement.value.events
+          : [];
+        setSelectedDrawerModal((prev) => ({ ...prev, movement_history: history }));
       }
     } catch (err) {
       console.warn(`Backend API /api/v1/dashboard/store/drawers/${drawer.drawer_id} notice:`, err.message);
@@ -447,42 +510,10 @@ function StoreDashboardContent() {
   const handleResetFilters = () => {
     setFilterDate('all');
     setFilterStyle('all');
-    setFilterOrder('all');
     setFilterMaterial('all');
     setFilterStatus('all');
     setSearchQuery('');
     triggerToast('Store filters reset to default view');
-  };
-
-  // Real-time Simulation action
-  const handleSimulateMovement = () => {
-    const seq = drawersList.length + 1;
-    const code = `DRW-${String(seq).padStart(4, '0')}`;
-    const sampleStyle = ['CARNABY', 'FRANCIS KNIT', 'ADELE KNIT', 'CLERMONT'][Math.floor(Math.random() * 4)];
-    const sampleCutBy = ['Ahmedasa', 'hamthan', 'Farooq', 'Ravi'][Math.floor(Math.random() * 4)];
-    const newDrawer = {
-      drawer_id: `drw-sim-${Date.now()}`,
-      drawer_code: code,
-      seq,
-      state: 'received',
-      status_label: 'Ready to Send',
-      contents: 'HOLDING BOTH',
-      material_type: 'LEATHER+LINING',
-      leather_in: true,
-      lining_in: true,
-      piece_code: `ORD_1011-${sampleStyle}-PINE_GREEN-M-${String(seq).padStart(3, '0')}`,
-      style: sampleStyle,
-      order_number: 'ORD-1011',
-      colour: 'PINE GREEN',
-      size: 'M',
-      received_at: '2026-08-13 11:20',
-      sended_at: null,
-      cut_by: sampleCutBy,
-      location: 'Bay 01 - Rack C2',
-    };
-
-    setDrawersList([newDrawer, ...drawersList]);
-    triggerToast(`⚡ Live Store Movement: ${code} (${sampleStyle}) received in store & Ready to Send`);
   };
 
   // CSV Export action
@@ -495,8 +526,6 @@ function StoreDashboardContent() {
       'Piece Code',
       'Material Contents',
       'Material Type',
-      'Cut By',
-      'Location',
       'Received At',
       'Sended At',
       'Status',
@@ -510,8 +539,6 @@ function StoreDashboardContent() {
       d.piece_code,
       d.contents,
       d.material_type,
-      d.cut_by,
-      d.location,
       d.received_at || 'N/A',
       d.sended_at || 'N/A',
       d.status_label,
@@ -531,7 +558,10 @@ function StoreDashboardContent() {
     triggerToast('📥 Store Drawer Movement CSV Report Downloaded Successfully');
   };
 
-  // Hold Drawer form submit
+  // Hold Drawer form submit — no backend write endpoint exists for this yet,
+  // so this only flags the real drawer locally (lost on next refresh). The
+  // derived heldList picks this up automatically since it's computed from
+  // drawersList.
   const handleHoldDrawerSubmit = (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
@@ -539,21 +569,10 @@ function StoreDashboardContent() {
     const reason = formData.get('reason');
     const heldBy = formData.get('heldBy');
 
-    const targetDrawer = drawersList.find((d) => d.drawer_code === drawerCode);
-    const styleName = targetDrawer ? targetDrawer.style : 'CARNABY';
-    const orderNumber = targetDrawer ? targetDrawer.order_number : 'ORD-1011';
-    const matType = targetDrawer ? targetDrawer.material_type : 'LEATHER';
-
-    const newHeldRecord = {
-      drawer_code: drawerCode,
-      style_name: styleName,
-      order_number: orderNumber,
-      material_type: matType,
-      held_date: '2026-08-13',
-      held_by: heldBy,
-      reason,
-      status: 'Held in Store',
-    };
+    if (!drawersList.some((d) => d.drawer_code === drawerCode)) {
+      triggerToast(`⚠️ Drawer ${drawerCode} not found in the live registry`);
+      return;
+    }
 
     setDrawersList((prev) =>
       prev.map((d) =>
@@ -562,14 +581,14 @@ function StoreDashboardContent() {
               ...d,
               status_label: 'Held',
               hold_reason: reason,
+              held_by: heldBy,
             }
           : d
       )
     );
 
-    setHeldList([newHeldRecord, ...heldList]);
     setShowHoldModal(false);
-    triggerToast(`🛑 Drawer ${drawerCode} successfully put on HOLD: ${reason}`);
+    triggerToast(`🛑 Drawer ${drawerCode} put on HOLD locally: ${reason} (not yet persisted — no hold endpoint)`);
   };
 
   return (
@@ -605,12 +624,13 @@ function StoreDashboardContent() {
         {/* Action Controls */}
         <div className="flex items-center flex-wrap gap-2.5">
           <button
-            onClick={handleSimulateMovement}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0891b2] text-white text-xs font-bold hover:bg-[#0e7490] transition-all shadow-sm hover:scale-[1.02]"
-            title="Simulate live drawer movement in store"
+            onClick={() => { setRefreshKey((k) => k + 1); triggerToast('🔄 Refreshing store data from server...'); }}
+            disabled={loading}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0891b2] text-white text-xs font-bold hover:bg-[#0e7490] transition-all shadow-sm hover:scale-[1.02] disabled:opacity-60"
+            title="Refresh live store data from the server"
           >
-            <Play className="w-3.5 h-3.5" />
-            <span>Live Drawer Movement Sim</span>
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>{loading ? 'Refreshing...' : 'Refresh Store Data'}</span>
           </button>
 
           <button
@@ -646,7 +666,7 @@ function StoreDashboardContent() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#cffafe] text-[#155e75] border border-[#a5f3fc]">
-              Showing {filteredDrawers.length} of {drawersList.length} Registered Drawers
+              Showing {filteredDrawers.length} of {kpis?.total_drawers ?? drawersList.length} Registered Drawers
             </span>
             <button
               onClick={handleResetFilters}
@@ -665,7 +685,7 @@ function StoreDashboardContent() {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search drawer, style, piece, cut by..."
+              placeholder="Search drawer, style, piece code, order..."
               className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0891b2]"
             />
           </div>
@@ -691,27 +711,6 @@ function StoreDashboardContent() {
               {availableStyles.map((s, idx) => (
                 <option key={`store-style-${s.id || s.name}-${idx}`} value={s.name || s.id}>
                   {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Order Filter */}
-          <div>
-            <select
-              value={filterOrder}
-              onChange={(e) => {
-                const val = e.target.value;
-                setFilterOrder(val);
-                const ord = ordersList.find((o) => o.id === val || o.order_number === val || o.po_number === val);
-                if (ord) setActiveOrder(ord);
-              }}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
-            >
-              <option value="all">📦 All Orders</option>
-              {ordersList.map((ord, idx) => (
-                <option key={`${ord.id || ord.order_number}-${idx}`} value={ord.id || ord.order_number}>
-                  {ord.order_number ? `${ord.client ? `${ord.client} - ` : ''}PO: ${ord.order_number}` : (ord.name || ord.po_number || ord.id)}
                 </option>
               ))}
             </select>
@@ -808,19 +807,19 @@ function StoreDashboardContent() {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-200">
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">In Store</span>
-                  <p className="text-xs font-bold text-cyan-800">{kpis?.drawers_in_store ?? drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} drawers</p>
+                  <p className="text-xs font-bold text-cyan-800">{filteredDrawers.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} drawers</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Sent Floor</span>
-                  <p className="text-xs font-bold text-slate-800">{kpis?.drawers_sent ?? drawersList.filter((d) => d.status_label === 'Sent to Production').length} drawers</p>
+                  <p className="text-xs font-bold text-slate-800">{filteredDrawers.filter((d) => d.status_label === 'Sent to Production').length} drawers</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Held</span>
-                  <p className="text-xs font-bold text-amber-600">{kpis?.held_drawers ?? heldList.length} drawers</p>
+                  <p className="text-xs font-bold text-amber-600">{heldList.length} drawers</p>
                 </div>
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase">Empty Ready</span>
-                  <p className="text-xs font-bold text-emerald-600">{kpis?.empty_drawers ?? emptyList.length} drawers</p>
+                  <p className="text-xs font-bold text-emerald-600">{emptyList.length} drawers</p>
                 </div>
               </div>
             </div>
@@ -835,15 +834,15 @@ function StoreDashboardContent() {
               <div className="grid grid-cols-3 gap-2 my-3">
                 <div className="bg-orange-50 border border-orange-100 p-3 rounded-xl text-center">
                   <span className="text-[10px] font-bold text-orange-700">Leather Only</span>
-                  <div className="text-lg font-black text-orange-900 mt-0.5">{kpis?.leather_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER').length}</div>
+                  <div className="text-lg font-black text-orange-900 mt-0.5">{filteredDrawers.filter((d) => d.material_type === 'LEATHER').length}</div>
                 </div>
                 <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl text-center">
                   <span className="text-[10px] font-bold text-rose-700">Lining Only</span>
-                  <div className="text-lg font-black text-rose-900 mt-0.5">{kpis?.lining_drawers ?? drawersList.filter((d) => d.material_type === 'LINING').length}</div>
+                  <div className="text-lg font-black text-rose-900 mt-0.5">{filteredDrawers.filter((d) => d.material_type === 'LINING').length}</div>
                 </div>
                 <div className="bg-cyan-50 border border-cyan-100 p-3 rounded-xl text-center">
                   <span className="text-[10px] font-bold text-cyan-700">Both Merged</span>
-                  <div className="text-lg font-black text-cyan-900 mt-0.5">{kpis?.leather_lining_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length}</div>
+                  <div className="text-lg font-black text-cyan-900 mt-0.5">{filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length}</div>
                 </div>
               </div>
 
@@ -863,7 +862,7 @@ function StoreDashboardContent() {
                 {stylesList.slice(0, 3).map((st, idx) => (
                   <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
                     <div>
-                      <span className="font-bold text-slate-900">{st.style_name || st.name}</span>
+                      <span className="font-bold text-slate-900">{st.style || st.style_name || st.name}</span>
                       <span className="text-[10px] text-slate-500 block">{st.order_number || '—'}</span>
                     </div>
                     <div className="text-right">
@@ -894,17 +893,17 @@ function StoreDashboardContent() {
                   🗄️
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700">
-                  {kpis?.drawers_in_store ?? drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} Available
+                  {filteredDrawers.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} Available
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Drawers in Store</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{kpis?.drawers_in_store ?? drawersList.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length}</span>
-                <span className="text-xs font-semibold text-slate-400">/ {kpis?.total_capacity || drawersList.length || 500} capacity</span>
+                <span className="text-2xl font-black text-slate-900">{filteredDrawers.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length}</span>
+                <span className="text-xs font-semibold text-slate-400">/ {kpis?.total_drawers ?? drawersList.length} capacity</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Sent to Prod: <strong className="text-blue-600">{kpis?.drawers_sent ?? drawersList.filter((d) => d.status_label === 'Sent to Production').length}</strong></span>
-                <span>Held: <strong className="text-amber-600">{kpis?.held_drawers ?? heldList.length}</strong></span>
+                <span>Sent to Prod: <strong className="text-blue-600">{filteredDrawers.filter((d) => d.status_label === 'Sent to Production').length}</strong></span>
+                <span>Held: <strong className="text-amber-600">{heldList.length}</strong></span>
               </div>
             </div>
 
@@ -923,10 +922,10 @@ function StoreDashboardContent() {
               </div>
               <span className="text-xs font-semibold text-slate-500">Empty Drawers for Intake</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-emerald-700">{kpis?.empty_drawers ?? emptyList.length}</span>
+                <span className="text-2xl font-black text-emerald-700">{emptyList.length}</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Empty Available: <strong>{kpis?.empty_drawers ?? emptyList.length} drawers</strong></span>
+                <span>Empty Available: <strong>{emptyList.length} drawers</strong></span>
                 <span>Immediate Intake: <strong className="text-emerald-600">Active</strong></span>
               </div>
             </div>
@@ -941,16 +940,16 @@ function StoreDashboardContent() {
                   🧵
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700">
-                  {kpis?.leather_lining_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Both Merged
+                  {filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length} Both Merged
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Merged (Leather + Lining)</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{kpis?.leather_lining_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Pairs</span>
+                <span className="text-2xl font-black text-slate-900">{filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length} Pairs</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Leather only: <strong>{kpis?.leather_drawers ?? drawersList.filter((d) => d.material_type === 'LEATHER').length}</strong></span>
-                <span>Lining only: <strong>{kpis?.lining_drawers ?? drawersList.filter((d) => d.material_type === 'LINING').length}</strong></span>
+                <span>Leather only: <strong>{filteredDrawers.filter((d) => d.material_type === 'LEATHER').length}</strong></span>
+                <span>Lining only: <strong>{filteredDrawers.filter((d) => d.material_type === 'LINING').length}</strong></span>
               </div>
             </div>
 
@@ -964,16 +963,16 @@ function StoreDashboardContent() {
                   🛑
                 </div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                  {kpis?.held_drawers ?? heldList.length} Blocked
+                  {heldList.length} Blocked
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Held Drawers (QC / Missing)</span>
               <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-amber-600">{kpis?.held_drawers ?? heldList.length}</span>
+                <span className="text-2xl font-black text-amber-600">{heldList.length}</span>
               </div>
               <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>QC Issues: <strong>{heldList.filter((h) => h.reason?.includes('QC')).length || 1}</strong></span>
-                <span>Waiting Cut: <strong className="text-amber-600">{heldList.filter((h) => !h.reason?.includes('QC')).length || 1}</strong></span>
+                <span>With Piece: <strong>{heldList.filter((h) => h.piece_code).length}</strong></span>
+                <span>Empty: <strong className="text-amber-600">{heldList.filter((h) => !h.piece_code).length}</strong></span>
               </div>
             </div>
           </div>
@@ -1076,8 +1075,6 @@ function StoreDashboardContent() {
                     <th className="py-3 px-4">Style</th>
                     <th className="py-3 px-4">Piece Serial Code</th>
                     <th className="py-3 px-4">Material Contents</th>
-                    <th className="py-3 px-4">Cutter</th>
-                    <th className="py-3 px-4">Current Location</th>
                     <th className="py-3 px-4">Received / Sent</th>
                     <th className="py-3 px-4 text-center">Status</th>
                     <th className="py-3 px-4 text-center">Action</th>
@@ -1106,8 +1103,6 @@ function StoreDashboardContent() {
                           {d.contents || d.material_type}
                         </span>
                       </td>
-                      <td className="py-3.5 px-4 text-slate-800">{d.cut_by}</td>
-                      <td className="py-3.5 px-4 text-slate-600">{d.location}</td>
                       <td className="py-3.5 px-4 font-mono text-[11px]">
                         {d.sended_at ? (
                           <span className="text-blue-700 font-bold">Sent: {d.sended_at}</span>
@@ -1145,7 +1140,7 @@ function StoreDashboardContent() {
                   ))}
                   {paginatedDrawers.length === 0 && (
                     <tr>
-                      <td colSpan={9} className="text-center py-8 text-slate-400 font-medium">
+                      <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">
                         No drawers matching filter criteria.
                       </td>
                     </tr>
@@ -1213,15 +1208,15 @@ function StoreDashboardContent() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {stylesList.map((st, idx) => {
-                    const sName = st.style_name || st.name;
+                  {filteredStylesList.map((st, idx) => {
+                    const sName = st.style || st.style_name || st.name;
                     const isSelected = filterStyle === sName;
                     return (
                       <tr
                         key={idx}
                         onClick={() => {
                           setFilterStyle(sName);
-                          setActiveTab('tab-overview');
+                          setActiveTab('tab-drawers');
                           triggerToast(`⚡ Filtered Store to Style: ${sName}`);
                         }}
                         className={`hover:bg-cyan-50/70 cursor-pointer transition-all ${
@@ -1251,10 +1246,10 @@ function StoreDashboardContent() {
                       </tr>
                     );
                   })}
-                  {stylesList.length === 0 && (
+                  {filteredStylesList.length === 0 && (
                     <tr>
                       <td colSpan={9} className="text-center py-8 text-slate-400 font-medium">
-                        No styles in store buffer.
+                        {filterStyle !== 'all' ? `No drawers found for style "${filterStyle}".` : 'No styles in store buffer.'}
                       </td>
                     </tr>
                   )}
@@ -1278,21 +1273,21 @@ function StoreDashboardContent() {
             {/* Leather Drawer Card */}
             <div className="p-5 rounded-2xl bg-orange-50 border border-orange-200">
               <span className="text-xs font-bold text-orange-800 uppercase tracking-wider">Leather Only Drawers</span>
-              <div className="text-3xl font-black text-orange-950 mt-1">{drawersList.filter((d) => d.material_type === 'LEATHER').length} Drawers</div>
+              <div className="text-3xl font-black text-orange-950 mt-1">{filteredDrawers.filter((d) => d.material_type === 'LEATHER').length} Drawers</div>
               <p className="text-xs text-orange-700 mt-2">Drawers containing cut leather pattern pieces awaiting lining pairing</p>
             </div>
 
             {/* Lining Drawer Card */}
             <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200">
               <span className="text-xs font-bold text-rose-800 uppercase tracking-wider">Lining Only Drawers</span>
-              <div className="text-3xl font-black text-rose-950 mt-1">{drawersList.filter((d) => d.material_type === 'LINING').length} Drawers</div>
+              <div className="text-3xl font-black text-rose-950 mt-1">{filteredDrawers.filter((d) => d.material_type === 'LINING').length} Drawers</div>
               <p className="text-xs text-rose-700 mt-2">Drawers containing cut lining components waiting for leather matching</p>
             </div>
 
             {/* Both Drawer Card */}
             <div className="p-5 rounded-2xl bg-cyan-50 border border-cyan-200">
               <span className="text-xs font-bold text-cyan-800 uppercase tracking-wider">Merged (Leather + Lining)</span>
-              <div className="text-3xl font-black text-cyan-950 mt-1">{drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length} Drawers</div>
+              <div className="text-3xl font-black text-cyan-950 mt-1">{filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length} Drawers</div>
               <p className="text-xs text-cyan-700 mt-2">Complete matching kit ready to be dispatched to Stitching Floor</p>
             </div>
           </div>
@@ -1333,7 +1328,7 @@ function StoreDashboardContent() {
                     <th className="py-3 px-4">Material Type</th>
                     <th className="py-3 px-4">Held By</th>
                     <th className="py-3 px-4">Hold Reason</th>
-                    <th className="py-3 px-4">Held Date</th>
+                    <th className="py-3 px-4">Received Date</th>
                     <th className="py-3 px-4 text-center">Status</th>
                   </tr>
                 </thead>
@@ -1341,15 +1336,15 @@ function StoreDashboardContent() {
                   {heldList.map((h, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-all">
                       <td className="py-3.5 px-4 font-mono font-bold text-amber-800">{h.drawer_code}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{h.style_name || h.style}</td>
+                      <td className="py-3.5 px-4 font-bold text-slate-900">{h.style || h.style_name || <NotAvailableBadge label="cleared" />}</td>
                       <td className="py-3.5 px-4 font-mono text-slate-600">{h.order_number || '—'}</td>
-                      <td className="py-3.5 px-4 font-bold">{h.material_type}</td>
-                      <td className="py-3.5 px-4 text-slate-800">{h.held_by}</td>
-                      <td className="py-3.5 px-4 font-semibold text-amber-900">{h.reason}</td>
-                      <td className="py-3.5 px-4 text-slate-500">{h.held_date}</td>
+                      <td className="py-3.5 px-4 font-bold">{h.material_type && h.material_type !== 'NONE' ? h.material_type : '—'}</td>
+                      <td className="py-3.5 px-4 text-slate-800">{h.held_by || <NotAvailableBadge />}</td>
+                      <td className="py-3.5 px-4 font-semibold text-amber-900">{h.hold_reason || h.reason || <NotAvailableBadge />}</td>
+                      <td className="py-3.5 px-4 text-slate-500">{h.received_at ? h.received_at.slice(0, 10) : '—'}</td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800">
-                          {h.status || 'Held'}
+                          {h.status_label || 'Held'}
                         </span>
                       </td>
                     </tr>
@@ -1387,6 +1382,9 @@ function StoreDashboardContent() {
                 Available Empty Count: <strong className="text-emerald-700">{emptyList.length}</strong>
               </span>
             </div>
+            {meta?.unsupported?.empty_drawer_history && (
+              <p className="text-[11px] text-slate-400 font-medium mb-3 -mt-2">{meta.unsupported.empty_drawer_history}</p>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
@@ -1396,8 +1394,6 @@ function StoreDashboardContent() {
                     <th className="py-3 px-4">Last Style Occupant</th>
                     <th className="py-3 px-4">Last Material</th>
                     <th className="py-3 px-4">Last Sent Date</th>
-                    <th className="py-3 px-4">Emptied Date</th>
-                    <th className="py-3 px-4">Current Stack Location</th>
                     <th className="py-3 px-4 text-center">Availability</th>
                   </tr>
                 </thead>
@@ -1405,22 +1401,20 @@ function StoreDashboardContent() {
                   {emptyList.map((e, idx) => (
                     <tr key={idx} className="hover:bg-slate-50 transition-all">
                       <td className="py-3.5 px-4 font-mono font-bold text-emerald-800">{e.drawer_code}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{e.last_style}</td>
-                      <td className="py-3.5 px-4 text-slate-600">{e.last_material}</td>
-                      <td className="py-3.5 px-4 text-slate-500">{e.last_sent}</td>
-                      <td className="py-3.5 px-4 text-slate-500">{e.empty_date}</td>
-                      <td className="py-3.5 px-4 font-mono font-semibold text-slate-700">{e.location}</td>
+                      <td className="py-3.5 px-4 font-bold text-slate-900">{e.style || <NotAvailableBadge label="cleared on recycle" />}</td>
+                      <td className="py-3.5 px-4 text-slate-600">{e.material_type && e.material_type !== 'NONE' ? e.material_type : <NotAvailableBadge label="cleared on recycle" />}</td>
+                      <td className="py-3.5 px-4 text-slate-500">{e.sended_at || '—'}</td>
                       <td className="py-3.5 px-4 text-center">
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
-                          {e.available || 'Empty Ready'}
+                          Empty Ready
                         </span>
                       </td>
                     </tr>
                   ))}
                   {emptyList.length === 0 && (
                     <tr>
-                      <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">
-                        No empty drawers recorded.
+                      <td colSpan={5} className="text-center py-8 text-slate-400 font-medium">
+                        No individually-tracked empty drawers in this view — see the summary count above.
                       </td>
                     </tr>
                   )}
@@ -1446,7 +1440,18 @@ function StoreDashboardContent() {
                 <h3 className="text-base font-extrabold text-slate-900">Piece & Cutter Traceability in Store</h3>
                 <p className="text-xs text-slate-500">Identifies which operator cut the leather or lining stored inside each drawer</p>
               </div>
+              {traceabilityLoading && (
+                <span className="text-[11px] font-bold text-cyan-700 flex items-center gap-1.5">
+                  <RefreshCw className="w-3 h-3 animate-spin" /> Loading traceability...
+                </span>
+              )}
             </div>
+            {meta?.unsupported?.employee_photo && (
+              <p className="text-[11px] text-slate-400 font-medium mb-3 -mt-2">{meta.unsupported.employee_photo}</p>
+            )}
+            {traceabilityError && (
+              <p className="text-[11px] text-rose-500 font-semibold mb-3 -mt-2">Backend notice: {traceabilityError}</p>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
@@ -1457,26 +1462,34 @@ function StoreDashboardContent() {
                     <th className="py-3 px-4">Material</th>
                     <th className="py-3 px-4">Processed By (Cutter)</th>
                     <th className="py-3 px-4">Assigned Drawer</th>
-                    <th className="py-3 px-4">Store Location</th>
                     <th className="py-3 px-4 text-center">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {drawersList.map((d, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-all">
-                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{d.piece_code}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-800">{d.style}</td>
-                      <td className="py-3.5 px-4 font-semibold text-cyan-800">{d.material_type}</td>
-                      <td className="py-3.5 px-4 text-slate-900 font-bold">{d.cut_by}</td>
-                      <td className="py-3.5 px-4 font-mono font-bold text-cyan-700">{d.drawer_code}</td>
-                      <td className="py-3.5 px-4 text-slate-600">{d.location}</td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-800">
-                          {d.status_label}
-                        </span>
+                  {traceabilityList.map((t, idx) => {
+                    const cutterName = t.cutter_name || t.cutter?.name || t.employee_name || t.employee?.name || t.processed_by || t.cut_by;
+                    return (
+                      <tr key={`${t.piece_code || 'trace'}-${idx}`} className="hover:bg-slate-50 transition-all">
+                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{t.piece_code}</td>
+                        <td className="py-3.5 px-4 font-bold text-slate-800">{t.style || t.style_name}</td>
+                        <td className="py-3.5 px-4 font-semibold text-cyan-800">{t.material_type}</td>
+                        <td className="py-3.5 px-4 text-slate-900 font-bold">{cutterName || <NotAvailableBadge />}</td>
+                        <td className="py-3.5 px-4 font-mono font-bold text-cyan-700">{t.drawer_code || '—'}</td>
+                        <td className="py-3.5 px-4 text-center">
+                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-800">
+                            {t.status_label || t.state || '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!traceabilityLoading && traceabilityList.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="text-center py-8 text-slate-400 font-medium">
+                        No traceability records for the current filters.
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1503,9 +1516,9 @@ function StoreDashboardContent() {
                   <PieChart>
                     <Pie
                       data={[
-                        { name: 'Leather + Lining (Both)', value: drawersList.filter((d) => d.material_type === 'LEATHER+LINING').length, color: '#0891b2' },
-                        { name: 'Leather Only', value: drawersList.filter((d) => d.material_type === 'LEATHER').length, color: '#f97316' },
-                        { name: 'Lining Only', value: drawersList.filter((d) => d.material_type === 'LINING').length, color: '#f43f5e' },
+                        { name: 'Leather + Lining (Both)', value: filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length, color: '#0891b2' },
+                        { name: 'Leather Only', value: filteredDrawers.filter((d) => d.material_type === 'LEATHER').length, color: '#f97316' },
+                        { name: 'Lining Only', value: filteredDrawers.filter((d) => d.material_type === 'LINING').length, color: '#f43f5e' },
                         { name: 'Held Drawers', value: heldList.length, color: '#f59e0b' },
                       ]}
                       dataKey="value"
@@ -1534,7 +1547,7 @@ function StoreDashboardContent() {
               <p className="text-xs text-slate-500 mb-4">Received vs Sent vs Emptied drawers</p>
               <div className="h-[260px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dailyLogs}>
+                  <BarChart data={dynamicDailyChartData}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
                     <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
                     <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
@@ -1623,15 +1636,29 @@ function StoreDashboardContent() {
                 </div>
                 <div className="p-3 bg-[#f8fafc] rounded-xl border border-slate-200 flex justify-between items-center">
                   <span>Associated Piece:</span>
-                  <span className="font-mono font-bold text-slate-900">{selectedDrawerModal.piece_code}</span>
+                  <span className="font-mono font-bold text-slate-900">{selectedDrawerModal.piece_code || '—'}</span>
                 </div>
                 <div className="p-3 bg-[#f8fafc] rounded-xl border border-slate-200 flex justify-between items-center">
-                  <span>Processed By (Cutter):</span>
-                  <span className="font-bold text-slate-900">{selectedDrawerModal.cut_by}</span>
+                  <span>Current Status:</span>
+                  <span className="font-bold text-slate-900">{selectedDrawerModal.status_label || '—'}</span>
                 </div>
-                <div className="p-3 bg-[#f8fafc] rounded-xl border border-slate-200 flex justify-between items-center">
-                  <span>Physical Store Bay:</span>
-                  <span className="font-bold text-cyan-800">{selectedDrawerModal.location}</span>
+              </div>
+
+              {/* Movement History — from GET /dashboard/store/drawers/{id}/movement */}
+              <div>
+                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">Movement Audit Trail</span>
+                <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
+                  {(selectedDrawerModal.movement_history || []).map((m, i) => (
+                    <div key={i} className="p-2.5 bg-[#f8fafc] rounded-lg border border-slate-100 flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-slate-800">
+                        {(m.event_type || m.action || m.event || 'EVENT').toString().replace(/_/g, ' ')}
+                      </span>
+                      <span className="font-mono text-slate-500">{m.timestamp || m.created_at || m.at || '—'}</span>
+                    </div>
+                  ))}
+                  {(!selectedDrawerModal.movement_history || selectedDrawerModal.movement_history.length === 0) && (
+                    <p className="text-[11px] text-slate-400 font-medium py-2">No movement history recorded for this drawer yet.</p>
+                  )}
                 </div>
               </div>
             </motion.div>

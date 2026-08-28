@@ -1,13 +1,13 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
-import { apiGetUsers, apiCreateUser, apiPatchEmployeeBarcode } from '@/lib/api';
+import { apiGetUsers, apiCreateUser, apiPatchEmployeeBarcode, apiGetEmployees } from '@/lib/api';
 import {
   CheckCircle2, Users, UserPlus, Factory, Loader2,
   ShieldCheck, Lock, AlertCircle, Building2, User,
-  Search, Barcode, Printer, RefreshCw, XCircle, QrCode, X, Check
+  Search, Barcode, Printer, RefreshCw, XCircle, QrCode, X, Check, ChevronDown
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import JsBarcode from 'jsbarcode';
@@ -25,6 +25,86 @@ function Field({ label, children }) {
 }
 
 const inputCls = "w-full h-11 px-4 rounded-xl text-sm font-semibold outline-none transition-all focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a] hover:border-[#c8834a]/50 bg-[#faf6f0] text-[#2d1f0e] border-[1.5px] border-[#c8834a]/20";
+
+// Native <select> option popups size themselves independently of the closed
+// control's own (responsive) width, and can render past the viewport edge on
+// a tablet — a fully custom dropdown instead. The open panel is portaled to
+// document.body and positioned with `fixed` against the button's live screen
+// coordinates (rather than an in-place `absolute` panel), so it always paints
+// as a clean top-level overlay above every other card on the page — an
+// in-place panel could otherwise end up stacked behind, or messily bleeding
+// into, whatever section follows in the DOM. Width always matches the
+// button's own (already on-screen) width, and every row truncates with real
+// CSS ellipsis rather than relying on the browser's native popup layout.
+function AdminSelect({ value, options, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const buttonRef = useRef(null);
+  const panelRef = useRef(null);
+
+  const updateRect = () => {
+    if (!buttonRef.current) return;
+    const r = buttonRef.current.getBoundingClientRect();
+    setRect({ top: r.bottom + 4, left: r.left, width: r.width });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    updateRect();
+    window.addEventListener('scroll', updateRect, true);
+    window.addEventListener('resize', updateRect);
+    return () => {
+      window.removeEventListener('scroll', updateRect, true);
+      window.removeEventListener('resize', updateRect);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (buttonRef.current?.contains(e.target)) return;
+      if (panelRef.current?.contains(e.target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div className="relative">
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className={`${inputCls} flex items-center justify-between gap-2 text-left cursor-pointer`}
+      >
+        <span className={`truncate ${selected ? '' : 'text-[#9a7a5a]/70'}`}>{selected ? selected.label : placeholder}</span>
+        <ChevronDown className={`w-4 h-4 shrink-0 text-[#9a7a5a] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && rect && createPortal(
+        <div
+          ref={panelRef}
+          className="fixed z-[999999] max-h-64 overflow-y-auto rounded-xl border-[1.5px] border-[#c8834a]/20 bg-white shadow-2xl py-1"
+          style={{ top: rect.top, left: rect.left, width: rect.width }}
+        >
+          {options.map((opt, idx) => (
+            <button
+              key={`${opt.value}-${idx}`}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-3 py-2 text-sm font-semibold truncate cursor-pointer hover:bg-[#faf6f0] ${value === opt.value ? 'text-[#c8834a] bg-[#fff9f0]' : 'text-[#2d1f0e]'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+}
 
 const ROLE_COLORS = {
   direct_manager: { bg: '#fff9f0', color: '#c8834a', border: 'rgba(200,131,74,0.3)', label: 'Direct Manager' },
@@ -89,7 +169,7 @@ function EmployeeIdCardModal({ employee, onClose }) {
         <div className="p-6 bg-[#faf6f0] flex flex-col items-center gap-4 text-center">
           <div className="w-full bg-white border-2 border-[#c8834a]/30 rounded-2xl p-5 shadow-lg space-y-3 relative overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <span className="text-[10px] font-black uppercase text-[#9a7a5a] tracking-widest">KairoX Leather ERP</span>
+              <span className="text-[10px] font-black uppercase text-[#9a7a5a] tracking-widest">PTE Leather ERP</span>
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">ACTIVE</span>
             </div>
             <div className="space-y-0.5">
@@ -127,6 +207,11 @@ export default function AdminDashboard() {
   const isHRAdmin = user === 'hr_admin' || user === 'direct_manager';
 
   const [users, setUsers] = useState([]);
+  // GET /api/v1/users doesn't carry `employee_barcode` — only /api/v1/employees
+  // does. Fetched alongside users and joined by id (the same id
+  // apiPatchEmployeeBarcode already targets for these rows) purely to source
+  // the real barcode tag for the System Users Directory table below.
+  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
   const [search, setSearch] = useState('');
@@ -199,13 +284,27 @@ export default function AdminDashboard() {
   };
 
   const refreshUsers = async () => {
-    try { setUsers(await apiGetUsers(token)); } catch { }
+    try {
+      const [usersData, employeesData] = await Promise.all([
+        apiGetUsers(token),
+        apiGetEmployees(token).catch(() => []),
+      ]);
+      setUsers(usersData);
+      setEmployees(employeesData);
+    } catch { }
   };
 
   useEffect(() => {
     if (!token) return;
     (async () => {
-      try { setUsers(await apiGetUsers(token)); }
+      try {
+        const [usersData, employeesData] = await Promise.all([
+          apiGetUsers(token),
+          apiGetEmployees(token).catch(() => []),
+        ]);
+        setUsers(usersData);
+        setEmployees(employeesData);
+      }
       catch { showToast('global', 'error', 'Failed to load users.'); }
       finally { setLoading(false); }
     })();
@@ -297,6 +396,30 @@ export default function AdminDashboard() {
       setIsSubmittingUser(false);
     }
   };
+
+  // GET /api/v1/users rows don't reliably share an `id` with their matching
+  // GET /api/v1/employees row (they're separate tables — a login account's
+  // own id is not the employee id), and this admin form never actually
+  // collects an `employee_id` link when creating a login (no picker for it
+  // exists below), so `u.employee_id` is null in practice too. Phone number
+  // is the one field both sides realistically share for the same person
+  // (it's literally the account's own login id), so it's tried first as the
+  // most reliable join key, with id and name as looser fallbacks.
+  const employeesById = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
+  const employeesByPhone = useMemo(
+    () => new Map(employees.filter(e => e.phone).map(e => [e.phone, e])),
+    [employees]
+  );
+  const employeesByName = useMemo(
+    () => new Map(employees.filter(e => e.name).map(e => [e.name.trim().toLowerCase(), e])),
+    [employees]
+  );
+  const findMatchingEmployee = (u) =>
+    employeesById.get(u.employee_id) ||
+    employeesById.get(u.id) ||
+    (u.phone && employeesByPhone.get(u.phone)) ||
+    (u.name && employeesByName.get(u.name.trim().toLowerCase())) ||
+    null;
 
   const filteredUsers = users.filter(u =>
     !search || u.name?.toLowerCase().includes(search.toLowerCase()) || u.role?.toLowerCase().includes(search.toLowerCase())
@@ -403,11 +526,10 @@ export default function AdminDashboard() {
 
               <div className="sm:col-span-2">
                 <Field label="Designation *">
-                  <select
-                    className={inputCls}
+                  <AdminSelect
                     value={isOther ? 'Other' : workerForm.designation}
-                    onChange={e => {
-                      const val = e.target.value;
+                    placeholder="Select Designation"
+                    onChange={(val) => {
                       if (val === 'Other') {
                         setIsOther(true);
                         setWorkerForm({ ...workerForm, designation: '' });
@@ -416,18 +538,18 @@ export default function AdminDashboard() {
                         setWorkerForm({ ...workerForm, designation: val });
                       }
                     }}
-                  >
-                    <option value="" disabled>Select Designation</option>
-                    <option value="Cutting">Cutting</option>
-                    <option value="Fusing">Fusing</option>
-                    <option value="Pasting">Pasting</option>
-                    <option value="Shell stitch">Shell stitch</option>
-                    <option value="Lining attach">Lining attach</option>
-                    <option value="Lining stitch">Lining stitch</option>
-                    <option value="Final finish">Final finish</option>
-                    <option value="Supervisor">Supervisor</option>
-                    <option value="Other">Other (Custom)</option>
-                  </select>
+                    options={[
+                      { value: 'Cutting', label: 'Cutting' },
+                      { value: 'Fusing', label: 'Fusing' },
+                      { value: 'Pasting', label: 'Pasting' },
+                      { value: 'Shell stitch', label: 'Shell stitch' },
+                      { value: 'Lining attach', label: 'Lining attach' },
+                      { value: 'Lining stitch', label: 'Lining stitch' },
+                      { value: 'Final finish', label: 'Final finish' },
+                      { value: 'Supervisor', label: 'Supervisor' },
+                      { value: 'Other', label: 'Other (Custom)' },
+                    ]}
+                  />
                 </Field>
               </div>
 
@@ -447,13 +569,15 @@ export default function AdminDashboard() {
               )}
 
               <Field label="Wage Type">
-                <select className={inputCls}
+                <AdminSelect
                   value={workerForm.wage_type}
-                  onChange={e => setWorkerForm({ ...workerForm, wage_type: e.target.value })}>
-                  <option value="" disabled>-- Select Wage Type --</option>
-                  <option value="piece_rate">Piece Rate / Daily Wage</option>
-                  <option value="monthly">Monthly Salary</option>
-                </select>
+                  placeholder="-- Select Wage Type --"
+                  onChange={(val) => setWorkerForm({ ...workerForm, wage_type: val })}
+                  options={[
+                    { value: 'piece_rate', label: 'Piece Rate / Daily Wage' },
+                    { value: 'monthly', label: 'Monthly Salary' },
+                  ]}
+                />
               </Field>
 
               {workerForm.wage_type === 'monthly' ? (
@@ -541,25 +665,25 @@ export default function AdminDashboard() {
 
               <div className="sm:col-span-2">
                 <Field label="User Role">
-                  <select
-                    className={inputCls}
+                  <AdminSelect
                     value={userForm.role}
-                    onChange={e => setUserForm({ ...userForm, role: e.target.value })}
-                  >
-                    <option value="" disabled>-- Select Role --</option>
-                    <option value="viewer">Viewer</option>
-                    <option value="supervisor">Supervisor</option>
-                    <option value="cutting_manager">Cutting Manager</option>
-                    <option value="lining_manager">Lining Manager</option>
-                    <option value="stitching_manager">Stitching Manager</option>
-                    <option value="store_manager">Store Manager</option>
-                    <option value="hr">HR</option>
-                    <option value="direct_manager">Direct Manager</option>
-                    <option value="managing_director">Managing Director</option>
-                    <option value="merchandiser">Merchandiser</option>
-                    <option value="client">Client</option>
-                    <option value="security">Security</option>
-                  </select>
+                    placeholder="-- Select Role --"
+                    onChange={(val) => setUserForm({ ...userForm, role: val })}
+                    options={[
+                      { value: 'viewer', label: 'Viewer' },
+                      { value: 'supervisor', label: 'Supervisor' },
+                      { value: 'cutting_manager', label: 'Cutting Manager' },
+                      { value: 'lining_manager', label: 'Lining Manager' },
+                      { value: 'stitching_manager', label: 'Stitching Manager' },
+                      { value: 'store_manager', label: 'Store Manager' },
+                      { value: 'hr', label: 'HR' },
+                      { value: 'direct_manager', label: 'Direct Manager' },
+                      { value: 'managing_director', label: 'Managing Director' },
+                      { value: 'merchandiser', label: 'Merchandiser' },
+                      { value: 'client', label: 'Client' },
+                      { value: 'security', label: 'Security' },
+                    ]}
+                  />
                 </Field>
               </div>
               <div className="sm:col-span-2">
@@ -646,7 +770,7 @@ export default function AdminDashboard() {
                   </tr>
                 ) : filteredUsers.map(u => {
                   const roleCfg = ROLE_COLORS[u.role] || { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: u.role };
-                  const barcodeTag = u.employee_barcode || `EMP-${String(u.id || '000000').padStart(6, '0')}`;
+                  const barcodeTag = u.employee_barcode || findMatchingEmployee(u)?.employee_barcode || `EMP-${String(u.id || '000000').padStart(6, '0')}`;
                   const empId = u.id || u.employee_id;
                   const isActionLoading = barcodeActionLoading[empId];
 
@@ -708,7 +832,7 @@ export default function AdminDashboard() {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             type="button"
-                            onClick={() => setSelectedEmployeeModal(u)}
+                            onClick={() => setSelectedEmployeeModal({ ...u, employee_barcode: barcodeTag })}
                             className="px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold text-[#c8834a] bg-[#faf6f0] hover:bg-[#f4ece1] border border-[#c8834a]/30 flex items-center gap-1 cursor-pointer transition-all"
                             title="Print Employee ID Badge"
                           >

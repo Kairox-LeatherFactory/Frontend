@@ -195,14 +195,14 @@ export default function ProcurementIntakePage() {
     localStorage.removeItem(`inventory_alert_sent_${submissionId}`);
 
     // Auto-send stock shortage alert to supplier
-    const shortageText = `Dear Supplier,\n\nWe are running short on the following materials for our upcoming production run.\nPlease confirm availability and lead time at your earliest.\n\nLEATHER:\n• Full Grain Calf — Cognac — Need 270 sq.ft additional\n\nHARDWARE:\n• Insole Board (Cellulose Fibre) — Need 500 pairs\n\nOrder Qty: 500 pairs | Style: Chelsea Boot - Oxford | Client: Acne Studios\n\nPlease reply urgently to avoid production delays.\n\nRegards,\nKAIROX Procurement Team`;
+    const shortageText = `Dear Supplier,\n\nWe are running short on the following materials for our upcoming production run.\nPlease confirm availability and lead time at your earliest.\n\nLEATHER:\n• Full Grain Calf — Cognac — Need 270 sq.ft additional\n\nHARDWARE:\n• Insole Board (Cellulose Fibre) — Need 500 pairs\n\nOrder Qty: 500 pairs | Style: Chelsea Boot - Oxford | Client: Acne Studios\n\nPlease reply urgently to avoid production delays.\n\nRegards,\nPTE Procurement Team`;
 
     try {
       await fetch('/api/send-inventory-alert', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          subject: '[KAIROX URGENT] Stock Shortage — Please Confirm Availability',
+          subject: '[PTE URGENT] Stock Shortage — Please Confirm Availability',
           text: shortageText,
         })
       });

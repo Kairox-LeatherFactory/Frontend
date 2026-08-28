@@ -79,7 +79,7 @@ export default function PieceRatesAndWages() {
           <ComputationView token={token} />
         </div>
         <div className={`transition-all duration-500 ${activeTab === 'ledger' ? 'opacity-100 translate-y-0 relative' : 'opacity-0 translate-y-4 absolute inset-x-0 pointer-events-none'}`}>
-          <LedgerView token={token} />
+          <LedgerView token={token} isActive={activeTab === 'ledger'} />
         </div>
       </div>
     </div>
@@ -205,6 +205,137 @@ function SearchCombobox({ placeholder, value, options, getKey, getLabel, getSub,
         </div>
       )}
     </div>
+  );
+}
+
+// Native <select> option popups size themselves to their widest option text,
+// independent of the closed control's own (responsive) width, and can render
+// past the viewport edge on a tablet. A fully custom dropdown instead: the
+// open panel is pinned left:0/right:0 against its own button, so its width
+// always matches the button's own (already on-screen) width.
+function SimpleSelect({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div className="relative flex-1" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full h-12 px-3 bg-slate-50 font-bold border rounded-xl text-xs outline-none transition-all flex items-center justify-between gap-1 text-left cursor-pointer"
+        style={{ borderColor: 'rgba(200,131,74,0.15)' }}
+      >
+        <span className="truncate" style={{ color: '#2d1f0e' }}>{selected ? selected.label : ''}</span>
+        <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: '#c8834a' }} />
+      </button>
+      {open && (
+        <div className="absolute z-50 top-[calc(100%+6px)] left-0 right-0 bg-white border-2 rounded-2xl shadow-2xl p-1.5 space-y-0.5" style={{ borderColor: '#c8834a' }}>
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full p-2 text-left rounded-lg text-xs font-bold truncate cursor-pointer transition-colors ${value === opt.value ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Same screen-safe custom dropdown idea as SimpleSelect, but portaled to
+// document.body: the Run Detail modal that hosts this select has
+// `overflow-hidden` on its outer card (rounds its corners), which would clip
+// an in-place absolutely-positioned panel — so this one renders on
+// document.body instead, positioned at the button's live screen coordinates.
+function PortalPillSelect({ value, options, onChange, placeholder }) {
+  const [open, setOpen] = useState(false);
+  const [rect, setRect] = useState(null);
+  const buttonRef = useRef(null);
+  const panelRef = useRef(null);
+
+  const updateRect = () => {
+    if (!buttonRef.current) return;
+    const r = buttonRef.current.getBoundingClientRect();
+    setRect({ top: r.bottom + 4, left: r.left, width: Math.max(r.width, 160) });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    updateRect();
+    window.addEventListener('scroll', updateRect, true);
+    window.addEventListener('resize', updateRect);
+    return () => {
+      window.removeEventListener('scroll', updateRect, true);
+      window.removeEventListener('resize', updateRect);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (buttonRef.current?.contains(e.target)) return;
+      if (panelRef.current?.contains(e.target)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a] flex items-center gap-1.5 cursor-pointer max-w-[180px]"
+        style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}
+      >
+        <span className="truncate">{selected ? selected.label : placeholder}</span>
+        <ChevronDown className={`w-3 h-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && rect && createPortal(
+        <div
+          ref={panelRef}
+          className="fixed z-[999999] max-h-64 overflow-y-auto rounded-xl border-2 bg-white shadow-2xl p-1.5 space-y-0.5"
+          style={{ top: rect.top, left: rect.left, width: rect.width, borderColor: '#c8834a' }}
+        >
+          <button
+            type="button"
+            onClick={() => { onChange(''); setOpen(false); }}
+            className={`w-full p-2 text-left rounded-lg text-xs font-bold truncate cursor-pointer transition-colors ${value === '' ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+          >
+            {placeholder}
+          </button>
+          {options.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full p-2 text-left rounded-lg text-xs font-bold truncate cursor-pointer transition-colors ${value === opt.value ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
@@ -361,6 +492,7 @@ function OrdersStylesView({ token }) {
                         newRates[idx].rate = e.target.value;
                         setRates(newRates);
                       }}
+                      onWheel={(e) => e.target.blur()}
                       placeholder="0.00"
                     />
                   </div>
@@ -653,6 +785,14 @@ function ComputationView({ token }) {
   const [isClosingById, setIsClosingById] = useState(false);
   const [showRecomputeAreYouSure, setShowRecomputeAreYouSure] = useState(false); // general "are you sure?" before every recompute attempt
 
+  // Pick the run by the style code the operator actually remembers instead
+  // of a raw run id — selecting a style looks up its runs via the ledger and
+  // either auto-fills runActionId (single match) or lists candidates to
+  // choose from (multiple runs computed for that style over time).
+  const [runActionStyleCode, setRunActionStyleCode] = useState('');
+  const [runActionStyleSearching, setRunActionStyleSearching] = useState(false);
+  const [runActionStyleMatches, setRunActionStyleMatches] = useState([]);
+
   // "Find a run" picker — team asked why the operator needs to know a raw
   // run_id at all. They still do (the recompute/close/reopen endpoints are
   // keyed on it), but this lets them search by order/style/date instead of
@@ -689,7 +829,10 @@ function ComputationView({ token }) {
         .catch(() => setOrderOptions([]))
         .finally(() => setOrderOptionsLoading(false));
     }
-    if ((scopeType === 'style' || showRunFinder) && styleOptions.length === 0) {
+    // Style options are always needed now — the Run Actions style picker
+    // below is visible up front, not gated behind a scope choice or the
+    // Find a Run toggle.
+    if (styleOptions.length === 0) {
       setStyleOptionsLoading(true);
       apiGetWageStyles(token, {})
         .then((data) => setStyleOptions(Array.isArray(data) ? data : []))
@@ -827,6 +970,39 @@ function ComputationView({ token }) {
     setFinderStyleCode('');
     setFinderDateFrom('');
     setFinderDateTo('');
+  };
+
+  // Style select for Run Actions: look up that style's runs and either
+  // auto-fill runActionId (one match) or list candidates to pick from.
+  const handleSelectRunActionStyle = async (s) => {
+    setRunActionStyleCode(s ? s.style_code : '');
+    setRunActionId('');
+    setRun(null);
+    setRunActionStyleMatches([]);
+    if (!s) return;
+    setRunActionStyleSearching(true);
+    try {
+      const data = await apiGetWageLedger(token, { styleCode: s.style_code, limit: 20 });
+      const items = Array.isArray(data?.items) ? data.items : [];
+      if (items.length === 1) {
+        setRunActionId(items[0].run_id);
+        setRun(items[0]);
+      } else if (items.length > 1) {
+        setRunActionStyleMatches(items);
+      } else {
+        showToast(`No runs found for style ${s.style_code}.`, 'error');
+      }
+    } catch (e) {
+      showToast(e.message || 'Failed to search runs for this style.', 'error');
+    } finally {
+      setRunActionStyleSearching(false);
+    }
+  };
+
+  const handlePickRunActionMatch = (r) => {
+    setRunActionId(r.run_id);
+    setRun(r);
+    setRunActionStyleMatches([]);
   };
 
   return (
@@ -1053,13 +1229,50 @@ function ComputationView({ token }) {
           </div>
         )}
 
-        <input
-          value={runActionId}
-          onChange={(e) => setRunActionId(e.target.value)}
-          placeholder="Run id…"
-          className="w-full h-11 px-4 bg-[#faf6f0] border rounded-xl font-mono text-xs font-bold outline-none focus:border-[#c8834a]"
-          style={{ borderColor: 'rgba(200,131,74,0.2)' }}
-        />
+        <div className="space-y-2">
+          <label className="text-[10px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>Style Code</label>
+          <SearchCombobox
+            placeholder="Search and select a style..."
+            value={runActionStyleCode}
+            options={styleOptions}
+            getKey={(s) => s.style_code}
+            getLabel={(s) => s.style_code}
+            getSub={(s) => s.style_name}
+            onSelect={handleSelectRunActionStyle}
+            loading={styleOptionsLoading || runActionStyleSearching}
+            allowClear
+          />
+        </div>
+
+        {runActionStyleMatches.length > 0 && (
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-bold text-slate-400">Multiple runs found for this style — pick one:</p>
+            {runActionStyleMatches.map((r) => (
+              <button
+                key={r.run_id}
+                type="button"
+                onClick={() => handlePickRunActionMatch(r)}
+                className="w-full flex items-center justify-between gap-3 p-3 rounded-xl bg-white border hover:border-[#c8834a] transition-all text-left"
+                style={{ borderColor: 'rgba(200,131,74,0.15)' }}
+              >
+                <div className="min-w-0">
+                  <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
+                    {r.scope_order_number || r.scope_style_code || 'Whole Factory'}
+                  </p>
+                  <p className="text-[10px] font-bold text-slate-400">{r.period_start} → {r.period_end}</p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <StatusBadge status={r.status} />
+                  <ChevronRight className="w-4 h-4 text-slate-300" />
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {runActionId && (
+          <p className="text-[10px] font-mono font-bold text-slate-400 truncate">Run ID: {runActionId}</p>
+        )}
         {run && (run.id || run.run_id) === runActionId.trim() && (
           <div className="flex items-center gap-3">
             <StatusBadge status={run.status} />
@@ -1254,9 +1467,10 @@ function ComputationView({ token }) {
 }
 
 // ─── 3. LEDGER — searchable, latest-computed-first ───────────────────────────
-function LedgerView({ token }) {
+function LedgerView({ token, isActive }) {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [orderSearch, setOrderSearch] = useState('');
   const [styleSearch, setStyleSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -1278,8 +1492,11 @@ function LedgerView({ token }) {
   const [pieceFilterStage, setPieceFilterStage] = useState('');
   const [pieceFilterEmployee, setPieceFilterEmployee] = useState('');
 
-  const loadLedger = () => {
-    setLoading(true);
+  // `background` skips the full-page spinner so the auto-refresh-on-tab-switch
+  // below doesn't flash the whole list to a loading state — only the manual
+  // Refresh button and the initial mount show that.
+  const loadLedger = (background = false) => {
+    if (background) setIsRefreshing(true); else setLoading(true);
     apiGetWageLedger(token, {
       orderNumber: orderSearch || undefined,
       styleCode: styleSearch || undefined,
@@ -1290,7 +1507,7 @@ function LedgerView({ token }) {
     })
       .then((data) => setRuns(Array.isArray(data?.items) ? data.items : []))
       .catch(() => setRuns([]))
-      .finally(() => setLoading(false));
+      .finally(() => { setLoading(false); setIsRefreshing(false); });
   };
 
   useEffect(() => {
@@ -1305,6 +1522,17 @@ function LedgerView({ token }) {
       .finally(() => setStyleOptionsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
+
+  // Ledger stays mounted (just hidden) when another Payroll tab is active, so
+  // a run computed while on Run Engine never shows up here until this fires —
+  // re-pull the list every time the operator switches back into this tab.
+  const isFirstActivate = useRef(true);
+  useEffect(() => {
+    if (!isActive) return;
+    if (isFirstActivate.current) { isFirstActivate.current = false; return; }
+    loadLedger(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   // Group latest-first ledger rows by scope (order / style / whole
   // factory) for the "order card -> date -> style" nesting the spec asks
@@ -1458,13 +1686,26 @@ function LedgerView({ token }) {
         <input type="date" placeholder="From" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
         <input type="date" placeholder="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
         <div className="flex gap-2">
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="flex-1 h-12 px-3 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a] cursor-pointer" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-            <option value="">All Status</option>
-            <option value="open">Draft</option>
-            <option value="closed">Frozen</option>
-          </select>
-          <button onClick={loadLedger} className="h-12 px-4 rounded-xl font-black text-xs uppercase text-white shrink-0" style={{ background: '#c8834a' }}>
+          <SimpleSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: '', label: 'All Status' },
+              { value: 'open', label: 'Draft' },
+              { value: 'closed', label: 'Frozen' },
+            ]}
+          />
+          <button onClick={() => loadLedger()} className="h-12 px-4 rounded-xl font-black text-xs uppercase text-white shrink-0" style={{ background: '#c8834a' }}>
             <Search className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => loadLedger(true)}
+            disabled={isRefreshing}
+            title="Refresh ledger"
+            className="h-12 px-4 rounded-xl font-black text-xs uppercase shrink-0 bg-white border disabled:opacity-50"
+            style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
@@ -1507,10 +1748,10 @@ function LedgerView({ token }) {
                       {run.run_id}
                     </p>
                     <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
-                      <div>
+                      {/* <div>
                         <p className="text-[10px] font-bold text-slate-400">Total</p>
                         <p className="font-black" style={{ color: '#10b981' }}><Money value={run.total_amount} /></p>
-                      </div>
+                      </div> */}
                       <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-1 transition-all" />
                     </div>
                   </SpotlightCard>
@@ -1651,43 +1892,47 @@ function LedgerView({ token }) {
                   {detailTab === 'pieces' && (
                     <div className="space-y-3">
                       <div className="flex flex-wrap items-center gap-2">
-                        <select value={pieceFilterStage} onChange={(e) => setPieceFilterStage(e.target.value)} className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
-                          <option value="">All Stages</option>
-                          {pieceStageOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                        <select value={pieceFilterEmployee} onChange={(e) => setPieceFilterEmployee(e.target.value)} className="h-9 px-3 bg-white border rounded-full font-bold text-xs outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#4a3a2a' }}>
-                          <option value="">All Employees</option>
-                          {pieceEmployeeOptions.map((e) => <option key={e} value={e}>{e}</option>)}
-                        </select>
+                        <PortalPillSelect
+                          value={pieceFilterStage}
+                          onChange={setPieceFilterStage}
+                          placeholder="All Stages"
+                          options={pieceStageOptions.map((s) => ({ value: s, label: s }))}
+                        />
+                        <PortalPillSelect
+                          value={pieceFilterEmployee}
+                          onChange={setPieceFilterEmployee}
+                          placeholder="All Employees"
+                          options={pieceEmployeeOptions.map((e) => ({ value: e, label: e }))}
+                        />
                         {(pieceFilterStage || pieceFilterEmployee) && (
                           <button onClick={() => { setPieceFilterStage(''); setPieceFilterEmployee(''); }} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Clear column filters</button>
                         )}
                       </div>
-                    <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-                      <table className="w-full text-left text-xs">
-                        <thead>
-                          <tr className="font-bold uppercase tracking-wider" style={{ color: '#9a7a5a', borderBottom: '2px solid rgba(200,131,74,0.15)' }}>
-                            <th className="py-3 px-3">Piece</th>
-                            <th className="py-3 px-3">Stage</th>
-                            <th className="py-3 px-3">Employee</th>
-                            <th className="py-3 px-3 flex items-center gap-1"><BarcodeIcon className="w-3 h-3" /> Barcode</th>
-                            <th className="py-3 px-3">Amount</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100">
-                          {filteredPieces.map((p, i) => (
-                            <tr key={i}>
-                              <td className="py-2.5 px-3 font-mono font-bold text-slate-700">{p.piece_code}</td>
-                              <td className="py-2.5 px-3 font-bold text-slate-500">{p.operation_label || p.operation_code}</td>
-                              <td className="py-2.5 px-3 font-bold text-slate-700">{p.employee_name || '—'}</td>
-                              <td className="py-2.5 px-3 font-mono text-slate-400">{p.employee_barcode || '—'}</td>
-                              <td className="py-2.5 px-3 font-black text-emerald-600"><Money value={p.amount} /></td>
+                      <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                        <table className="w-full text-left text-xs">
+                          <thead>
+                            <tr className="font-bold uppercase tracking-wider" style={{ color: '#9a7a5a', borderBottom: '2px solid rgba(200,131,74,0.15)' }}>
+                              <th className="py-3 px-3">Piece</th>
+                              <th className="py-3 px-3">Stage</th>
+                              <th className="py-3 px-3">Employee</th>
+                              <th className="py-3 px-3 flex items-center gap-1"><BarcodeIcon className="w-3 h-3" /> Barcode</th>
+                              <th className="py-3 px-3">Amount</th>
                             </tr>
-                          ))}
-                          {filteredPieces.length === 0 && <tr><td colSpan="5" className="py-8 text-center text-slate-400 font-bold">{searchNorm ? 'No matches.' : 'No piece-level data.'}</td></tr>}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {filteredPieces.map((p, i) => (
+                              <tr key={i}>
+                                <td className="py-2.5 px-3 font-mono font-bold text-slate-700">{p.piece_code}</td>
+                                <td className="py-2.5 px-3 font-bold text-slate-500">{p.operation_label || p.operation_code}</td>
+                                <td className="py-2.5 px-3 font-bold text-slate-700">{p.employee_name || '—'}</td>
+                                <td className="py-2.5 px-3 font-mono text-slate-400">{p.employee_barcode || '—'}</td>
+                                <td className="py-2.5 px-3 font-black text-emerald-600"><Money value={p.amount} /></td>
+                              </tr>
+                            ))}
+                            {filteredPieces.length === 0 && <tr><td colSpan="5" className="py-8 text-center text-slate-400 font-bold">{searchNorm ? 'No matches.' : 'No piece-level data.'}</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   )}
                 </>
