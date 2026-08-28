@@ -8,7 +8,7 @@ const nextConfig = {
     return [
       {
         source: '/api/v1/:path*',
-        destination: 'https://api-lf.kairoxaitech.com/api/v1/:path*',
+        destination: 'https://staging-api-lf.kairoxaitech.com/api/v1/:path*',
       },
     ];
   },
