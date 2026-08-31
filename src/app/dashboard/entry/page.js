@@ -1,66 +1,121 @@
-'use client';
-import { useState, useRef, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { useSearchParams, useRouter } from 'next/navigation';
-import { useAuth } from '@/context/AuthContext';
-import { useData } from '@/context/DataContext';
-import { apiImportPreview, apiImportCommit, apiGetBarcodeOrders, apiBarcodeResolve } from '@/lib/api';
-import { Lock, CheckCircle2, XCircle, Users, FileSpreadsheet, X, Upload, Barcode, Loader2, Store, Camera, AlertTriangle } from 'lucide-react';
-import SpotlightCard from '@/components/SpotlightCard';
-import { useRoleAccess, CameraScannerModal, normalizeRosterArray } from './shared';
-import dynamic from 'next/dynamic';
-const BarcodeDoorSection = dynamic(() => import('./BarcodeDoorSection'));
-const ManualDoorSection = dynamic(() => import('./ManualDoorSection'));
-const StoreHubSection = dynamic(() => import('./StoreHubSection'));
-const BreakdownReviewBody = dynamic(() => import('../imports/BreakdownReviewBody'));
-// import BarcodeDoorSection from './BarcodeDoorSection';
-// import ManualDoorSection from './ManualDoorSection';
-// import StoreHubSection from './StoreHubSection';
+// production logger main file 
+"use client";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useAuth } from "@/context/AuthContext";
+import { useData } from "@/context/DataContext";
+import {
+  apiImportPreview,
+  apiImportCommit,
+  apiGetBarcodeOrders,
+  apiBarcodeResolve,
+} from "@/lib/api";
+import {
+  Lock,
+  CheckCircle2,
+  XCircle,
+  Users,
+  FileSpreadsheet,
+  X,
+  Upload,
+  Barcode,
+  Loader2,
+  Store,
+  AlertTriangle,
+} from "lucide-react";
+import SpotlightCard from "@/components/SpotlightCard";
+import {
+  useRoleAccess,
+  CameraScannerModal,
+  normalizeRosterArray,
+} from "./shared";
+import dynamic from "next/dynamic";
+const BarcodeDoorSection = dynamic(
+  () => import("./BarcodeSection/BarcodeDoorSection"),
+);
+const ManualDoorSection = dynamic(
+  () => import("./ManualSection/ManualDoorSection"),
+);
+const StoreHubSection = dynamic(() => import("./StoreSection/StoreHubSection"));
+const BreakdownReviewBody = dynamic(
+  () => import("../imports/BreakdownReviewBody"),
+);
 function DynamicDataViewer({ data }) {
-  if (!data) return <div className="text-slate-400 italic text-center p-4">No data available</div>;
+  if (!data)
+    return (
+      <div className="text-slate-400 italic text-center p-4">
+        No data available
+      </div>
+    );
 
-  if (typeof data === 'string') {
-    return <div className="p-4 text-slate-700 bg-slate-50 rounded-xl">{data}</div>;
+  if (typeof data === "string") {
+    return (
+      <div className="p-4 text-slate-700 bg-slate-50 rounded-xl">{data}</div>
+    );
   }
 
-  if (data.clients && typeof data.clients === 'object') {
+  if (data.clients && typeof data.clients === "object") {
     const clientsData = Object.entries(data.clients);
 
     return (
       <div className="space-y-6">
         {clientsData.map(([clientName, details]) => (
-          <div key={clientName} className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4">
+          <div
+            key={clientName}
+            className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4"
+          >
             <div className="flex items-center justify-between border-b pb-3">
               <span className="text-xs font-black uppercase text-amber-700 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200">
                 Sheet / Client: {clientName}
               </span>
               <span className="text-xs font-bold text-slate-500">
-                Warnings: <strong className="text-emerald-600">{details.warnings?.length || 0}</strong>
+                Warnings:{" "}
+                <strong className="text-emerald-600">
+                  {details.warnings?.length || 0}
+                </strong>
               </span>
             </div>
 
             <div className="grid grid-cols-3 gap-3 text-center">
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Order Lines</p>
-                <p className="text-lg font-black text-slate-800">{details.order_lines}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">
+                  Order Lines
+                </p>
+                <p className="text-lg font-black text-slate-800">
+                  {details.order_lines}
+                </p>
               </div>
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Pieces Ordered</p>
-                <p className="text-lg font-black text-amber-600">{details.pieces_ordered?.toLocaleString()}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">
+                  Pieces Ordered
+                </p>
+                <p className="text-lg font-black text-amber-600">
+                  {details.pieces_ordered?.toLocaleString()}
+                </p>
               </div>
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">Styles Count</p>
-                <p className="text-lg font-black text-slate-800">{details.styles?.length || 0}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase">
+                  Styles Count
+                </p>
+                <p className="text-lg font-black text-slate-800">
+                  {details.styles?.length || 0}
+                </p>
               </div>
             </div>
 
             {details.styles && details.styles.length > 0 && (
               <div className="space-y-2 pt-2">
-                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">Detected Styles</h4>
+                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                  Detected Styles
+                </h4>
                 <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-wrap gap-2">
                     {details.styles.map((style, idx) => (
-                      <span key={idx} className="text-xs font-bold bg-white text-slate-700 px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
+                      <span
+                        key={idx}
+                        className="text-xs font-bold bg-white text-slate-700 px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs"
+                      >
                         {style}
                       </span>
                     ))}
@@ -74,20 +129,38 @@ function DynamicDataViewer({ data }) {
     );
   }
 
-  let tableRows = Array.isArray(data) ? data : (typeof data === 'object' ? Object.values(data).find(Array.isArray) || [data] : []);
+  let tableRows = Array.isArray(data)
+    ? data
+    : typeof data === "object"
+      ? Object.values(data).find(Array.isArray) || [data]
+      : [];
 
-  if (tableRows.length === 0) return <div className="text-slate-400 italic text-center p-4">No records found</div>;
+  if (tableRows.length === 0)
+    return (
+      <div className="text-slate-400 italic text-center p-4">
+        No records found
+      </div>
+    );
 
-  const keys = Array.from(new Set(tableRows.flatMap(row => (row && typeof row === 'object') ? Object.keys(row) : [])));
+  const keys = Array.from(
+    new Set(
+      tableRows.flatMap((row) =>
+        row && typeof row === "object" ? Object.keys(row) : [],
+      ),
+    ),
+  );
 
   return (
     <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
       <table className="min-w-full text-left text-xs bg-white">
         <thead className="bg-slate-100 text-slate-700 font-black uppercase tracking-wider">
           <tr>
-            {keys.map(k => (
-              <th key={k} className="px-4 py-3 border-b border-slate-200 whitespace-nowrap">
-                {String(k).replace(/_/g, ' ')}
+            {keys.map((k) => (
+              <th
+                key={k}
+                className="px-4 py-3 border-b border-slate-200 whitespace-nowrap"
+              >
+                {String(k).replace(/_/g, " ")}
               </th>
             ))}
           </tr>
@@ -95,11 +168,16 @@ function DynamicDataViewer({ data }) {
         <tbody className="divide-y divide-slate-100">
           {tableRows.map((row, i) => (
             <tr key={i} className="hover:bg-slate-50 transition-colors">
-              {keys.map(k => {
-                const val = row ? row[k] : '-';
+              {keys.map((k) => {
+                const val = row ? row[k] : "-";
                 return (
-                  <td key={k} className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap">
-                    {typeof val === 'object' && val !== null ? JSON.stringify(val) : String(val ?? '-')}
+                  <td
+                    key={k}
+                    className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap"
+                  >
+                    {typeof val === "object" && val !== null
+                      ? JSON.stringify(val)
+                      : String(val ?? "-")}
                   </td>
                 );
               })}
@@ -111,64 +189,79 @@ function DynamicDataViewer({ data }) {
   );
 }
 
-
-
 export default function ProductionLogEntry() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, token } = useAuth();
   const { workers } = useData();
-  const { isReadOnly, isFullAccess, isStoreAccess, allowedOperations, isStageAllowedForRole } = useRoleAccess();
+  const {
+    isReadOnly,
+    isFullAccess,
+    isStoreAccess,
+    allowedOperations,
+    isStageAllowedForRole,
+  } = useRoleAccess();
 
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [storeSendedSkus, setStoreSendedSkus] = useState([]);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
   const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'sku' | 'worker'
   // Lets a "Back to Breakdown Review" link elsewhere (imports/page.js) land
   // directly on this tab via /dashboard/entry?door=breakdown.
   const [activeDoor, setActiveDoor] = useState(
-    searchParams.get('door') === 'breakdown' ? 'breakdown'
-      : (user === 'store_manager' || user === 'store_scan') ? 'store' : 'manual'
+    searchParams.get("door") === "breakdown"
+      ? "breakdown"
+      : user === "store_manager" || user === "store_scan"
+        ? "store"
+        : "manual",
   );
   // Team request: a permanent, always-browsable entry point into Breakdown
   // Review — not just the redirect that fires right after a fresh upload.
   const [breakdownOrders, setBreakdownOrders] = useState([]);
   const [breakdownOrdersLoading, setBreakdownOrdersLoading] = useState(false);
-  const [breakdownOrderSearch, setBreakdownOrderSearch] = useState('');
+  const [breakdownOrderSearch, setBreakdownOrderSearch] = useState("");
   // Team request: a commit's landing on this order's detail screen must
   // survive a refresh — read the order back out of the URL on load, not
   // just the door, so a reload doesn't dump the operator back on the list
   // (or the wrong tab entirely).
   const [selectedBreakdownOrder, setSelectedBreakdownOrder] = useState(
-    searchParams.get('door') === 'breakdown' ? (searchParams.get('order') || null) : null
+    searchParams.get("door") === "breakdown"
+      ? searchParams.get("order") || null
+      : null,
   ); // order_number | null — set = show the detail/release screen inline, unset = show the list
-  const [barcodeWorkerInput, setBarcodeWorkerInput] = useState('');
+  const [barcodeWorkerInput, setBarcodeWorkerInput] = useState("");
   const [barcodeWorker, setBarcodeWorker] = useState(null); // { id, name, designation, barcode }
   const [barcodeWorkerChecking, setBarcodeWorkerChecking] = useState(false);
-  const [barcodeNotCheckedInModal, setBarcodeNotCheckedInModal] = useState(null); // { workerName }
-  const [barcodeStage, setBarcodeStage] = useState('Cutting'); // Production Stage — lifted here since handleVerifyBarcodeWorker (shared with Store Hub) auto-adjusts it
-  const [barcodeDcm, setBarcodeDcm] = useState('');
-  const [lotArticle, setLotArticle] = useState('');
-  const [lotColor, setLotColor] = useState('');
-  const [lotThickness, setLotThickness] = useState('');
-  const [lotOptions, setLotOptions] = useState({ article: [], colour: [], thickness: [], size: [] });
+  const [barcodeNotCheckedInModal, setBarcodeNotCheckedInModal] =
+    useState(null); // { workerName }
+  const [barcodeStage, setBarcodeStage] = useState("Cutting"); // Production Stage — lifted here since handleVerifyBarcodeWorker (shared with Store Hub) auto-adjusts it
+  const [barcodeDcm, setBarcodeDcm] = useState("");
+  const [lotArticle, setLotArticle] = useState("");
+  const [lotColor, setLotColor] = useState("");
+  const [lotThickness, setLotThickness] = useState("");
+  const [lotOptions, setLotOptions] = useState({
+    article: [],
+    colour: [],
+    thickness: [],
+    size: [],
+  });
   const [lotResults, setLotResults] = useState([]);
   const [lotLoading, setLotLoading] = useState(false);
-  const [lotCategory, setLotCategory] = useState('LEATHER'); // LEATHER or LINING
+  const [lotCategory, setLotCategory] = useState("LEATHER"); // LEATHER or LINING
   const [bucketResult, setBucketResult] = useState(null);
   const [showBucketModal, setShowBucketModal] = useState(false);
   const [completedStagesMap, setCompletedStagesMap] = useState({});
-  const [storeReceiveStatus, setStoreReceiveStatus] = useState('pending'); // 'pending', 'received', 'sended'
+  const [storeReceiveStatus, setStoreReceiveStatus] = useState("pending"); // 'pending', 'received', 'sended'
 
   const fileInputRef = useRef(null);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewData, setPreviewData] = useState(null);
-  const [fileName, setFileName] = useState('');
+  const [fileName, setFileName] = useState("");
   const [commitLoading, setCommitLoading] = useState(false);
-  const [commitSuccess, setCommitSuccess] = useState('');
-  const [uploadError, setUploadError] = useState('');
+  const [commitSuccess, setCommitSuccess] = useState("");
+  const [uploadError, setUploadError] = useState("");
   // Team request: show the same tabular summary the Preview step showed —
   // confirmation once Commit has actually saved it, before moving on to
   // Breakdown Review — real `written` result from the commit response
@@ -178,8 +271,8 @@ export default function ProductionLogEntry() {
   const [commitResult, setCommitResult] = useState(null);
   const [pendingBreakdownOrder, setPendingBreakdownOrder] = useState(null);
   const [showOrderNumModal, setShowOrderNumModal] = useState(false);
-  const [uploadOrderNumber, setUploadOrderNumber] = useState('');
-  const [uploadOrderNumberError, setUploadOrderNumberError] = useState('');
+  const [uploadOrderNumber, setUploadOrderNumber] = useState("");
+  const [uploadOrderNumberError, setUploadOrderNumberError] = useState("");
   const [mounted, setMounted] = useState(false);
 
   const workerInputRef = useRef(null);
@@ -187,9 +280,9 @@ export default function ProductionLogEntry() {
   // Reset worker verification state when navigating between doors/tabs so each slide requires a fresh scan
   useEffect(() => {
     setBarcodeWorker(null);
-    setBarcodeWorkerInput('');
+    setBarcodeWorkerInput("");
     setBarcodeNotCheckedInModal(null);
-    setErrorMsg('');
+    setErrorMsg("");
   }, [activeDoor]);
 
   const recordStageCompletion = (stage, pieceOrSkuKey) => {
@@ -197,7 +290,7 @@ export default function ProductionLogEntry() {
     const rawKey = String(pieceOrSkuKey).toUpperCase().trim();
     if (!rawKey) return;
 
-    setCompletedStagesMap(prev => {
+    setCompletedStagesMap((prev) => {
       const next = { ...prev };
       const set1 = next[rawKey] ? new Set(next[rawKey]) : new Set();
       set1.add(stage);
@@ -206,21 +299,24 @@ export default function ProductionLogEntry() {
     });
   };
 
-
   const handleVerifyBarcodeWorker = async (inputCode) => {
-    const rawCode = typeof inputCode === 'string' ? inputCode : barcodeWorkerInput;
-    const query = (rawCode || '').trim();
+    const rawCode =
+      typeof inputCode === "string" ? inputCode : barcodeWorkerInput;
+    const query = (rawCode || "").trim();
     if (!query) return;
     setBarcodeWorkerChecking(true);
     setBarcodeNotCheckedInModal(null);
-    setErrorMsg('');
+    setErrorMsg("");
 
     try {
       const queryLower = query.toLowerCase();
-      let matchedWorker = workers.find(w =>
-        String(w.id) === query ||
-        String(w.employee_barcode || '').toLowerCase() === queryLower ||
-        String(w.name || '').toLowerCase().includes(queryLower)
+      let matchedWorker = workers.find(
+        (w) =>
+          String(w.id) === query ||
+          String(w.employee_barcode || "").toLowerCase() === queryLower ||
+          String(w.name || "")
+            .toLowerCase()
+            .includes(queryLower),
       );
 
       // The local `workers` list's employee_barcode is often just a display
@@ -232,45 +328,55 @@ export default function ProductionLogEntry() {
       if (!matchedWorker) {
         try {
           const resolved = await apiBarcodeResolve(token, query);
-          if (resolved?.type === 'EMPLOYEE' && resolved.employee?.id) {
-            const byId = workers.find(w => String(w.id) === String(resolved.employee.id));
+          if (resolved?.type === "EMPLOYEE" && resolved.employee?.id) {
+            const byId = workers.find(
+              (w) => String(w.id) === String(resolved.employee.id),
+            );
             matchedWorker = byId || {
               id: resolved.employee.id,
               name: resolved.employee.name || `Worker (${query})`,
-              designation: resolved.employee.designation || 'Production Worker',
+              designation: resolved.employee.designation || "Production Worker",
               employee_barcode: resolved.code || query,
             };
           }
         } catch (resolveErr) {
-          console.warn('Barcode resolve fallback warning:', resolveErr.message);
+          console.warn("Barcode resolve fallback warning:", resolveErr.message);
         }
       }
 
       const targetWorker = matchedWorker || {
         id: query,
         name: `Worker (${query})`,
-        designation: 'Production Worker',
-        employee_barcode: query
+        designation: "Production Worker",
+        employee_barcode: query,
       };
 
       // Check Attendance Check-In Status
       try {
-        const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, { headers: { Authorization: `Bearer ${token}` } });
+        const response = await fetch(
+          `/api/v1/attendance/today?t=${Date.now()}`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
         const rosterData = await response.json();
         const rosterArray = normalizeRosterArray(rosterData);
-        const workerRoster = rosterArray.find(r =>
-          String(r.employee_id) === String(targetWorker.id) ||
-          (r.employee_barcode && String(r.employee_barcode).toLowerCase() === query.toLowerCase()) ||
-          (r.barcode && String(r.barcode).toLowerCase() === query.toLowerCase())
-        ) || null;
+        const workerRoster =
+          rosterArray.find(
+            (r) =>
+              String(r.employee_id) === String(targetWorker.id) ||
+              (r.employee_barcode &&
+                String(r.employee_barcode).toLowerCase() ===
+                  query.toLowerCase()) ||
+              (r.barcode &&
+                String(r.barcode).toLowerCase() === query.toLowerCase()),
+          ) || null;
 
         if (!workerRoster || workerRoster.check_out_at) {
           setBarcodeNotCheckedInModal({
             workerName: targetWorker.name,
             workerId: targetWorker.id,
-            barcode: targetWorker.employee_barcode || query
+            barcode: targetWorker.employee_barcode || query,
           });
-          setBarcodeWorkerInput('');
+          setBarcodeWorkerInput("");
           setBarcodeWorkerChecking(false);
           setTimeout(() => workerInputRef.current?.focus(), 100);
           return;
@@ -280,16 +386,19 @@ export default function ProductionLogEntry() {
       }
 
       setBarcodeWorker(targetWorker);
-      setBarcodeWorkerInput('');
+      setBarcodeWorkerInput("");
       setSuccessMsg(`✅ Worker ${targetWorker.name} verified & checked-in!`);
 
       // FIX 2: Auto-switch barcodeStage to first allowed operation if current stage is restricted for this role (e.g. stitching_manager)
-      if (!isStageAllowedForRole(barcodeStage) && allowedOperations.length > 0) {
+      if (
+        !isStageAllowedForRole(barcodeStage) &&
+        allowedOperations.length > 0
+      ) {
         setBarcodeStage(allowedOperations[0]);
       }
     } catch (err) {
       setErrorMsg(`Worker verification failed: ${err.message}`);
-      setBarcodeWorkerInput('');
+      setBarcodeWorkerInput("");
       setTimeout(() => workerInputRef.current?.focus(), 100);
     } finally {
       setBarcodeWorkerChecking(false);
@@ -299,11 +408,11 @@ export default function ProductionLogEntry() {
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !uploadOrderNumber) {
-      setUploadOrderNumberError('Please enter an Order Number first');
+      setUploadOrderNumberError("Please enter an Order Number first");
       return;
     }
     setUploadLoading(true);
-    setUploadError('');
+    setUploadError("");
     try {
       const data = await apiImportPreview(token, file, uploadOrderNumber);
       setPreviewData(data);
@@ -332,7 +441,7 @@ export default function ProductionLogEntry() {
       // so the mock (which returns it top-level) keeps working too.
       if (result?.written?.release_required ?? result?.release_required) {
         const orderNumber = uploadOrderNumber;
-        setUploadOrderNumber('');
+        setUploadOrderNumber("");
         // Team request: confirm what was actually written by Commit —
         // before moving on to Breakdown Review, instead of silently
         // jumping straight there.
@@ -341,8 +450,8 @@ export default function ProductionLogEntry() {
         setShowCommitConfirmation(true);
         return;
       }
-      setCommitSuccess('File imported and database updated successfully!');
-      setUploadOrderNumber('');
+      setCommitSuccess("File imported and database updated successfully!");
+      setUploadOrderNumber("");
     } catch (err) {
       setUploadError(err.message);
     } finally {
@@ -355,8 +464,8 @@ export default function ProductionLogEntry() {
   // mounts while activeDoor==='store'). This is the "don't let an
   // unauthorized role land on Store" half of the original combined effect.
   useEffect(() => {
-    if (activeDoor === 'store' && !isFullAccess && !isStoreAccess) {
-      setActiveDoor('manual');
+    if (activeDoor === "store" && !isFullAccess && !isStoreAccess) {
+      setActiveDoor("manual");
     }
   }, [activeDoor, isFullAccess, isStoreAccess]);
 
@@ -368,13 +477,14 @@ export default function ProductionLogEntry() {
   // the exact same screen instead of dumping the operator back to Manual
   // Logger. replace (not push) — this mirrors state, it isn't a new page.
   useEffect(() => {
-    if (activeDoor !== 'breakdown') {
-      if (searchParams.get('door') === 'breakdown') router.replace('/dashboard/entry', { scroll: false });
+    if (activeDoor !== "breakdown") {
+      if (searchParams.get("door") === "breakdown")
+        router.replace("/dashboard/entry", { scroll: false });
       return;
     }
     const params = new URLSearchParams();
-    params.set('door', 'breakdown');
-    if (selectedBreakdownOrder) params.set('order', selectedBreakdownOrder);
+    params.set("door", "breakdown");
+    if (selectedBreakdownOrder) params.set("order", selectedBreakdownOrder);
     router.replace(`/dashboard/entry?${params.toString()}`, { scroll: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeDoor, selectedBreakdownOrder, router]);
@@ -385,10 +495,12 @@ export default function ProductionLogEntry() {
   // hiding orders committed after that first load (they'd never appear
   // until a full page reload).
   useEffect(() => {
-    if (activeDoor !== 'breakdown' || selectedBreakdownOrder || !token) return;
+    if (activeDoor !== "breakdown" || selectedBreakdownOrder || !token) return;
     setBreakdownOrdersLoading(true);
     apiGetBarcodeOrders(token)
-      .then((data) => setBreakdownOrders(Array.isArray(data) ? data : (data?.items || [])))
+      .then((data) =>
+        setBreakdownOrders(Array.isArray(data) ? data : data?.items || []),
+      )
       .catch(() => setBreakdownOrders([]))
       .finally(() => setBreakdownOrdersLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -396,14 +508,14 @@ export default function ProductionLogEntry() {
 
   useEffect(() => {
     if (successMsg) {
-      const timer = setTimeout(() => setSuccessMsg(''), 2000);
+      const timer = setTimeout(() => setSuccessMsg(""), 2000);
       return () => clearTimeout(timer);
     }
   }, [successMsg]);
 
   useEffect(() => {
     if (commitSuccess) {
-      const timer = setTimeout(() => setCommitSuccess(''), 2000);
+      const timer = setTimeout(() => setCommitSuccess(""), 2000);
       return () => clearTimeout(timer);
     }
   }, [commitSuccess]);
@@ -411,8 +523,8 @@ export default function ProductionLogEntry() {
   useEffect(() => {
     if (errorMsg || uploadError) {
       const timer = setTimeout(() => {
-        setErrorMsg('');
-        setUploadError('');
+        setErrorMsg("");
+        setUploadError("");
       }, 6000);
       return () => clearTimeout(timer);
     }
@@ -433,8 +545,13 @@ export default function ProductionLogEntry() {
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in pt-12 text-center">
         <div className="card p-8 bg-white border border-red-100 shadow-xl space-y-4">
           <Lock className="w-14 h-14 text-red-400 mx-auto" />
-          <h1 className="text-2xl font-black text-slate-800">Access Restricted</h1>
-          <p className="text-slate-500 font-medium">Your active persona does not have write access to the shop floor ledger.</p>
+          <h1 className="text-2xl font-black text-slate-800">
+            Access Restricted
+          </h1>
+          <p className="text-slate-500 font-medium">
+            Your active persona does not have write access to the shop floor
+            ledger.
+          </p>
         </div>
       </div>
     );
@@ -442,12 +559,19 @@ export default function ProductionLogEntry() {
 
   return (
     <div className="w-full min-w-0 space-y-8 animate-fade-in pb-12">
-
       {/* TITLE SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Shop Floor Production Logger</h1>
-          <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Record work bundles completed by operators. Touch-friendly screens optimized for fast, accurate floor entry.</p>
+          <h1
+            className="text-3xl font-black tracking-tight"
+            style={{ color: "#2d1f0e" }}
+          >
+            Shop Floor Production Logger
+          </h1>
+          <p className="font-medium mt-1" style={{ color: "#9a7a5a" }}>
+            Record work bundles completed by operators. Touch-friendly screens
+            optimized for fast, accurate floor entry.
+          </p>
         </div>
         <div>
           <input
@@ -461,110 +585,130 @@ export default function ProductionLogEntry() {
           <button
             type="button"
             onClick={() => {
-              setUploadOrderNumberError('');
+              setUploadOrderNumberError("");
               setShowOrderNumModal(true);
             }}
             disabled={uploadLoading}
             className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
             style={{
-              background: 'transparent',
-              border: '1px solid #c8834a',
-              color: '#c8834a'
+              background: "transparent",
+              border: "1px solid #c8834a",
+              color: "#c8834a",
             }}
           >
             {uploadLoading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Previewing...</>
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Previewing...
+              </>
             ) : (
-              <><FileSpreadsheet className="w-4 h-4" /> Upload Breakdown Sheet</>
+              <>
+                <FileSpreadsheet className="w-4 h-4" /> Upload Breakdown Sheet
+              </>
             )}
           </button>
         </div>
       </div>
 
       {/* BOTTOM-RIGHT TOAST NOTIFICATION */}
-      {typeof window !== 'undefined' && createPortal(
-        <div className="fixed bottom-6 right-4 sm:right-6 z-[9999999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
-
-          {/* Success Toast */}
-          {successMsg && (
-            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+      {typeof window !== "undefined" &&
+        createPortal(
+          <div className="fixed bottom-6 right-4 sm:right-6 z-[9999999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
+            {/* Success Toast */}
+            {successMsg && (
+              <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">
+                      Transaction Confirmed
+                    </p>
+                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">
+                      {successMsg}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Transaction Confirmed</p>
-                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{successMsg}</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setSuccessMsg("")}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSuccessMsg('')}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+            )}
 
-          {/* Commit Success Toast */}
-          {commitSuccess && (
-            <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                  <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+            {/* Commit Success Toast */}
+            {commitSuccess && (
+              <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">
+                      Import Successful
+                    </p>
+                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">
+                      {commitSuccess}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">Import Successful</p>
-                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{commitSuccess}</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setCommitSuccess("")}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setCommitSuccess('')}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
+            )}
 
-          {/* Error Toast */}
-          {(errorMsg || uploadError) && (
-            <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
-                  <XCircle className="w-6 h-6 text-rose-400" />
+            {/* Error Toast */}
+            {(errorMsg || uploadError) && (
+              <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+                    <XCircle className="w-6 h-6 text-rose-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-black text-rose-400 text-xs uppercase tracking-wider">
+                      Operation Failed
+                    </p>
+                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">
+                      {errorMsg || uploadError}
+                    </p>
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <p className="font-black text-rose-400 text-xs uppercase tracking-wider">Operation Failed</p>
-                  <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">{errorMsg || uploadError}</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setErrorMsg("");
+                    setUploadError("");
+                  }}
+                  className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => { setErrorMsg(''); setUploadError(''); }}
-                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
-
-        </div>,
-        document.body
-      )}
+            )}
+          </div>,
+          document.body,
+        )}
 
       {/* MOBILE CAMERA BARCODE SCANNER MODAL — worker-verify case only.
           The 'sku' and 'store' cases now render their own instance locally
           inside BarcodeDoorSection.js / StoreHubSection.js — this one shared
           instance can't reach into their local state anymore post-split. */}
-      {cameraScanTarget === 'worker' && (
+      {cameraScanTarget === "worker" && (
         <CameraScannerModal
           title="Scan Worker Barcode"
           onClose={() => setCameraScanTarget(null)}
           onScan={(scannedCode) => {
-            const cleanCode = String(scannedCode || '').replace(/[\r\n]+/g, '').trim();
+            const cleanCode = String(scannedCode || "")
+              .replace(/[\r\n]+/g, "")
+              .trim();
             if (!cleanCode) return;
             setBarcodeWorkerInput(cleanCode);
             setTimeout(() => handleVerifyBarcodeWorker(cleanCode), 50);
@@ -573,14 +717,17 @@ export default function ProductionLogEntry() {
       )}
 
       {/* TOP TAB BAR (MATCHING ATTENDANCE PAGE STYLE) */}
-      <div className="flex items-center gap-1 border-b overflow-x-auto" style={{ borderBottomColor: 'rgba(200,131,74,0.2)' }}>
+      <div
+        className="flex items-center gap-1 border-b overflow-x-auto"
+        style={{ borderBottomColor: "rgba(200,131,74,0.2)" }}
+      >
         <button
           type="button"
-          onClick={() => setActiveDoor('manual')}
+          onClick={() => setActiveDoor("manual")}
           className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
           style={{
-            borderColor: activeDoor === 'manual' ? '#c8834a' : 'transparent',
-            color: activeDoor === 'manual' ? '#c8834a' : '#9a7a5a',
+            borderColor: activeDoor === "manual" ? "#c8834a" : "transparent",
+            color: activeDoor === "manual" ? "#c8834a" : "#9a7a5a",
           }}
         >
           <Users className="w-4 h-4" />
@@ -588,11 +735,11 @@ export default function ProductionLogEntry() {
         </button>
         <button
           type="button"
-          onClick={() => setActiveDoor('barcode')}
+          onClick={() => setActiveDoor("barcode")}
           className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
           style={{
-            borderColor: activeDoor === 'barcode' ? '#c8834a' : 'transparent',
-            color: activeDoor === 'barcode' ? '#c8834a' : '#9a7a5a',
+            borderColor: activeDoor === "barcode" ? "#c8834a" : "transparent",
+            color: activeDoor === "barcode" ? "#c8834a" : "#9a7a5a",
           }}
         >
           <Barcode className="w-4 h-4" />
@@ -601,24 +748,23 @@ export default function ProductionLogEntry() {
         {isStoreAccess && (
           <button
             type="button"
-            onClick={() => setActiveDoor('store')}
+            onClick={() => setActiveDoor("store")}
             className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
             style={{
-              borderColor: activeDoor === 'store' ? '#c8834a' : 'transparent',
-              color: activeDoor === 'store' ? '#c8834a' : '#9a7a5a',
+              borderColor: activeDoor === "store" ? "#c8834a" : "transparent",
+              color: activeDoor === "store" ? "#c8834a" : "#9a7a5a",
             }}
           >
-            <Store className="w-4 h-4" />
-            ✨ Store Manager Hub
+            <Store className="w-4 h-4" />✨ Store Manager Hub
           </button>
         )}
         <button
           type="button"
-          onClick={() => setActiveDoor('breakdown')}
+          onClick={() => setActiveDoor("breakdown")}
           className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
           style={{
-            borderColor: activeDoor === 'breakdown' ? '#c8834a' : 'transparent',
-            color: activeDoor === 'breakdown' ? '#c8834a' : '#9a7a5a',
+            borderColor: activeDoor === "breakdown" ? "#c8834a" : "transparent",
+            color: activeDoor === "breakdown" ? "#c8834a" : "#9a7a5a",
           }}
         >
           <FileSpreadsheet className="w-4 h-4" />
@@ -627,43 +773,101 @@ export default function ProductionLogEntry() {
       </div>
 
       {/* LOGGING FORM CARD */}
-      <SpotlightCard className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-
-        <div className="p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.25)' }}>
-          <div className="text-xs font-bold flex items-center gap-2" style={{ color: '#4a3a2a' }}>
+      <SpotlightCard
+        className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl"
+        style={{ border: "1px solid rgba(200,131,74,0.15)" }}
+        spotlightColor="rgba(200,131,74,0.06)"
+      >
+        <div
+          className="p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm"
+          style={{
+            background: "#faf6f0",
+            border: "1px solid rgba(200,131,74,0.25)",
+          }}
+        >
+          <div
+            className="text-xs font-bold flex items-center gap-2"
+            style={{ color: "#4a3a2a" }}
+          >
             <span>Logged By: </span>
-            <span className="text-white px-2.5 py-1 rounded-lg font-black uppercase tracking-wider text-[11px] shadow-sm" style={{ background: '#c8834a' }}>{user.replace('_', ' ')}</span>
+            <span
+              className="text-white px-2.5 py-1 rounded-lg font-black uppercase tracking-wider text-[11px] shadow-sm"
+              style={{ background: "#c8834a" }}
+            >
+              {user.replace("_", " ")}
+            </span>
           </div>
         </div>
 
         {/* TAB 2: DEDICATED BARCODE GUN SCANNER FLOW (CONTRACT V3.0) */}
-        {activeDoor === 'barcode' && (
+        {activeDoor === "barcode" && (
           <BarcodeDoorSection
-            setSuccessMsg={setSuccessMsg} setErrorMsg={setErrorMsg}
-            recordStageCompletion={recordStageCompletion} completedStagesMap={completedStagesMap} storeSendedSkus={storeSendedSkus}
+            setSuccessMsg={setSuccessMsg}
+            setErrorMsg={setErrorMsg}
+            recordStageCompletion={recordStageCompletion}
+            completedStagesMap={completedStagesMap}
+            storeSendedSkus={storeSendedSkus}
             date={date}
-            barcodeStage={barcodeStage} setBarcodeStage={setBarcodeStage}
-            lotArticle={lotArticle} setLotArticle={setLotArticle} lotColor={lotColor} setLotColor={setLotColor} lotThickness={lotThickness} setLotThickness={setLotThickness}
-            lotOptions={lotOptions} setLotOptions={setLotOptions} lotResults={lotResults} setLotResults={setLotResults} lotLoading={lotLoading} setLotLoading={setLotLoading} lotCategory={lotCategory} setLotCategory={setLotCategory}
-            barcodeDcm={barcodeDcm} setBarcodeDcm={setBarcodeDcm}
-            setBucketResult={setBucketResult} setShowBucketModal={setShowBucketModal}
-            barcodeWorker={barcodeWorker} setBarcodeWorker={setBarcodeWorker} barcodeWorkerInput={barcodeWorkerInput} setBarcodeWorkerInput={setBarcodeWorkerInput} barcodeWorkerChecking={barcodeWorkerChecking}
-            handleVerifyBarcodeWorker={handleVerifyBarcodeWorker} barcodeNotCheckedInModal={barcodeNotCheckedInModal} setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal} workerInputRef={workerInputRef}
-            cameraScanTarget={cameraScanTarget} setCameraScanTarget={setCameraScanTarget}
+            barcodeStage={barcodeStage}
+            setBarcodeStage={setBarcodeStage}
+            lotArticle={lotArticle}
+            setLotArticle={setLotArticle}
+            lotColor={lotColor}
+            setLotColor={setLotColor}
+            lotThickness={lotThickness}
+            setLotThickness={setLotThickness}
+            lotOptions={lotOptions}
+            setLotOptions={setLotOptions}
+            lotResults={lotResults}
+            setLotResults={setLotResults}
+            lotLoading={lotLoading}
+            setLotLoading={setLotLoading}
+            lotCategory={lotCategory}
+            setLotCategory={setLotCategory}
+            barcodeDcm={barcodeDcm}
+            setBarcodeDcm={setBarcodeDcm}
+            setBucketResult={setBucketResult}
+            setShowBucketModal={setShowBucketModal}
+            barcodeWorker={barcodeWorker}
+            setBarcodeWorker={setBarcodeWorker}
+            barcodeWorkerInput={barcodeWorkerInput}
+            setBarcodeWorkerInput={setBarcodeWorkerInput}
+            barcodeWorkerChecking={barcodeWorkerChecking}
+            handleVerifyBarcodeWorker={handleVerifyBarcodeWorker}
+            barcodeNotCheckedInModal={barcodeNotCheckedInModal}
+            setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal}
+            workerInputRef={workerInputRef}
+            cameraScanTarget={cameraScanTarget}
+            setCameraScanTarget={setCameraScanTarget}
           />
         )}
-        {activeDoor === 'manual' && (
+        {activeDoor === "manual" && (
           <ManualDoorSection
             activeDoor={activeDoor}
-            setSuccessMsg={setSuccessMsg} setErrorMsg={setErrorMsg}
+            setSuccessMsg={setSuccessMsg}
+            setErrorMsg={setErrorMsg}
             recordStageCompletion={recordStageCompletion}
             date={date}
+            setDate={setDate}
             storeSendedSkus={storeSendedSkus}
             storeReceiveStatus={storeReceiveStatus}
-            lotArticle={lotArticle} setLotArticle={setLotArticle} lotColor={lotColor} setLotColor={setLotColor} lotThickness={lotThickness} setLotThickness={setLotThickness}
-            lotOptions={lotOptions} setLotOptions={setLotOptions} lotResults={lotResults} setLotResults={setLotResults} lotLoading={lotLoading} setLotLoading={setLotLoading} setLotCategory={setLotCategory}
-            barcodeDcm={barcodeDcm} setBarcodeDcm={setBarcodeDcm}
-            setBucketResult={setBucketResult} setShowBucketModal={setShowBucketModal}
+            lotArticle={lotArticle}
+            setLotArticle={setLotArticle}
+            lotColor={lotColor}
+            setLotColor={setLotColor}
+            lotThickness={lotThickness}
+            setLotThickness={setLotThickness}
+            lotOptions={lotOptions}
+            setLotOptions={setLotOptions}
+            lotResults={lotResults}
+            setLotResults={setLotResults}
+            lotLoading={lotLoading}
+            setLotLoading={setLotLoading}
+            setLotCategory={setLotCategory}
+            barcodeDcm={barcodeDcm}
+            setBarcodeDcm={setBarcodeDcm}
+            setBucketResult={setBucketResult}
+            setShowBucketModal={setShowBucketModal}
             mounted={mounted}
           />
         )}
@@ -674,22 +878,36 @@ export default function ProductionLogEntry() {
             order (or landing here straight from a fresh commit) shows the
             exact same review/release screen right in this tab; "Back"
             just clears the selection and returns to the list below. */}
-        {activeDoor === 'breakdown' && (
-          selectedBreakdownOrder ? (
+        {activeDoor === "breakdown" &&
+          (selectedBreakdownOrder ? (
             <BreakdownReviewBody
               initialOrderNumber={selectedBreakdownOrder}
               onBack={() => setSelectedBreakdownOrder(null)}
               backLabel="Back to Breakdown Review"
-              onBackToProduction={() => { setSelectedBreakdownOrder(null); setActiveDoor('manual'); }}
+              onBackToProduction={() => {
+                setSelectedBreakdownOrder(null);
+                setActiveDoor("manual");
+              }}
             />
           ) : (
             <div className="space-y-5 animate-fade-in">
               <div>
-                <h3 className="text-lg font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
-                  <FileSpreadsheet className="w-5 h-5" style={{ color: '#c8834a' }} /> Breakdown Review
+                <h3
+                  className="text-lg font-black flex items-center gap-2"
+                  style={{ color: "#2d1f0e" }}
+                >
+                  <FileSpreadsheet
+                    className="w-5 h-5"
+                    style={{ color: "#c8834a" }}
+                  />{" "}
+                  Breakdown Review
                 </h3>
-                <p className="text-xs font-bold mt-1" style={{ color: '#9a7a5a' }}>
-                  Pick an order to review its DRAFT styles, correct SKU lines, and release into production.
+                <p
+                  className="text-xs font-bold mt-1"
+                  style={{ color: "#9a7a5a" }}
+                >
+                  Pick an order to review its DRAFT styles, correct SKU lines,
+                  and release into production.
                 </p>
               </div>
               <input
@@ -698,390 +916,566 @@ export default function ProductionLogEntry() {
                 onChange={(e) => setBreakdownOrderSearch(e.target.value)}
                 placeholder="Search order number…"
                 className="w-full h-12 px-4 bg-[#faf6f0] font-bold text-sm border rounded-xl outline-none focus:border-[#c8834a]"
-                style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                style={{ borderColor: "rgba(200,131,74,0.2)" }}
               />
               {breakdownOrdersLoading ? (
-                <div className="flex justify-center py-12"><Loader2 className="w-6 h-6 animate-spin" style={{ color: '#c8834a' }} /></div>
+                <div className="flex justify-center py-12">
+                  <Loader2
+                    className="w-6 h-6 animate-spin"
+                    style={{ color: "#c8834a" }}
+                  />
+                </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[28rem] overflow-y-auto pr-1">
                   {breakdownOrders
-                    .filter((o) => !breakdownOrderSearch.trim() || String(o.order_number || o.order_id || '').toLowerCase().includes(breakdownOrderSearch.trim().toLowerCase()))
+                    .filter(
+                      (o) =>
+                        !breakdownOrderSearch.trim() ||
+                        String(o.order_number || o.order_id || "")
+                          .toLowerCase()
+                          .includes(breakdownOrderSearch.trim().toLowerCase()),
+                    )
                     .map((o) => (
                       <button
                         key={o.order_id || o.order_number}
                         type="button"
-                        onClick={() => setSelectedBreakdownOrder(o.order_number || o.order_id)}
+                        onClick={() =>
+                          setSelectedBreakdownOrder(
+                            o.order_number || o.order_id,
+                          )
+                        }
                         className="text-left p-4 rounded-2xl border bg-white hover:-translate-y-0.5 hover:shadow-md transition-all cursor-pointer"
-                        style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                        style={{ borderColor: "rgba(200,131,74,0.2)" }}
                       >
-                        <p className="font-black text-sm" style={{ color: '#2d1f0e' }}>{o.order_number || o.order_id}</p>
-                        <p className="text-[11px] font-bold mt-0.5" style={{ color: '#9a7a5a' }}>{o.client || o.styles ? `${o.styles ?? ''} ${o.styles ? 'styles' : ''}`.trim() : 'View breakdown →'}</p>
+                        <p
+                          className="font-black text-sm"
+                          style={{ color: "#2d1f0e" }}
+                        >
+                          {o.order_number || o.order_id}
+                        </p>
+                        <p
+                          className="text-[11px] font-bold mt-0.5"
+                          style={{ color: "#9a7a5a" }}
+                        >
+                          {o.client || o.styles
+                            ? `${o.styles ?? ""} ${o.styles ? "styles" : ""}`.trim()
+                            : "View breakdown →"}
+                        </p>
                       </button>
                     ))}
                   {!breakdownOrdersLoading && breakdownOrders.length === 0 && (
-                    <p className="col-span-full text-center text-xs font-bold py-10" style={{ color: '#9a7a5a' }}>No orders found.</p>
+                    <p
+                      className="col-span-full text-center text-xs font-bold py-10"
+                      style={{ color: "#9a7a5a" }}
+                    >
+                      No orders found.
+                    </p>
                   )}
                 </div>
               )}
             </div>
-          )
-        )}
-
+          ))}
       </SpotlightCard>
 
       {/* EXCEL PREVIEW MODAL */}
-            {mounted && showPreviewModal && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col relative overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <div>
-                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
-                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                  Excel Import Preview
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-1">
-                  File: {fileName} — Review before importing to database
-                </p>
+      {mounted &&
+        showPreviewModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col relative overflow-hidden">
+              <div className="flex justify-between items-center p-6 border-b border-slate-100">
+                <div>
+                  <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
+                    <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
+                    Excel Import Preview
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium mt-1">
+                    File: {fileName} — Review before importing to database
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowPreviewModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
 
-            <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
-              {previewData ? (
-                <DynamicDataViewer data={previewData} />
-              ) : (
-                <div className="text-center py-12 text-slate-500 font-bold">No preview data available.</div>
-              )}
-            </div>
-
-            <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleCommit}
-                disabled={commitLoading || !!uploadError}
-                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
-              >
-                {commitLoading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
+              <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
+                {previewData ? (
+                  <DynamicDataViewer data={previewData} />
                 ) : (
-                  <><Upload className="w-4 h-4" /> Confirm &amp; Import to Database</>
+                  <div className="text-center py-12 text-slate-500 font-bold">
+                    No preview data available.
+                  </div>
                 )}
-              </button>
+              </div>
+
+              <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
+                <button
+                  onClick={() => setShowPreviewModal(false)}
+                  className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCommit}
+                  disabled={commitLoading || !!uploadError}
+                  className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                >
+                  {commitLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" /> Confirm &amp; Import to
+                      Database
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body,
+        )}
 
       {/* COMMIT CONFIRMATION MODAL — the real `written` result from the
           commit response (what was actually saved), not a re-show of the
           pre-commit preview. */}
-      {mounted && showCommitConfirmation && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden border-t-4 border-amber-500">
-            <div className="p-6 pb-4 text-center">
-              <div className="w-14 h-14 rounded-full bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center mx-auto mb-3">
-                <CheckCircle2 className="w-7 h-7 text-emerald-600" />
-              </div>
-              <h3 className="text-lg font-black text-slate-950">Committed to Database</h3>
-              <p className="text-xs text-slate-500 font-medium mt-1">
-                File: {fileName} — saved as DRAFT, styles now awaiting release.
-              </p>
-            </div>
-
-            <div className="px-6 pb-2">
-              {commitResult ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-                  <p className="text-[11px] font-black uppercase tracking-wide text-amber-800 text-center">
-                    Please review what was saved before continuing
-                  </p>
-                  <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-100">
-                    <span className="text-xs font-black text-slate-700">Order {commitResult.order_number}</span>
-                    <span className="text-[10px] font-black uppercase px-2 py-1 rounded-md" style={commitResult.release_required
-                      ? { color: '#a86022', background: 'rgba(200,131,74,0.12)' }
-                      : { color: '#047857', background: '#ecfdf5' }}>
-                      {commitResult.release_required ? 'Release Required' : 'No Release Needed'}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2 text-center">
-                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase">Styles</p>
-                      <p className="text-base font-black text-slate-800">{commitResult.styles ?? 0}</p>
-                    </div>
-                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase">Pieces Minted</p>
-                      <p className="text-base font-black text-slate-800">{commitResult.pieces_minted ?? 0}</p>
-                    </div>
-                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase">SKUs Created</p>
-                      <p className="text-base font-black text-emerald-600">{commitResult.skus_created ?? 0}</p>
-                    </div>
-                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase">SKUs Updated</p>
-                      <p className="text-base font-black text-amber-600">{commitResult.skus_updated ?? 0}</p>
-                    </div>
-                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase">Operations</p>
-                      <p className="text-base font-black text-slate-800">{commitResult.operations ?? 0}</p>
-                    </div>
-                    <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                      <p className="text-[9px] font-bold text-slate-400 uppercase">Rates</p>
-                      <p className="text-base font-black text-slate-800">{commitResult.rates ?? 0}</p>
-                    </div>
-                  </div>
+      {mounted &&
+        showCommitConfirmation &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm animate-fade-in p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden border-t-4 border-amber-500">
+              <div className="p-6 pb-4 text-center">
+                <div className="w-14 h-14 rounded-full bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center mx-auto mb-3">
+                  <CheckCircle2 className="w-7 h-7 text-emerald-600" />
                 </div>
-              ) : (
-                <div className="text-center py-12 text-slate-500 font-bold">No summary available.</div>
-              )}
-            </div>
+                <h3 className="text-lg font-black text-slate-950">
+                  Committed to Database
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  File: {fileName} — saved as DRAFT, styles now awaiting
+                  release.
+                </p>
+              </div>
 
-            <div className="p-6 pt-4">
-              <button
-                onClick={() => {
-                  setShowCommitConfirmation(false);
-                  setActiveDoor('breakdown');
-                  setSelectedBreakdownOrder(pendingBreakdownOrder);
-                  setPendingBreakdownOrder(null);
-                  setCommitResult(null);
-                }}
-                className="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
-              >
-                Continue to Breakdown Review
-              </button>
+              <div className="px-6 pb-2">
+                {commitResult ? (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
+                    <p className="text-[11px] font-black uppercase tracking-wide text-amber-800 text-center">
+                      Please review what was saved before continuing
+                    </p>
+                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-100">
+                      <span className="text-xs font-black text-slate-700">
+                        Order {commitResult.order_number}
+                      </span>
+                      <span
+                        className="text-[10px] font-black uppercase px-2 py-1 rounded-md"
+                        style={
+                          commitResult.release_required
+                            ? {
+                                color: "#a86022",
+                                background: "rgba(200,131,74,0.12)",
+                              }
+                            : { color: "#047857", background: "#ecfdf5" }
+                        }
+                      >
+                        {commitResult.release_required
+                          ? "Release Required"
+                          : "No Release Needed"}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-center">
+                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">
+                          Styles
+                        </p>
+                        <p className="text-base font-black text-slate-800">
+                          {commitResult.styles ?? 0}
+                        </p>
+                      </div>
+                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">
+                          Pieces Minted
+                        </p>
+                        <p className="text-base font-black text-slate-800">
+                          {commitResult.pieces_minted ?? 0}
+                        </p>
+                      </div>
+                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">
+                          SKUs Created
+                        </p>
+                        <p className="text-base font-black text-emerald-600">
+                          {commitResult.skus_created ?? 0}
+                        </p>
+                      </div>
+                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">
+                          SKUs Updated
+                        </p>
+                        <p className="text-base font-black text-amber-600">
+                          {commitResult.skus_updated ?? 0}
+                        </p>
+                      </div>
+                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">
+                          Operations
+                        </p>
+                        <p className="text-base font-black text-slate-800">
+                          {commitResult.operations ?? 0}
+                        </p>
+                      </div>
+                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">
+                          Rates
+                        </p>
+                        <p className="text-base font-black text-slate-800">
+                          {commitResult.rates ?? 0}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-slate-500 font-bold">
+                    No summary available.
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 pt-4">
+                <button
+                  onClick={() => {
+                    setShowCommitConfirmation(false);
+                    setActiveDoor("breakdown");
+                    setSelectedBreakdownOrder(pendingBreakdownOrder);
+                    setPendingBreakdownOrder(null);
+                    setCommitResult(null);
+                  }}
+                  className="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                >
+                  Continue to Breakdown Review
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body,
+        )}
 
       {/* ORDER NUMBER MODAL */}
-            {mounted && typeof document !== 'undefined' && document.body && showOrderNumModal && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 sm:p-8 space-y-5 relative">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.12)' }}>
-                  <FileSpreadsheet className="w-4 h-4" style={{ color: '#c8834a' }} />
+      {mounted &&
+        typeof document !== "undefined" &&
+        document.body &&
+        showOrderNumModal &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 sm:p-8 space-y-5 relative">
+              <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-9 h-9 rounded-xl flex items-center justify-center"
+                    style={{ background: "rgba(200,131,74,0.12)" }}
+                  >
+                    <FileSpreadsheet
+                      className="w-4 h-4"
+                      style={{ color: "#c8834a" }}
+                    />
+                  </div>
+                  <div>
+                    <h3
+                      className="text-base font-black"
+                      style={{ color: "#2d1f0e" }}
+                    >
+                      Upload Breakdown Sheet
+                    </h3>
+                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                      Step 1 of 2 — Enter Order Number
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-base font-black" style={{ color: '#2d1f0e' }}>Upload Breakdown Sheet</h3>
-                  <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Step 1 of 2 — Enter Order Number</p>
-                </div>
+                <button
+                  onClick={() => {
+                    setShowOrderNumModal(false);
+                    setUploadOrderNumberError("");
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button
-                onClick={() => { setShowOrderNumModal(false); setUploadOrderNumberError(''); }}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-black uppercase tracking-widest block" style={{ color: '#9a7a5a' }}>
-                Order Number <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                autoFocus
-                placeholder="e.g. 1001"
-                value={uploadOrderNumber}
-                onChange={(e) => { setUploadOrderNumber(e.target.value.trim()); setUploadOrderNumberError(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && uploadOrderNumber.trim()) { e.preventDefault(); fileInputRef.current?.click(); } }}
-                className={`w-full px-4 py-3 rounded-xl border text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 transition-colors ${uploadOrderNumberError
-                  ? 'border-red-400 bg-red-50 focus:ring-red-400/20'
-                  : 'border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]'
+              <div className="space-y-1.5">
+                <label
+                  className="text-[11px] font-black uppercase tracking-widest block"
+                  style={{ color: "#9a7a5a" }}
+                >
+                  Order Number <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="e.g. 1001"
+                  value={uploadOrderNumber}
+                  onChange={(e) => {
+                    setUploadOrderNumber(e.target.value.trim());
+                    setUploadOrderNumberError("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && uploadOrderNumber.trim()) {
+                      e.preventDefault();
+                      fileInputRef.current?.click();
+                    }
+                  }}
+                  className={`w-full px-4 py-3 rounded-xl border text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 transition-colors ${
+                    uploadOrderNumberError
+                      ? "border-red-400 bg-red-50 focus:ring-red-400/20"
+                      : "border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]"
                   }`}
-              />
-              {uploadOrderNumberError ? (
-                <p className="text-xs font-bold text-red-600 flex items-start gap-1.5 pt-1">
-                  <span className="mt-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center shrink-0">!</span>
-                  {uploadOrderNumberError}
-                </p>
-              ) : (
-                <p className="text-[10px] text-slate-400 font-medium">Must match an existing order. The sheet SKUs will be written into this order.</p>
-              )}
-            </div>
+                />
+                {uploadOrderNumberError ? (
+                  <p className="text-xs font-bold text-red-600 flex items-start gap-1.5 pt-1">
+                    <span className="mt-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center shrink-0">
+                      !
+                    </span>
+                    {uploadOrderNumberError}
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    Must match an existing order. The sheet SKUs will be written
+                    into this order.
+                  </p>
+                )}
+              </div>
 
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => { setShowOrderNumModal(false); setUploadOrderNumberError(''); }}
-                className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
-                style={{ background: '#f1f5f9', color: '#475569' }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={!uploadOrderNumber.trim() || uploadLoading}
-                onClick={() => fileInputRef.current?.click()}
-                className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0 cursor-pointer"
-                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-              >
-                {uploadLoading ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Uploading...</> : <><FileSpreadsheet className="w-3.5 h-3.5" /> Choose File</>}
-              </button>
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowOrderNumModal(false);
+                    setUploadOrderNumberError("");
+                  }}
+                  className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
+                  style={{ background: "#f1f5f9", color: "#475569" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!uploadOrderNumber.trim() || uploadLoading}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0 cursor-pointer"
+                  style={{
+                    background: "linear-gradient(135deg, #c8834a, #e8a06a)",
+                  }}
+                >
+                  {uploadLoading ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />{" "}
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <FileSpreadsheet className="w-3.5 h-3.5" /> Choose File
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body,
+        )}
 
       {/* PARTIAL-ACCEPT BUCKET RESULTS MODAL (Contract v3.0) */}
-            {mounted && showBucketModal && bucketResult && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
-          <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-lg overflow-hidden relative">
-            <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400">
-                  <CheckCircle2 className="w-5 h-5" />
+      {mounted &&
+        showBucketModal &&
+        bucketResult &&
+        createPortal(
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
+            <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-lg overflow-hidden relative">
+              <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400">
+                    <CheckCircle2 className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base">
+                      Production Logging Response
+                    </h3>
+                    <p className="text-xs text-slate-400 font-semibold">
+                      Stage:{" "}
+                      {bucketResult.stage || bucketResult.stages?.[0] || "N/A"}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-black text-base">Production Logging Response</h3>
-                  <p className="text-xs text-slate-400 font-semibold">Stage: {bucketResult.stage || bucketResult.stages?.[0] || 'N/A'}</p>
-                </div>
+                <button
+                  onClick={() => setShowBucketModal(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              <button
-                onClick={() => setShowBucketModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+
+              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                {/* Logged Bucket */}
+                {bucketResult.logged && bucketResult.logged.length > 0 && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 font-black text-xs text-emerald-800 uppercase tracking-wider">
+                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                      Logged Successfully ({bucketResult.logged.length})
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {bucketResult.logged.map((code) => (
+                        <span
+                          key={code}
+                          className="px-2 py-1 rounded bg-white text-emerald-700 font-mono font-bold text-xs border border-emerald-200 shadow-sm"
+                        >
+                          {code}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Rework Bucket */}
+                {bucketResult.rework && bucketResult.rework.length > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
+                    <div className="flex items-center gap-2 font-black text-xs text-amber-800 uppercase tracking-wider">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                      Rework Flagged ({bucketResult.rework.length})
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {bucketResult.rework.map((code) => (
+                        <span
+                          key={code}
+                          className="px-2 py-1 rounded bg-white text-amber-700 font-mono font-bold text-xs border border-amber-200 shadow-sm"
+                        >
+                          {code}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sequence Blocked Bucket */}
+                {bucketResult.sequence_blocked &&
+                  bucketResult.sequence_blocked.length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
+                      <div className="flex items-center gap-2 font-black text-xs text-red-800 uppercase tracking-wider">
+                        <AlertTriangle className="w-4 h-4 text-red-500" />
+                        Sequence Blocked ({bucketResult.sequence_blocked.length}
+                        )
+                      </div>
+                      <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
+                        {bucketResult.sequence_blocked.map((msg, i) => {
+                          const pieceStr =
+                            typeof msg === "string" ? msg : JSON.stringify(msg);
+                          const reasonObj = bucketResult.blocked?.find(
+                            (b) => b.piece === pieceStr,
+                          );
+                          return (
+                            <li key={i}>
+                              <span>{pieceStr}</span>
+                              {reasonObj && (
+                                <div className="text-[10px] text-red-500 font-medium mt-0.5">
+                                  {reasonObj.reason}
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
+                {/* Merge Blocked Bucket */}
+                {bucketResult.merge_blocked &&
+                  bucketResult.merge_blocked.length > 0 && (
+                    <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-2">
+                      <div className="flex items-center gap-2 font-black text-xs text-orange-800 uppercase tracking-wider">
+                        <AlertTriangle className="w-4 h-4 text-orange-500" />
+                        Merge Gate Blocked ({bucketResult.merge_blocked.length})
+                      </div>
+                      <ul className="text-xs text-orange-700 font-semibold space-y-1.5 list-disc pl-5">
+                        {bucketResult.merge_blocked.map((msg, i) => {
+                          const pieceStr =
+                            typeof msg === "string" ? msg : JSON.stringify(msg);
+                          const reasonObj = bucketResult.blocked?.find(
+                            (b) => b.piece === pieceStr,
+                          );
+                          return (
+                            <li key={i}>
+                              <span>{pieceStr}</span>
+                              {reasonObj && (
+                                <div className="text-[10px] text-orange-600 font-medium mt-0.5">
+                                  {reasonObj.reason}
+                                </div>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  )}
+
+                {/* Not Found Bucket */}
+                {bucketResult.not_found &&
+                  bucketResult.not_found.length > 0 && (
+                    <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 space-y-2">
+                      <div className="flex items-center gap-2 font-black text-xs text-slate-700 uppercase tracking-wider">
+                        <XCircle className="w-4 h-4 text-slate-400" />
+                        Not Found ({bucketResult.not_found.length})
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {bucketResult.not_found.map((code) => (
+                          <span
+                            key={code}
+                            className="px-2 py-1 rounded bg-white text-slate-600 font-mono font-bold text-xs border border-slate-200"
+                          >
+                            {code}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+              </div>
+
+              <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
+                <button
+                  onClick={() => setShowBucketModal(false)}
+                  className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-slate-900 hover:bg-slate-800 transition-colors shadow-md cursor-pointer"
+                >
+                  Close & Continue
+                </button>
+              </div>
             </div>
+          </div>,
+          document.body,
+        )}
 
-            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-              {/* Logged Bucket */}
-              {bucketResult.logged && bucketResult.logged.length > 0 && (
-                <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-2">
-                  <div className="flex items-center gap-2 font-black text-xs text-emerald-800 uppercase tracking-wider">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                    Logged Successfully ({bucketResult.logged.length})
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {bucketResult.logged.map(code => (
-                      <span key={code} className="px-2 py-1 rounded bg-white text-emerald-700 font-mono font-bold text-xs border border-emerald-200 shadow-sm">
-                        {code}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Rework Bucket */}
-              {bucketResult.rework && bucketResult.rework.length > 0 && (
-                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
-                  <div className="flex items-center gap-2 font-black text-xs text-amber-800 uppercase tracking-wider">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                    Rework Flagged ({bucketResult.rework.length})
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {bucketResult.rework.map(code => (
-                      <span key={code} className="px-2 py-1 rounded bg-white text-amber-700 font-mono font-bold text-xs border border-amber-200 shadow-sm">
-                        {code}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Sequence Blocked Bucket */}
-              {bucketResult.sequence_blocked && bucketResult.sequence_blocked.length > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
-                  <div className="flex items-center gap-2 font-black text-xs text-red-800 uppercase tracking-wider">
-                    <AlertTriangle className="w-4 h-4 text-red-500" />
-                    Sequence Blocked ({bucketResult.sequence_blocked.length})
-                  </div>
-                  <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
-                    {bucketResult.sequence_blocked.map((msg, i) => {
-                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
-                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
-                      return (
-                        <li key={i}>
-                          <span>{pieceStr}</span>
-                          {reasonObj && <div className="text-[10px] text-red-500 font-medium mt-0.5">{reasonObj.reason}</div>}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-
-              {/* Merge Blocked Bucket */}
-              {bucketResult.merge_blocked && bucketResult.merge_blocked.length > 0 && (
-                <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-2">
-                  <div className="flex items-center gap-2 font-black text-xs text-orange-800 uppercase tracking-wider">
-                    <AlertTriangle className="w-4 h-4 text-orange-500" />
-                    Merge Gate Blocked ({bucketResult.merge_blocked.length})
-                  </div>
-                  <ul className="text-xs text-orange-700 font-semibold space-y-1.5 list-disc pl-5">
-                    {bucketResult.merge_blocked.map((msg, i) => {
-                      const pieceStr = typeof msg === 'string' ? msg : JSON.stringify(msg);
-                      const reasonObj = bucketResult.blocked?.find(b => b.piece === pieceStr);
-                      return (
-                        <li key={i}>
-                          <span>{pieceStr}</span>
-                          {reasonObj && <div className="text-[10px] text-orange-600 font-medium mt-0.5">{reasonObj.reason}</div>}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-
-              {/* Not Found Bucket */}
-              {bucketResult.not_found && bucketResult.not_found.length > 0 && (
-                <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 space-y-2">
-                  <div className="flex items-center gap-2 font-black text-xs text-slate-700 uppercase tracking-wider">
-                    <XCircle className="w-4 h-4 text-slate-400" />
-                    Not Found ({bucketResult.not_found.length})
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {bucketResult.not_found.map(code => (
-                      <span key={code} className="px-2 py-1 rounded bg-white text-slate-600 font-mono font-bold text-xs border border-slate-200">
-                        {code}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={() => setShowBucketModal(false)}
-                className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-slate-900 hover:bg-slate-800 transition-colors shadow-md cursor-pointer"
-              >
-                Close & Continue
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-
-
-      {activeDoor === 'store' && (
+      {activeDoor === "store" && (
         <StoreHubSection
-          setSuccessMsg={setSuccessMsg} setErrorMsg={setErrorMsg}
+          setSuccessMsg={setSuccessMsg}
+          setErrorMsg={setErrorMsg}
           recordStageCompletion={recordStageCompletion}
-          storeSendedSkus={storeSendedSkus} setStoreSendedSkus={setStoreSendedSkus}
-          storeReceiveStatus={storeReceiveStatus} setStoreReceiveStatus={setStoreReceiveStatus}
-          barcodeWorker={barcodeWorker} setBarcodeWorker={setBarcodeWorker} barcodeWorkerInput={barcodeWorkerInput} setBarcodeWorkerInput={setBarcodeWorkerInput} barcodeWorkerChecking={barcodeWorkerChecking}
-          handleVerifyBarcodeWorker={handleVerifyBarcodeWorker} barcodeNotCheckedInModal={barcodeNotCheckedInModal} setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal} workerInputRef={workerInputRef}
-          cameraScanTarget={cameraScanTarget} setCameraScanTarget={setCameraScanTarget}
+          storeSendedSkus={storeSendedSkus}
+          setStoreSendedSkus={setStoreSendedSkus}
+          storeReceiveStatus={storeReceiveStatus}
+          setStoreReceiveStatus={setStoreReceiveStatus}
+          barcodeWorker={barcodeWorker}
+          setBarcodeWorker={setBarcodeWorker}
+          barcodeWorkerInput={barcodeWorkerInput}
+          setBarcodeWorkerInput={setBarcodeWorkerInput}
+          barcodeWorkerChecking={barcodeWorkerChecking}
+          handleVerifyBarcodeWorker={handleVerifyBarcodeWorker}
+          barcodeNotCheckedInModal={barcodeNotCheckedInModal}
+          setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal}
+          workerInputRef={workerInputRef}
+          cameraScanTarget={cameraScanTarget}
+          setCameraScanTarget={setCameraScanTarget}
         />
       )}
-
     </div>
   );
 }

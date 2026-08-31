@@ -2,7 +2,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
-import { useData } from '@/context/DataContext';
 import { apiGetUsers, apiCreateUser, apiPatchEmployeeBarcode, apiGetEmployees } from '@/lib/api';
 import {
   CheckCircle2, Users, UserPlus, Factory, Loader2,
@@ -26,16 +25,6 @@ function Field({ label, children }) {
 
 const inputCls = "w-full h-11 px-4 rounded-xl text-sm font-semibold outline-none transition-all focus:ring-2 focus:ring-[#c8834a]/30 focus:border-[#c8834a] hover:border-[#c8834a]/50 bg-[#faf6f0] text-[#2d1f0e] border-[1.5px] border-[#c8834a]/20";
 
-// Native <select> option popups size themselves independently of the closed
-// control's own (responsive) width, and can render past the viewport edge on
-// a tablet — a fully custom dropdown instead. The open panel is portaled to
-// document.body and positioned with `fixed` against the button's live screen
-// coordinates (rather than an in-place `absolute` panel), so it always paints
-// as a clean top-level overlay above every other card on the page — an
-// in-place panel could otherwise end up stacked behind, or messily bleeding
-// into, whatever section follows in the DOM. Width always matches the
-// button's own (already on-screen) width, and every row truncates with real
-// CSS ellipsis rather than relying on the browser's native popup layout.
 function AdminSelect({ value, options, onChange, placeholder }) {
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState(null);
@@ -396,15 +385,6 @@ export default function AdminDashboard() {
       setIsSubmittingUser(false);
     }
   };
-
-  // GET /api/v1/users rows don't reliably share an `id` with their matching
-  // GET /api/v1/employees row (they're separate tables — a login account's
-  // own id is not the employee id), and this admin form never actually
-  // collects an `employee_id` link when creating a login (no picker for it
-  // exists below), so `u.employee_id` is null in practice too. Phone number
-  // is the one field both sides realistically share for the same person
-  // (it's literally the account's own login id), so it's tried first as the
-  // most reliable join key, with id and name as looser fallbacks.
   const employeesById = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
   const employeesByPhone = useMemo(
     () => new Map(employees.filter(e => e.phone).map(e => [e.phone, e])),
