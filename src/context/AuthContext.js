@@ -1,5 +1,7 @@
 'use client';
 import { createContext, useContext, useState, useEffect } from 'react';
+import { useDispatch } from 'react-redux';
+import { setAuthCredentials, logout as reduxLogout } from '@/store/slices/authSlice';
 
 const AuthContext = createContext(null);
 
@@ -40,7 +42,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // null = logged out
   const [token, setToken] = useState(null); // JWT access token from backend
   const [isLoaded, setIsLoaded] = useState(false);
-
+const dispatch=useDispatch();
   // Load persisted auth state on client-side mount
   useEffect(() => {
     const storedUser = localStorage.getItem('kairox_user');
@@ -49,9 +51,13 @@ export function AuthProvider({ children }) {
     if (storedUser && storedToken) {
       setUser(storedUser);
       setToken(storedToken);
+        dispatch(setAuthCredentials({
+          user: storedUser,
+          token: storedToken
+      }));
     }
     setIsLoaded(true);
-  }, []);
+  }, [dispatch]);
 
   const login = (role, accessToken = null) => {
     setUser(role);
@@ -60,6 +66,10 @@ export function AuthProvider({ children }) {
     if (accessToken) {
       setToken(accessToken);
       localStorage.setItem('kairox_token', accessToken);
+      dispatch(setAuthCredentials({
+          user: role,
+          token: accessToken
+        }));
     }
   };
 
@@ -68,6 +78,7 @@ export function AuthProvider({ children }) {
     setToken(null);
     localStorage.removeItem('kairox_user');
     localStorage.removeItem('kairox_token');
+    dispatch(reduxLogout());
   };
 
   // Prevent rendering until we've checked localStorage to avoid hydration mismatch

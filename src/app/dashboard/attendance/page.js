@@ -15,9 +15,10 @@ import {
 import MyAttendanceView from './MyAttendanceView';
 import FloorCommandView from './FloorCommandView';
 import OperationsHRView from './OperationsHRView';
-// ═══════════════════════════════════════════════════════════════════════════════
-// ROOT EXPORT — Attendance Module Router
-// ═══════════════════════════════════════════════════════════════════════════════
+import { useSelector, useDispatch } from 'react-redux';
+import { setWorkers, setActiveTab } from '@/store/slices/attendanceSlice';
+
+
 export default function AttendancePage() {
  const [hasMounted, setHasMounted] = useState(false);
 
@@ -25,8 +26,7 @@ export default function AttendancePage() {
  setHasMounted(true);
  }, []);
 
- const { user, token } = useAuth();
-
+ const { user, token } = useSelector(state => state.auth); 
  const isManager = user === 'direct_manager' || user === 'managing_director' || user === 'hr';
  const isSupervisor = isManager;
  const isSecurity = user === 'security';
@@ -45,37 +45,46 @@ export default function AttendancePage() {
  }, [isSecurity, isMD, isSupervisor, isManager]);
 
  const defaultTab = useMemo(() => tabs[0]?.key || (isSecurity ? 'employees' : 'me'), [tabs, isSecurity]);
- const [activeTab, setActiveTab] = useState(defaultTab);
- const [workers, setWorkers] = useState([]);
+//  const [activeTab, setActiveTab] = useState(defaultTab);
+//  const [workers, setWorkers] = useState([]);
  const [workerRefreshKey, setWorkerRefreshKey] = useState(0);
+ const dispatch = useDispatch();
+  
+  // Redux Attendance state
+  const workers = useSelector(state => state.attendance.workers);
+  const activeTab = useSelector(state => state.attendance.activeTab) || defaultTab;
 
  const refreshWorkers = () => {
  setWorkerRefreshKey(k => k + 1);
  };
+   const handleTabChange = (key) => {
+    dispatch(setActiveTab(key));
+  };
 
  useEffect(() => {
  if (defaultTab && !activeTab) {
- setActiveTab(defaultTab);
+ handleTabChange(defaultTab);
  }
  }, [defaultTab, activeTab]);
 
  useEffect(() => {
  if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
- setActiveTab(tabs[0].key);
+ handleTabChange(tabs[0].key);
  }
  }, [tabs, activeTab]);
 
- useEffect(() => {
- if (!hasMounted) return;
- const timer = setTimeout(() => {
- if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
- apiFetch('/api/v1/employees', {}, token)
- .then(setWorkers)
- .catch(() => { });
- }
- }, 100);
- return () => clearTimeout(timer);
- }, [activeTab, token, workerRefreshKey, hasMounted]);
+  useEffect(() => {
+    if (!hasMounted) return;
+    const timer = setTimeout(() => {
+      if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
+        apiFetch('/api/v1/employees', {}, token)
+          .then(data => dispatch(setWorkers(data))) // REDUX UPDATE!
+          .catch(() => { });
+      }
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [activeTab, token, workerRefreshKey, hasMounted, dispatch]);
+
 
  if (!hasMounted) {
  return (
@@ -94,7 +103,7 @@ export default function AttendancePage() {
  {tabs.map(({ key, label, icon: Icon }) => {
  const isActive = activeTab === key;
  return (
- <button key={key} onClick={() => setActiveTab(key)}
+ <button key={key} onClick={() => handleTabChange(key)}
  className="relative flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap transition-colors"
  style={{ color: isActive ? '#c8834a' : '#9a7a5a' }}>
  <Icon className="w-4 h-4 relative" />
