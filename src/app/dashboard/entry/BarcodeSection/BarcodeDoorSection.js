@@ -20,6 +20,11 @@ import {
   useRoleAccess,
 
 } from "../shared";
+import { useSelector, useDispatch } from 'react-redux';
+import { 
+  setCuttingBatchPieces as reduxSetCuttingBatchPieces, 
+  setBarcodeSelectedSku as reduxSetBarcodeSelectedSku 
+} from '@/store/slices/entrySlice';
 
 // Extracted from src/app/dashboard/entry/page.js (Barcode Gun Scanner door:
 // Cutting/Lining DCM screen + Fusing->Package Export pipeline scan). Props
@@ -69,13 +74,13 @@ export default function BarcodeDoorSection({
   const { allowedOperations, isFullAccess, isStageAllowedForRole } =
     useRoleAccess();
   const [barcodeSkuInput, setBarcodeSkuInput] = useState("");
-  const [barcodeSelectedSku, setBarcodeSelectedSku] = useState(null);
+ // const [barcodeSelectedSku, setBarcodeSelectedSku] = useState(null);
   const [barcodeSkuVerifying, setBarcodeSkuVerifying] = useState(false);
   const [barcodeDcmConfirmed, setBarcodeDcmConfirmed] = useState(false);
   const [sessionCutSkus, setSessionCutSkus] = useState([]); // Track duplicate cuts in session
   // Item 5: always holds exactly the one piece Verify SKU resolved — Cutting
   // no longer batches multiple pieces under one shared DCM.
-  const [cuttingBatchPieces, setCuttingBatchPieces] = useState([]); // [{ code, seq, serial_str, article, style_name, color, size, order_number }]
+ // const [cuttingBatchPieces, setCuttingBatchPieces] = useState([]); // [{ code, seq, serial_str, article, style_name, color, size, order_number }]
   const [closedCuttingSkus, setClosedCuttingSkus] = useState([]); // sku_code[] fully cut, closed for further scanning
   const [barcodePieceResolving, setBarcodePieceResolving] = useState(false);
   const [barcodePieceValidating, setBarcodePieceValidating] = useState(false); // FIX: referenced in JSX but never declared in the original file either (also no setter call anywhere — was silently always false); declared here to match that same de-facto behavior.
@@ -83,7 +88,22 @@ export default function BarcodeDoorSection({
   const [barcodePieceInput, setBarcodePieceInput] = useState("");
   const [barcodeBatchPieces, setBarcodeBatchPieces] = useState([]); // Array of scanned piece objects
   const [barcodeSubmitting, setBarcodeSubmitting] = useState(false);
-  const [barcodeSuccessModal, setBarcodeSuccessModal] = useState(null); // Success popup details
+  const [barcodeSuccessModal, setBarcodeSuccessModal] = useState(null);
+    const dispatch = useDispatch();
+  const barcodeSelectedSku = useSelector(state => state.entry.barcodeSelectedSku);
+  const cuttingBatchPieces = useSelector(state => state.entry.cuttingBatchPieces);
+
+ 
+  const setBarcodeSelectedSku = (sku) => dispatch(reduxSetBarcodeSelectedSku(sku));
+  const setCuttingBatchPieces = (pieces) => {
+    if (typeof pieces === 'function') {
+      const newPieces = pieces(cuttingBatchPieces);
+      dispatch(reduxSetCuttingBatchPieces(newPieces));
+    } else {
+      dispatch(reduxSetCuttingBatchPieces(pieces));
+    }
+  };
+
   const resolveWorkableStage = (pieceState) => {
     const primary = pieceState?.next_stage
       ? API_TO_UI_STAGE[pieceState.next_stage] || null

@@ -17,6 +17,17 @@ import {
   apiGetMaterialLots,
 } from "@/lib/api";
 import { useRoleAccess, normalizeRosterArray } from "../shared";
+import { useSelector, useDispatch } from 'react-redux';
+import { 
+  setSelectedStage as reduxSetSelectedStage, 
+  setWorkerId as reduxSetWorkerId, 
+  setSkuCode as reduxSetSkuCode, 
+  setPieceSeqs as reduxSetPieceSeqs, 
+  setCuttingCount as reduxSetCuttingCount, 
+  setSkuSearchQuery as reduxSetSkuSearchQuery, 
+  setWorkerSearchQuery as reduxSetWorkerSearchQuery 
+} from '@/store/slices/manualSlice';
+
 export default function ManualDoorSection({
   activeDoor,
   setSuccessMsg,
@@ -47,11 +58,11 @@ export default function ManualDoorSection({
   const { workers, addScanEvent, operations } = useData();
   const { isReadOnly, isFullAccess, isStageAllowedForRole } =
     useRoleAccess();
-  const [selectedStage, setSelectedStage] = useState("Cutting");
-  const [workerId, setWorkerId] = useState("");
-  const [skuCode, setSkuCode] = useState("");
-  const [pieceSeqs, setPieceSeqs] = useState("");
-  const [cuttingCount, setCuttingCount] = useState("");
+  // const [selectedStage, setSelectedStage] = useState("Cutting");
+  // const [workerId, setWorkerId] = useState("");
+  // const [skuCode, setSkuCode] = useState("");
+  // const [pieceSeqs, setPieceSeqs] = useState("");
+  // const [cuttingCount, setCuttingCount] = useState("");
   const [fetchedSkus, setFetchedSkus] = useState([]);
   const [skusLoading, setSkusLoading] = useState(false);
   const [cuttingPieces, setCuttingPieces] = useState([]);
@@ -68,11 +79,11 @@ export default function ManualDoorSection({
     error: null,
   });
   const [isSkuOpen, setIsSkuOpen] = useState(false);
-  const [skuSearchQuery, setSkuSearchQuery] = useState("");
+  //const [skuSearchQuery, setSkuSearchQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(60);
   const skuModalRef = useRef(null);
   const [isWorkerOpen, setIsWorkerOpen] = useState(false);
-  const [workerSearchQuery, setWorkerSearchQuery] = useState("");
+ // const [workerSearchQuery, setWorkerSearchQuery] = useState("");
   const workerModalRef = useRef(null);
   const [lastSubmittedPieceSeqs, setLastSubmittedPieceSeqs] = useState([]);
   const [showChecklistModal, setShowChecklistModal] = useState(false);
@@ -96,6 +107,26 @@ export default function ManualDoorSection({
   // Dedicated Barcode Gun Scanner Handler: Verify Worker & Attendance Check
 
   const [skuRefreshKey, setSkuRefreshKey] = useState(0);
+    // REDUX PULL
+  const dispatch = useDispatch();
+
+  const selectedStage = useSelector(state => state.manual.selectedStage);
+  const workerId = useSelector(state => state.manual.workerId);
+  const skuCode = useSelector(state => state.manual.skuCode);
+  const pieceSeqs = useSelector(state => state.manual.pieceSeqs);
+  const cuttingCount = useSelector(state => state.manual.cuttingCount);
+  const skuSearchQuery = useSelector(state => state.manual.skuSearchQuery);
+  const workerSearchQuery = useSelector(state => state.manual.workerSearchQuery);
+
+  // REDUX WRAPPERS
+  const setSelectedStage = (val) => dispatch(reduxSetSelectedStage(val));
+  const setWorkerId = (val) => dispatch(reduxSetWorkerId(val));
+  const setSkuCode = (val) => dispatch(reduxSetSkuCode(val));
+  const setPieceSeqs = (val) => dispatch(reduxSetPieceSeqs(val));
+  const setCuttingCount = (val) => dispatch(reduxSetCuttingCount(val));
+  const setSkuSearchQuery = (val) => dispatch(reduxSetSkuSearchQuery(val));
+  const setWorkerSearchQuery = (val) => dispatch(reduxSetWorkerSearchQuery(val));
+
 
   useEffect(() => {
     function handleClickOutside(e) {

@@ -5,11 +5,14 @@ import { Activity, Filter, CheckCircle2, RefreshCw, Loader2, Users, Settings, Cl
 import SpotlightCard from '@/components/SpotlightCard';
 import { motion } from 'framer-motion';
 import { API, apiFetch, AlertBanner, Badge, fmtTime, fmtDist, Paginator } from './shared';
+import { useGetAttendanceTodayQuery, useGetAttendanceConfigQuery } from '@/store/slices/apiSlice';
+
 export default function OperationsHRView({ token }) {
- const [roster, setRoster] = useState([]);
- const [rosterLoading, setRosterLoading] = useState(true);
- // const [config, setConfig] = useState(null);
- const [configLoading, setConfigLoading] = useState(true);
+//  const [roster, setRoster] = useState([]);
+//  const [rosterLoading, setRosterLoading] = useState(true);
+//  // const [config, setConfig] = useState(null);
+//  const [configLoading, setConfigLoading] = useState(true);
+
 
  const [configForm, setConfigForm] = useState({});
  const [configSaving, setConfigSaving] = useState(false);
@@ -18,6 +21,21 @@ export default function OperationsHRView({ token }) {
  const [filter, setFilter] = useState('all');
  const [filterOpen, setFilterOpen] = useState(false);
  const PER_PAGE = 10;
+   // --- RTK QUERY HOOKS ---
+  const { data: roster = [], isLoading: rosterLoading, refetch: refetchRoster } = useGetAttendanceTodayQuery();
+  const { data: configData, isLoading: configLoading } = useGetAttendanceConfigQuery();
+
+
+  useEffect(() => {
+    if (configData) {
+      setConfigForm({
+        shift_start: configData.shift_start,
+        shift_length_hours: configData.shift_length_hours,
+        late_grace_minutes: configData.late_grace_minutes,
+      });
+    }
+  }, [configData]);
+
 
  const showAlert = (type, message) => {
  setAlert({ type, message });
@@ -31,42 +49,42 @@ export default function OperationsHRView({ token }) {
  return () => document.removeEventListener('mousedown', close);
  }, [filterOpen]);
 
- const fetchRoster = useCallback(async () => {
- setRosterLoading(true);
- try {
- const data = await apiFetch(`${API}/today`, {}, token);
- setRoster(data);
- } catch {
- showAlert('error', "Failed to load today's roster.");
- } finally {
- setRosterLoading(false);
- }
- }, [token]);
+//  const fetchRoster = useCallback(async () => {
+//  setRosterLoading(true);
+//  try {
+//  const data = await apiFetch(`${API}/today`, {}, token);
+//  setRoster(data);
+//  } catch {
+//  showAlert('error', "Failed to load today's roster.");
+//  } finally {
+//  setRosterLoading(false);
+//  }
+//  }, [token]);
 
- const fetchConfig = useCallback(async () => {
- setConfigLoading(true);
- try {
- const data = await apiFetch(`${API}/config`, {}, token);
- //setConfig(data);
- setConfigForm({
- shift_start: data.shift_start,
- shift_length_hours: data.shift_length_hours,
- late_grace_minutes: data.late_grace_minutes,
- // Geofence Parameters — commented out so attendance can be configured
- // and marked without requiring factory lat/lon/radius. Re-enable by
- // uncommenting these fields alongside the JSX block further below.
- // factory_lat: data.factory_lat,
- // factory_lon: data.factory_lon,
- // radius_m: data.radius_m,
- });
- } catch {
- showAlert('error', 'Failed to load shift configuration.');
- } finally {
- setConfigLoading(false);
- }
- }, [token]);
+//  const fetchConfig = useCallback(async () => {
+//  setConfigLoading(true);
+//  try {
+//  const data = await apiFetch(`${API}/config`, {}, token);
+//  //setConfig(data);
+//  setConfigForm({
+//  shift_start: data.shift_start,
+//  shift_length_hours: data.shift_length_hours,
+//  late_grace_minutes: data.late_grace_minutes,
+//  // Geofence Parameters — commented out so attendance can be configured
+//  // and marked without requiring factory lat/lon/radius. Re-enable by
+//  // uncommenting these fields alongside the JSX block further below.
+//  // factory_lat: data.factory_lat,
+//  // factory_lon: data.factory_lon,
+//  // radius_m: data.radius_m,
+//  });
+//  } catch {
+//  showAlert('error', 'Failed to load shift configuration.');
+//  } finally {
+//  setConfigLoading(false);
+//  }
+//  }, [token]);
 
- useEffect(() => { fetchRoster(); fetchConfig(); }, [fetchRoster, fetchConfig]);
+//  useEffect(() => { fetchRoster(); fetchConfig(); }, [fetchRoster, fetchConfig]);
 
  const handleSaveConfig = async () => {
  const timeRegex = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -148,7 +166,7 @@ export default function OperationsHRView({ token }) {
  )}
  </div>
 
- <button onClick={fetchRoster} title="Refresh roster"
+ <button onClick={refetchRoster} title="Refresh roster"
  className="h-8 w-8 p-0 flex items-center justify-center rounded-lg transition-all duration-200 hover:rotate-180"
  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
  <RefreshCw className="w-4 h-4" style={{ color: '#c8834a' }} />

@@ -5,6 +5,13 @@ import { createPortal } from "react-dom";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
+import { useSelector, useDispatch } from 'react-redux';
+import { 
+  setActiveDoor, setDate, 
+  setMessages, setBarcodeWorker as reduxSetBarcodeWorker, 
+  setBarcodeStage as reduxSetBarcodeStage,  setLotDetails 
+} from '@/store/slices/entrySlice';
+
 import {
   apiImportPreview,
   apiImportCommit,
@@ -202,22 +209,27 @@ export default function ProductionLogEntry() {
     isStageAllowedForRole,
   } = useRoleAccess();
 
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+ // const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [storeSendedSkus, setStoreSendedSkus] = useState([]);
-  const [successMsg, setSuccessMsg] = useState("");
-  const [errorMsg, setErrorMsg] = useState("");
+  // const [successMsg, setSuccessMsg] = useState("");
+  // const [errorMsg, setErrorMsg] = useState("");
   const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'sku' | 'worker'
   // Lets a "Back to Breakdown Review" link elsewhere (imports/page.js) land
   // directly on this tab via /dashboard/entry?door=breakdown.
-  const [activeDoor, setActiveDoor] = useState(
-    searchParams.get("door") === "breakdown"
-      ? "breakdown"
-      : user === "store_manager" || user === "store_scan"
-        ? "store"
-        : "manual",
-  );
-  // Team request: a permanent, always-browsable entry point into Breakdown
-  // Review — not just the redirect that fires right after a fresh upload.
+  // const [activeDoor, setActiveDoor] = useState(
+  //   searchParams.get("door") === "breakdown"
+  //     ? "breakdown"
+  //     : user === "store_manager" || user === "store_scan"
+  //       ? "store"
+  //       : "manual",
+  // );
+    const dispatch = useDispatch();
+  const date = useSelector(state => state.entry.date);
+  const activeDoor = useSelector(state => state.entry.activeDoor);
+
+  const handleSetDate = (newDate) => dispatch(setDate(newDate));
+  const handleSetActiveDoor = (door) => dispatch(setActiveDoor(door));
+
   const [breakdownOrders, setBreakdownOrders] = useState([]);
   const [breakdownOrdersLoading, setBreakdownOrdersLoading] = useState(false);
   const [breakdownOrderSearch, setBreakdownOrderSearch] = useState("");
@@ -231,22 +243,45 @@ export default function ProductionLogEntry() {
       : null,
   ); // order_number | null — set = show the detail/release screen inline, unset = show the list
   const [barcodeWorkerInput, setBarcodeWorkerInput] = useState("");
-  const [barcodeWorker, setBarcodeWorker] = useState(null); // { id, name, designation, barcode }
+  //const [barcodeWorker, setBarcodeWorker] = useState(null); // { id, name, designation, barcode }
   const [barcodeWorkerChecking, setBarcodeWorkerChecking] = useState(false);
   const [barcodeNotCheckedInModal, setBarcodeNotCheckedInModal] =
     useState(null); // { workerName }
-  const [barcodeStage, setBarcodeStage] = useState("Cutting"); // Production Stage — lifted here since handleVerifyBarcodeWorker (shared with Store Hub) auto-adjusts it
+ // const [barcodeStage, setBarcodeStage] = useState("Cutting"); // Production Stage — lifted here since handleVerifyBarcodeWorker (shared with Store Hub) auto-adjusts it
   const [barcodeDcm, setBarcodeDcm] = useState("");
-  const [lotArticle, setLotArticle] = useState("");
-  const [lotColor, setLotColor] = useState("");
-  const [lotThickness, setLotThickness] = useState("");
+  // const [lotArticle, setLotArticle] = useState("");
+  // const [lotColor, setLotColor] = useState("");
+  // const [lotThickness, setLotThickness] = useState("");
+    // REDUX DATA PULL
+  const successMsg = useSelector(state => state.entry.successMsg);
+  const errorMsg = useSelector(state => state.entry.errorMsg);
+  const barcodeWorker = useSelector(state => state.entry.barcodeWorker);
+  const barcodeStage = useSelector(state => state.entry.barcodeStage);
+  const lotArticle = useSelector(state => state.entry.lotArticle);
+  const lotColor = useSelector(state => state.entry.lotColor);
+  const lotThickness = useSelector(state => state.entry.lotThickness);
+  const lotResults = useSelector(state => state.entry.lotResults);
+
+  // REDUX ACTION WRAPPERS
+  const setSuccessMsg = (msg) => dispatch(setMessages({ success: msg }));
+  const setErrorMsg = (msg) => dispatch(setMessages({ error: msg }));
+  const setBarcodeWorker = (worker) => dispatch(reduxSetBarcodeWorker(worker));
+  const setBarcodeStage = (stage) => dispatch(reduxSetBarcodeStage(stage));
+  
+  const setLotArticle = (val) => dispatch(setLotDetails({ article: val }));
+  const setLotColor = (val) => dispatch(setLotDetails({ color: val }));
+  const setLotThickness = (val) => dispatch(setLotDetails({ thickness: val }));
+  const setLotResults = (val) => dispatch(setLotDetails({ results: val }));
+
+
+
   const [lotOptions, setLotOptions] = useState({
     article: [],
     colour: [],
     thickness: [],
     size: [],
   });
-  const [lotResults, setLotResults] = useState([]);
+  //const [lotResults, setLotResults] = useState([]);
   const [lotLoading, setLotLoading] = useState(false);
   const [lotCategory, setLotCategory] = useState("LEATHER"); // LEATHER or LINING
   const [bucketResult, setBucketResult] = useState(null);
@@ -465,7 +500,7 @@ export default function ProductionLogEntry() {
   // unauthorized role land on Store" half of the original combined effect.
   useEffect(() => {
     if (activeDoor === "store" && !isFullAccess && !isStoreAccess) {
-      setActiveDoor("manual");
+    handleSetActiveDoor("manual");
     }
   }, [activeDoor, isFullAccess, isStoreAccess]);
 
@@ -723,7 +758,7 @@ export default function ProductionLogEntry() {
       >
         <button
           type="button"
-          onClick={() => setActiveDoor("manual")}
+          onClick={() => handleSetActiveDoor("manual")}
           className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
           style={{
             borderColor: activeDoor === "manual" ? "#c8834a" : "transparent",
@@ -735,7 +770,7 @@ export default function ProductionLogEntry() {
         </button>
         <button
           type="button"
-          onClick={() => setActiveDoor("barcode")}
+          onClick={() => handleSetActiveDoor("barcode")}
           className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
           style={{
             borderColor: activeDoor === "barcode" ? "#c8834a" : "transparent",
@@ -748,7 +783,7 @@ export default function ProductionLogEntry() {
         {isStoreAccess && (
           <button
             type="button"
-            onClick={() => setActiveDoor("store")}
+            onClick={() => handleSetActiveDoor("store")}
             className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
             style={{
               borderColor: activeDoor === "store" ? "#c8834a" : "transparent",
@@ -760,7 +795,7 @@ export default function ProductionLogEntry() {
         )}
         <button
           type="button"
-          onClick={() => setActiveDoor("breakdown")}
+          onClick={() => handleSetActiveDoor("breakdown")}
           className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
           style={{
             borderColor: activeDoor === "breakdown" ? "#c8834a" : "transparent",
@@ -848,7 +883,7 @@ export default function ProductionLogEntry() {
             setErrorMsg={setErrorMsg}
             recordStageCompletion={recordStageCompletion}
             date={date}
-            setDate={setDate}
+            setDate={handleSetDate}
             storeSendedSkus={storeSendedSkus}
             storeReceiveStatus={storeReceiveStatus}
             lotArticle={lotArticle}
@@ -1149,7 +1184,7 @@ export default function ProductionLogEntry() {
                 <button
                   onClick={() => {
                     setShowCommitConfirmation(false);
-                    setActiveDoor("breakdown");
+                    handleSetActiveDoor("breakdown");
                     setSelectedBreakdownOrder(pendingBreakdownOrder);
                     setPendingBreakdownOrder(null);
                     setCommitResult(null);

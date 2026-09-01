@@ -1,5 +1,6 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useGetAttendanceTodayQuery } from '@/store/slices/apiSlice';
 import {
   CheckCircle2, AlertTriangle, AlertCircle, Activity,
   ChevronLeft, ChevronRight, Lock, Users, Search,
@@ -265,25 +266,8 @@ export function EmployeesListView({ workers = [] }) {
 }
 
 export function AttendanceHistoryView({ token }) {
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(false);
-
-  // Fetch live today's roster from API
-  useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
-    apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token)
-      .then((data) => {
-        if (!isMounted) return;
-        setHistory(normalizeRosterArray(data));
-      })
-      .catch((err) => console.error('Failed to fetch attendance history', err))
-      .finally(() => {
-        if (isMounted) setLoading(false);
-      });
-
-    return () => { isMounted = false; };
-  }, [token]);
+  const { data: rosterDataRaw = [], isLoading: loading } = useGetAttendanceTodayQuery();
+  const history = useMemo(() => normalizeRosterArray(rosterDataRaw), [rosterDataRaw]);
 
   return (
     <div className="space-y-6">

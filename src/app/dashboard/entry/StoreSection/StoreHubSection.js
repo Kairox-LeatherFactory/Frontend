@@ -19,6 +19,18 @@ import {
   apiStoreDrawerScan,
 } from "@/lib/api";
 import StoreHubForm from "./StoreHubForm";
+import { useSelector, useDispatch } from 'react-redux';
+import { 
+  setStoreDrawerInput as reduxSetStoreDrawerInput, 
+  setStorePieceInput as reduxSetStorePieceInput, 
+  setStoreScanPart as reduxSetStoreScanPart, 
+  setStoreCurrentScan as reduxSetStoreCurrentScan, 
+  setStoreFilters, 
+  setExpandedDrawer as reduxSetExpandedDrawer, 
+  setPieceLookupInput as reduxSetPieceLookupInput, 
+  setBatchSendTarget as reduxSetBatchSendTarget
+} from '@/store/slices/storeHubSlice';
+
 function mapDrawerRecord(d) {
   const leatherIn = !!d.leather_in;
   const liningIn = !!d.lining_in;
@@ -147,27 +159,54 @@ export default function StoreHubSection({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const [storeDrawerInput, setStoreDrawerInput] = useState("");
-  const [storePieceInput, setStorePieceInput] = useState("");
-  const [storeScanPart, setStoreScanPart] = useState("LEATHER"); // 'LEATHER' or 'LINING' — same barcode, different part gate
-  const [storeCurrentScan, setStoreCurrentScan] = useState("");
+  // const [storeDrawerInput, setStoreDrawerInput] = useState("");
+  // const [storePieceInput, setStorePieceInput] = useState("");
+  // const [storeScanPart, setStoreScanPart] = useState("LEATHER"); // 'LEATHER' or 'LINING' — same barcode, different part gate
+  // const [storeCurrentScan, setStoreCurrentScan] = useState("");
   const skuCode = "";
   const [storeVerifyResult, setStoreVerifyResult] = useState(null);
   const [storeApiLoading, setStoreApiLoading] = useState(false);
   const [storeDrawers, setStoreDrawers] = useState([]);
-  const [storeFilterClient, setStoreFilterClient] = useState("All");
-  const [storeFilterStyle, setStoreFilterStyle] = useState("All");
-  const [storeFilterType, setStoreFilterType] = useState("All");
-  const [storeDrawerSearch, setStoreDrawerSearch] = useState("");
-  const [expandedDrawer, setExpandedDrawer] = useState(null);
-  const [storeLoading, setStoreLoading] = useState(false);
-  const [pieceLookupInput, setPieceLookupInput] = useState("");
-  const [pieceLookupLoading, setPieceLookupLoading] = useState(false);
+  // const [storeFilterClient, setStoreFilterClient] = useState("All");
+  // const [storeFilterStyle, setStoreFilterStyle] = useState("All");
+  // const [storeFilterType, setStoreFilterType] = useState("All");
+  // const [storeDrawerSearch, setStoreDrawerSearch] = useState("");
+  // const [expandedDrawer, setExpandedDrawer] = useState(null);
+   const [storeLoading, setStoreLoading] = useState(false);
+  // const [pieceLookupInput, setPieceLookupInput] = useState("");
+   const [pieceLookupLoading, setPieceLookupLoading] = useState(false);
 
-  // Bug #13 & #14: Multi-drawer selection for batch assignment
+  // // Bug #13 & #14: Multi-drawer selection for batch assignment
   const [selectedDrawers, setSelectedDrawers] = useState(new Set());
-  const [batchSendTarget, setBatchSendTarget] = useState(""); // 'LINING' | 'STITCHING'
-  const [batchSending, setBatchSending] = useState(false);
+  // const [batchSendTarget, setBatchSendTarget] = useState(""); // 'LINING' | 'STITCHING'
+   const [batchSending, setBatchSending] = useState(false);
+  // REDUX PULL
+  const dispatch = useDispatch();
+  const storeDrawerInput = useSelector(state => state.storeHub.storeDrawerInput);
+  const storePieceInput = useSelector(state => state.storeHub.storePieceInput);
+  const storeScanPart = useSelector(state => state.storeHub.storeScanPart);
+  const storeCurrentScan = useSelector(state => state.storeHub.storeCurrentScan);
+  const storeFilterClient = useSelector(state => state.storeHub.storeFilterClient);
+  const storeFilterStyle = useSelector(state => state.storeHub.storeFilterStyle);
+  const storeFilterType = useSelector(state => state.storeHub.storeFilterType);
+  const storeDrawerSearch = useSelector(state => state.storeHub.storeDrawerSearch);
+  const expandedDrawer = useSelector(state => state.storeHub.expandedDrawer);
+  const pieceLookupInput = useSelector(state => state.storeHub.pieceLookupInput);
+  const batchSendTarget = useSelector(state => state.storeHub.batchSendTarget);
+
+  // REDUX WRAPPERS
+  const setStoreDrawerInput = (val) => dispatch(reduxSetStoreDrawerInput(val));
+  const setStorePieceInput = (val) => dispatch(reduxSetStorePieceInput(val));
+  const setStoreScanPart = (val) => dispatch(reduxSetStoreScanPart(val));
+  const setStoreCurrentScan = (val) => dispatch(reduxSetStoreCurrentScan(val));
+  const setExpandedDrawer = (val) => dispatch(reduxSetExpandedDrawer(val));
+  const setPieceLookupInput = (val) => dispatch(reduxSetPieceLookupInput(val));
+  const setBatchSendTarget = (val) => dispatch(reduxSetBatchSendTarget(val));
+
+  const setStoreFilterClient = (val) => dispatch(setStoreFilters({ client: val }));
+  const setStoreFilterStyle = (val) => dispatch(setStoreFilters({ style: val }));
+  const setStoreFilterType = (val) => dispatch(setStoreFilters({ type: val }));
+  const setStoreDrawerSearch = (val) => dispatch(setStoreFilters({ search: val }));
 
   const [storeVisibleCount, setStoreVisibleCount] = useState(50);
 

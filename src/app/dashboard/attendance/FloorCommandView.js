@@ -9,6 +9,14 @@ import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { motion } from 'framer-motion';
 import { CameraScanner, API, apiFetch, normalizeRosterArray, Badge, AlertBanner } from './shared';
+import { 
+  useGetAttendanceTodayQuery, 
+  useScanCheckInMutation, 
+  useAddEmployeeMutation, 
+  useProxyCheckInMutation, 
+  useProxyCheckOutMutation 
+} from '@/store/slices/apiSlice';
+
 export default function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
  const [search, setSearch] = useState('');
  const [selected, setSelected] = useState(new Set());
@@ -32,6 +40,14 @@ export default function FloorCommandView({ workers = [], token, onWorkerAdded, i
  const [scanInput, setScanInput] = useState('');
  const [isResolvingScan, setIsResolvingScan] = useState(false);
  const scanInputRef = useRef(null);
+  // --- RTK QUERY HOOKS ---
+  const { data: rosterDataRaw = [] } = useGetAttendanceTodayQuery();
+  const rosterArray = useMemo(() => normalizeRosterArray(rosterDataRaw), [rosterDataRaw]);
+
+  const [scanCheckInApi] = useScanCheckInMutation();
+  const [addEmployeeApi] = useAddEmployeeMutation();
+  const [proxyCheckInApi] = useProxyCheckInMutation();
+  const [proxyCheckOutApi] = useProxyCheckOutMutation();
 
  const playBeep = (freq = 880, type = 'sine') => {
  try {
@@ -92,10 +108,11 @@ export default function FloorCommandView({ workers = [], token, onWorkerAdded, i
  direction: direction
  };
 
- const response = await apiFetch(`${API}/scan-check-in`, {
- method: 'POST',
- body: JSON.stringify(payload),
- }, token);
+//  const response = await apiFetch(`${API}/scan-check-in`, {
+//  method: 'POST',
+//  body: JSON.stringify(payload),
+//  }, token);
+const response = await scanCheckInApi(payload).unwrap();
 
  playBeep(1046, 'sine'); // High-pitch scanner gun success sound
 
@@ -122,31 +139,41 @@ export default function FloorCommandView({ workers = [], token, onWorkerAdded, i
  scanInputRef.current?.focus();
  }
  };
+  
+  useEffect(() => {
+    if (rosterArray.length > 0) {
+      const inIds = rosterArray.map(r => String(r.employee_id));
+      const outIds = rosterArray.filter(r => r.check_out_at).map(r => String(r.employee_id));
+      setCheckedInIds(prev => new Set([...prev, ...inIds]));
+      setCheckedOutIds(prev => new Set([...prev, ...outIds]));
+    }
+  }, [rosterArray]);
 
- useEffect(() => {
- async function initStatus() {
- try {
- const rosterData = await apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token);
- const rosterArray = normalizeRosterArray(rosterData);
- if (rosterArray.length > 0) {
- // One-time per day logic:
- // 1. If they have ANY record today, they have already checked in (disable Check-In)
- const inIds = rosterArray.map(r => String(r.employee_id));
 
- // 2. If their record has check_out_at, they have already checked out (disable Check-Out)
- const outIds = rosterArray.filter(r => r.check_out_at).map(r => String(r.check_out_at ? r.employee_id : null)).filter(id => id !== null);
+//  useEffect(() => {
+//  async function initStatus() {
+//  try {
+//  const rosterData = await apiFetch(`/api/v1/attendance/today?t=${Date.now()}`, {}, token);
+//  const rosterArray = normalizeRosterArray(rosterData);
+//  if (rosterArray.length > 0) {
+//  // One-time per day logic:
+//  // 1. If they have ANY record today, they have already checked in (disable Check-In)
+//  const inIds = rosterArray.map(r => String(r.employee_id));
 
- setCheckedInIds(prev => new Set([...prev, ...inIds]));
- setCheckedOutIds(prev => new Set([...prev, ...outIds]));
- }
- } catch (e) {
- console.error("Failed to fetch floor roster", e);
- }
- }
- if (token) {
- initStatus();
- }
- }, [token]);
+//  // 2. If their record has check_out_at, they have already checked out (disable Check-Out)
+//  const outIds = rosterArray.filter(r => r.check_out_at).map(r => String(r.check_out_at ? r.employee_id : null)).filter(id => id !== null);
+
+//  setCheckedInIds(prev => new Set([...prev, ...inIds]));
+//  setCheckedOutIds(prev => new Set([...prev, ...outIds]));
+//  }
+//  } catch (e) {
+//  console.error("Failed to fetch floor roster", e);
+//  }
+//  }
+//  if (token) {
+//  initStatus();
+//  }
+//  }, [token]);
 
  const showAlert = (type, message) => {
  setAlert({ type, message });
@@ -176,11 +203,11 @@ export default function FloorCommandView({ workers = [], token, onWorkerAdded, i
  phone: phone.trim() || null,
  daily_rate: daily_rate ? parseFloat(daily_rate) : null,
  };
-
- await apiFetch(`/api/v1/employees`, {
- method: 'POST',
- body: JSON.stringify(payload),
- }, token);
+await addEmployeeApi(payload).unwrap();
+//  await apiFetch(`/api/v1/employees`, {
+//  method: 'POST',
+//  body: JSON.stringify(payload),
+//  }, token);
 
  showAlert('success', `Worker "${name}" onboarded to floor roster.`);
  setAddModal(false);
@@ -223,12 +250,15 @@ export default function FloorCommandView({ workers = [], token, onWorkerAdded, i
  try {
  const requestedIds = [...selected];
 
- const endpoint = type === 'check-in' ? `${API}/proxy/check-in` : `${API}/proxy/check-out`;
- const result = await apiFetch(endpoint, {
- method: 'POST',
- body: JSON.stringify({ employee_ids: requestedIds }),
- }, token);
-
+//  const endpoint = type === 'check-in' ? `${API}/proxy/check-in` : `${API}/proxy/check-out`;
+//  const result = await apiFetch(endpoint, {
+//  method: 'POST',
+//  body: JSON.stringify({ employee_ids: requestedIds }),
+//  }, token);
+const payload = { employee_ids: requestedIds };
+const result = type === 'check-in' 
+  ? await proxyCheckInApi(payload).unwrap()
+  : await proxyCheckOutApi(payload).unwrap();
  const succeededIds = new Set(result.map((r) => String(r.employee_id)));
  const normalizedRequested = requestedIds.map((id) => String(id));
  const succeeded = normalizedRequested.filter((id) => succeededIds.has(id));

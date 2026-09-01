@@ -6,6 +6,7 @@ import {
  Users,
   CalendarDays,Building2,QrCode
 } from 'lucide-react';
+import { useGetEmployeesQuery } from '@/store/slices/apiSlice';
 
 import { motion} from 'framer-motion';
 import {
@@ -45,14 +46,22 @@ export default function AttendancePage() {
  }, [isSecurity, isMD, isSupervisor, isManager]);
 
  const defaultTab = useMemo(() => tabs[0]?.key || (isSecurity ? 'employees' : 'me'), [tabs, isSecurity]);
-//  const [activeTab, setActiveTab] = useState(defaultTab);
-//  const [workers, setWorkers] = useState([]);
  const [workerRefreshKey, setWorkerRefreshKey] = useState(0);
- const dispatch = useDispatch();
-  
-  // Redux Attendance state
+   // Redux Attendance state
   const workers = useSelector(state => state.attendance.workers);
   const activeTab = useSelector(state => state.attendance.activeTab) || defaultTab;
+ const dispatch = useDispatch();
+    // --- RTK QUERY HOOKS ---
+  const shouldFetchEmployees = activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees';
+  const { data: employeesData } = useGetEmployeesQuery(undefined, { skip: !shouldFetchEmployees });
+
+  useEffect(() => {
+    if (employeesData) {
+      dispatch(setWorkers(employeesData));
+    }
+  }, [employeesData, dispatch]);
+
+
 
  const refreshWorkers = () => {
  setWorkerRefreshKey(k => k + 1);
@@ -73,17 +82,17 @@ export default function AttendancePage() {
  }
  }, [tabs, activeTab]);
 
-  useEffect(() => {
-    if (!hasMounted) return;
-    const timer = setTimeout(() => {
-      if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
-        apiFetch('/api/v1/employees', {}, token)
-          .then(data => dispatch(setWorkers(data))) // REDUX UPDATE!
-          .catch(() => { });
-      }
-    }, 100);
-    return () => clearTimeout(timer);
-  }, [activeTab, token, workerRefreshKey, hasMounted, dispatch]);
+  // useEffect(() => {
+  //   if (!hasMounted) return;
+  //   const timer = setTimeout(() => {
+  //     if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
+  //       apiFetch('/api/v1/employees', {}, token)
+  //         .then(data => dispatch(setWorkers(data))) // REDUX UPDATE!
+  //         .catch(() => { });
+  //     }
+  //   }, 100);
+  //   return () => clearTimeout(timer);
+  // }, [activeTab, token, workerRefreshKey, hasMounted, dispatch]);
 
 
  if (!hasMounted) {
