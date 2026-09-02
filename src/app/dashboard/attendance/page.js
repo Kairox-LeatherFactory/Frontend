@@ -1,6 +1,6 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
-import { useAuth } from '@/context/AuthContext';
+
 import {
   Clock, 
  Users,

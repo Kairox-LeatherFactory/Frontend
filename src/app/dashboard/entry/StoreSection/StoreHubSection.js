@@ -9,15 +9,16 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
 import {
-  apiBarcodeResolve,
-  apiListDrawers,
-  apiGetDrawer,
-  apiGetDrawerPool,
-  apiGetPieceState,
-  apiReceiveDrawer,
-  apiSendDrawers,
-  apiStoreDrawerScan,
-} from "@/lib/api";
+  useLazyBarcodeResolveQuery,
+  useLazyListDrawersQuery,
+  useLazyGetDrawerQuery,
+  useLazyGetDrawerPoolQuery,
+  useLazyGetPieceStateQuery,
+  useReceiveDrawerMutation,
+  useSendDrawersMutation,
+  useStoreDrawerScanMutation,
+} from "@/store/slices/apiSlice";
+
 import StoreHubForm from "./StoreHubForm";
 import { useSelector, useDispatch } from 'react-redux';
 import { 
@@ -119,10 +120,10 @@ function mapDrawerRecord(d) {
     kit_required: !!d.kit_required,
   };
 }
-async function findDrawerByCodeFallback(token, code) {
+async function findDrawerByCodeFallback(triggerListDrawers, code) {
   const target = String(code || "").trim();
   if (!target) return null;
-  const res = await apiListDrawers(token, { code: target, limit: 50 });
+  const res = await triggerListDrawers({ code: target, limit: 50 }).unwrap();
   const items = res?.items || (Array.isArray(res) ? res : []);
   const upper = target.toUpperCase();
   const exact = items.find(
@@ -182,6 +183,15 @@ export default function StoreHubSection({
    const [batchSending, setBatchSending] = useState(false);
   // REDUX PULL
   const dispatch = useDispatch();
+    const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
+  const [triggerListDrawers] = useLazyListDrawersQuery();
+  const [triggerGetDrawer] = useLazyGetDrawerQuery();
+  const [triggerGetDrawerPool] = useLazyGetDrawerPoolQuery();
+  const [triggerGetPieceState] = useLazyGetPieceStateQuery();
+  const [receiveDrawer] = useReceiveDrawerMutation();
+  const [sendDrawers] = useSendDrawersMutation();
+  const [storeDrawerScan] = useStoreDrawerScanMutation();
+
   const storeDrawerInput = useSelector(state => state.storeHub.storeDrawerInput);
   const storePieceInput = useSelector(state => state.storeHub.storePieceInput);
   const storeScanPart = useSelector(state => state.storeHub.storeScanPart);
@@ -237,7 +247,7 @@ export default function StoreHubSection({
     if (!token) return;
     setStoreLoading(true);
     try {
-      const res = await apiListDrawers(token, { limit: 10 });
+      const res = await triggerListDrawers({ limit: 10 }).unwrap();
       console.log("[Store Hub] GET /api/v1/drawers?limit=10 response:", res);
       const drawerItems = res?.items || (Array.isArray(res) ? res : []);
       let mapped = Array.isArray(drawerItems)
@@ -252,7 +262,7 @@ export default function StoreHubSection({
           const fetchedMissing = await Promise.all(
             missing.map(async (uuid) => {
               try {
-                return mapDrawerRecord(await apiGetDrawer(token, uuid));
+                return mapDrawerRecord(await triggerGetDrawer(uuid).unwrap());
               } catch {
                 return null;
               }
@@ -282,12 +292,12 @@ setStoreDrawers(mapped);
     } finally {
       setStoreLoading(false);
     }
-  }, [token]);
+  }, []);
   const [drawerPool, setDrawerPool] = useState(null);
   const fetchDrawerPool = useCallback(async () => {
     if (!token) return;
     try {
-      const pool = await apiGetDrawerPool(token);
+      const pool = await triggerGetDrawerPool().unwrap();
       setDrawerPool(pool);
     } catch (err) {
       console.warn("[Store Hub] GET /api/v1/drawers/pool:", err);
@@ -320,7 +330,7 @@ setStoreDrawers(mapped);
 
     if (!matchingDrawer) {
       try {
-        matchingDrawer = await findDrawerByCodeFallback(token, code);
+        matchingDrawer = await findDrawerByCodeFallback(triggerListDrawers, code);
       } catch {
         // Backend lookup failed — fall through, caller handles a null return.
       }
@@ -338,7 +348,7 @@ setStoreDrawers(mapped);
     setPieceLookupLoading(true);
     setErrorMsg("");
     try {
-      const res = await apiBarcodeResolve(token, val);
+      const res = await triggerBarcodeResolve(val).unwrap();
       const drawerCode =
         res?.type === "DRAWER"
           ? res.code
@@ -353,7 +363,7 @@ setStoreDrawers(mapped);
       );
       if (!target) {
         try {
-          target = await findDrawerByCodeFallback(token, drawerCode);
+          target = await findDrawerByCodeFallback(triggerListDrawers, drawerCode);
           if (target) {
             setStoreDrawers((prev) =>
               prev.some((d) => d.id === target.id) ? prev : [target, ...prev],
@@ -401,7 +411,7 @@ setStoreDrawers(mapped);
       const drawerUuid = await resolveDrawerUuid(drawerVal);
       if (drawerUuid) {
         try {
-          const drawerDetail = await apiGetDrawer(token, drawerUuid);
+          const drawerDetail = await triggerGetDrawer(drawerUuid).unwrap();
           const occupantCode = String(
             drawerDetail?.piece?.code || "",
           ).toUpperCase();
@@ -468,7 +478,7 @@ setStoreDrawers(mapped);
         payload.piece_barcode = pieceVal;
       }
 
-      const res = await apiStoreDrawerScan(token, payload);
+      const res = await storeDrawerScan(payload).unwrap();
  
       setStoreReceiveStatus(res.auto_received ? "received" : "pending");
       setSuccessMsg(`Scan logged successfully! (${res.state || "OK"})`);
@@ -487,7 +497,7 @@ setStoreDrawers(mapped);
       }
       if (drawerUuid) {
         try {
-          const freshDetail = await apiGetDrawer(token, drawerUuid);
+          const freshDetail = await triggerGetDrawer(drawerUuid).unwrap();
           const mapped = mapDrawerRecord(freshDetail);
           pinDrawer(mapped.drawer_id);
           setExpandedDrawer(mapped.id);
@@ -517,7 +527,7 @@ setStoreDrawers(mapped);
       let resolvedType = null;
       let resolveData = null;
       try {
-        resolveData = await apiBarcodeResolve(token, val);
+        resolveData = await triggerBarcodeResolve(val).unwrap();
         resolvedType = resolveData?.type || null;
       } catch {
         // Fall back to pattern guessing if not found in registry
@@ -545,7 +555,7 @@ setStoreDrawers(mapped);
         if (storePieceInput) {
           let expectedDrawerCode = null;
           try {
-            const pRes = await apiBarcodeResolve(token, storePieceInput);
+            const pRes = await triggerBarcodeResolve(storePieceInput).unwrap();
             expectedDrawerCode = (
               pRes?.piece?.drawer?.code ||
               pRes?.drawer?.drawer_code ||
@@ -553,9 +563,9 @@ setStoreDrawers(mapped);
               ""
             ).toUpperCase();
             if (!expectedDrawerCode) {
-              const pState = await apiGetPieceState(token, {
+              const pState = await triggerGetPieceState({
                 code: storePieceInput,
-              });
+              }).unwrap();
               expectedDrawerCode = (
                 pState?.piece?.drawer?.code ||
                 pState?.drawer?.code ||
@@ -596,7 +606,7 @@ setStoreDrawers(mapped);
             const pRes =
               resolveData?.type === "PIECE"
                 ? resolveData
-                : await apiBarcodeResolve(token, pieceVal);
+                : await triggerBarcodeResolve(pieceVal).unwrap();
             pieceAssignedDrawer = (
               pRes?.piece?.drawer?.code ||
               pRes?.drawer?.drawer_code ||
@@ -604,7 +614,7 @@ setStoreDrawers(mapped);
               ""
             ).toUpperCase();
             if (!pieceAssignedDrawer) {
-              const pState = await apiGetPieceState(token, { code: pieceVal });
+              const pState = await triggerGetPieceState({ code: pieceVal }).unwrap();
               pieceAssignedDrawer = (
                 pState?.piece?.drawer?.code ||
                 pState?.drawer?.code ||
@@ -690,7 +700,7 @@ setStoreDrawers(mapped);
         // (GET /drawers/by-code/{code} 404s, not deployed yet).
         if (!matchingDrawer && drawerCode.startsWith("DRW-")) {
           try {
-            matchingDrawer = await findDrawerByCodeFallback(token, drawerCode);
+            matchingDrawer = await findDrawerByCodeFallback(triggerListDrawers, drawerCode);
           } catch (e) {
             console.error("Failed to query specific drawer from backend", e);
           }
@@ -709,7 +719,7 @@ setStoreDrawers(mapped);
         return;
       }
 
-      const res = await apiReceiveDrawer(token, finalUuid, transition);
+      const res = await receiveDrawer({ drawerId: finalUuid, transition: transition }).unwrap();
 
       setStoreReceiveStatus(transition.toLowerCase());
       setSuccessMsg(
@@ -806,10 +816,10 @@ setStoreDrawers(mapped);
         );
         return;
       }
-        const result = await apiSendDrawers(token, {
+        const result = await sendDrawers({
         drawer_ids: drawerIds,
         destination: target,
-      });
+      }).unwrap();
       const sentList = Array.isArray(result?.sent) ? result.sent : [];
       sentList.forEach((item) => {
         const key = item.piece_code || item.drawer_code;
@@ -874,7 +884,7 @@ const [freeDrawers, setFreeDrawers] = useState([]);
     if (!token) return;
     setFreeDrawersLoading(true);
     try {
-      const res = await apiListDrawers(token, { has_piece: false, limit: 200 });
+      const res = await triggerListDrawers({ has_piece: false, limit: 200 }).unwrap();
       const items = res?.items || (Array.isArray(res) ? res : []);
       setFreeDrawers(Array.isArray(items) ? items.map(mapDrawerRecord) : []);
     } catch (err) {
@@ -925,7 +935,7 @@ const [freeDrawers, setFreeDrawers] = useState([]);
       try {
         if (pieceVal) {
           // Piece -> drawer is a single resolve call.
-          const res = await apiBarcodeResolve(token, pieceVal);
+          const res = await triggerBarcodeResolve(pieceVal).unwrap();
           const drawerCode =
             res?.piece?.drawer?.code ||
             res?.drawer?.drawer_code ||
@@ -939,16 +949,16 @@ const [freeDrawers, setFreeDrawers] = useState([]);
           // Drawer -> piece: resolve only returns the piece's UUID
           // (`current_piece_id`), not its code — a second call reads the
           // actual piece code off that id.
-          const res = await apiBarcodeResolve(token, drawerVal);
+          const res = await triggerBarcodeResolve(drawerVal).unwrap();
           const pieceId =
             res?.drawer?.current_piece_id || res?.piece?.piece_id || null;
           if (!pieceId) {
             if (!cancelled) setStoreExpectedMatch(null);
             return;
           }
-          const pieceState = await apiGetPieceState(token, {
+          const pieceState = await triggerGetPieceState({
             piece_id: pieceId,
-          });
+          }).unwrap();
           const pieceCode = pieceState?.piece?.code || null;
           if (!cancelled)
             setStoreExpectedMatch(

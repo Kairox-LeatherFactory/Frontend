@@ -13,7 +13,7 @@ export const apiSlice = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Attendance', 'Employee'], // Caching Labels
+  tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece', 'Drawer', 'DrawerPool', 'DrawerList', 'AccessorySpec', 'AccessoryRequirement'], // Caching Labels
   
   endpoints: (builder) => ({
     // 1. Get My Status
@@ -101,7 +101,179 @@ export const apiSlice = createApi({
         body: payload
       }),
       invalidatesTags: ['Attendance']
+    }),
+
+    // --- BARCODE APIs ---
+    barcodeResolve: builder.query({
+      query: (code) => `/api/v1/barcode/resolve?code=${encodeURIComponent(code)}`
+    }),
+    getBarcodeOrders: builder.query({
+      query: () => '/api/v1/barcode/orders'
+    }),
+    getPieceState: builder.query({
+      query: (params) => {
+        const qs = new URLSearchParams();
+        if (params.code) qs.append('code', params.code);
+        if (params.piece_id) qs.append('piece_id', params.piece_id);
+        if (params.employee_barcode) qs.append('employee_barcode', params.employee_barcode);
+        if (params.employee_id) qs.append('employee_id', params.employee_id);
+        return `/api/v1/production/piece-state?${qs.toString()}`;
+      }
+    }),
+    getSkus: builder.query({
+      query: () => '/api/v1/production/skus',
+      providesTags: ['SKU']
+    }),
+    getSkuPieces: builder.query({
+      query: (skuId) => `/api/v1/production/skus/${encodeURIComponent(skuId)}/pieces`,
+      providesTags: ['Piece']
+    }),
+    getMaterialLots: builder.query({
+      query: (params = {}) => {
+        const query = new URLSearchParams();
+        for (const [key, value] of Object.entries(params)) {
+          if (value) query.append(key, value);
+        }
+        return `/api/v1/materials/lots?${query.toString()}`;
+      }
+    }),
+    productionCutting: builder.mutation({
+      query: (payload) => ({ url: '/api/v1/production/log', method: 'POST', body: payload })
+    }),
+    productionLogTwoDoor: builder.mutation({
+      query: (payload) => ({ url: '/api/v1/production/log', method: 'POST', body: payload })
+    }),
+
+    
+
+    // --- STORE HUB APIs ---
+    getDrawerPool: builder.query({
+      query: () => '/api/v1/drawers/pool',
+      providesTags: ['DrawerPool']
+    }),
+    storeDrawerScan: builder.mutation({
+      query: (drawerData) => ({ url: '/api/v1/drawers/store-scan', method: 'POST', body: drawerData }),
+      invalidatesTags: ['Drawer', 'DrawerList']
+    }),
+    sendDrawers: builder.mutation({
+      query: ({ drawer_ids, destination }) => ({ url: '/api/v1/drawers/send', method: 'POST', body: { drawer_ids, destination } }),
+      invalidatesTags: ['Drawer', 'DrawerPool', 'DrawerList']
+    }),
+    receiveDrawer: builder.mutation({
+      query: ({ drawerId, transition }) => ({ url: `/api/v1/drawers/${encodeURIComponent(drawerId)}/receive`, method: 'POST', body: { transition } }),
+      invalidatesTags: ['Drawer', 'DrawerList']
+    }),
+    listDrawers: builder.query({
+      query: (params = {}) => {
+        const qs = new URLSearchParams();
+        qs.append('limit', params.limit || 500);
+        if (params.code) qs.append('code', params.code);
+        if (params.seq_from) qs.append('seq_from', params.seq_from);
+        if (params.seq_to) qs.append('seq_to', params.seq_to);
+        if (params.state) qs.append('state', params.state);
+        if (params.offset) qs.append('offset', params.offset);
+        if (params.has_piece !== undefined) qs.append('has_piece', params.has_piece);
+        if (params.sendable !== undefined) qs.append('sendable', params.sendable);
+        return `/api/v1/drawers?${qs.toString()}`;
+      },
+      providesTags: ['DrawerList']
+    }),
+    getDrawer: builder.query({
+      query: (drawerId) => `/api/v1/drawers/${encodeURIComponent(drawerId)}`,
+      providesTags: (result, error, id) => [{ type: 'Drawer', id }]
+    }),
+
+    // --- ACCESSORY APIs ---
+    getStyleMaterialSpec: builder.query({
+      query: (styleId) => `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec`,
+      providesTags: (_result, _error, styleId) => [{ type: 'AccessorySpec', id: styleId }]
+    }),
+    putStyleMaterialSpec: builder.mutation({
+      query: ({ styleId, lines }) => ({
+        url: `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec`,
+        method: 'PUT',
+        body: { lines }
+      }),
+      invalidatesTags: (_result, _error, { styleId }) => [{ type: 'AccessorySpec', id: styleId }]
+    }),
+    addStyleMaterialSpecLine: builder.mutation({
+      query: ({ styleId, line }) => ({
+        url: `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/lines`,
+        method: 'POST',
+        body: line
+      }),
+      invalidatesTags: (_result, _error, { styleId }) => [{ type: 'AccessorySpec', id: styleId }]
+    }),
+    patchStyleMaterialSpecLine: builder.mutation({
+      query: ({ styleId, lineId, patch }) => ({
+        url: `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/lines/${encodeURIComponent(lineId)}`,
+        method: 'PATCH',
+        body: patch
+      }),
+      invalidatesTags: (_result, _error, { styleId }) => [{ type: 'AccessorySpec', id: styleId }]
+    }),
+    deleteStyleMaterialSpecLine: builder.mutation({
+      query: ({ styleId, lineId }) => ({
+        url: `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/lines/${encodeURIComponent(lineId)}`,
+        method: 'DELETE'
+      }),
+      invalidatesTags: (_result, _error, { styleId }) => [{ type: 'AccessorySpec', id: styleId }]
+    }),
+    confirmStyleMaterialSpec: builder.mutation({
+      query: ({ styleId, noAccessories }) => ({
+        url: `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/confirm`,
+        method: 'POST',
+        body: { no_accessories_declared: !!noAccessories }
+      }),
+      invalidatesTags: (_result, _error, { styleId }) => [{ type: 'AccessorySpec', id: styleId }]
+    }),
+    copyStyleMaterialSpec: builder.mutation({
+      query: ({ styleId, fromStyleId }) => ({
+        url: `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/copy-from`,
+        method: 'POST',
+        body: { from_style_id: fromStyleId }
+      }),
+      invalidatesTags: (_result, _error, { styleId }) => [{ type: 'AccessorySpec', id: styleId }]
+    }),
+    getStyleMaterialRequirement: builder.query({
+      query: (styleId) => `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/requirement`,
+      providesTags: (_result, _error, styleId) => [{ type: 'AccessoryRequirement', id: styleId }]
+    }),
+    recordMaterialIssue: builder.mutation({
+      query: (payload) => ({
+        url: '/api/v1/materials/issues',
+        method: 'POST',
+        body: payload
+      })
+    }),
+    issueAccessoryKit: builder.mutation({
+      query: (payload) => {
+        const body = { part: 'ACCESSORY' };
+        if (payload.employee) {
+          if (payload.employee.employee_barcode || payload.employee.barcode) body.employee_barcode = payload.employee.employee_barcode || payload.employee.barcode;
+          else if (payload.employee.id) body.employee_id = payload.employee.id;
+        }
+        if (payload.drawerId) body.drawer_id = payload.drawerId;
+        else if (payload.drawerBarcode) body.drawer_barcode = payload.drawerBarcode;
+        if (payload.pieceId) body.piece_id = payload.pieceId;
+        else if (payload.pieceBarcode) body.piece_barcode = payload.pieceBarcode;
+        if (Array.isArray(payload.lines) && payload.lines.length > 0) body.lines = payload.lines;
+        return {
+          url: '/api/v1/drawers/store-scan',
+          method: 'POST',
+          body
+        };
+      },
+      invalidatesTags: ['Drawer', 'DrawerList', 'AccessoryRequirement']
+    }),
+    createSupplierOrder: builder.mutation({
+      query: (orderData) => ({
+        url: '/api/v1/suppliers/orders',
+        method: 'POST',
+        body: orderData
+      })
     })
+
   })
 });
 
@@ -111,11 +283,46 @@ export const {
   useGetMyHistoryQuery, 
   useCheckInMutation, 
   useCheckOutMutation,
-   useGetEmployeesQuery,
+  useGetEmployeesQuery,
   useGetAttendanceTodayQuery,
   useGetAttendanceConfigQuery,
   useScanCheckInMutation,
-    useAddEmployeeMutation,
+  useAddEmployeeMutation,
   useProxyCheckInMutation,
-  useProxyCheckOutMutation
-} = apiSlice;
+  useProxyCheckOutMutation,
+  useBarcodeResolveQuery,
+  useLazyBarcodeResolveQuery,
+  useGetBarcodeOrdersQuery,
+  useLazyGetBarcodeOrdersQuery,
+  useGetPieceStateQuery,
+  useLazyGetPieceStateQuery,
+  useGetSkusQuery,
+  useGetSkuPiecesQuery,
+  useLazyGetSkuPiecesQuery,
+  useGetMaterialLotsQuery,
+  useLazyGetMaterialLotsQuery,
+  useProductionCuttingMutation,
+  useProductionLogTwoDoorMutation,
+  useGetDrawerPoolQuery,
+  useLazyGetDrawerPoolQuery,
+  useStoreDrawerScanMutation,
+  useSendDrawersMutation,
+  useReceiveDrawerMutation,
+  useListDrawersQuery,
+  useLazyListDrawersQuery,
+  useGetDrawerQuery,
+  useLazyGetDrawerQuery,
+  useGetStyleMaterialSpecQuery,
+  useLazyGetStyleMaterialSpecQuery,
+  usePutStyleMaterialSpecMutation,
+  useAddStyleMaterialSpecLineMutation,
+  usePatchStyleMaterialSpecLineMutation,
+  useDeleteStyleMaterialSpecLineMutation,
+  useConfirmStyleMaterialSpecMutation,
+  useCopyStyleMaterialSpecMutation,
+  useGetStyleMaterialRequirementQuery,
+  useLazyGetStyleMaterialRequirementQuery,
+  useRecordMaterialIssueMutation,
+  useIssueAccessoryKitMutation,
+  useCreateSupplierOrderMutation,
+} = apiSlice

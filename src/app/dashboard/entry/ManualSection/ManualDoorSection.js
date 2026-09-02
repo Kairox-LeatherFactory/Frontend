@@ -10,12 +10,14 @@ import AnalyticsPopupModal from "./AnalyticsPopupModal";
 import PieceChecklistModal from "./PieceChecklistModal";
 import ManualDoorForm from "./form";
 import {
-  apiGetSkus,
-  apiGetSkuPieces,
-  apiProductionCutting,
-  apiProductionLogTwoDoor,
-  apiGetMaterialLots,
-} from "@/lib/api";
+  useGetSkusQuery,
+  useGetSkuPiecesQuery,
+  useGetMaterialLotsQuery,
+  useProductionCuttingMutation,
+  useProductionLogTwoDoorMutation,
+  useLazyGetSkuPiecesQuery,
+} from "@/store/slices/apiSlice";
+
 import { useRoleAccess, normalizeRosterArray } from "../shared";
 import { useSelector, useDispatch } from 'react-redux';
 import { 
@@ -63,8 +65,8 @@ export default function ManualDoorSection({
   // const [skuCode, setSkuCode] = useState("");
   // const [pieceSeqs, setPieceSeqs] = useState("");
   // const [cuttingCount, setCuttingCount] = useState("");
-  const [fetchedSkus, setFetchedSkus] = useState([]);
-  const [skusLoading, setSkusLoading] = useState(false);
+  // const [fetchedSkus, setFetchedSkus] = useState([]);
+  // const [skusLoading, setSkusLoading] = useState(false);
   const [cuttingPieces, setCuttingPieces] = useState([]);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isSavingCutting, setIsSavingCutting] = useState(false);
@@ -102,11 +104,11 @@ export default function ManualDoorSection({
   // apiProductionCutting always targets piece_seqs [1..count], so re-submitting
   // the same (or lower) count re-logs the SAME pieces as backend "rework"
   // instead of adding anything new.
-  const [alreadyCutCount, setAlreadyCutCount] = useState(0);
+ // const [alreadyCutCount, setAlreadyCutCount] = useState(0);
 
   // Dedicated Barcode Gun Scanner Handler: Verify Worker & Attendance Check
 
-  const [skuRefreshKey, setSkuRefreshKey] = useState(0);
+ // const [skuRefreshKey, setSkuRefreshKey] = useState(0);
     // REDUX PULL
   const dispatch = useDispatch();
 
@@ -127,6 +129,28 @@ export default function ManualDoorSection({
   const setSkuSearchQuery = (val) => dispatch(reduxSetSkuSearchQuery(val));
   const setWorkerSearchQuery = (val) => dispatch(reduxSetWorkerSearchQuery(val));
 
+  // --- RTK QUERY HOOKS ---
+  const { data: skusData = [], isLoading: skusLoading, refetch: refetchSkus } = useGetSkusQuery();
+  const fetchedSkus = skusData?.items || skusData?.skus || (Array.isArray(skusData) ? skusData : []);
+
+  const searchOp = String(selectedStage || "").toLowerCase().replace(/[^a-z]/g, "");
+  const opRecord = operations?.find((o) => {
+    const opLabel = String(o.label || "").toLowerCase().replace(/[^a-z]/g, "");
+    return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
+  }) || (operations && operations[0]);
+
+  const skuObj = fetchedSkus.find((s) => s.code === skuCode);
+
+  const { data: piecesData } = useGetSkuPiecesQuery(
+    { skuId: skuObj?.sku_id, operationId: opRecord?.id },
+    { skip: !skuCode || !opRecord || (selectedStage !== "Cutting" && selectedStage !== "Lining") }
+  );
+  
+  const alreadyCutCount = Array.isArray(piecesData) ? piecesData.length : (piecesData?.pieces?.length || 0);
+
+  const [productionCutting] = useProductionCuttingMutation();
+  const [productionLogTwoDoor] = useProductionLogTwoDoorMutation();
+const [triggerGetPieces] = useLazyGetSkuPiecesQuery();
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -143,19 +167,19 @@ export default function ManualDoorSection({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-  useEffect(() => {
-    setSkusLoading(true);
-    apiGetSkus(token)
-      .then((res) => {
-        // Handle both plain array and paginated {items:[...]} format
-        const items =
-          res?.items || res?.skus || (Array.isArray(res) ? res : []);
-        console.log("[fetchedSkus] loaded:", items.length, "SKUs");
-        setFetchedSkus(items);
-      })
-      .catch(console.warn)
-      .finally(() => setSkusLoading(false));
-  }, [token, skuRefreshKey]);
+  // useEffect(() => {
+  //   setSkusLoading(true);
+  //   apiGetSkus(token)
+  //     .then((res) => {
+  //       // Handle both plain array and paginated {items:[...]} format
+  //       const items =
+  //         res?.items || res?.skus || (Array.isArray(res) ? res : []);
+  //       console.log("[fetchedSkus] loaded:", items.length, "SKUs");
+  //       setFetchedSkus(items);
+  //     })
+  //     .catch(console.warn)
+  //     .finally(() => setSkusLoading(false));
+  // }, [token, skuRefreshKey]);
 
   useEffect(() => {
     if (skuCode) {
@@ -167,110 +191,141 @@ export default function ManualDoorSection({
   // Barcode Gun Scanner parity: know how many pieces are already logged for
   // this SKU at this stage BEFORE the operator submits, so a duplicate
   // Cutting/Lining run can be caught instead of silently re-logging as rework.
-  useEffect(() => {
-    if (
-      !skuCode ||
-      (selectedStage !== "Cutting" && selectedStage !== "Lining")
-    ) {
-      setAlreadyCutCount(0);
-      return;
-    }
-    const skuObj = fetchedSkus.find((s) => s.code === skuCode);
-    const searchOp = String(selectedStage || "")
-      .toLowerCase()
-      .replace(/[^a-z]/g, "");
-    const opRecord =
-      operations.find((o) => {
-        const opLabel = String(o.label || "")
-          .toLowerCase()
-          .replace(/[^a-z]/g, "");
-        return (
-          opLabel === searchOp ||
-          opLabel.includes(searchOp) ||
-          searchOp.includes(opLabel)
-        );
-      }) || operations[0];
-    if (!skuObj || !opRecord) {
-      setAlreadyCutCount(0);
-      return;
-    }
+  // useEffect(() => {
+  //   if (
+  //     !skuCode ||
+  //     (selectedStage !== "Cutting" && selectedStage !== "Lining")
+  //   ) {
+  //     setAlreadyCutCount(0);
+  //     return;
+  //   }
+  //   const skuObj = fetchedSkus.find((s) => s.code === skuCode);
+  //   const searchOp = String(selectedStage || "")
+  //     .toLowerCase()
+  //     .replace(/[^a-z]/g, "");
+  //   const opRecord =
+  //     operations.find((o) => {
+  //       const opLabel = String(o.label || "")
+  //         .toLowerCase()
+  //         .replace(/[^a-z]/g, "");
+  //       return (
+  //         opLabel === searchOp ||
+  //         opLabel.includes(searchOp) ||
+  //         searchOp.includes(opLabel)
+  //       );
+  //     }) || operations[0];
+  //   if (!skuObj || !opRecord) {
+  //     setAlreadyCutCount(0);
+  //     return;
+  //   }
 
-    let isMounted = true;
-    apiGetSkuPieces(token, skuObj.sku_id, opRecord.id)
-      .then((data) => {
-        if (!isMounted) return;
-        const arr = Array.isArray(data) ? data : data.pieces || [];
-        setAlreadyCutCount(arr.length);
-      })
-      .catch(() => {
-        if (isMounted) setAlreadyCutCount(0);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, [skuCode, selectedStage, fetchedSkus, operations, token]);
+  //   let isMounted = true;
+  //   apiGetSkuPieces(token, skuObj.sku_id, opRecord.id)
+  //     .then((data) => {
+  //       if (!isMounted) return;
+  //       const arr = Array.isArray(data) ? data : data.pieces || [];
+  //       setAlreadyCutCount(arr.length);
+  //     })
+  //     .catch(() => {
+  //       if (isMounted) setAlreadyCutCount(0);
+  //     });
+  //   return () => {
+  //     isMounted = false;
+  //   };
+  // }, [skuCode, selectedStage, fetchedSkus, operations, token]);
 
   // Dynamic Material Lots Fetcher — Manual-door half. See the matching copy
   // in BarcodeDoorSection.js for why this was split into two door-local
   // effects instead of staying as one shared effect in page.js.
-  useEffect(() => {
     const isCutting = selectedStage === "Cutting";
-    const isLining = selectedStage === "Lining";
+  const isLining = selectedStage === "Lining";
+  const lotCategoryLocal = isLining ? "LINING" : "LEATHER";
+
+  const { data: lotsData, isFetching: lotsFetching } = useGetMaterialLotsQuery(
+    { category: lotCategoryLocal, article: lotArticle, colour: lotColor, thickness: lotThickness },
+    { skip: !skuCode || (!isCutting && !isLining) }
+  );
+
+  useEffect(() => {
     if (!isCutting && !isLining) return;
+    setLotCategory(lotCategoryLocal);
+    
+    if (lotsFetching) {
+      setLotLoading(true);
+    } else if (lotsData) {
+      setLotLoading(false);
+      setLotOptions(lotsData.options || { article: [], colour: [], thickness: [], size: [] });
+      setLotResults(lotsData.lots || []);
 
-    const category = isLining ? "LINING" : "LEATHER";
-    setLotCategory(category);
-
-    const currentSku = skuCode;
-    if (!currentSku) return;
-   const params = {
-      category,
-      article: lotArticle,
-      colour: lotColor,
-      thickness: lotThickness,
-    };
-
-    let isMounted = true;
-    setLotLoading(true);
-    apiGetMaterialLots(token, params)
-      .then((data) => {
-        if (!isMounted) return;
-        setLotOptions(
-          data.options || { article: [], colour: [], thickness: [], size: [] },
-        );
-        setLotResults(data.lots || []);
-
-        if (data.suggested_lot_id && data.lots) {
-          const suggestedLot = data.lots.find(
-            (l) => l.lot_id === data.suggested_lot_id,
-          );
-          if (suggestedLot && !lotArticle && !lotColor && !lotThickness) {
-            setLotArticle(suggestedLot.article || "");
-            setLotColor(suggestedLot.colour || "");
-            setLotThickness(suggestedLot.thickness || "");
-          }
+      if (lotsData.suggested_lot_id && lotsData.lots) {
+        const suggestedLot = lotsData.lots.find((l) => l.lot_id === lotsData.suggested_lot_id);
+        if (suggestedLot && !lotArticle && !lotColor && !lotThickness) {
+          setLotArticle(suggestedLot.article || "");
+          setLotColor(suggestedLot.colour || "");
+          setLotThickness(suggestedLot.thickness || "");
         }
-      })
-      .catch((err) => {
-        console.warn("Failed to fetch lots:", err);
-      })
-      .finally(() => {
-        if (isMounted) setLotLoading(false);
-      });
+      }
+    }
+  }, [lotsData, lotsFetching, isCutting, isLining, lotCategoryLocal, lotArticle, lotColor, lotThickness, setLotCategory, setLotLoading, setLotOptions, setLotResults, setLotArticle, setLotColor, setLotThickness]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [
-    selectedStage,
-    skuCode,
-    lotArticle,
-    lotColor,
-    lotThickness,
-    barcodeDcm,
-    cuttingCount,
-    token,
-  ]);
+  // useEffect(() => {
+  //   const isCutting = selectedStage === "Cutting";
+  //   const isLining = selectedStage === "Lining";
+  //   if (!isCutting && !isLining) return;
+
+  //   const category = isLining ? "LINING" : "LEATHER";
+  //   setLotCategory(category);
+
+  //   const currentSku = skuCode;
+  //   if (!currentSku) return;
+  //  const params = {
+  //     category,
+  //     article: lotArticle,
+  //     colour: lotColor,
+  //     thickness: lotThickness,
+  //   };
+
+  //   let isMounted = true;
+  //   setLotLoading(true);
+  //   apiGetMaterialLots(token, params)
+  //     .then((data) => {
+  //       if (!isMounted) return;
+  //       setLotOptions(
+  //         data.options || { article: [], colour: [], thickness: [], size: [] },
+  //       );
+  //       setLotResults(data.lots || []);
+
+  //       if (data.suggested_lot_id && data.lots) {
+  //         const suggestedLot = data.lots.find(
+  //           (l) => l.lot_id === data.suggested_lot_id,
+  //         );
+  //         if (suggestedLot && !lotArticle && !lotColor && !lotThickness) {
+  //           setLotArticle(suggestedLot.article || "");
+  //           setLotColor(suggestedLot.colour || "");
+  //           setLotThickness(suggestedLot.thickness || "");
+  //         }
+  //       }
+  //     })
+  //     .catch((err) => {
+  //       console.warn("Failed to fetch lots:", err);
+  //     })
+  //     .finally(() => {
+  //       if (isMounted) setLotLoading(false);
+  //     });
+
+  //   return () => {
+  //     isMounted = false;
+  //   };
+  // }, [
+  //   selectedStage,
+  //   skuCode,
+  //   lotArticle,
+  //   lotColor,
+  //   lotThickness,
+  //   barcodeDcm,
+  //   cuttingCount,
+  //   token,
+  // ]);
 
   const searchFilteredSkus = useMemo(() => {
     if (!skuSearchQuery.trim()) return fetchedSkus;
@@ -508,7 +563,7 @@ export default function ManualDoorSection({
         return;
       }
 
-      const result = await apiProductionCutting(token, {
+      const result = await productionCutting({
         sku_id: skuObj.sku_id,
         employee_id: workerId,
         work_date: date,
@@ -516,7 +571,7 @@ export default function ManualDoorSection({
         dcm: barcodeDcm ? parseInt(barcodeDcm, 10) : parsedCount,
         stage: selectedStage, // 'Cutting' or 'Lining'
         lot_id: lotResults.length === 1 ? lotResults[0].lot_id : null,
-      });
+      }).unwrap();
 
       // Bug fix: the real response field is `count_logged`/`logged` (piece
       // code strings) — `result.count`/`result.pieces` never existed, so this
@@ -588,12 +643,12 @@ export default function ManualDoorSection({
       const skuObj = fetchedSkus.find((s) => s.code === skuCode);
       const parsedCount = parseInt(cuttingCount, 10);
 
-      const result = await apiProductionCutting(token, {
+      const result = await productionCutting({
         sku_id: skuObj.sku_id,
         employee_id: workerId,
         work_date: date,
         count: parsedCount,
-      });
+      }).unwrap();
 
       setSuccessMsg(
         `✅ Cut ${result.count || parsedCount} pieces successfully saved.`,
@@ -637,7 +692,8 @@ export default function ManualDoorSection({
     setRangeFrom("");
     setRangeTo("");
     try {
-      const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
+    const data = await triggerGetPieces({ skuId: skuObj.sku_id, operationId: opRecord.id }).unwrap();
+
       let piecesArr = Array.isArray(data) ? data : data.pieces || [];
 
       // Dynamically sync piece list with submitted count for this SKU (e.g. 12 pieces)
@@ -742,7 +798,7 @@ export default function ManualDoorSection({
             ? { consumption: { dcm: Number(barcodeDcm || 10) } }
             : {}),
         };
-        bucketRes = await apiProductionLogTwoDoor(token, logPayload);
+        bucketRes = await ProductionLogTwoDoor(logPayload).unwrap();
         const hasRealBlocks =
           bucketRes?.sequence_blocked?.length > 0 ||
           bucketRes?.merge_blocked?.length > 0 ||
@@ -820,7 +876,7 @@ export default function ManualDoorSection({
   pieceSeqs={pieceSeqs}
   setPieceSeqs={setPieceSeqs}
   skuModalRef={skuModalRef}
-  setSkuRefreshKey={setSkuRefreshKey}
+  setSkuRefreshKey={refetchSkus}
   skusLoading={skusLoading}
   isSkuOpen={isSkuOpen}
   setIsSkuOpen={setIsSkuOpen}

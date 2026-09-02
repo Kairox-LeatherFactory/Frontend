@@ -6,10 +6,10 @@ import { useAuth } from "@/context/AuthContext";
 import { useData } from "@/context/DataContext";
 import BarcodeDoorForm from "./BarcodeDoorForm";
 import {
-  apiProductionLogTwoDoor,
-  apiGetPieceState,
-  apiGetMaterialLots,
-} from "@/lib/api";
+  useProductionLogTwoDoorMutation,
+  useLazyGetPieceStateQuery,
+  useLazyGetMaterialLotsQuery,
+} from "@/store/slices/apiSlice";
 
 import {
   manualStages,
@@ -21,9 +21,9 @@ import {
 
 } from "../shared";
 import { useSelector, useDispatch } from 'react-redux';
-import { 
-  setCuttingBatchPieces as reduxSetCuttingBatchPieces, 
-  setBarcodeSelectedSku as reduxSetBarcodeSelectedSku 
+import {
+  setCuttingBatchPieces as reduxSetCuttingBatchPieces,
+  setBarcodeSelectedSku as reduxSetBarcodeSelectedSku
 } from '@/store/slices/entrySlice';
 
 // Extracted from src/app/dashboard/entry/page.js (Barcode Gun Scanner door:
@@ -74,13 +74,13 @@ export default function BarcodeDoorSection({
   const { allowedOperations, isFullAccess, isStageAllowedForRole } =
     useRoleAccess();
   const [barcodeSkuInput, setBarcodeSkuInput] = useState("");
- // const [barcodeSelectedSku, setBarcodeSelectedSku] = useState(null);
+  // const [barcodeSelectedSku, setBarcodeSelectedSku] = useState(null);
   const [barcodeSkuVerifying, setBarcodeSkuVerifying] = useState(false);
   const [barcodeDcmConfirmed, setBarcodeDcmConfirmed] = useState(false);
   const [sessionCutSkus, setSessionCutSkus] = useState([]); // Track duplicate cuts in session
   // Item 5: always holds exactly the one piece Verify SKU resolved — Cutting
   // no longer batches multiple pieces under one shared DCM.
- // const [cuttingBatchPieces, setCuttingBatchPieces] = useState([]); // [{ code, seq, serial_str, article, style_name, color, size, order_number }]
+  // const [cuttingBatchPieces, setCuttingBatchPieces] = useState([]); // [{ code, seq, serial_str, article, style_name, color, size, order_number }]
   const [closedCuttingSkus, setClosedCuttingSkus] = useState([]); // sku_code[] fully cut, closed for further scanning
   const [barcodePieceResolving, setBarcodePieceResolving] = useState(false);
   const [barcodePieceValidating, setBarcodePieceValidating] = useState(false); // FIX: referenced in JSX but never declared in the original file either (also no setter call anywhere — was silently always false); declared here to match that same de-facto behavior.
@@ -89,11 +89,14 @@ export default function BarcodeDoorSection({
   const [barcodeBatchPieces, setBarcodeBatchPieces] = useState([]); // Array of scanned piece objects
   const [barcodeSubmitting, setBarcodeSubmitting] = useState(false);
   const [barcodeSuccessModal, setBarcodeSuccessModal] = useState(null);
-    const dispatch = useDispatch();
+  const dispatch = useDispatch();
   const barcodeSelectedSku = useSelector(state => state.entry.barcodeSelectedSku);
   const cuttingBatchPieces = useSelector(state => state.entry.cuttingBatchPieces);
+  const [productionLogTwoDoor] = useProductionLogTwoDoorMutation();
+  const [triggerGetPieceState] = useLazyGetPieceStateQuery();
+  const [triggerGetMaterialLots] = useLazyGetMaterialLotsQuery();
 
- 
+
   const setBarcodeSelectedSku = (sku) => dispatch(reduxSetBarcodeSelectedSku(sku));
   const setCuttingBatchPieces = (pieces) => {
     if (typeof pieces === 'function') {
@@ -234,12 +237,12 @@ export default function BarcodeDoorSection({
     const parsedDcm = parseInt(barcodeDcm, 10) || 0;
     const parsedPieces = barcodePieceInput
       ? barcodePieceInput.split(",").reduce((acc, curr) => {
-          if (curr.includes("-")) {
-            const [s, e] = curr.split("-").map(Number);
-            return acc + (e - s + 1);
-          }
-          return acc + 1;
-        }, 0)
+        if (curr.includes("-")) {
+          const [s, e] = curr.split("-").map(Number);
+          return acc + (e - s + 1);
+        }
+        return acc + 1;
+      }, 0)
       : 0;
     const requiredQty = parsedDcm * parsedPieces; // eslint-disable-line no-unused-vars -- matches original file's own dead calculation, kept for fidelity
 
@@ -252,7 +255,7 @@ export default function BarcodeDoorSection({
 
     let isMounted = true;
     setLotLoading(true);
-    apiGetMaterialLots(token, params)
+    triggerGetMaterialLots(params).unwrap()
       .then((data) => {
         if (!isMounted) return;
         setLotOptions(
@@ -305,13 +308,13 @@ export default function BarcodeDoorSection({
 
     try {
       // GET /production/piece-state — verification/viewing ONLY, no logging here.
-      const pieceState = await apiGetPieceState(token, {
+      const pieceState = await triggerGetPieceState({
         code: val,
         employee_barcode:
           barcodeWorker?.employee_barcode ||
           barcodeWorker?.barcode ||
           barcodeWorker?.id,
-      });
+      }).unwrap();
 
       const piece = pieceState?.piece;
       if (!piece || !piece.code) {
@@ -411,9 +414,9 @@ export default function BarcodeDoorSection({
       ) {
         throw new Error(
           stageEntry.reason ||
-            (stageEntry.state === "not_applicable"
-              ? `'${targetStage}' does not apply to this piece.`
-              : `Production sequence blocked: '${targetStage}' isn't ready yet.`),
+          (stageEntry.state === "not_applicable"
+            ? `'${targetStage}' does not apply to this piece.`
+            : `Production sequence blocked: '${targetStage}' isn't ready yet.`),
         );
       }
       const usingAlternateStage = !!(
@@ -531,7 +534,7 @@ export default function BarcodeDoorSection({
 
       // POST /production/log — the ONLY write on the floor. Bug #8: submits
       // the WHOLE scanned batch (every individually-verified piece) in one call.
-      const result = await apiProductionLogTwoDoor(token, payload);
+      const result = await productionLogTwoDoor(payload).unwrap();
 
       const loggedPieces = cuttingBatchPieces.map((p) => ({
         id: p.code,
@@ -765,13 +768,13 @@ export default function BarcodeDoorSection({
         prev.some((p) => p.code === code)
           ? prev
           : [
-              ...prev,
-              {
-                code,
-                scanned_at: new Date().toLocaleTimeString(),
-                ...pieceMeta,
-              },
-            ],
+            ...prev,
+            {
+              code,
+              scanned_at: new Date().toLocaleTimeString(),
+              ...pieceMeta,
+            },
+          ],
       );
       setBarcodePieceInput("");
     } finally {
@@ -823,7 +826,7 @@ export default function BarcodeDoorSection({
         if (barcodeDcm) payload.dcm = parseInt(barcodeDcm, 10);
       }
 
-      const result = await apiProductionLogTwoDoor(token, payload);
+      const result = await productionLogTwoDoor(payload).unwrap();
 
       // Batch writes accept partially — some pieces logged, others blocked.
       // Always record local stage completion for whichever pieces the backend
@@ -893,7 +896,7 @@ export default function BarcodeDoorSection({
     }
   };
 
-   return (
+  return (
     <BarcodeDoorForm
       setErrorMsg={setErrorMsg}
       barcodeStage={barcodeStage}
@@ -954,5 +957,5 @@ export default function BarcodeDoorSection({
   );
 }
 
-  
+
 

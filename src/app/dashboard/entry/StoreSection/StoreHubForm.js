@@ -4,7 +4,7 @@
 // calls of its own; every value and handler here is passed in as a prop
 // from ./StoreHubSection.js.
 
- "use client";
+"use client";
 import {
   Lock,
   CheckCircle2,
@@ -22,7 +22,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { CameraScannerModal, WorkerPickerDropdown } from "../shared";
-import { AccessoryKitCard, KitStatusMini } from "../AccessoriesSpec";
+import { AccessoryKitCard, KitStatusMini } from "../AccessorySection/AccessoriesSpec";
 import StoreNotCheckedInModal from "./StoreNotCheckedInModal";
 
 // Extracted from StoreHubSection.js (the full return-JSX). Pure
@@ -92,9 +92,8 @@ export default function StoreHubForm({
   toggleDrawerSelection,
   handleBatchSendDrawers,
   handleRefreshDrawers,
-}) 
-{
- return (
+}) {
+  return (
     <>
       {cameraScanTarget === "store" && (
         <CameraScannerModal
@@ -246,12 +245,12 @@ export default function StoreHubForm({
             </div>
           )}
         </div>
-<StoreNotCheckedInModal
-  mounted={mounted}
-  barcodeNotCheckedInModal={barcodeNotCheckedInModal}
-  setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal}
-  workerInputRef={workerInputRef}
-/>
+        <StoreNotCheckedInModal
+          mounted={mounted}
+          barcodeNotCheckedInModal={barcodeNotCheckedInModal}
+          setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal}
+          workerInputRef={workerInputRef}
+        />
 
 
         {/* Header & Metrics */}
@@ -349,18 +348,16 @@ export default function StoreHubForm({
                     other side's expected code (from the already-loaded
                     drawers list) as a reference to verify against. */}
               <div
-                className={`p-3 rounded-xl border-2 flex items-center gap-3 transition-all ${
-                  !storeDrawerInput && !storePieceInput
+                className={`p-3 rounded-xl border-2 flex items-center gap-3 transition-all ${!storeDrawerInput && !storePieceInput
                     ? "bg-amber-50 border-amber-300"
                     : "bg-emerald-50 border-emerald-300"
-                }`}
+                  }`}
               >
                 <div
-                  className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-lg ${
-                    !storeDrawerInput && !storePieceInput
+                  className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 text-lg ${!storeDrawerInput && !storePieceInput
                       ? "bg-amber-100"
                       : "bg-emerald-100"
-                  }`}
+                    }`}
                 >
                   {!storeDrawerInput && !storePieceInput ? "📦" : "🏷️"}
                 </div>
@@ -486,11 +483,10 @@ export default function StoreHubForm({
               <div className="flex flex-col sm:flex-row items-stretch gap-3">
                 {/* Drawer Slot Badge */}
                 <div
-                  className={`flex-1 p-3.5 rounded-2xl border-2 flex flex-col justify-between gap-1 transition-all ${
-                    storeDrawerInput
+                  className={`flex-1 p-3.5 rounded-2xl border-2 flex flex-col justify-between gap-1 transition-all ${storeDrawerInput
                       ? "bg-emerald-50/90 border-emerald-300 text-emerald-900 shadow-sm"
                       : "bg-slate-50 border-slate-200 text-slate-400"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
@@ -535,11 +531,10 @@ export default function StoreHubForm({
 
                 {/* Piece Slot Badge */}
                 <div
-                  className={`flex-1 p-3.5 rounded-2xl border-2 flex flex-col justify-between gap-1 transition-all ${
-                    storePieceInput
+                  className={`flex-1 p-3.5 rounded-2xl border-2 flex flex-col justify-between gap-1 transition-all ${storePieceInput
                       ? "bg-emerald-50/90 border-emerald-300 text-emerald-900 shadow-sm"
                       : "bg-slate-50 border-slate-200 text-slate-400"
-                  }`}
+                    }`}
                 >
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
@@ -635,10 +630,10 @@ export default function StoreHubForm({
                       {storeVerifyResult.state
                         ?.toLowerCase()
                         .includes("leather") ||
-                      storeVerifyResult.state?.toLowerCase().includes("both") ||
-                      storeVerifyResult.holding
-                        ?.toLowerCase()
-                        .includes("leather") ? (
+                        storeVerifyResult.state?.toLowerCase().includes("both") ||
+                        storeVerifyResult.holding
+                          ?.toLowerCase()
+                          .includes("leather") ? (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 text-amber-800 text-xs font-black rounded-xl">
                           ✅ Leather Piece — Confirmed
                         </span>
@@ -647,10 +642,10 @@ export default function StoreHubForm({
                       {storeVerifyResult.state
                         ?.toLowerCase()
                         .includes("lining") ||
-                      storeVerifyResult.state?.toLowerCase().includes("both") ||
-                      storeVerifyResult.holding
-                        ?.toLowerCase()
-                        .includes("lining") ? (
+                        storeVerifyResult.state?.toLowerCase().includes("both") ||
+                        storeVerifyResult.holding
+                          ?.toLowerCase()
+                          .includes("lining") ? (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-800 text-xs font-black rounded-xl">
                           ✅ Lining Piece — Confirmed
                         </span>
@@ -711,10 +706,10 @@ export default function StoreHubForm({
                       const reason =
                         storeVerifyResult?.can_send === false
                           ? storeVerifyResult?.lining_reason ||
-                            (Array.isArray(storeVerifyResult?.awaiting) &&
+                          (Array.isArray(storeVerifyResult?.awaiting) &&
                             storeVerifyResult.awaiting.length > 0
-                              ? `Waiting on: ${storeVerifyResult.awaiting.join(", ")}`
-                              : "Not ready to send yet.")
+                            ? `Waiting on: ${storeVerifyResult.awaiting.join(", ")}`
+                            : "Not ready to send yet.")
                           : kitNotReady
                             ? "Accessory kit not issued yet — issue it from the drawer card below before sending."
                             : "";
@@ -931,11 +926,10 @@ export default function StoreHubForm({
                               e.stopPropagation();
                               toggleDrawerSelection(drawer.id);
                             }}
-                            className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center mr-2 sm:mr-3 mt-0.5 sm:mt-0 transition-all ${
-                              isChecked
+                            className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center mr-2 sm:mr-3 mt-0.5 sm:mt-0 transition-all ${isChecked
                                 ? "bg-indigo-600 border-indigo-600 text-white"
                                 : "border-slate-300 bg-white hover:border-indigo-400"
-                            }`}
+                              }`}
                           >
                             {isChecked && <Check className="w-3 h-3" />}
                           </button>
@@ -947,15 +941,14 @@ export default function StoreHubForm({
                           >
                             <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                               <div
-                                className={`w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl flex items-center justify-center font-bold text-[10px] sm:text-xs shadow-sm ${
-                                  drawer.type === "Both"
+                                className={`w-9 h-9 sm:w-10 sm:h-10 shrink-0 rounded-xl flex items-center justify-center font-bold text-[10px] sm:text-xs shadow-sm ${drawer.type === "Both"
                                     ? "bg-purple-100 text-purple-700"
                                     : drawer.type === "Leather"
                                       ? "bg-amber-100 text-amber-700"
                                       : drawer.type === "Lining"
                                         ? "bg-blue-100 text-blue-700"
                                         : "bg-emerald-100 text-emerald-700"
-                                }`}
+                                  }`}
                               >
                                 {drawer.id.replace("DRW-", "")}
                               </div>
@@ -971,10 +964,10 @@ export default function StoreHubForm({
                                       drawer.style?.includes(sku) ||
                                       drawer.client?.includes(sku),
                                   ) && (
-                                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                                      ✓ Sent to Stitching
-                                    </span>
-                                  )}
+                                      <span className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                                        ✓ Sent to Stitching
+                                      </span>
+                                    )}
                                 </div>
                                 <div className="text-xs font-bold text-slate-500 mt-0.5 truncate">
                                   {drawer.client !== "-"
@@ -985,8 +978,7 @@ export default function StoreHubForm({
                             </div>
                             <div className="flex items-center gap-3 sm:gap-4 ml-[3rem] sm:ml-0 shrink-0">
                               <span
-                                className={`px-2.5 py-1 rounded-md text-[10px] font-black tracking-wide uppercase border ${
-                                  drawer.type === "Empty"
+                                className={`px-2.5 py-1 rounded-md text-[10px] font-black tracking-wide uppercase border ${drawer.type === "Empty"
                                     ? "bg-slate-200 text-slate-600 border-slate-300"
                                     : drawer.type === "Both"
                                       ? "bg-purple-600 text-white border-purple-700 shadow-sm"
@@ -995,7 +987,7 @@ export default function StoreHubForm({
                                         : drawer.type === "Lining"
                                           ? "bg-blue-600 text-white border-blue-700 shadow-sm"
                                           : "bg-[#c8834a] text-white border-[#b06f36] shadow-sm"
-                                }`}
+                                  }`}
                               >
                                 {drawer.type}
                               </span>
@@ -1185,10 +1177,10 @@ export default function StoreHubForm({
                                               const sameDrawer =
                                                 (prev.drawer_id &&
                                                   prev.drawer_id ===
-                                                    drawer.drawer_id) ||
+                                                  drawer.drawer_id) ||
                                                 (prev.drawer_code &&
                                                   prev.drawer_code ===
-                                                    drawer.id);
+                                                  drawer.id);
                                               if (!sameDrawer) return prev;
                                               return {
                                                 ...prev,

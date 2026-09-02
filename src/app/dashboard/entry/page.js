@@ -11,12 +11,14 @@ import {
   setMessages, setBarcodeWorker as reduxSetBarcodeWorker, 
   setBarcodeStage as reduxSetBarcodeStage,  setLotDetails 
 } from '@/store/slices/entrySlice';
-
+import {
+  useLazyBarcodeResolveQuery,
+  useLazyGetBarcodeOrdersQuery
+} from "@/store/slices/apiSlice";
 import {
   apiImportPreview,
   apiImportCommit,
-  apiGetBarcodeOrders,
-  apiBarcodeResolve,
+
 } from "@/lib/api";
 import {
   Lock,
@@ -224,6 +226,9 @@ export default function ProductionLogEntry() {
   //       : "manual",
   // );
     const dispatch = useDispatch();
+      const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
+  const [triggerGetBarcodeOrders] = useLazyGetBarcodeOrdersQuery();
+
   const date = useSelector(state => state.entry.date);
   const activeDoor = useSelector(state => state.entry.activeDoor);
 
@@ -362,7 +367,7 @@ export default function ProductionLogEntry() {
       // directly instead of only trusting this local guess.
       if (!matchedWorker) {
         try {
-          const resolved = await apiBarcodeResolve(token, query);
+          const resolved = await triggerBarcodeResolve(query).unwrap();
           if (resolved?.type === "EMPLOYEE" && resolved.employee?.id) {
             const byId = workers.find(
               (w) => String(w.id) === String(resolved.employee.id),
@@ -532,7 +537,7 @@ export default function ProductionLogEntry() {
   useEffect(() => {
     if (activeDoor !== "breakdown" || selectedBreakdownOrder || !token) return;
     setBreakdownOrdersLoading(true);
-    apiGetBarcodeOrders(token)
+    triggerGetBarcodeOrders().unwrap()
       .then((data) =>
         setBreakdownOrders(Array.isArray(data) ? data : data?.items || []),
       )

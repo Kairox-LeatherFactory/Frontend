@@ -13,7 +13,7 @@ import {
   apiGrowDrawerPool,
   apiAllocateWaitingDrawers,
 } from '@/lib/api';
-import { StyleAccessoriesPanel } from '../entry/AccessoriesSpec';
+import { StyleAccessoriesPanel } from '../entry/AccessorySection/AccessoriesSpec';
 import {
   Search, Lock, Loader2, Package, CheckCircle2, XCircle, AlertTriangle,
   Trash2, Save, Rocket, Ban, Boxes, RefreshCw, X, Barcode as BarcodeIcon, ArrowLeft,
