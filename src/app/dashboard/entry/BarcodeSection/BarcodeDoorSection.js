@@ -643,13 +643,13 @@ export default function BarcodeDoorSection({
       // worker can log it right now (ready_to_log), and per-item blockers[].
       // Per API docs: NEVER choose a stage on the client side — let next_stage drive it.
       try {
-        const pieceState = await apiGetPieceState(token, {
+        const pieceState = await triggerGetPieceState({
           code,
           employee_barcode:
             barcodeWorker?.employee_barcode ||
             barcodeWorker?.barcode ||
             barcodeWorker?.id,
-        });
+        }).unwrap();
 
         // Pull drawer info from the response (piece.drawer or top-level drawer)
         const piece = pieceState?.piece || {};

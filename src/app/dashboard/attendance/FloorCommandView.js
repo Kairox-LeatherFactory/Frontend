@@ -204,10 +204,7 @@ const response = await scanCheckInApi(payload).unwrap();
  daily_rate: daily_rate ? parseFloat(daily_rate) : null,
  };
 await addEmployeeApi(payload).unwrap();
-//  await apiFetch(`/api/v1/employees`, {
-//  method: 'POST',
-//  body: JSON.stringify(payload),
-//  }, token);
+
 
  showAlert('success', `Worker "${name}" onboarded to floor roster.`);
  setAddModal(false);
@@ -249,12 +246,6 @@ await addEmployeeApi(payload).unwrap();
  setActionLoading(true);
  try {
  const requestedIds = [...selected];
-
-//  const endpoint = type === 'check-in' ? `${API}/proxy/check-in` : `${API}/proxy/check-out`;
-//  const result = await apiFetch(endpoint, {
-//  method: 'POST',
-//  body: JSON.stringify({ employee_ids: requestedIds }),
-//  }, token);
 const payload = { employee_ids: requestedIds };
 const result = type === 'check-in' 
   ? await proxyCheckInApi(payload).unwrap()

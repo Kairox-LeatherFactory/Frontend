@@ -4,18 +4,14 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Activity, Filter, CheckCircle2, RefreshCw, Loader2, Users, Settings, Clock } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { motion } from 'framer-motion';
-import { API, apiFetch, AlertBanner, Badge, fmtTime, fmtDist, Paginator } from './shared';
-import { useGetAttendanceTodayQuery, useGetAttendanceConfigQuery } from '@/store/slices/apiSlice';
+import { AlertBanner, Badge, fmtTime, fmtDist, Paginator } from './shared';
+import { useGetAttendanceTodayQuery, useGetAttendanceConfigQuery,useUpdateAttendanceConfigMutation } from '@/store/slices/apiSlice';
 
 export default function OperationsHRView({ token }) {
-//  const [roster, setRoster] = useState([]);
-//  const [rosterLoading, setRosterLoading] = useState(true);
-//  // const [config, setConfig] = useState(null);
-//  const [configLoading, setConfigLoading] = useState(true);
-
-
  const [configForm, setConfigForm] = useState({});
  const [configSaving, setConfigSaving] = useState(false);
+ const [updateConfig] = useUpdateAttendanceConfigMutation();
+
  const [alert, setAlert] = useState(null);
  const [page, setPage] = useState(1);
  const [filter, setFilter] = useState('all');
@@ -24,9 +20,7 @@ export default function OperationsHRView({ token }) {
    // --- RTK QUERY HOOKS ---
   const { data: roster = [], isLoading: rosterLoading, refetch: refetchRoster } = useGetAttendanceTodayQuery();
   const { data: configData, isLoading: configLoading } = useGetAttendanceConfigQuery();
-
-
-  useEffect(() => {
+   useEffect(() => {
     if (configData) {
       setConfigForm({
         shift_start: configData.shift_start,
@@ -35,9 +29,7 @@ export default function OperationsHRView({ token }) {
       });
     }
   }, [configData]);
-
-
- const showAlert = (type, message) => {
+const showAlert = (type, message) => {
  setAlert({ type, message });
  if (type === 'success') setTimeout(() => setAlert(null), 5000);
  };
@@ -48,45 +40,7 @@ export default function OperationsHRView({ token }) {
  document.addEventListener('mousedown', close);
  return () => document.removeEventListener('mousedown', close);
  }, [filterOpen]);
-
-//  const fetchRoster = useCallback(async () => {
-//  setRosterLoading(true);
-//  try {
-//  const data = await apiFetch(`${API}/today`, {}, token);
-//  setRoster(data);
-//  } catch {
-//  showAlert('error', "Failed to load today's roster.");
-//  } finally {
-//  setRosterLoading(false);
-//  }
-//  }, [token]);
-
-//  const fetchConfig = useCallback(async () => {
-//  setConfigLoading(true);
-//  try {
-//  const data = await apiFetch(`${API}/config`, {}, token);
-//  //setConfig(data);
-//  setConfigForm({
-//  shift_start: data.shift_start,
-//  shift_length_hours: data.shift_length_hours,
-//  late_grace_minutes: data.late_grace_minutes,
-//  // Geofence Parameters — commented out so attendance can be configured
-//  // and marked without requiring factory lat/lon/radius. Re-enable by
-//  // uncommenting these fields alongside the JSX block further below.
-//  // factory_lat: data.factory_lat,
-//  // factory_lon: data.factory_lon,
-//  // radius_m: data.radius_m,
-//  });
-//  } catch {
-//  showAlert('error', 'Failed to load shift configuration.');
-//  } finally {
-//  setConfigLoading(false);
-//  }
-//  }, [token]);
-
-//  useEffect(() => { fetchRoster(); fetchConfig(); }, [fetchRoster, fetchConfig]);
-
- const handleSaveConfig = async () => {
+const handleSaveConfig = async () => {
  const timeRegex = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
  if (!timeRegex.test(configForm.shift_start || '')) {
  showAlert('error', 'Shift start must be strict HH:MM 24-hour format (e.g. 09:00, 14:30).');
@@ -100,8 +54,8 @@ export default function OperationsHRView({ token }) {
  late_grace_minutes: parseInt(configForm.late_grace_minutes, 10),
 
  };
-// const updated = await apiFetch(`${API}/config`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
- //setConfig(updated);
+ await updateConfig(payload).unwrap();
+
  showAlert('success', 'Shift & geofence configuration saved successfully.');
  } catch (e) {
  showAlert('error', e.message || 'Failed to save configuration.');

@@ -18,11 +18,7 @@ export default function MyAttendanceView({ token }) {
  const isManagingDirector = user === 'managing_director';
  const isFloorManager = user === 'stitching_manager' || user === 'cutting_manager' || user === 'lining_manager';
 
-//  const [status, setStatus] = useState(null);
-//  const [history, setHistory] = useState([]);
-//  const [statusLoading, setStatusLoading] = useState(true);
-//   const [histLoading, setHistLoading] = useState(true);
-//   const [actionLoading, setActionLoading] = useState(false);
+
  const [startDate, setStartDate] = useState(() => {
  const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0];
  });
@@ -58,23 +54,6 @@ export default function MyAttendanceView({ token }) {
  if (type === 'success') setTimeout(() => setAlert(null), 5000);
  };
 
-//  const fetchStatus = useCallback(async () => {
-//  try {
-//  const data = await apiFetch(`${API}/me/status`, {}, token);
-//  setStatus(data);
-//  if (data.remaining_seconds != null && data.checked_in && !data.checked_out) {
-//  setCountdown(data.remaining_seconds);
-//  } else {
-//  setCountdown(null);
-//  }
-//  } catch (e) {
-//  console.error('Status fetch failed:', e.message);
-//  setStatus(null);
-//  setCountdown(null);
-//  } finally {
-//  setStatusLoading(false);
-//  }
-//  }, [token]);
 
   const handleCheckIn = async () => {
     try {
@@ -94,65 +73,6 @@ export default function MyAttendanceView({ token }) {
       showAlert('error', e.data?.message || e.data?.detail || 'Check-out failed.');
     }
   };
-
-//  const fetchHistory = useCallback(async () => {
-//  setHistLoading(true);
-//  try {
-//  const data = await apiFetch(`${API}/me?start=${startDate}&end=${endDate}`, {}, token);
-//  setHistory([...data].reverse());
-//  } catch (e) {
-//  showAlert('error', e.message || 'Failed to load history.');
-//  } finally {
-//  setHistLoading(false);
-//  }
-//  }, [startDate, endDate, token]);
-
-//  useEffect(() => { fetchStatus(); }, [fetchStatus]);
-//  useEffect(() => { fetchHistory(); setPage(1); }, [fetchHistory]);
-
-//  useEffect(() => {
-//  if (intervalRef.current) clearInterval(intervalRef.current);
-//  if (status?.remaining_seconds == null || status?.checked_out) return;
-//  intervalRef.current = setInterval(() => {
-//  setCountdown((prev) => {
-//  if (prev == null || prev <= 0) { clearInterval(intervalRef.current); return 0; }
-//  return prev - 1;
-//  });
-//  }, 1000);
-//  return () => clearInterval(intervalRef.current);
-//  }, [status]);
-
-//  const handleCheckIn = async () => {
-//  setActionLoading(true);
-//  try {
-//  await apiFetch(`${API}/check-in`, { method: 'POST', body: JSON.stringify({}) }, token);
-//  showAlert('success', 'Checked in successfully!');
-//  await fetchStatus();
-//  await fetchHistory();
-//  } catch (e) {
-//  if (e.status === 403) showAlert('error', `Check-in denied: ${e.message}`);
-//  else showAlert('error', typeof e === 'string' ? e : e.message || 'Check-in failed.');
-//  } finally {
-//  setActionLoading(false);
-//  }
-//  };
-
-//  const handleCheckOut = async () => {
-//  setActionLoading(true);
-//  try {
-//  await apiFetch(`${API}/check-out`, { method: 'POST', body: JSON.stringify({}) }, token);
-//  showAlert('success', 'Checked out. Shift complete!');
-//  clearInterval(intervalRef.current);
-//  await fetchStatus();
-//  await fetchHistory();
-//  } catch (e) {
-//  if (e.status === 403) showAlert('error', `Check-out denied: ${e.message}`);
-//  else showAlert('error', typeof e === 'string' ? e : e.message || 'Check-out failed.');
-//  } finally {
-//  setActionLoading(false);
-//  }
-//  };
-
  const paginated = useMemo(() => history.slice((page - 1) * PER_PAGE, page * PER_PAGE), [history, page]);
  const totalPages = Math.ceil(history.length / PER_PAGE);
  const checkedIn = status?.checked_in ?? false;

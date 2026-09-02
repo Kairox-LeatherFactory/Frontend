@@ -63,6 +63,13 @@ export const apiSlice = createApi({
       query: () => '/api/v1/attendance/config',
  
     }),
+    updateAttendanceConfig: builder.mutation({
+      query: (body) => ({
+        url: '/api/v1/attendance/config',
+        method: 'PATCH',
+        body,
+      }),
+    }),
     // 8. Floor Command Barcode Scan Check-In
     scanCheckIn: builder.mutation({
       query: (payload) => ({
@@ -286,6 +293,7 @@ export const {
   useGetEmployeesQuery,
   useGetAttendanceTodayQuery,
   useGetAttendanceConfigQuery,
+  useUpdateAttendanceConfigMutation,
   useScanCheckInMutation,
   useAddEmployeeMutation,
   useProxyCheckInMutation,

@@ -10,7 +10,7 @@ import { useGetEmployeesQuery } from '@/store/slices/apiSlice';
 
 import { motion} from 'framer-motion';
 import {
-    apiFetch,
+   
   LockedView, EmployeesListView, AttendanceHistoryView,
 } from './shared';
 import MyAttendanceView from './MyAttendanceView';
@@ -82,20 +82,7 @@ export default function AttendancePage() {
  }
  }, [tabs, activeTab]);
 
-  // useEffect(() => {
-  //   if (!hasMounted) return;
-  //   const timer = setTimeout(() => {
-  //     if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
-  //       apiFetch('/api/v1/employees', {}, token)
-  //         .then(data => dispatch(setWorkers(data))) // REDUX UPDATE!
-  //         .catch(() => { });
-  //     }
-  //   }, 100);
-  //   return () => clearTimeout(timer);
-  // }, [activeTab, token, workerRefreshKey, hasMounted, dispatch]);
-
-
- if (!hasMounted) {
+if (!hasMounted) {
  return (
  <div className="w-full py-20 flex items-center justify-center bg-[#faf6f0]">
  <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
