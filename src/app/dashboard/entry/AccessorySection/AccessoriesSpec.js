@@ -8,9 +8,6 @@ import {
 import {
   useLazyGetStyleMaterialSpecQuery,
   usePutStyleMaterialSpecMutation,
-  useAddStyleMaterialSpecLineMutation,
-  usePatchStyleMaterialSpecLineMutation,
-  useDeleteStyleMaterialSpecLineMutation,
   useConfirmStyleMaterialSpecMutation,
   useCopyStyleMaterialSpecMutation,
   useLazyGetStyleMaterialRequirementQuery,
@@ -39,9 +36,6 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
 
   const [triggerGetStyleMaterialSpec] = useLazyGetStyleMaterialSpecQuery();
   const [putStyleMaterialSpec] = usePutStyleMaterialSpecMutation();
-  const [addStyleMaterialSpecLine] = useAddStyleMaterialSpecLineMutation();
-  const [patchStyleMaterialSpecLine] = usePatchStyleMaterialSpecLineMutation();
-  const [deleteStyleMaterialSpecLine] = useDeleteStyleMaterialSpecLineMutation();
   const [confirmStyleMaterialSpec] = useConfirmStyleMaterialSpecMutation();
   const [copyStyleMaterialSpec] = useCopyStyleMaterialSpecMutation();
   const [triggerGetStyleMaterialRequirement] = useLazyGetStyleMaterialRequirementQuery();

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Loader2, Plus } from 'lucide-react';
-import { apiGetMaterialLots,  } from '@/lib/api';
+import { useLazyGetMaterialLotsQuery, useAddStyleMaterialSpecLineMutation } from '@/store/slices/apiSlice';
+
 import MaterialSpecLine from './MaterialSpecLine';
 import ScreenSafeSelect from './ScreenSafeSelect';
 export default function MaterialCategorySection({
@@ -13,6 +14,8 @@ export default function MaterialCategorySection({
   const [lots, setLots] = useState([]);
   const [lotsLoading, setLotsLoading] = useState(false);
   const [selectedLotId, setSelectedLotId] = useState('__custom__');
+const [triggerGetMaterialLots] = useLazyGetMaterialLotsQuery();
+const [addStyleMaterialSpecLine] = useAddStyleMaterialSpecLineMutation();
 
   const resetForm = () => { setForm(defaultForm); setSelectedLotId('__custom__'); };
 
@@ -21,11 +24,12 @@ export default function MaterialCategorySection({
   useEffect(() => {
     if (!showForm || !token || minimalFields) return;
     setLotsLoading(true);
-    apiGetMaterialLots(token, { category, subtype: activeSubtype })
+    triggerGetMaterialLots({ category, subtype: activeSubtype }).unwrap()
       .then((res) => setLots(res?.lots || []))
       .catch(() => setLots([]))
       .finally(() => setLotsLoading(false));
-  }, [showForm, token, category, activeSubtype, minimalFields]);
+
+  }, [showForm,category, activeSubtype, minimalFields]);
 
   const handleLotPick = (lotId) => {
     setSelectedLotId(lotId);

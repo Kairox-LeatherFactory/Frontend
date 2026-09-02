@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { usePatchStyleMaterialSpecLineMutation, useDeleteStyleMaterialSpecLineMutation } from '@/store/slices/apiSlice';
 import { Loader2, Save, Trash2 } from 'lucide-react';
-import { apiPatchStyleMaterialSpecLine, apiDeleteStyleMaterialSpecLine } from '@/lib/api';
+
 export default function MaterialSpecLine({ line, styleId, token, showToast, canEdit, onChanged, pieceCount }) {
     const [editing, setEditing] = useState(false);
     const [article, setArticle] = useState(line.article || '');
@@ -11,6 +11,8 @@ export default function MaterialSpecLine({ line, styleId, token, showToast, canE
     const [qty, setQty] = useState(line.qty_per_piece ?? '');
     const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(false);
+const [patchStyleMaterialSpecLine] = usePatchStyleMaterialSpecLineMutation();
+const [deleteStyleMaterialSpecLine] = useDeleteStyleMaterialSpecLineMutation();
 
 
     const usesThickness = line.category === 'LEATHER' || line.category === 'LINING';
