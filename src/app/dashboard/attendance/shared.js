@@ -265,7 +265,7 @@ export function EmployeesListView({ workers = [] }) {
   );
 }
 
-export function AttendanceHistoryView({ token }) {
+export function AttendanceHistoryView() {
   const { data: rosterDataRaw = [], isLoading: loading } = useGetAttendanceTodayQuery();
   const history = useMemo(() => normalizeRosterArray(rosterDataRaw), [rosterDataRaw]);
 

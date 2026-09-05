@@ -16,6 +16,13 @@ export const apiSlice = createApi({
   tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece', 'Drawer', 'DrawerPool', 'DrawerList', 'AccessorySpec', 'AccessoryRequirement'], // Caching Labels
   
   endpoints: (builder) => ({
+    login:builder.mutation({
+    query: (credentials) => ({
+        url: '/api/v1/auth/login',
+        method: 'POST',
+        body: credentials,
+      }),
+    }),
     // 1. Get My Status
     getMyStatus: builder.query({
       query: () => '/api/v1/attendance/me/status',
@@ -35,7 +42,7 @@ export const apiSlice = createApi({
         method: 'POST',
         body: {}
       }),
-      invalidatesTags: ['Attendance'] // Check-in aana udane mela ulla 1 & 2 ah thirumba fetch panna sollum (Auto-refresh)
+      invalidatesTags: ['Attendance'],
     }),
 
     // 4. Self Check-Out
@@ -131,10 +138,18 @@ export const apiSlice = createApi({
       query: () => '/api/v1/production/skus',
       providesTags: ['SKU']
     }),
-    getSkuPieces: builder.query({
-      query: (skuId) => `/api/v1/production/skus/${encodeURIComponent(skuId)}/pieces`,
+      getSkuPieces: builder.query({
+      query: (arg) => {
+        const skuId = typeof arg === 'object' ? arg.skuId : arg;
+        const operationId = typeof arg === 'object' ? arg.operationId : null;
+        let url = `/api/v1/production/skus/${encodeURIComponent(skuId)}/pieces`;
+        if (operationId) url += `?operation_id=${encodeURIComponent(operationId)}`;
+        return url;
+      },
       providesTags: ['Piece']
     }),
+
+
     getMaterialLots: builder.query({
       query: (params = {}) => {
         const query = new URLSearchParams();
@@ -286,12 +301,14 @@ export const apiSlice = createApi({
 
 // React Hooks auto-generated!
 export const { 
+  useLoginMutation,
   useGetMyStatusQuery, 
   useGetMyHistoryQuery, 
   useCheckInMutation, 
   useCheckOutMutation,
   useGetEmployeesQuery,
   useGetAttendanceTodayQuery,
+  useLazyGetAttendanceTodayQuery,
   useGetAttendanceConfigQuery,
   useUpdateAttendanceConfigMutation,
   useScanCheckInMutation,

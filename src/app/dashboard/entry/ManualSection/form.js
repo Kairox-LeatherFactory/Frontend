@@ -724,7 +724,7 @@ export default function ManualDoorForm({
               disabled={
                 isSavingCutting ||
                 checklistSubmitting ||
-                ((selectedStage === "Cutting" || selectedStage === "Lining") &&
+                (selectedStage === "Cutting" &&
                   (lotResults.length !== 1 ||
                     lotResults[0].covers_required === false))
               }

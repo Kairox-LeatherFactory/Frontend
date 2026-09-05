@@ -1,13 +1,13 @@
 // operation and hr view code
 'use client';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect,useMemo } from 'react';
 import { Activity, Filter, CheckCircle2, RefreshCw, Loader2, Users, Settings, Clock } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { motion } from 'framer-motion';
 import { AlertBanner, Badge, fmtTime, fmtDist, Paginator } from './shared';
 import { useGetAttendanceTodayQuery, useGetAttendanceConfigQuery,useUpdateAttendanceConfigMutation } from '@/store/slices/apiSlice';
 
-export default function OperationsHRView({ token }) {
+export default function OperationsHRView() {
  const [configForm, setConfigForm] = useState({});
  const [configSaving, setConfigSaving] = useState(false);
  const [updateConfig] = useUpdateAttendanceConfigMutation();

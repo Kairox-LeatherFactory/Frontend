@@ -31,7 +31,6 @@ import {
   Waypoints,
   Shirt,
   Boxes,
-  ChevronDown,
   Package,
 } from 'lucide-react';
 
@@ -685,20 +684,6 @@ export default function DashboardLayout({ children }) {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* ================================================
-            PAGE CONTENT
-
-            IMPORTANT:
-            No artificial loading state.
-            No MutationObserver.
-            No forced repaint.
-            No display:none.
-            No translateZ hack — `transform-gpu` does the same GPU-layer
-            promotion under a different name and was the original suspect
-            for the mobile stuck-paint bug, so it stays off too.
-            ================================================ */}
-
         <main
           className="flex-1 p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full min-h-screen lg:min-h-0 overflow-y-auto z-0 mx-auto relative"
           style={{ background: '#faf6f0' }}

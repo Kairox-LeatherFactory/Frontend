@@ -1,11 +1,11 @@
 // attendance view and check in and checkout logic code
 'use client';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
 import { Timer, Loader2, LogIn, LogOut, Clock, Zap, CalendarDays } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { motion } from 'framer-motion';
-import { API, apiFetch, AlertBanner, padTime, fmtTime, Badge, fmtDate, fmtDist, Paginator } from './shared';
+import {AlertBanner, padTime, fmtTime, Badge, fmtDate, fmtDist, Paginator } from './shared';
 import { 
   useGetMyStatusQuery, 
   useGetMyHistoryQuery, 
@@ -13,7 +13,7 @@ import {
   useCheckOutMutation 
 } from '@/store/slices/apiSlice';
 
-export default function MyAttendanceView({ token }) {
+export default function MyAttendanceView() {
    const user = useSelector(state => state.auth.user);
  const isManagingDirector = user === 'managing_director';
  const isFloorManager = user === 'stitching_manager' || user === 'cutting_manager' || user === 'lining_manager';

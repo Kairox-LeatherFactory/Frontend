@@ -213,8 +213,7 @@ export default function ProductionLogEntry() {
 
  // const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [storeSendedSkus, setStoreSendedSkus] = useState([]);
-  // const [successMsg, setSuccessMsg] = useState("");
-  // const [errorMsg, setErrorMsg] = useState("");
+
   const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'sku' | 'worker'
   // Lets a "Back to Breakdown Review" link elsewhere (imports/page.js) land
   // directly on this tab via /dashboard/entry?door=breakdown.

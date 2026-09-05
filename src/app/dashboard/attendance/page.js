@@ -27,7 +27,7 @@ export default function AttendancePage() {
  setHasMounted(true);
  }, []);
 
- const { user, token } = useSelector(state => state.auth); 
+ const { user} = useSelector(state => state.auth); 
  const isManager = user === 'direct_manager' || user === 'managing_director' || user === 'hr';
  const isSupervisor = isManager;
  const isSecurity = user === 'security';
@@ -54,7 +54,7 @@ export default function AttendancePage() {
     // --- RTK QUERY HOOKS ---
   const shouldFetchEmployees = activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees';
   const { data: employeesData } = useGetEmployeesQuery(undefined, { skip: !shouldFetchEmployees });
-
+console.log(employeesData,"employeesData",shouldFetchEmployees)
   useEffect(() => {
     if (employeesData) {
       dispatch(setWorkers(employeesData));
@@ -117,25 +117,26 @@ if (!hasMounted) {
  })}
  </div>
 
- <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
- {activeTab === 'me' ? (
- !isSecurity ? <MyAttendanceView token={token} /> : <LockedView title="Restricted" description="Access denied" />
- ) : activeTab === 'employees' ? (
- isSecurity ? <EmployeesListView workers={workers} /> : <LockedView title="Restricted" description="Access denied" />
- ) : activeTab === 'history' ? (
- isSecurity ? <AttendanceHistoryView token={token} /> : <LockedView title="Restricted" description="Access denied" />
- ) : activeTab === 'proxy' ? (
- (isSupervisor || isSecurity)
- ? <FloorCommandView workers={workers} token={token} onWorkerAdded={refreshWorkers} isSecurity={isSecurity} />
- : <LockedView title="Authorization Required" description="Floor Command is restricted." />
- ) : activeTab === 'admin' ? (
- (isManager && !isSecurity)
- ? <OperationsHRView token={token} />
- : <LockedView title="Direct Manager Authorization Required" description="Operations & HR is restricted to Direct Managers only." />
- ) : (
- <LockedView title="Loading State" description="Preparing module..." />
- )}
- </div>
+   <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+    {activeTab === 'me' ? (
+      !isSecurity ? <MyAttendanceView /> : <LockedView title="Restricted" description="Access denied" />
+    ) : activeTab === 'employees' ? (
+      isSecurity ? <EmployeesListView workers={workers} /> : <LockedView title="Restricted" description="Access denied" />
+    ) : activeTab === 'history' ? (
+      isSecurity ? <AttendanceHistoryView /> : <LockedView title="Restricted" description="Access denied" />
+    ) : activeTab === 'proxy' ? (
+      (isSupervisor || isSecurity)
+        ? <FloorCommandView workers={workers} onWorkerAdded={refreshWorkers} isSecurity={isSecurity} />
+        : <LockedView title="Authorization Required" description="Floor Command is restricted." />
+    ) : activeTab === 'admin' ? (
+      (isManager && !isSecurity)
+        ? <OperationsHRView />
+        : <LockedView title="Direct Manager Authorization Required" description="Operations & HR is restricted to Direct Managers only." />
+    ) : (
+      <LockedView title="Loading State" description="Preparing module..." />
+    )}
+  </div>
+
  </div>
  );
 }

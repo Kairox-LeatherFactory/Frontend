@@ -8,7 +8,7 @@ import {
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { motion } from 'framer-motion';
-import { CameraScanner, API, apiFetch, normalizeRosterArray, Badge, AlertBanner } from './shared';
+import { CameraScanner,normalizeRosterArray, Badge, AlertBanner } from './shared';
 import { 
   useGetAttendanceTodayQuery, 
   useScanCheckInMutation, 
@@ -17,7 +17,7 @@ import {
   useProxyCheckOutMutation 
 } from '@/store/slices/apiSlice';
 
-export default function FloorCommandView({ workers = [], token, onWorkerAdded, isSecurity }) {
+export default function FloorCommandView({ workers = [], onWorkerAdded, isSecurity }) {
  const [search, setSearch] = useState('');
  const [selected, setSelected] = useState(new Set());
  const scanLockRef = useRef(false);
@@ -108,10 +108,6 @@ export default function FloorCommandView({ workers = [], token, onWorkerAdded, i
  direction: direction
  };
 
-//  const response = await apiFetch(`${API}/scan-check-in`, {
-//  method: 'POST',
-//  body: JSON.stringify(payload),
-//  }, token);
 const response = await scanCheckInApi(payload).unwrap();
 
  playBeep(1046, 'sine'); // High-pitch scanner gun success sound
