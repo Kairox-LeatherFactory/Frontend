@@ -113,11 +113,11 @@ function AnimatedNavIcon({ isActive, Icon, className }) {
 
 const NAV_ICONS = {
   '/dashboard': ScissorsLineDashed,
-  '/dashboard/direct-manager': Factory,
-  '/dashboard/cutting': ScissorsLineDashed,
-  '/dashboard/lining': Shirt,
-  '/dashboard/stitching': Waypoints,
-  '/dashboard/store': Boxes,
+  '/dashboard/dashboards/dm': Factory,
+  '/dashboard/dashboards/cutting': ScissorsLineDashed,
+  '/dashboard/dashboards/lining': Shirt,
+  '/dashboard/dashboards/stitching': Waypoints,
+  '/dashboard/dashboards/store': Boxes,
   '/dashboard/analytics': BarChart3,
   '/dashboard/entry': ClipboardPen,
   '/dashboard/progress': BarChart3,
@@ -542,10 +542,10 @@ export default function DashboardLayout({ children }) {
               let title = 'Shop Floor Command';
               let subtitle = 'Production, wages, and compliance tracking';
 
-              const isCutting = pathname === '/dashboard/cutting' || (pathname === '/dashboard' && user === 'cutting_manager');
-              const isLining = pathname === '/dashboard/lining' || (pathname === '/dashboard' && user === 'lining_manager');
-              const isStitching = pathname === '/dashboard/stitching' || (pathname === '/dashboard' && user === 'stitching_manager');
-              const isDM = pathname === '/dashboard/direct-manager' || (pathname === '/dashboard' && ['direct_manager', 'managing_director', 'hr'].includes(user));
+              const isCutting = pathname === '/dashboard/dashboards/cutting' || (pathname === '/dashboard' && user === 'cutting_manager');
+              const isLining = pathname === '/dashboard/dashboards/lining' || (pathname === '/dashboard' && user === 'lining_manager');
+              const isStitching = pathname === '/dashboard/dashboards/stitching' || (pathname === '/dashboard' && user === 'stitching_manager');
+              const isDM = pathname === '/dashboard/dashboards/dm' || (pathname === '/dashboard' && ['direct_manager', 'managing_director', 'hr'].includes(user));
 
               if (isLining) {
                 title = 'Lining Floor Operations Dashboard';
