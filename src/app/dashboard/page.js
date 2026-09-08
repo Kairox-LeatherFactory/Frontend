@@ -3,7 +3,6 @@
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import dynamic from 'next/dynamic';
 
 /**
  * ============================================================================
@@ -21,31 +20,11 @@ import dynamic from 'next/dynamic';
  * 3. Handles automatic route redirection for roles like Security.
  */
 
-// Dynamic Lazy Imports for optimal page bundle performance
-const CuttingDashboard = dynamic(() => import('@/app/dashboard/dashboards/cutting/page'), {
-  ssr: false,
-  loading: () => <DashboardLoading title="Cutting Dashboard" />,
-});
-
-const LiningDashboard = dynamic(() => import('@/app/dashboard/dashboards/lining/page'), {
-  ssr: false,
-  loading: () => <DashboardLoading title="Lining Dashboard" />,
-});
-
-const StitchingDashboard = dynamic(() => import('@/app/dashboard/dashboards/stitching/page'), {
-  ssr: false,
-  loading: () => <DashboardLoading title="Stitching Dashboard" />,
-});
-
-const StoreDashboard = dynamic(() => import('@/app/dashboard/dashboards/store/page'), {
-  ssr: false,
-  loading: () => <DashboardLoading title="Store Dashboard" />,
-});
-
-const DirectManagerDashboard = dynamic(() => import('@/app/dashboard/dashboards/dm/page'), {
-  ssr: false,
-  loading: () => <DashboardLoading title="Executive Dashboard" />,
-});
+import CuttingDashboard from '@/app/dashboard/dashboards/cutting/page';
+import LiningDashboard from '@/app/dashboard/dashboards/lining/page';
+import StitchingDashboard from '@/app/dashboard/dashboards/stitching/page';
+import StoreDashboard from '@/app/dashboard/dashboards/store/page';
+import DirectManagerDashboard from '@/app/dashboard/dashboards/dm/page';
 
 // Fallback Spinner UI during dynamic chunk resolution
 function DashboardLoading({ title = 'Dashboard' }) {
