@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight,
-  Plus, Trash2, Save, Copy, Truck, PackageCheck,
+  CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight, Copy, Truck, PackageCheck,
 } from 'lucide-react';
 import {
   useLazyGetStyleMaterialSpecQuery,

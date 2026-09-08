@@ -209,13 +209,6 @@ const [triggerGetPieces] = useLazyGetSkuPiecesQuery();
   }, [workers, workerSearchQuery]);
 
   const currentSelectedWorker = workers.find((w) => w.id === workerId);
-
-  // Barcode Gun Scanner parity: verify attendance check-in the moment a
-  // worker is picked, not only at submit time — same GET /attendance/today
-  // gate as handleVerifyBarcodeWorker, just triggered earlier so the operator
-  // finds out before filling out the rest of the form. Kept alongside (not
-  // instead of) the existing submit-time checks below, since a worker could
-  // still check out in the gap between selecting them and hitting submit.
   const handleSelectWorker = async (w) => {
     setIsWorkerOpen(false);
     setWorkerVerifying(true);
@@ -400,12 +393,6 @@ const [triggerGetPieces] = useLazyGetSkuPiecesQuery();
     try {
       const skuObj = fetchedSkus.find((s) => s.code === skuCode);
       const parsedCount = parseInt(cuttingCount, 10);
-
-      // Duplicate-submit guard (Barcode Gun Scanner parity): apiProductionCutting
-      // always targets piece_seqs [1..count], so submitting a count that's
-      // already covered just re-logs the SAME pieces as backend "rework" —
-      // nothing new gets created. Block it here instead of letting the
-      // operator find out only from a misleading success message.
       if (alreadyCutCount > 0 && parsedCount <= alreadyCutCount) {
         setErrorMsg(
           `⚠️ This SKU already has ${alreadyCutCount} piece(s) logged for ${selectedStage}. Enter a count higher than ${alreadyCutCount} to add new pieces.`,
@@ -719,15 +706,6 @@ const [triggerGetPieces] = useLazyGetSkuPiecesQuery();
       setChecklistSubmitting(false);
     }
   };
-
-  // NOTE: the Excel/Breakdown-Sheet import feature (handleFileUpload,
-  // handleCommit, fileInputRef, uploadLoading/showPreviewModal/previewData/
-  // fileName/commitLoading/showOrderNumModal/uploadOrderNumber/
-  // uploadOrderNumberError, plus the Order Number Modal and Excel Preview
-  // Modal JSX) moved to page.js — its trigger button + hidden file input
-  // live in the shared TITLE SECTION, rendered unconditionally regardless of
-  // which door is active, not nested inside this door's own block.
-
   return (
     <>
       <ManualDoorForm

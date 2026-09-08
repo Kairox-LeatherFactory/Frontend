@@ -156,31 +156,16 @@ export default function StoreHubSection({
  
   const { token } = useAuth();
   const { workers } = useData();
-
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
-
-  // const [storeDrawerInput, setStoreDrawerInput] = useState("");
-  // const [storePieceInput, setStorePieceInput] = useState("");
-  // const [storeScanPart, setStoreScanPart] = useState("LEATHER"); // 'LEATHER' or 'LINING' — same barcode, different part gate
-  // const [storeCurrentScan, setStoreCurrentScan] = useState("");
   const skuCode = "";
   const [storeVerifyResult, setStoreVerifyResult] = useState(null);
   const [storeApiLoading, setStoreApiLoading] = useState(false);
   const [storeDrawers, setStoreDrawers] = useState([]);
-  // const [storeFilterClient, setStoreFilterClient] = useState("All");
-  // const [storeFilterStyle, setStoreFilterStyle] = useState("All");
-  // const [storeFilterType, setStoreFilterType] = useState("All");
-  // const [storeDrawerSearch, setStoreDrawerSearch] = useState("");
-  // const [expandedDrawer, setExpandedDrawer] = useState(null);
-   const [storeLoading, setStoreLoading] = useState(false);
-  // const [pieceLookupInput, setPieceLookupInput] = useState("");
-   const [pieceLookupLoading, setPieceLookupLoading] = useState(false);
-
-  // // Bug #13 & #14: Multi-drawer selection for batch assignment
+  const [storeLoading, setStoreLoading] = useState(false);
+  const [pieceLookupLoading, setPieceLookupLoading] = useState(false);
   const [selectedDrawers, setSelectedDrawers] = useState(new Set());
-  // const [batchSendTarget, setBatchSendTarget] = useState(""); // 'LINING' | 'STITCHING'
-   const [batchSending, setBatchSending] = useState(false);
+  const [batchSending, setBatchSending] = useState(false);
   // REDUX PULL
   const dispatch = useDispatch();
     const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
@@ -212,7 +197,6 @@ export default function StoreHubSection({
   const setExpandedDrawer = (val) => dispatch(reduxSetExpandedDrawer(val));
   const setPieceLookupInput = (val) => dispatch(reduxSetPieceLookupInput(val));
   const setBatchSendTarget = (val) => dispatch(reduxSetBatchSendTarget(val));
-
   const setStoreFilterClient = (val) => dispatch(setStoreFilters({ client: val }));
   const setStoreFilterStyle = (val) => dispatch(setStoreFilters({ style: val }));
   const setStoreFilterType = (val) => dispatch(setStoreFilters({ type: val }));

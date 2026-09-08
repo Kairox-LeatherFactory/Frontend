@@ -2,13 +2,20 @@
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { apiGetWageLedger, apiGetWageOrders, apiGetWageStyles, apiGetWageRunBreakdown, apiGetWageRunPieces } from '@/lib/api';
+import {
+  useLazyGetWageLedgerQuery,
+  useLazyGetWageOrdersQuery,
+  useLazyGetWageStylesQuery,
+  useLazyGetWageRunBreakdownQuery,
+  useLazyGetWageRunPiecesQuery
+} from '@/store/slices/apiSlice';
+
 import { Loader2, History, Warehouse, Calendar, ChevronRight, RefreshCw, Search, Download, X, Barcode as BarcodeIcon } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import SpotlightCard from '@/components/SpotlightCard';
 import { SearchCombobox, SimpleSelect, StatusBadge, Money, PortalPillSelect } from './shared';
 
-export default function LedgerView({ token, isActive }) {
+export default function LedgerView({ isActive }) {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -32,41 +39,40 @@ export default function LedgerView({ token, isActive }) {
   // Per Piece tab only: column-wise filters, on top of the free-text search above.
   const [pieceFilterStage, setPieceFilterStage] = useState('');
   const [pieceFilterEmployee, setPieceFilterEmployee] = useState('');
+  const [triggerGetWageLedger] = useLazyGetWageLedgerQuery();
+  const [triggerGetWageOrders] = useLazyGetWageOrdersQuery();
+  const [triggerGetWageStyles] = useLazyGetWageStylesQuery();
+  const [triggerGetWageRunBreakdown] = useLazyGetWageRunBreakdownQuery();
+  const [triggerGetWageRunPieces] = useLazyGetWageRunPiecesQuery();
 
-  // `background` skips the full-page spinner so the auto-refresh-on-tab-switch
-  // below doesn't flash the whole list to a loading state — only the manual
-  // Refresh button and the initial mount show that.
-  const loadLedger = (background = false) => {
+   const loadLedger = (background = false) => {
     if (background) setIsRefreshing(true); else setLoading(true);
-    apiGetWageLedger(token, {
+    triggerGetWageLedger({
       orderNumber: orderSearch || undefined,
       styleCode: styleSearch || undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       status: statusFilter || undefined,
       limit: 100,
-    })
-      .then((data) => setRuns(Array.isArray(data?.items) ? data.items : []))
+    }).unwrap()
+      .then((data) => setRuns(Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : [])))
       .catch(() => setRuns([]))
       .finally(() => { setLoading(false); setIsRefreshing(false); });
   };
 
   useEffect(() => {
     loadLedger();
-    apiGetWageOrders(token)
+    triggerGetWageOrders({}).unwrap()
       .then((data) => setOrderOptions(Array.isArray(data) ? data : []))
       .catch(() => setOrderOptions([]))
       .finally(() => setOrderOptionsLoading(false));
-    apiGetWageStyles(token, {})
+    triggerGetWageStyles({}).unwrap()
       .then((data) => setStyleOptions(Array.isArray(data) ? data : []))
       .catch(() => setStyleOptions([]))
       .finally(() => setStyleOptionsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, []);
 
-  // Ledger stays mounted (just hidden) when another Payroll tab is active, so
-  // a run computed while on Run Engine never shows up here until this fires —
-  // re-pull the list every time the operator switches back into this tab.
   const isFirstActivate = useRef(true);
   useEffect(() => {
     if (!isActive) return;
@@ -99,8 +105,8 @@ export default function LedgerView({ token, isActive }) {
     setRunPieces(null);
     try {
       const [bd, pieces] = await Promise.all([
-        apiGetWageRunBreakdown(token, run.run_id),
-        apiGetWageRunPieces(token, run.run_id, { limit: 200 }),
+        triggerGetWageRunBreakdown(run.run_id).unwrap(),
+        triggerGetWageRunPieces({ runId: run.run_id, limit: 200 }).unwrap(),
       ]);
       setRunBreakdown(bd);
       setRunPieces(pieces);

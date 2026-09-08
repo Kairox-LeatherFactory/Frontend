@@ -1,11 +1,6 @@
 'use client';
 
 import { useAuth } from '@/context/AuthContext';
-//import CuttingManagerDashboard from '@/components/CuttingManagerDashboard';
-// import LiningManagerDashboard from '@/components/LiningManagerDashboard';
-// import StitchingManagerDashboard from '@/components/StitchingManagerDashboard';
-// import StoreManagerDashboard from '@/components/StoreManagerDashboard';
-// import DirectManagerDashboard from '@/components/DirectManagerDashboard';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
 import dynamic from 'next/dynamic';

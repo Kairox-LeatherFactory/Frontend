@@ -1,22 +1,32 @@
 // wages page piece_rates code
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState,useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  apiGetWageOrders, apiGetWageStyles, apiGetRateSheet, apiGetRateHistory,
-  apiSetWageRateSingle, apiSetWageRatesBulk,
-} from '@/lib/api';
+  useGetWageOrdersQuery,
+  useLazyGetWageStylesQuery,
+  useLazyGetRateSheetQuery,
+  useLazyGetRateHistoryQuery,
+  useSetWageRateSingleMutation,
+  useSetWageRatesBulkMutation
+} from '@/store/slices/apiSlice';
+
 import { Loader2, Save, History, X, Search, Briefcase, Filter, Warehouse } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { Toast } from './shared';
-export default function OrdersStylesView({ token }) {
-  const [orders, setOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(true);
+export default function OrdersStylesView() {
+   const { data: wageOrdersData, isLoading: ordersLoading } = useGetWageOrdersQuery();
+  const orders = useMemo(() => Array.isArray(wageOrdersData) ? wageOrdersData : [], [wageOrdersData]);
+
+  const [triggerGetWageStyles, { isLoading: stylesLoading }] = useLazyGetWageStylesQuery();
+  const [triggerGetRateSheet] = useLazyGetRateSheetQuery();
+  const [triggerGetRateHistory] = useLazyGetRateHistoryQuery();
+  const [setWageRateSingleMut] = useSetWageRateSingleMutation();
+  const [setWageRatesBulkMut] = useSetWageRatesBulkMutation();
+
   const [orderSearch, setOrderSearch] = useState('');
   const [selectedOrder, setSelectedOrder] = useState(null);
-
   const [styles, setStyles] = useState([]);
-  const [stylesLoading, setStylesLoading] = useState(false);
   const [styleSearch, setStyleSearch] = useState('');
   const [selectedStyle, setSelectedStyle] = useState(null);
 
@@ -31,29 +41,22 @@ export default function OrdersStylesView({ token }) {
     setToastMsg(msg); setToastType(type);
     setTimeout(() => setToastMsg(null), 3000);
   };
-
-  useEffect(() => {
-    setOrdersLoading(true);
-    apiGetWageOrders(token)
-      .then((data) => setOrders(Array.isArray(data) ? data : []))
-      .catch(() => setOrders([]))
-      .finally(() => setOrdersLoading(false));
-  }, [token]);
-
   const filteredOrders = useMemo(() => {
     if (!orderSearch.trim()) return orders;
     const q = orderSearch.toLowerCase().trim();
     return orders.filter((o) => String(o.order_number || '').toLowerCase().includes(q));
   }, [orders, orderSearch]);
 
-  const handleSelectOrder = (order) => {
+  const handleSelectOrder = async (order) => {
     setSelectedOrder(order);
-    setStylesLoading(true);
-    apiGetWageStyles(token, { order_number: order.order_number })
-      .then((data) => setStyles(Array.isArray(data) ? data : []))
-      .catch(() => setStyles([]))
-      .finally(() => setStylesLoading(false));
+    try {
+      const data = await triggerGetWageStyles({ order_number: order.order_number }).unwrap();
+      setStyles(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setStyles([]);
+    }
   };
+
 
   const filteredStyles = useMemo(() => {
     if (!styleSearch.trim()) return styles;
@@ -66,47 +69,61 @@ export default function OrdersStylesView({ token }) {
 
   const handleSelectStyle = async (style) => {
     setSelectedStyle(style);
-    const data = await apiGetRateSheet(token, style.style_code);
-    setRates(data.operations);
+    try {
+      const data = await triggerGetRateSheet(style.style_code).unwrap();
+      setRates(data?.operations || []);
+    } catch (e) {
+      setRates([]);
+    }
   };
 
-  const handleShowHistory = async (opCode) => {
-    const data = await apiGetRateHistory(token, selectedStyle.style_code, opCode);
-    setHistoryModal(data);
+
+   const handleShowHistory = async (opCode) => {
+    try {
+      const data = await triggerGetRateHistory({ 
+        styleCode: selectedStyle.style_code, 
+        operationCode: opCode 
+      }).unwrap();
+      setHistoryModal(data);
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleSaveSingleRate = async (op) => {
     setSavingOps(prev => ({ ...prev, [op.operation_code]: true }));
     try {
-      await apiSetWageRateSingle(token, {
+      await setWageRateSingleMut({
         style_code: selectedStyle.style_code,
         operation_code: op.operation_code,
         rate: parseFloat(op.rate || 0),
         effective_from: new Date().toISOString().split('T')[0]
-      });
+      }).unwrap();
       showToast(`${op.label} rate saved!`, 'success');
     } catch (e) {
-      showToast('Error: ' + e.message, 'error');
+      showToast('Error: ' + (e.message || 'Failed'), 'error');
     } finally {
       setSavingOps(prev => ({ ...prev, [op.operation_code]: false }));
     }
   };
 
+
   const handleSaveAllRates = async () => {
     setSavingAll(true);
     try {
-      await apiSetWageRatesBulk(token, {
+      await setWageRatesBulkMut({
         style_code: selectedStyle.style_code,
         effective_from: new Date().toISOString().split('T')[0],
         lines: rates.map(op => ({ operation_code: op.operation_code, rate: parseFloat(op.rate || 0) }))
-      });
+      }).unwrap();
       showToast('All rates saved successfully!', 'success');
     } catch (e) {
-      showToast('Error: ' + e.message, 'error');
+      showToast('Error: ' + (e.message || 'Failed'), 'error');
     } finally {
       setSavingAll(false);
     }
   };
+
 
   // ── LEVEL 3: RATE EDITOR ──
   if (selectedStyle) {
@@ -158,7 +175,7 @@ export default function OrdersStylesView({ token }) {
                       value={op.rate ?? ''}
                       onChange={(e) => {
                         const newRates = [...rates];
-                        newRates[idx].rate = e.target.value;
+                        newRates[idx] = { ...newRates[idx], rate: e.target.value };
                         setRates(newRates);
                       }}
                       onWheel={(e) => e.target.blur()}

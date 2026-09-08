@@ -13,7 +13,12 @@ export const apiSlice = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece', 'Drawer', 'DrawerPool', 'DrawerList', 'AccessorySpec', 'AccessoryRequirement'], // Caching Labels
+  tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece', 
+    'Drawer', 'DrawerPool', 'DrawerList', 
+    'AccessorySpec', 'AccessoryRequirement',
+    'WageOrder', 'WageStyle', 'WageRate', 'WageRun', 
+    'WageLedger'
+], // Caching Labels
   
   endpoints: (builder) => ({
     login:builder.mutation({
@@ -294,9 +299,116 @@ export const apiSlice = createApi({
         method: 'POST',
         body: orderData
       })
-    })
+    }),
+ // ==========================================
+    // WAGES APIs (Piece Rates, Run Engine, Ledger)
+    // ==========================================
+    
+    // ─── 1. PIECE RATES & STYLES ───
+    getWageOrders: builder.query({
+      query: (params = {}) => {
+        const qs = new URLSearchParams();
+        if (params.on) qs.append('on', params.on);
+        if (params.unpricedOnly !== undefined) qs.append('unpriced_only', params.unpricedOnly);
+        return `/api/v1/wages/orders${qs.toString() ? `?${qs.toString()}` : ''}`;
+      },
+      providesTags: ['WageOrder']
+    }),
+    getWageStyles: builder.query({
+      query: (params = {}) => {
+        const qs = new URLSearchParams(params);
+        return `/api/v1/wages/styles${qs.toString() ? `?${qs.toString()}` : ''}`;
+      },
+      providesTags: ['WageStyle']
+    }),
+    getRateSheet: builder.query({
+      query: (styleCode) => `/api/v1/wages/rate-sheet?style_code=${encodeURIComponent(styleCode)}`,
+      providesTags: ['WageRate']
+    }),
+    getRateHistory: builder.query({
+      query: ({ styleCode, operationCode }) => 
+        `/api/v1/wages/rate-history?style_code=${encodeURIComponent(styleCode)}&operation_code=${encodeURIComponent(operationCode)}`,
+      providesTags: ['WageRate']
+    }),
+    setWageRateSingle: builder.mutation({
+      query: (payload) => ({
+        url: `/api/v1/wages/rates`,
+        method: 'POST',
+        body: payload
+      }),
+      invalidatesTags: ['WageRate']
+    }),
+    setWageRatesBulk: builder.mutation({
+      query: (payload) => ({
+        url: `/api/v1/wages/rates/bulk`,
+        method: 'POST',
+        body: payload
+      }),
+      invalidatesTags: ['WageRate']
+    }),
 
-  })
+    // ─── 2. RUN ENGINE (COMPUTATION) ───
+    computeWageRun: builder.mutation({
+      query: (payload) => ({
+        url: '/api/v1/wages/runs',
+        method: 'POST',
+        body: payload
+      }),
+      invalidatesTags: ['WageRun', 'WageLedger']
+    }),
+    closeWageRun: builder.mutation({
+      query: (runId) => ({
+        url: `/api/v1/wages/runs/${encodeURIComponent(runId)}/close`,
+        method: 'POST'
+      }),
+      invalidatesTags: ['WageRun', 'WageLedger']
+    }),
+    reopenWageRun: builder.mutation({
+      query: ({ runId, reason }) => ({
+        url: `/api/v1/wages/runs/${encodeURIComponent(runId)}/reopen`,
+        method: 'POST',
+        body: { reason }
+      }),
+      invalidatesTags: ['WageRun', 'WageLedger']
+    }),
+    recomputeWageRun: builder.mutation({
+      query: ({ runId, confirmClosed = false }) => ({
+        url: `/api/v1/wages/runs/${encodeURIComponent(runId)}/recompute`,
+        method: 'POST',
+        body: { confirm_closed: confirmClosed }
+      }),
+      invalidatesTags: ['WageRun', 'WageLedger']
+    }),
+    getWageRunBreakdown: builder.query({
+      query: (runId) => `/api/v1/wages/runs/${encodeURIComponent(runId)}/breakdown`,
+      providesTags: ['WageRun']
+    }),
+    getWageRunPieces: builder.query({
+      query: ({ runId, styleCode, limit, offset }) => {
+        const qs = new URLSearchParams();
+        if (styleCode) qs.append('style_code', styleCode);
+        if (limit) qs.append('limit', limit);
+        if (offset) qs.append('offset', offset);
+        return `/api/v1/wages/runs/${encodeURIComponent(runId)}/pieces${qs.toString() ? `?${qs.toString()}` : ''}`;
+      },
+      providesTags: ['WageRun']
+    }),
+
+    // ─── 3. LEDGER ───
+    getWageLedger: builder.query({
+      query: (params = {}) => {
+        const qs = new URLSearchParams();
+        if (params.orderNumber) qs.append('order_number', params.orderNumber);
+        if (params.styleCode) qs.append('style_code', params.styleCode);
+        if (params.dateFrom) qs.append('date_from', params.dateFrom);
+        if (params.dateTo) qs.append('date_to', params.dateTo);
+        if (params.status) qs.append('status', params.status);
+        if (params.limit) qs.append('limit', params.limit);
+        if (params.offset) qs.append('offset', params.offset);
+        return `/api/v1/wages/ledger${qs.toString() ? `?${qs.toString()}` : ''}`;
+      }
+    }),
+})
 });
 
 // React Hooks auto-generated!
@@ -350,4 +462,25 @@ export const {
   useRecordMaterialIssueMutation,
   useIssueAccessoryKitMutation,
   useCreateSupplierOrderMutation,
+    useGetWageOrdersQuery,
+  useLazyGetWageOrdersQuery,
+  useGetWageStylesQuery,
+  useLazyGetWageStylesQuery,
+  useGetRateSheetQuery,
+  useLazyGetRateSheetQuery,
+  useGetRateHistoryQuery,
+  useLazyGetRateHistoryQuery,
+  useSetWageRateSingleMutation,
+  useSetWageRatesBulkMutation,
+  useComputeWageRunMutation,
+  useCloseWageRunMutation,
+  useReopenWageRunMutation,
+  useRecomputeWageRunMutation,
+  useGetWageRunBreakdownQuery,
+  useLazyGetWageRunBreakdownQuery,
+  useGetWageRunPiecesQuery,
+  useLazyGetWageRunPiecesQuery,
+  useGetWageLedgerQuery,
+  useLazyGetWageLedgerQuery,
+
 } = apiSlice

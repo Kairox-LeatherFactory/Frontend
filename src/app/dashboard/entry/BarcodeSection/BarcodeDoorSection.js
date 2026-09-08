@@ -74,13 +74,9 @@ export default function BarcodeDoorSection({
   const { allowedOperations, isFullAccess, isStageAllowedForRole } =
     useRoleAccess();
   const [barcodeSkuInput, setBarcodeSkuInput] = useState("");
-  // const [barcodeSelectedSku, setBarcodeSelectedSku] = useState(null);
   const [barcodeSkuVerifying, setBarcodeSkuVerifying] = useState(false);
   const [barcodeDcmConfirmed, setBarcodeDcmConfirmed] = useState(false);
   const [sessionCutSkus, setSessionCutSkus] = useState([]); // Track duplicate cuts in session
-  // Item 5: always holds exactly the one piece Verify SKU resolved — Cutting
-  // no longer batches multiple pieces under one shared DCM.
-  // const [cuttingBatchPieces, setCuttingBatchPieces] = useState([]); // [{ code, seq, serial_str, article, style_name, color, size, order_number }]
   const [closedCuttingSkus, setClosedCuttingSkus] = useState([]); // sku_code[] fully cut, closed for further scanning
   const [barcodePieceResolving, setBarcodePieceResolving] = useState(false);
   const [barcodePieceValidating, setBarcodePieceValidating] = useState(false); // FIX: referenced in JSX but never declared in the original file either (also no setter call anywhere — was silently always false); declared here to match that same de-facto behavior.

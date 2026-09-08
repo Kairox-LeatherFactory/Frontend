@@ -211,19 +211,11 @@ export default function ProductionLogEntry() {
     isStageAllowedForRole,
   } = useRoleAccess();
 
- // const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+ 
   const [storeSendedSkus, setStoreSendedSkus] = useState([]);
 
   const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'sku' | 'worker'
-  // Lets a "Back to Breakdown Review" link elsewhere (imports/page.js) land
-  // directly on this tab via /dashboard/entry?door=breakdown.
-  // const [activeDoor, setActiveDoor] = useState(
-  //   searchParams.get("door") === "breakdown"
-  //     ? "breakdown"
-  //     : user === "store_manager" || user === "store_scan"
-  //       ? "store"
-  //       : "manual",
-  // );
+ 
     const dispatch = useDispatch();
       const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
   const [triggerGetBarcodeOrders] = useLazyGetBarcodeOrdersQuery();
@@ -237,25 +229,19 @@ export default function ProductionLogEntry() {
   const [breakdownOrders, setBreakdownOrders] = useState([]);
   const [breakdownOrdersLoading, setBreakdownOrdersLoading] = useState(false);
   const [breakdownOrderSearch, setBreakdownOrderSearch] = useState("");
-  // Team request: a commit's landing on this order's detail screen must
-  // survive a refresh — read the order back out of the URL on load, not
-  // just the door, so a reload doesn't dump the operator back on the list
-  // (or the wrong tab entirely).
+
   const [selectedBreakdownOrder, setSelectedBreakdownOrder] = useState(
     searchParams.get("door") === "breakdown"
       ? searchParams.get("order") || null
       : null,
   ); // order_number | null — set = show the detail/release screen inline, unset = show the list
   const [barcodeWorkerInput, setBarcodeWorkerInput] = useState("");
-  //const [barcodeWorker, setBarcodeWorker] = useState(null); // { id, name, designation, barcode }
+
   const [barcodeWorkerChecking, setBarcodeWorkerChecking] = useState(false);
   const [barcodeNotCheckedInModal, setBarcodeNotCheckedInModal] =
     useState(null); // { workerName }
- // const [barcodeStage, setBarcodeStage] = useState("Cutting"); // Production Stage — lifted here since handleVerifyBarcodeWorker (shared with Store Hub) auto-adjusts it
   const [barcodeDcm, setBarcodeDcm] = useState("");
-  // const [lotArticle, setLotArticle] = useState("");
-  // const [lotColor, setLotColor] = useState("");
-  // const [lotThickness, setLotThickness] = useState("");
+  
     // REDUX DATA PULL
   const successMsg = useSelector(state => state.entry.successMsg);
   const errorMsg = useSelector(state => state.entry.errorMsg);
@@ -301,11 +287,7 @@ export default function ProductionLogEntry() {
   const [commitLoading, setCommitLoading] = useState(false);
   const [commitSuccess, setCommitSuccess] = useState("");
   const [uploadError, setUploadError] = useState("");
-  // Team request: show the same tabular summary the Preview step showed —
-  // confirmation once Commit has actually saved it, before moving on to
-  // Breakdown Review — real `written` result from the commit response
-  // (order_number, styles, skus_created/updated, pieces_minted etc.), not
-  // a re-show of the pre-commit preview.
+  
   const [showCommitConfirmation, setShowCommitConfirmation] = useState(false);
   const [commitResult, setCommitResult] = useState(null);
   const [pendingBreakdownOrder, setPendingBreakdownOrder] = useState(null);
@@ -357,13 +339,6 @@ export default function ProductionLogEntry() {
             .toLowerCase()
             .includes(queryLower),
       );
-
-      // The local `workers` list's employee_barcode is often just a display
-      // fallback (derived from the id) rather than the real backend-issued
-      // code, so a genuinely valid, checked-in badge can fail to match here
-      // even though it's perfectly valid — GET /barcode/resolve is the
-      // backend's own authoritative barcode → employee lookup, so ask it
-      // directly instead of only trusting this local guess.
       if (!matchedWorker) {
         try {
           const resolved = await triggerBarcodeResolve(query).unwrap();
@@ -472,18 +447,10 @@ export default function ProductionLogEntry() {
     try {
       const result = await apiImportCommit(token, file, uploadOrderNumber);
       setShowPreviewModal(false);
-      // Two-phase commit (Item 9): commit no longer mints barcodes — it
-      // just parses the sheet into DRAFT rows and hands off to the
-      // Breakdown Review screen, where a DM/MD explicitly releases which
-      // styles actually go into production. The real response nests this
-      // under `written`, not at the top level (confirmed live) — check both
-      // so the mock (which returns it top-level) keeps working too.
-      if (result?.written?.release_required ?? result?.release_required) {
+    if (result?.written?.release_required ?? result?.release_required) {
         const orderNumber = uploadOrderNumber;
         setUploadOrderNumber("");
-        // Team request: confirm what was actually written by Commit —
-        // before moving on to Breakdown Review, instead of silently
-        // jumping straight there.
+   
         setCommitResult(result?.written ?? result);
         setPendingBreakdownOrder(orderNumber);
         setShowCommitConfirmation(true);
@@ -498,10 +465,7 @@ export default function ProductionLogEntry() {
     }
   };
 
-  // Store Hub role-redirect guard — moved out of StoreHubSection's own
-  // activation effect (which now just fetches on mount, since it only ever
-  // mounts while activeDoor==='store'). This is the "don't let an
-  // unauthorized role land on Store" half of the original combined effect.
+  
   useEffect(() => {
     if (activeDoor === "store" && !isFullAccess && !isStoreAccess) {
     handleSetActiveDoor("manual");
