@@ -7,7 +7,8 @@
 "use client";
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useAuth } from "@/context/AuthContext";
-import { useData } from "@/context/DataContext";
+import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
+
 import {
   useLazyBarcodeResolveQuery,
   useLazyListDrawersQuery,
@@ -155,7 +156,7 @@ export default function StoreHubSection({
 }) {
  
   const { token } = useAuth();
-  const { workers } = useData();
+  const { data: workers = [] } = useGetEmployeesQuery();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const skuCode = "";

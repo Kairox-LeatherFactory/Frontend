@@ -1,8 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
-
-import { useData } from '@/context/DataContext';
 import {
   useLazyGetAnalyticsExploreQuery,
   useLazyGetStyleDetailQuery,
@@ -22,11 +20,9 @@ import {
 import HierarchyViewer from './HierarchyViewer';
 import  getPieces from './utils';
 export default function OrdersExplorer() {
-
-  const { orders: realOrders } = useData();
-  const orders = useMemo(() => realOrders || [], [realOrders]);
-  const [exploreData, setExploreData] = useState(null);
-  const [loadingExplore, setLoadingExplore] = useState(true);
+const orders = [];
+const [exploreData, setExploreData] = useState(null);
+const [loadingExplore, setLoadingExplore] = useState(true);
 
   // Read deep-link params from entry page
   const searchParams = useSearchParams();

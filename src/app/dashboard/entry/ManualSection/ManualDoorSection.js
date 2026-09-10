@@ -1,7 +1,6 @@
 // manual logger main file
 "use client";
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useData } from "@/context/DataContext";
 import CheckInWarningModal from "./CheckInWarningModal";
 import CheckOutWarningModal from "./CheckOutWarningModal";
 import TravelerPrintModal from "./TravelerPrintModal";
@@ -31,6 +30,8 @@ import {
   setSkuSearchQuery as reduxSetSkuSearchQuery, 
   setWorkerSearchQuery as reduxSetWorkerSearchQuery 
 } from '@/store/slices/manualSlice';
+import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
+import { useGetOperationsQuery, useAddScanEventMutation } from '@/store/slices/clientApiSlice';
 
 export default function ManualDoorSection({
   activeDoor,
@@ -58,7 +59,15 @@ export default function ManualDoorSection({
   setShowBucketModal,
   mounted,
 }) {
-  const { workers, addScanEvent, operations } = useData();
+// Workers — already in adminApiSlice
+const { data: workers = [] } = useGetEmployeesQuery();
+
+// Operations — clientApiSlice (already created)
+const { data: operations = [] } = useGetOperationsQuery();
+
+// addScanEvent mutation — clientApiSlice
+const [addScanEvent] = useAddScanEventMutation();
+
   const { isReadOnly, isFullAccess, isStageAllowedForRole } =
     useRoleAccess();
   
@@ -353,7 +362,7 @@ const [triggerGetPieces] = useLazyGetSkuPiecesQuery();
         work_date: date,
         sku_id: skuObj.sku_id,
         piece_seqs: parsedSeqs,
-      });
+      }).unwrap();
       setSuccessMsg(
         `Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${activeOp}.`,
       );
@@ -678,7 +687,7 @@ const [triggerGetPieces] = useLazyGetSkuPiecesQuery();
           work_date: date,
           sku_id: skuObj.sku_id,
           piece_seqs: selectedPieces,
-        });
+        }).unwrap();
       }
 
       // Record local stage completion for whichever pieces were actually submitted —

@@ -4,7 +4,6 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
-import { useData } from "@/context/DataContext";
 import { useSelector, useDispatch } from 'react-redux';
 import { 
   setActiveDoor, setDate, 
@@ -20,6 +19,8 @@ import {
   apiImportCommit,
 
 } from "@/lib/api";
+import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
+
 import {
   Lock,
   CheckCircle2,
@@ -202,7 +203,7 @@ export default function ProductionLogEntry() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, token } = useAuth();
-  const { workers } = useData();
+ const { data: workers = [] } = useGetEmployeesQuery();
   const {
     isReadOnly,
     isFullAccess,

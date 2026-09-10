@@ -1,9 +1,8 @@
 // barcode main file
 "use client";
 import { useState, useRef, useEffect } from "react";
-
+import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
 import { useAuth } from "@/context/AuthContext";
-import { useData } from "@/context/DataContext";
 import BarcodeDoorForm from "./BarcodeDoorForm";
 import {
   useProductionLogTwoDoorMutation,
@@ -70,7 +69,7 @@ export default function BarcodeDoorSection({
 }) {
 
   const { token, user } = useAuth();
-  const { workers } = useData();
+  const { data: workers = [] } = useGetEmployeesQuery();
   const { allowedOperations, isFullAccess, isStageAllowedForRole } =
     useRoleAccess();
   const [barcodeSkuInput, setBarcodeSkuInput] = useState("");

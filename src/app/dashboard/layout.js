@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link, { useLinkStatus } from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { useData } from '@/context/DataContext';
+
 
 import {
   Factory,
@@ -19,7 +19,6 @@ import {
   X,
   Menu,
   LogOut,
-  TriangleAlert,
   BotMessageSquare,
   ShieldCheck,
   Settings,
@@ -183,7 +182,6 @@ function NavPendingBar() {
 
 export default function DashboardLayout({ children }) {
   const { user, logout, ROLES } = useAuth();
-  const {  } = useData();
 
   const router = useRouter();
   const pathname = usePathname();
@@ -249,20 +247,6 @@ export default function DashboardLayout({ children }) {
 
     return () => clearInterval(interval);
   }, [user]);
-
-  // --------------------------------------------------
-  // Air freight risk orders
-  // --------------------------------------------------
-
-  const airRiskOrders = useMemo(
-    () =>
-      orders.filter(
-        (o) =>
-          o.freight_mode &&
-          o.freight_mode.includes('RISK')
-      ),
-    [orders]
-  );
 
   // --------------------------------------------------
   // Navigation links
@@ -628,62 +612,6 @@ export default function DashboardLayout({ children }) {
             </button>
           </div>
         </motion.header>
-
-        {/* ================================================
-            AIR FREIGHT WARNING
-            ================================================ */}
-
-        <AnimatePresence>
-          {airRiskOrders.length > 0 && (
-            <motion.div
-              key="air-freight-warning"
-              initial={{
-                opacity: 0,
-                height: 0,
-              }}
-              animate={{
-                opacity: 1,
-                height: 'auto',
-              }}
-              exit={{
-                opacity: 0,
-                height: 0,
-              }}
-              transition={{
-                duration: 0.35,
-                ease: [0.22, 1, 0.36, 1],
-              }}
-              className="overflow-hidden border-b border-red-700"
-            >
-              <div className="bg-gradient-to-r from-red-600 to-amber-600 text-white p-4 font-bold text-sm shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <TriangleAlert className="w-6 h-6 animate-pulse flex-shrink-0" />
-
-                  <div>
-                    <p className="text-sm font-black tracking-wide">
-                      AIR FREIGHT PENALTY WARNING
-                      DETECTED!
-                    </p>
-
-                    <p className="text-xs text-red-100 font-medium">
-                      {airRiskOrders
-                        .map(
-                          (o) =>
-                            `${o.client} (${o.style} - ${o.colorway}) is delayed by ${o.delay_days} days!`
-                        )
-                        .join(', ')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-xs font-black uppercase text-center sm:text-right">
-                  Air Mode Triggers Over 2-Day
-                  Delay • Margins Shrink ~35%
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
         <main
           className="flex-1 p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full min-h-screen lg:min-h-0 overflow-y-auto z-0 mx-auto relative"
           style={{ background: '#faf6f0' }}

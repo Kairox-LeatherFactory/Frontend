@@ -1,7 +1,6 @@
 import { Lato, Playfair_Display } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
-import { DataProvider } from '@/context/DataContext';
 import CustomCursor from '@/components/CustomCursor';
 import NumberInputWheelGuard from '@/components/NumberInputWheelGuard';
  import ReduxProvider from '@/store/ReduxProvider';
@@ -30,12 +29,10 @@ export default function RootLayout({ children }) {
       <body className="font-sans bg-[#faf6f0] text-[#0f172a] antialiased">
         <ReduxProvider>
         <AuthProvider>
-          <DataProvider>
             <CustomCursor />
             <NumberInputWheelGuard />
             {children}
-          </DataProvider>
-        </AuthProvider>
+         </AuthProvider>
         </ReduxProvider>
       </body>
     </html>

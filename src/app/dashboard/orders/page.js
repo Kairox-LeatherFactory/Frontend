@@ -7,7 +7,7 @@ import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { staggerContainer, fadeUpItem } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
-import { useGetClientsQuery, useCreateClientMutation } from '@/store/slices/entryApiSlice';
+import { useGetClientsQuery, useCreateClientMutation } from '@/store/slices/clientApiSlice';
 
 export default function OrdersTreeBrowser() {
   const { data: clientsData = [], isLoading: apiLoading } = useGetClientsQuery();
