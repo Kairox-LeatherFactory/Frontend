@@ -1,9 +1,9 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Search, Loader2, Printer } from 'lucide-react';
+import { Search, Loader2, Printer, Send } from 'lucide-react';
 import { BRAND, inputCls, fieldStyle } from '../../_lib/constants';
-import { statusBadgeClass } from '../../_lib/helpers';
+import { statusBadgeClass, buildFullBarcodeCode } from '../../_lib/helpers';
 import BarcodeCanvas from '../BarcodeCanvas';
 import BarcodePagination from '../BarcodePagination';
 
@@ -30,7 +30,6 @@ export default function StyleGenerationGrid({
   setSearch,
   selectedCodes,
   toggleCode,
-  selectAllVisible,
   clearSelection,
   addCodes,
   page,
@@ -39,7 +38,7 @@ export default function StyleGenerationGrid({
   total,
   onOpenDetail,
   onPrintSingle,
-  onPrintSelected,
+  onSendToPrintCenter,
   onPrintOrder,
   printing,
 }) {
@@ -55,6 +54,11 @@ export default function StyleGenerationGrid({
     if (!q) return rows;
     return rows.filter((r) => r.code.toLowerCase().includes(q));
   }, [rows, search]);
+
+  // Only selects codes currently visible under the active search/filter — never the whole page/order
+  const selectAllVisible = () => {
+    addCodes(filteredRows.map((r) => r.code));
+  };
 
   // --------------------------------------------------------------------------
   // 2. RANGE SELECTION HANDLER (e.g. CARDS 1 TO 10)
@@ -136,13 +140,13 @@ export default function StyleGenerationGrid({
             </button>
           </div>
 
-          {/* Print Selected Items Button */}
+          {/* Send Selected Items to Print Center (actual printing happens in the Print Center tab) */}
           <button
-            onClick={onPrintSelected}
+            onClick={onSendToPrintCenter}
             disabled={printing || selectedCodes.size === 0}
             className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-50"
           >
-            <Printer className="w-3.5 h-3.5" /> Print Selected ({selectedCodes.size})
+            <Send className="w-3.5 h-3.5" /> Send to Print Center ({selectedCodes.size})
           </button>
 
           {/* Print Entire Production Order Button */}
@@ -205,7 +209,7 @@ export default function StyleGenerationGrid({
                 {/* Card Piece Attributes */}
                 <div className="text-center w-full">
                   <div className="font-mono font-bold text-xs break-all" style={{ color: '#5a3518' }}>
-                    {r.code}
+                    {buildFullBarcodeCode(r)}
                   </div>
                   <div className="flex items-center justify-center gap-1.5 mt-1.5 flex-wrap">
                     {r.style_name && (

@@ -40,6 +40,7 @@ export default function DetailModal({
 
   const isEmployee = category === 'employee';
   const isDrawer = category === 'bucket';
+  const isCardOnly = isEmployee || isDrawer;
 
   // --------------------------------------------------------------------------
   // 2. EXPORT FILE HANDLER (PNG / PDF)
@@ -68,7 +69,7 @@ export default function DetailModal({
       isOpen={!!barcode}
       onClose={onClose}
       zIndex={2000}
-      panelClassName="rounded-2xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
+      panelClassName={`rounded-2xl w-full ${isCardOnly ? 'max-w-md' : 'max-w-4xl'} max-h-[85vh] flex flex-col shadow-2xl overflow-hidden`}
       panelStyle={{ background: '#fff', border: `1.8px solid ${BRAND.border}` }}
     >
       {barcode && (
@@ -85,11 +86,17 @@ export default function DetailModal({
           </div>
 
           {/* --- Modal Body Content --- */}
-          <div className="p-5 grid gap-4 sm:grid-cols-[minmax(0,260px)_1fr] items-start flex-1 min-h-0 overflow-y-auto">
+          <div
+            className={
+              isCardOnly
+                ? 'p-5 flex justify-center items-start flex-1 min-h-0 overflow-y-auto'
+                : 'p-5 grid gap-4 sm:grid-cols-[minmax(0,260px)_1fr] items-start flex-1 min-h-0 overflow-y-auto'
+            }
+          >
             {/* Left Column: Visual Printable Card */}
-            <div className="flex justify-center sm:sticky sm:top-0">
+            <div className={isCardOnly ? 'flex justify-center' : 'flex justify-center sm:sticky sm:top-0'}>
               {isEmployee ? (
-                <EmployeeTicketCard barcode={barcode} cardRef={cardRef} />
+                <EmployeeTicketCard barcode={barcode} cardRef={cardRef} width={320} />
               ) : isDrawer ? (
                 <DrawerBarcodeLabel barcode={barcode} cardRef={cardRef} />
               ) : (
@@ -98,7 +105,7 @@ export default function DetailModal({
             </div>
 
             {/* Right Column: Specification & Lot Attributes Grid (Style & Material only) */}
-            {!isEmployee && !isDrawer && (
+            {!isCardOnly && (
               <div className="w-full min-w-0">
                 <div className="text-xs font-black uppercase tracking-wider text-[#9a7a5a] mb-2 px-1">
                   Lot &amp; Specification Details

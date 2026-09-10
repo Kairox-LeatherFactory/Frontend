@@ -6,9 +6,7 @@ import {
   Factory,
   Layers,
   AlertTriangle,
-  AlertCircle,
   RefreshCw,
-  Search,
   Download,
   Filter,
   X,
@@ -144,6 +142,19 @@ function inferDepartment(stageKeyOrLabel = '') {
 }
 
 const DEPARTMENT_DISPLAY_ORDER = ['Cutting', 'Lining', 'Fusing', 'Pasting', 'Store', 'Stitching', 'Quality', 'Inspection', 'Packaging', 'Packing'];
+
+const DEPARTMENT_ACCENTS = {
+  Cutting: { bar: 'bg-indigo-500', chip: 'bg-indigo-100 text-indigo-800', ring: 'ring-indigo-500/20 border-indigo-400', dot: 'bg-indigo-500' },
+  Lining: { bar: 'bg-emerald-500', chip: 'bg-emerald-100 text-emerald-800', ring: 'ring-emerald-500/20 border-emerald-400', dot: 'bg-emerald-500' },
+  Store: { bar: 'bg-purple-500', chip: 'bg-purple-100 text-purple-800', ring: 'ring-purple-500/20 border-purple-400', dot: 'bg-purple-500' },
+  Quality: { bar: 'bg-rose-500', chip: 'bg-rose-100 text-rose-800', ring: 'ring-rose-500/20 border-rose-400', dot: 'bg-rose-500' },
+  Packaging: { bar: 'bg-blue-500', chip: 'bg-blue-100 text-blue-800', ring: 'ring-blue-500/20 border-blue-400', dot: 'bg-blue-500' },
+  Stitching: { bar: 'bg-amber-500', chip: 'bg-amber-100 text-amber-800', ring: 'ring-amber-500/20 border-amber-400', dot: 'bg-amber-500' },
+  Production: { bar: 'bg-slate-400', chip: 'bg-slate-100 text-slate-700', ring: 'ring-slate-500/20 border-slate-400', dot: 'bg-slate-400' },
+};
+function departmentAccent(dept) {
+  return DEPARTMENT_ACCENTS[dept] || DEPARTMENT_ACCENTS.Production;
+}
 
 // GET /dashboard/store/traceability has no `stage` field — each row is
 // (piece, material_type), and material_type is only ever "LEATHER" or
@@ -412,13 +423,26 @@ export default function DirectManagerDashboard() {
   const [filterStyle, setFilterStyle] = useState('all');
   const [filterDepartment, setFilterDepartment] = useState('all');
   const [filterEmployee, setFilterEmployee] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
 
-  // Piece Traceability tab's own filters — colour/size are real fields on
-  // GET /dashboard/store/traceability rows but aren't part of the universal
-  // filter bar (no other tab has a use for them), so they live here instead.
+  // Colour is a real field on GET /dashboard/store/traceability rows and now
+  // lives in the universal filter bar. Size stays a Piece Traceability-only
+  // filter (no other tab has a use for it).
   const [filterColour, setFilterColour] = useState('all');
   const [filterSize, setFilterSize] = useState('all');
+
+  // Employees tab-only filter — wage_type is the only real wage distinction
+  // GET /api/v1/employees returns ("monthly" or "piece_rate"); there is no
+  // separate daily-wage field.
+  const [filterWageType, setFilterWageType] = useState('all');
+
+  // Store Drawer Dispatch tab-only filter — buckets by the real `holding`
+  // field on GET /api/v1/drawers rows (LEATHER / LINING / BOTH / empty).
+  const [filterDrawerHolding, setFilterDrawerHolding] = useState('all');
+
+  // Piece Traceability tab — local text box for the piece-code/unique-ID
+  // lookup, separate from selectedPieceCode (which only fires the real
+  // GET /pieces/{piece_code} call once submitted).
+  const [pieceSearchInput, setPieceSearchInput] = useState('');
 
   // Report modal
   const [activeReportModal, setActiveReportModal] = useState(null);
@@ -509,21 +533,19 @@ export default function DirectManagerDashboard() {
     if (activeTab === 'tab-drawers') fetchDrawers();
   }, [token, activeTab]);
 
-  // ── LIVE BACKEND CALL: GET /api/v1/dashboard/store/traceability (Piece Traceability tab only) ──
-  // Gated back to this one tab — firing it on every Order/Style filter
-  // change (selectedStyleRow updates from that) was calling it on every
-  // filter click across the whole dashboard, not just when actually viewing
-  // Piece Traceability. Selecting a specific piece row also does NOT refire
-  // this — that only sets selectedPieceCode, which drives the separate
-  // /direct-manager/pieces/{piece_code} call below.
+  // ── LIVE BACKEND CALL: GET /api/v1/dashboard/store/traceability ──
+  // Loaded once the dashboard has a token (not gated to the Piece
+  // Traceability tab) — it's the only endpoint with a real employee field per
+  // piece, so the universal Employee filter (pipeline Done counts, Department
+  // Performance) and the universal Colour filter both need it ready
+  // dashboard-wide, not only after the user happens to open that tab.
   useEffect(() => {
-    if (!token || activeTab !== 'tab-pieces') return;
+    if (!token) return;
     let isMounted = true;
     (async () => {
       setTraceabilityLoading(true);
       try {
         const params = {};
-        if (searchQuery) params.piece_code = searchQuery;
         if (selectedStyleRow?.style_id) params.style_id = selectedStyleRow.style_id;
         const data = await apiGetStoreTraceability(token, params);
         if (isMounted) setTraceabilityData(Array.isArray(data) ? data : []);
@@ -535,7 +557,7 @@ export default function DirectManagerDashboard() {
       }
     })();
     return () => { isMounted = false; };
-  }, [token, activeTab, searchQuery, selectedStyleRow]);
+  }, [token, selectedStyleRow]);
 
   // ── LIVE BACKEND CALL: GET /api/v1/dashboard/direct-manager/pieces/{piece_code} ──
   useEffect(() => {
@@ -633,9 +655,16 @@ export default function DirectManagerDashboard() {
     [dailyProductionLogs]
   );
 
+  // Chronological, and trailing up to (and including) the picked date rather
+  // than isolating that single day — a single-row series has nothing for the
+  // Area chart to draw (no visible line/area, just a bare dot), which made
+  // picking any date look like "the graph shows nothing" and made different
+  // dates look indistinguishable. Showing the real run-up to that date keeps
+  // the trend meaningful and actually changes as the date filter changes.
   const filteredDailyProduction = useMemo(() => {
-    if (filterDate === 'all') return dailyProductionLogs;
-    return dailyProductionLogs.filter((d) => d.work_date === filterDate);
+    const sorted = [...dailyProductionLogs].sort((a, b) => (a.work_date || '').localeCompare(b.work_date || ''));
+    if (filterDate === 'all') return sorted;
+    return sorted.filter((d) => d.work_date <= filterDate);
   }, [dailyProductionLogs, filterDate]);
 
   const availableStyles = useMemo(
@@ -679,17 +708,9 @@ export default function DirectManagerDashboard() {
     return orderProgressList.filter((o) => {
       if (filterOrder !== 'all' && o.order_number !== filterOrder) return false;
       if (filterStyle !== 'all' && o.style_name !== filterStyle) return false;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const m =
-          (o.order_number && o.order_number.toLowerCase().includes(q)) ||
-          (o.style_name && o.style_name.toLowerCase().includes(q)) ||
-          (o.article && o.article.toLowerCase().includes(q));
-        if (!m) return false;
-      }
       return true;
     });
-  }, [orderProgressList, filterOrder, filterStyle, searchQuery]);
+  }, [orderProgressList, filterOrder, filterStyle]);
 
   const filterMatchedRow = useMemo(() => {
     if (filterOrder === 'all' && filterStyle === 'all') return null;
@@ -790,6 +811,19 @@ export default function DirectManagerDashboard() {
     return map;
   }, [traceabilityData, filterEmployee, filterOrder]);
 
+  // ─── Stage Funnel drill-down — real logged pieces for a clicked stage card.
+  // traceabilityData is the only endpoint with per-piece attribution, and it
+  // only ever covers Leather/Lining Cutting (via MATERIAL_TYPE_TO_STAGE) — no
+  // endpoint attributes individual pieces to Fusing, Pasting, Stitching, or
+  // any later stage, so this stays empty (not fabricated) for those. ───
+  const selectedStagePieces = useMemo(() => {
+    if (!selectedStage) return [];
+    const stageKey = String(selectedStage.stage || selectedStage.label || '').toUpperCase();
+    const materialType = Object.keys(MATERIAL_TYPE_TO_STAGE).find((m) => MATERIAL_TYPE_TO_STAGE[m] === stageKey);
+    if (!materialType) return [];
+    return traceabilityData.filter((t) => String(t.material_type || '').toUpperCase() === materialType);
+  }, [selectedStage, traceabilityData]);
+
   const pipelineWithStore = useMemo(() => {
     let cards = [...effectivePipeline];
 
@@ -880,14 +914,10 @@ export default function DirectManagerDashboard() {
           return false;
         }
       }
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const m = (e.name && e.name.toLowerCase().includes(q)) || (e.designation && e.designation.toLowerCase().includes(q));
-        if (!m) return false;
-      }
+      if (filterWageType !== 'all' && (e.wage_type || '').toLowerCase() !== filterWageType) return false;
       return true;
     });
-  }, [realEmployees, filterEmployee, filterDepartment, departmentOptions, searchQuery]);
+  }, [realEmployees, filterEmployee, filterDepartment, departmentOptions, filterWageType]);
 
   const filteredTraceability = useMemo(() => {
     return traceabilityData.filter((t) => {
@@ -913,18 +943,20 @@ export default function DirectManagerDashboard() {
     [traceabilityData]
   );
 
+  // Buckets by the real `holding` field on each drawer row — the drawer's
+  // current contents (LEATHER / LINING / BOTH / empty), distinct from its
+  // lifecycle `state` (holding_leather / merged / received / sended…).
   const filteredDrawers = useMemo(() => {
+    if (filterDrawerHolding === 'all') return realDrawers;
     return realDrawers.filter((dr) => {
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const m =
-          (dr.code && dr.code.toLowerCase().includes(q)) ||
-          (dr.piece_code && dr.piece_code.toLowerCase().includes(q));
-        if (!m) return false;
-      }
+      const h = String(dr.holding || '').toUpperCase();
+      if (filterDrawerHolding === 'EMPTY') return !h || h.includes('EMPTY');
+      if (filterDrawerHolding === 'BOTH') return h.includes('BOTH');
+      if (filterDrawerHolding === 'LEATHER') return h.includes('LEATHER') && !h.includes('BOTH');
+      if (filterDrawerHolding === 'LINING') return h.includes('LINING') && !h.includes('BOTH');
       return true;
     });
-  }, [realDrawers, searchQuery]);
+  }, [realDrawers, filterDrawerHolding]);
 
   // ── CSV Export ──
   const handleExportFactoryReport = () => {
@@ -1024,12 +1056,35 @@ export default function DirectManagerDashboard() {
     return rows.sort((a, b) => departmentSortIndex(a.department) - departmentSortIndex(b.department));
   }, [departmentsList]);
 
+  // Employee filter override — departmentsList (deptPerformanceTable's source)
+  // is always a factory total with no employee dimension in the API, same
+  // constraint as the pipeline cards above. Reuse employeeStageDoneCounts (the
+  // only real per-employee numbers that exist — Leather/Lining Cutting) for
+  // the Cutting/Lining rows; every other department has no per-employee data
+  // at all, so it's nulled out (shown as "—") rather than left displaying the
+  // stale factory-wide number for a name that no longer matches the filter.
   const displayDeptTable = useMemo(() => {
-    if (effectiveDeptBucket === 'all') return deptPerformanceTable;
-    return deptPerformanceTable.filter(
+    let rows = deptPerformanceTable;
+    if (filterEmployee !== 'all') {
+      rows = rows.map((row) => {
+        const key = /LINING/i.test(row.department) ? 'LINING_CUTTING' : /CUT/i.test(row.department) ? 'LEATHER_CUTTING' : null;
+        const hasData = key && employeeStageDoneCounts.has(key);
+        return {
+          ...row,
+          target: null,
+          completed: hasData ? employeeStageDoneCounts.get(key) : null,
+          pending: null,
+          achievementPct: null,
+          status: null,
+          employeeScoped: true,
+        };
+      });
+    }
+    if (effectiveDeptBucket === 'all') return rows;
+    return rows.filter(
       (d) => d.department.toLowerCase() === effectiveDeptBucket.toLowerCase()
     );
-  }, [deptPerformanceTable, effectiveDeptBucket]);
+  }, [deptPerformanceTable, effectiveDeptBucket, filterEmployee, employeeStageDoneCounts]);
 
   const totalDeptCompleted = useMemo(
     () => displayDeptTable.reduce((s, r) => s + (r.completed || 0), 0),
@@ -1136,31 +1191,33 @@ export default function DirectManagerDashboard() {
     }));
   }, [pipelineWithStore]);
 
-  // ─── STORE DRAWER BUFFER — the real store{} KPI block only (drawers_in_store /
-  // drawers_sent / drawers_received). The previous build defaulted to 16/32 when
-  // those were missing and fabricated "Ready for Stitching" (65% guess) and
-  // "Available Slots" (48-total guess) categories with no backing field at all. ───
-  const drawersGraphData = useMemo(() => {
-    return [
-      { category: 'In Store', count: storeStats.drawers_in_store ?? 0, fill: '#9333ea' },
-      { category: 'Sent', count: storeStats.drawers_sent ?? 0, fill: '#3b82f6' },
-      { category: 'Received', count: storeStats.drawers_received ?? 0, fill: '#10b981' },
-    ];
-  }, [storeStats]);
+  // ─── Active vs Inactive — real is_active flag on GET /employees rows. The
+  // backend has no daily present/absent record for any employee (only one
+  // factory-wide present/assigned total exists — see kpiData.attendancePct),
+  // so this roster status is the closest real per-employee signal available;
+  // it is NOT the same thing as "present today". ───
+  const activeInactiveCounts = useMemo(() => {
+    let active = 0, inactive = 0;
+    filteredEmployees.forEach((e) => { if (e.is_active) active += 1; else inactive += 1; });
+    return { active, inactive, total: filteredEmployees.length };
+  }, [filteredEmployees]);
 
-  // ─── Employees by designation — real GET /employees rows only (replaces the
-  // previous build's fake per-employee "Output vs Target" chart, which had no
-  // backing field anywhere: GET /employees returns no production count). ───
-  const employeesByDesignation = useMemo(() => {
+  // ─── Workforce by department — real GET /employees roster, bucketed via the
+  // same designationToDepartment mapping the universal filter already uses.
+  // This is a roster headcount, not daily attendance — no endpoint anywhere
+  // returns a per-department present/absent breakdown, so it can't honestly
+  // change with the date filter (there's no per-date data behind it). ───
+  const departmentHeadcount = useMemo(() => {
     const map = new Map();
-    filteredEmployees.forEach((e) => {
-      const key = e.designation || 'Unspecified';
-      map.set(key, (map.get(key) || 0) + 1);
+    realEmployees.forEach((e) => {
+      const dept = designationToDepartment(e.designation);
+      if (!dept) return;
+      map.set(dept, (map.get(dept) || 0) + 1);
     });
     return Array.from(map.entries())
-      .map(([designation, count]) => ({ designation, count }))
-      .sort((a, b) => b.count - a.count);
-  }, [filteredEmployees]);
+      .map(([department, count]) => ({ department, count }))
+      .sort((a, b) => departmentSortIndex(a.department) - departmentSortIndex(b.department));
+  }, [realEmployees]);
 
   // ─── Pieces cut per day by material — real store/traceability rows, grouped
   // by the real cutting_date and material_type fields (replaces the previous
@@ -1182,11 +1239,15 @@ export default function DirectManagerDashboard() {
   // (no intraday endpoint exists anywhere in the API) driven by a fake shift
   // multiplier and hardcoded 900/478 fallbacks. Replaced with the real
   // daily_production rows the backend actually returns. ───
-  const todaysProductionRow = useMemo(() => {
+  // Honors the date filter when one is picked (so this side panel actually
+  // changes with it, same as the graph) — falls back to today (or the most
+  // recent row) only when no date is selected.
+  const selectedProductionRow = useMemo(() => {
     if (!dailyProductionLogs.length) return null;
+    if (filterDate !== 'all') return dailyProductionLogs.find((d) => d.work_date === filterDate) || null;
     const todayStr = new Date().toISOString().slice(0, 10);
     return dailyProductionLogs.find((d) => d.work_date === todayStr) || dailyProductionLogs[dailyProductionLogs.length - 1] || null;
-  }, [dailyProductionLogs]);
+  }, [dailyProductionLogs, filterDate]);
 
   // ─── Real "vs yesterday" — derived from the two most recent real
   // daily_production rows (sorted by work_date), not a hardcoded +6%. `null`
@@ -1267,7 +1328,14 @@ export default function DirectManagerDashboard() {
   //      same data the top pipeline strip already uses.
   //   2. Department picked (no order/style) → that department's real
   //      completed/pending/achievement_pct row from displayDeptTable.
-  //   3. Nothing picked → factory-wide kpiData.
+  //   3. Date picked (no order/style/department) → that day's real
+  //      assigned/completed row from daily_production. `mode` stays
+  //      'factory' (every other panel — queues, orders-at-risk, department
+  //      badges — genuinely has no per-date breakdown in the API, so they
+  //      must keep showing the honest factory-wide view), but `dateScoped`
+  //      flags that totalProd/targetProd/achievementPct/pending below are
+  //      for that one day, not the running factory total.
+  //   4. Nothing picked → factory-wide kpiData.
   // No per-order/department target exists anywhere in the schema for case 1
   // beyond total_quantity, and no per-department target exists in case 2 at
   // all — both stay null (shown as N/A) rather than fabricated.
@@ -1293,6 +1361,20 @@ export default function DirectManagerDashboard() {
         pending: row?.pending ?? null,
       };
     }
+    if (filterDate !== 'all') {
+      const dayRow = dailyProductionLogs.find((d) => d.work_date === filterDate) || null;
+      const completed = dayRow ? readNum(dayRow, ['completed']) : null;
+      const assigned = dayRow ? readNum(dayRow, ['assigned']) : null;
+      return {
+        mode: 'factory',
+        dateScoped: true,
+        label: filterDate,
+        totalProd: completed,
+        targetProd: assigned,
+        achievementPct: (completed !== null && assigned) ? Math.round((completed / assigned) * 100) : null,
+        pending: (completed !== null && assigned !== null) ? Math.max(0, assigned - completed) : null,
+      };
+    }
     return {
       mode: 'factory',
       label: null,
@@ -1301,10 +1383,10 @@ export default function DirectManagerDashboard() {
       achievementPct: kpiData.targetPct,
       pending: kpiData.remainingTarget,
     };
-  }, [isDrillDownActive, selectedStyleRow, selectedOrderRow, effectiveProduced, effectiveTargetPieces, effectiveAchievementPct, effectivePending, filterDepartment, effectiveDeptBucket, displayDeptTable, kpiData]);
+  }, [isDrillDownActive, selectedStyleRow, selectedOrderRow, effectiveProduced, effectiveTargetPieces, effectiveAchievementPct, effectivePending, filterDepartment, effectiveDeptBucket, displayDeptTable, filterDate, dailyProductionLogs, kpiData]);
 
   // ─── Orders At Risk — real order_progress rows flagged by the real
-  // delay_status field, narrowed by the same universal Order/Style/Search
+  // delay_status field, narrowed by the same universal Order/Style
   // filter as the Orders & Styles tab so picking an order here actually
   // changes what's shown instead of always listing every delayed order. ───
   const ordersAtRiskList = useMemo(() => {
@@ -1578,7 +1660,7 @@ export default function DirectManagerDashboard() {
           <button
             onClick={() => {
               setFilterDate('all'); setFilterOrder('all'); setFilterStyle('all');
-              setFilterDepartment('all'); setFilterEmployee('all'); setSearchQuery('');
+              setFilterDepartment('all'); setFilterEmployee('all');
               setFilterColour('all'); setFilterSize('all');
               triggerToast('Filters reset');
             }}
@@ -1589,17 +1671,6 @@ export default function DirectManagerDashboard() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <div className="relative">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search order, style, piece..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 py-1.5 bg-[#f8fafc] border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-600"
-            />
-          </div>
-
           <div>
             <CompleteDateCalendarPicker
               selectedDate={filterDate}
@@ -1648,6 +1719,15 @@ export default function DirectManagerDashboard() {
                 value: emp.name,
                 label: `${emp.name} (${emp.designation || 'Floor'})`,
               }))}
+            />
+          </div>
+
+          <div>
+            <ScreenSafeSelect
+              value={filterColour}
+              onChange={setFilterColour}
+              placeholder="🎨 All Colours"
+              options={availableTraceabilityColours.map((c) => ({ value: c, label: c }))}
             />
           </div>
         </div>
@@ -1703,12 +1783,16 @@ export default function DirectManagerDashboard() {
       {activeTab === 'tab-overview' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
 
-          {overviewScope.mode !== 'factory' && (
+          {(overviewScope.mode !== 'factory' || overviewScope.dateScoped) && (
             <div className="w-full bg-indigo-50 border border-indigo-200 text-indigo-800 text-xs font-bold p-3 rounded-2xl flex items-center gap-2">
               <Info className="w-4 h-4 shrink-0" />
               <span>
-                Total Production / Achievement below are scoped to {overviewScope.mode === 'order' ? `order/style “${overviewScope.label}”` : `department “${overviewScope.label}”`} (real data).
-                Productivity, Quality Pass and Attendance stay factory-wide — the backend has no per-{overviewScope.mode} breakdown for those.
+                Total Production / Achievement below are scoped to {
+                  overviewScope.mode === 'order' ? `order/style “${overviewScope.label}”`
+                  : overviewScope.dateScoped ? `date “${overviewScope.label}”`
+                  : `department “${overviewScope.label}”`
+                } (real data).
+                Productivity, Quality Pass and Attendance stay factory-wide — the backend has no per-{overviewScope.dateScoped ? 'date' : overviewScope.mode} breakdown for those.
               </span>
             </div>
           )}
@@ -1722,7 +1806,7 @@ export default function DirectManagerDashboard() {
                   <Clock className="w-4 h-4" />
                 </span>
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">
-                  {overviewScope.mode === 'factory' ? 'Total Production' : `Production — ${overviewScope.label}`}
+                  {overviewScope.mode === 'factory' && !overviewScope.dateScoped ? 'Total Production' : `Production — ${overviewScope.label}`}
                 </span>
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
@@ -1730,7 +1814,7 @@ export default function DirectManagerDashboard() {
               </div>
               <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
                 <span>Target: {overviewScope.targetProd !== null ? `${overviewScope.targetProd} pcs` : <NotAvailableBadge label="N/A" />}</span>
-                {overviewScope.mode === 'factory' ? (
+                {overviewScope.mode === 'factory' && !overviewScope.dateScoped ? (
                   kpiData.variancePct !== null ? (
                     <span className={kpiData.variancePct >= 0 ? 'text-emerald-700 font-bold' : 'text-rose-600 font-bold'}>
                       {kpiData.variancePct > 0 ? `+${kpiData.variancePct}%` : `${kpiData.variancePct}%`}
@@ -1812,7 +1896,7 @@ export default function DirectManagerDashboard() {
                   <Activity className="w-4 h-4" />
                 </span>
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">Productivity</span>
-                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto shrink-0">FACTORY-WIDE</span>}
+                {(overviewScope.mode !== 'factory' || overviewScope.dateScoped) && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto shrink-0">FACTORY-WIDE</span>}
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
                 {kpiData.productivity !== null ? `${kpiData.productivity}` : '—'} <span className="text-xs font-semibold text-slate-400">pcs/employee</span>
@@ -1834,7 +1918,7 @@ export default function DirectManagerDashboard() {
                   <ShieldCheck className="w-4 h-4" />
                 </span>
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">Quality Pass</span>
-                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto shrink-0">FACTORY-WIDE</span>}
+                {(overviewScope.mode !== 'factory' || overviewScope.dateScoped) && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto shrink-0">FACTORY-WIDE</span>}
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
                 {kpiData.qualityPassPct !== null ? `${kpiData.qualityPassPct}%` : <NotAvailableBadge label="no quality table" />}
@@ -1844,20 +1928,28 @@ export default function DirectManagerDashboard() {
               </div>
             </div>
 
-            {/* 6. ATTENDANCE */}
+            {/* 6. ATTENDANCE — plain real counts instead of a present/assigned
+                 percentage. The backend's two totals aren't guaranteed
+                 present <= assigned (extra shift workers can check in beyond
+                 the day's assigned roster), so a "144% Present" style ratio
+                 reads as broken even though both numbers are real; showing
+                 them as counts avoids that. Department breakdown lives in the
+                 Workforce by Department panel below (real roster headcount —
+                 the backend has no per-department or per-date attendance). */}
             <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
               <div className="flex items-center gap-2 text-slate-500 mb-2 min-w-0">
                 <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600 border border-purple-100">
                   <Users className="w-4 h-4" />
                 </span>
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-600 min-w-0 flex-1 truncate">Attendance</span>
-                {overviewScope.mode !== 'factory' && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto shrink-0">FACTORY-WIDE</span>}
+                {(overviewScope.mode !== 'factory' || overviewScope.dateScoped) && <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400 ml-auto shrink-0">FACTORY-WIDE</span>}
               </div>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono my-1">
-                {kpiData.presentWorkers ?? '—'} <span className="text-xs font-medium text-slate-400">/ {kpiData.totalWorkers ?? '—'}</span>
+                {kpiData.presentWorkers ?? '—'} <span className="text-xs font-semibold text-slate-400">present today</span>
               </div>
               <div className="flex items-center justify-between text-xs text-slate-600 font-semibold pt-2 border-t border-slate-100">
-                <span className="text-emerald-700 font-bold">{kpiData.attendancePct !== null ? `${kpiData.attendancePct}% Present` : <NotAvailableBadge label="N/A" />}</span>
+                <span>Assigned: <strong className="text-slate-800">{kpiData.totalWorkers ?? '—'}</strong></span>
+                <span className="text-indigo-600 font-bold cursor-default" title="Total workforce roster, all designations">Roster: {realEmployees.length || '—'}</span>
               </div>
             </div>
           </div>
@@ -1922,15 +2014,15 @@ export default function DirectManagerDashboard() {
 
                 <div className="sm:col-span-4 bg-[#f8fafc] p-4 rounded-2xl border border-slate-100 flex flex-col justify-between text-xs font-semibold">
                   <div>
-                    <span className="text-xs text-slate-500 font-bold block uppercase tracking-wide">Today&apos;s Target</span>
+                    <span className="text-xs text-slate-500 font-bold block uppercase tracking-wide">{filterDate !== 'all' ? `${filterDate} Target` : "Today's Target"}</span>
                     <span className="text-xl font-black text-slate-900 font-mono mt-0.5">
-                      {todaysProductionRow?.assigned != null ? `${todaysProductionRow.assigned} pcs` : <NotAvailableBadge label="N/A" />}
+                      {selectedProductionRow?.assigned != null ? `${selectedProductionRow.assigned} pcs` : <NotAvailableBadge label="N/A" />}
                     </span>
                   </div>
                   <div>
-                    <span className="text-xs text-purple-700 font-bold block uppercase tracking-wide">Actual (Till Now)</span>
+                    <span className="text-xs text-purple-700 font-bold block uppercase tracking-wide">{filterDate !== 'all' ? 'Actual (That Day)' : 'Actual (Till Now)'}</span>
                     <span className="text-xl font-black text-purple-700 font-mono mt-0.5">
-                      {todaysProductionRow?.completed != null ? `${todaysProductionRow.completed} pcs` : <NotAvailableBadge label="N/A" />}
+                      {selectedProductionRow?.completed != null ? `${selectedProductionRow.completed} pcs` : <NotAvailableBadge label="N/A" />}
                     </span>
                   </div>
                   <div>
@@ -1942,9 +2034,9 @@ export default function DirectManagerDashboard() {
                   <div>
                     <span className="text-xs text-rose-700 font-bold block uppercase tracking-wide">Variance</span>
                     <span className="text-xl font-black text-rose-700 font-mono mt-0.5">
-                      {(todaysProductionRow?.assigned != null && todaysProductionRow?.completed != null)
+                      {(selectedProductionRow?.assigned != null && selectedProductionRow?.completed != null)
                         ? (() => {
-                            const v = todaysProductionRow.completed - todaysProductionRow.assigned;
+                            const v = selectedProductionRow.completed - selectedProductionRow.assigned;
                             return `${v > 0 ? '+' : ''}${v} pcs`;
                           })()
                         : <NotAvailableBadge label="N/A" />}
@@ -2076,75 +2168,50 @@ export default function DirectManagerDashboard() {
               </div>
             </div>
 
-            {/* PANEL 3: BOTTLENECK & DELIVERY RISK (Cols 3) — real bottleneck{} and
-                 order_progress data only. No AI backend exists anywhere in the API,
-                 so this shows facts, not invented recommendations. */}
+            {/* PANEL 3: WORKFORCE BY DEPARTMENT (Cols 3) — real GET /employees
+                 roster, bucketed by department. This is total headcount
+                 assigned to each department, not live attendance: no endpoint
+                 anywhere returns a per-department or per-date present/absent
+                 breakdown (only one factory-wide present/assigned total
+                 exists — see the Attendance tile above), so it can't
+                 honestly react to the date filter. Replaces the previous
+                 Bottleneck & Delivery Risk panel — that info is still real
+                 data elsewhere on this tab: the bottleneck banner up top,
+                 Orders At Risk, and Department Queues below. */}
             <div className="lg:col-span-3 bg-white p-5 rounded-3xl border border-slate-200 shadow-sm flex flex-col justify-between space-y-3">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-extrabold uppercase tracking-wider text-slate-900 flex items-center gap-1.5">
-                    <AlertCircle className="w-4 h-4 text-amber-600" />
-                    Bottleneck &amp; Delivery Risk
+                    <Users className="w-4 h-4 text-indigo-600" />
+                    Workforce by Department
                   </h3>
-                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">Live</span>
+                  <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full" title="Total roster headcount, not daily attendance — the backend has no per-department attendance record">Roster</span>
                 </div>
 
-                {isDrillDownActive ? (
-                  effectiveBlockedStage ? (
-                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 flex items-start gap-2.5 mb-3">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <div>
-                        <span className="font-extrabold uppercase tracking-wide block text-xs">{formatStage(effectiveBlockedStage)} is blocking this order</span>
-                        <p className="text-xs text-amber-800 mt-0.5 font-medium leading-relaxed">Real blocked_stage from GET /dashboard/direct-manager/orders/{'{id}'}.</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-800 flex items-start gap-2.5 mb-3">
-                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span className="font-semibold">{selectedOrderRow ? 'Not blocked at any stage.' : 'Loading order stage data…'}</span>
-                    </div>
-                  )
-                ) : bottleneck?.stage || bottleneck?.label ? (
-                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-xs text-amber-900 flex items-start gap-2.5 mb-3">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-extrabold uppercase tracking-wide block text-xs">{formatStage(bottleneck.label || bottleneck.stage)} is the deepest queue</span>
-                      <p className="text-xs text-amber-800 mt-0.5 font-medium leading-relaxed">
-                        {typeof bottleneck.pending === 'number' || typeof bottleneck.queue === 'number'
-                          ? `${bottleneck.pending ?? bottleneck.queue} pieces waiting.`
-                          : 'Queue depth not reported.'}
-                      </p>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-xs text-emerald-800 flex items-start gap-2.5 mb-3">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span className="font-semibold">No bottleneck reported by the backend right now.</span>
-                  </div>
-                )}
-
-                <div className="space-y-1.5 text-xs mb-3">
-                  <span className="text-xs font-extrabold uppercase text-slate-500 tracking-wider block">
-                    {overviewScope.mode === 'factory' ? 'Top Waiting Queues (real pipeline data)' : `Waiting Queues — ${overviewScope.label}`}
-                  </span>
-                  <ul className="space-y-1.5 text-xs text-slate-700 font-medium">
-                    {deptQueuesList.slice(0, 3).map((q, i) => (
-                      <li key={`queue-${q.name}-${i}`} className="flex items-center justify-between gap-2">
-                        <span className="flex items-center gap-2"><span className={`w-2 h-2 rounded-full ${q.barColor} shrink-0`} />{q.name}</span>
-                        <span className="font-mono font-bold text-slate-900">{q.waiting} pcs</span>
+                <ul className="space-y-2.5">
+                  {departmentHeadcount.map((d) => {
+                    const accent = departmentAccent(d.department);
+                    const maxCount = Math.max(...departmentHeadcount.map((x) => x.count), 1);
+                    return (
+                      <li key={`workforce-dept-${d.department}`} className="text-xs">
+                        <div className="flex items-center justify-between mb-1 font-semibold">
+                          <span className="flex items-center gap-1.5 text-slate-800"><span className={`w-2 h-2 rounded-full ${accent.dot} shrink-0`} />{d.department}</span>
+                          <span className="font-mono font-bold text-slate-900">{d.count}</span>
+                        </div>
+                        <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                          <div className={`${accent.bar} h-full rounded-full transition-all duration-700 ease-out`} style={{ width: `${Math.round((d.count / maxCount) * 100)}%` }} />
+                        </div>
                       </li>
-                    ))}
-                    {deptQueuesList.length === 0 && <li className="text-slate-400">No pipeline queues reported.</li>}
-                  </ul>
-                </div>
+                    );
+                  })}
+                  {departmentHeadcount.length === 0 && (
+                    <li className="py-6 text-center text-xs text-slate-400 font-semibold">No department-mapped employees found.</li>
+                  )}
+                </ul>
 
-                <div className="space-y-1.5 text-xs">
-                  <span className="text-xs font-extrabold uppercase text-slate-500 tracking-wider block">Delayed Orders</span>
-                  <div className="p-2.5 rounded-xl bg-[#f8fafc] border border-slate-200 flex items-center justify-between text-xs font-semibold">
-                    <span className="text-slate-800">Real delay_status = DELAYED{overviewScope.mode !== 'factory' ? ' (filtered)' : ''}</span>
-                    <span className="text-rose-700 font-bold text-sm shrink-0 ml-2">{overviewScope.mode === 'factory' ? (kpiData.delayedCount ?? '—') : ordersAtRiskList.length}</span>
-                  </div>
-                </div>
+                <p className="text-[10px] text-slate-400 font-medium leading-relaxed mt-3 pt-3 border-t border-slate-100">
+                  Real GET /api/v1/employees roster grouped by department. Not daily present/absent — the backend has no per-employee or per-department attendance record.
+                </p>
               </div>
             </div>
           </div>
@@ -2510,10 +2577,10 @@ export default function DirectManagerDashboard() {
       {activeTab === 'tab-styles' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
           
-          {/* Order Summary KPIs — react to the universal Order/Style/Search filter */}
+          {/* Order Summary KPIs — react to the universal Order/Style filter */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">{filterOrder !== 'all' || filterStyle !== 'all' || searchQuery ? 'Matching Rows' : 'Active Orders'}</span>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">{filterOrder !== 'all' || filterStyle !== 'all' ? 'Matching Rows' : 'Active Orders'}</span>
               <span className="text-2xl font-black text-slate-900 font-mono">{filteredOrderProgress.length}</span>
               <span className="text-xs text-slate-500 font-semibold block mt-1">In Production</span>
             </div>
@@ -2542,8 +2609,7 @@ export default function DirectManagerDashboard() {
 
           {/* Dedicated Style-Wise Fulfillment Graph — horizontal bars so every style
                fits (no more capping at 8), and it now actually reacts to the
-               Order/Style filter and search box above instead of always showing
-               the whole factory. */}
+               Order/Style filter above instead of always showing the whole factory. */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
               <div>
@@ -2552,7 +2618,7 @@ export default function DirectManagerDashboard() {
                   Style-Wise Fulfillment & Production Volume Breakdown
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {filterOrder !== 'all' || filterStyle !== 'all' || searchQuery
+                  {filterOrder !== 'all' || filterStyle !== 'all'
                     ? `Showing ${stylesGraphData.length} style(s) matching the current filter.`
                     : `All ${stylesGraphData.length} styles currently in scope — pick an Order or Style above to narrow this down.`}
                 </p>
@@ -2687,64 +2753,177 @@ export default function DirectManagerDashboard() {
             </div>
           </div>
 
-          {/* Stage Cards Grid */}
+          {/* Stage Cards Grid — click a card to see its real logged pieces below */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <h3 className="text-base font-extrabold text-slate-900">Floor Stage Funnel Analytics</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {pipelineWithStore.map((stage, idx) => (
-                <div key={`f-stage-${stage.stage || stage.label || idx}-${idx}`} className="p-4 bg-[#f8fafc] rounded-2xl border border-slate-200 space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs font-black text-slate-900 uppercase">{formatStage(stage.stage || stage.label)}</span>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 font-mono">Stage #{idx + 1}</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-slate-600">
-                    <span>Completed: <strong className="text-emerald-700 font-mono">{readNum(stage, ['completed', 'done']) ?? 0}</strong></span>
-                    <span>Queue: <strong className="text-amber-600 font-mono">{readNum(stage, ['pending', 'queue']) ?? 0}</strong></span>
-                  </div>
-                </div>
-              ))}
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-extrabold text-slate-900">Floor Stage Funnel Analytics</h3>
+              <span className="text-[11px] font-semibold text-slate-400">Click a stage to see its logged pieces</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {pipelineWithStore.map((stage, idx) => {
+                const stageKey = stage.stage || stage.label;
+                const dept = inferDepartment(stageKey);
+                const accent = departmentAccent(dept);
+                const completed = readNum(stage, ['completed', 'done']) ?? 0;
+                const pending = readNum(stage, ['pending', 'queue']) ?? 0;
+                const total = completed + pending;
+                const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
+                const isBottleneck = bottleneck?.stage === stageKey || bottleneck?.label === stage.label;
+                const isSelected = selectedStage?.stage === stageKey;
+                return (
+                  <button
+                    key={`f-stage-${stageKey || idx}-${idx}`}
+                    type="button"
+                    onClick={() => setSelectedStage(isSelected ? null : stage)}
+                    className={`relative text-left overflow-hidden rounded-2xl border bg-white transition-all cursor-pointer hover:shadow-md ${
+                      isSelected ? `${accent.ring} ring-2 shadow-md` : 'border-slate-200'
+                    }`}
+                  >
+                    <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${accent.bar}`} />
+                    <div className="p-4 pl-5 space-y-2.5">
+                      <div className="flex justify-between items-start gap-2">
+                        <div>
+                          <span className={`inline-block text-[9px] font-black px-1.5 py-0.5 rounded-md font-mono uppercase ${accent.chip}`}>{dept}</span>
+                          <h4 className="text-xs font-black text-slate-900 uppercase mt-1">{formatStage(stageKey)}</h4>
+                        </div>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 font-mono shrink-0">#{idx + 1}</span>
+                      </div>
+
+                      <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${accent.bar} transition-all duration-700`} style={{ width: `${pct}%` }} />
+                      </div>
+
+                      <div className="flex justify-between text-xs text-slate-600">
+                        <span>Done: <strong className="text-emerald-700 font-mono">{completed}</strong></span>
+                        <span>Queue: <strong className="text-amber-600 font-mono">{pending}</strong></span>
+                      </div>
+
+                      {isBottleneck && (
+                        <div className="flex items-center gap-1 text-[10px] font-black uppercase text-amber-700">
+                          <AlertTriangle className="w-3 h-3" /> Bottleneck
+                        </div>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {/* Stage Piece Drill-Down — real traceability rows for the clicked
+               stage. Only Leather/Lining Cutting have any per-piece
+               attribution anywhere in the API (selectedStagePieces is
+               computed from traceabilityData via MATERIAL_TYPE_TO_STAGE), so
+               every later stage honestly says so instead of showing an empty
+               table with no explanation. */}
+          {selectedStage && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                  <QrCode className="w-5 h-5 text-indigo-600" />
+                  Logged Pieces &mdash; {formatStage(selectedStage.stage || selectedStage.label)}
+                </h3>
+                <button onClick={() => setSelectedStage(null)} className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"><X className="w-4 h-4" /></button>
+              </div>
+
+              {selectedStagePieces.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
+                        <th className="py-3 px-4">Piece Code</th>
+                        <th className="py-3 px-4">Order</th>
+                        <th className="py-3 px-4">Colour</th>
+                        <th className="py-3 px-4">Size</th>
+                        <th className="py-3 px-4">Cutting Date</th>
+                        <th className="py-3 px-4">Employee</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                      {selectedStagePieces.slice(0, 50).map((p, idx) => (
+                        <tr key={`stage-piece-${p.piece_code || idx}-${idx}`} onClick={() => setSelectedPieceCode(p.piece_code)} className="hover:bg-slate-50 transition-colors cursor-pointer">
+                          <td className="py-3 px-4 font-mono font-bold text-indigo-700">{p.piece_code}</td>
+                          <td className="py-3 px-4 text-slate-800 font-semibold">{p.order_number || '—'}</td>
+                          <td className="py-3 px-4 text-slate-700">{p.colour || '—'}</td>
+                          <td className="py-3 px-4 text-slate-700">{p.size || '—'}</td>
+                          <td className="py-3 px-4 font-mono text-slate-600">{p.cutting_date || '—'}</td>
+                          <td className="py-3 px-4 text-slate-600">{p.employee || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {selectedStagePieces.length > 50 && (
+                    <p className="text-center text-[11px] text-slate-400 font-semibold pt-3">
+                      Showing 50 of {selectedStagePieces.length} pieces — open Piece Traceability to see the rest.
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="py-8 text-center text-xs text-slate-400 font-semibold flex flex-col items-center gap-1.5">
+                  <Info className="w-4 h-4" />
+                  <span>
+                    {['LEATHER_CUTTING', 'LINING_CUTTING'].includes(String(selectedStage.stage || '').toUpperCase())
+                      ? 'No traceability rows logged for this stage yet.'
+                      : 'No piece-level data available past Cutting — GET /dashboard/store/traceability only attributes individual pieces to Leather/Lining Cutting.'}
+                  </span>
+                </div>
+              )}
+            </motion.div>
+          )}
         </motion.div>
       )}
 
       {/* ====================================================================
-           TAB: EMPLOYEES (With Dedicated Operator Output Analytics Graph)
+           TAB: EMPLOYEES
            ==================================================================== */}
       {activeTab === 'tab-employees' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
-          
-          {/* Employee Headcount by Designation — real GET /employees rows */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
-                  <Users className="w-5 h-5 text-indigo-600" />
-                  Workforce Headcount by Designation
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Real GET /api/v1/employees roster grouped by designation. Per-employee output isn&apos;t returned by any endpoint, so it isn&apos;t charted.
-                </p>
-              </div>
-            </div>
 
-            <div className="h-[270px] w-full pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={employeesByDesignation} margin={{ top: 10, right: 10, left: -15, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="designation" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} allowDecimals={false} />
-                  <Tooltip content={<DepartmentMiniGraphTooltip />} />
-                  <Bar dataKey="count" name="Headcount" fill="#9333ea" radius={[4, 4, 0, 0]} isAnimationActive={true} />
-                </BarChart>
-              </ResponsiveContainer>
-              {employeesByDesignation.length === 0 && <p className="text-center text-xs text-slate-400 font-medium -mt-40">No employees match the current filter.</p>}
+          {/* Active / Inactive roster status — real is_active flag on GET
+               /employees. Not the same as daily attendance (no such field
+               exists per-employee anywhere in the API — see the note below
+               and on the Attendance tile in Factory Overview). */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Roster Total</span>
+              <span className="text-2xl font-black text-slate-900 font-mono">{activeInactiveCounts.total}</span>
+              <span className="text-xs text-slate-500 font-semibold block mt-1">Matching current filter</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Active</span>
+              <span className="text-2xl font-black text-emerald-700 font-mono">{activeInactiveCounts.active}</span>
+              <span className="text-xs text-emerald-700 font-semibold block mt-1">is_active = true</span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1">Inactive</span>
+              <span className="text-2xl font-black text-rose-600 font-mono">{activeInactiveCounts.inactive}</span>
+              <span className="text-xs text-rose-700 font-semibold block mt-1">is_active = false</span>
             </div>
           </div>
+          <p className="text-[11px] text-slate-400 font-medium flex items-center gap-1.5 -mt-2">
+            <Info className="w-3.5 h-3.5 shrink-0" />
+            Active/Inactive is the employee&apos;s roster status, not daily attendance — the backend has no per-employee present/absent record for any date.
+          </p>
 
           {/* Employee Table */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <h3 className="text-base font-extrabold text-slate-900">Active Floor Employees & Capacity</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-base font-extrabold text-slate-900">Active Floor Employees & Capacity</h3>
+              <div className="flex items-center gap-2">
+                <select
+                  value={filterWageType}
+                  onChange={(e) => setFilterWageType(e.target.value)}
+                  className="bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
+                >
+                  <option value="all">💰 All Wage Types</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="piece_rate">Piece Rate</option>
+                </select>
+                {filterWageType !== 'all' && (
+                  <button onClick={() => setFilterWageType('all')} className="text-xs font-bold text-rose-600 hover:underline cursor-pointer">Reset</button>
+                )}
+              </div>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead>
@@ -2760,12 +2939,17 @@ export default function DirectManagerDashboard() {
                     <tr key={`f-emp-${emp.id || emp.name || idx}-${idx}`} className="hover:bg-slate-50 transition-colors">
                       <td className="py-3 px-4 font-bold text-slate-900">{emp.name}</td>
                       <td className="py-3 px-4 text-slate-700">{emp.designation || 'Floor Operator'}</td>
-                      <td className="py-3 px-4 text-slate-600">{emp.wage_type || 'Piece Rate'}</td>
+                      <td className="py-3 px-4 text-slate-600">{emp.wage_type === 'monthly' ? 'Monthly' : emp.wage_type === 'piece_rate' ? 'Piece Rate' : (emp.wage_type || '—')}</td>
                       <td className="py-3 px-4 text-center">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">Active</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${emp.is_active ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-700'}`}>
+                          {emp.is_active ? 'Active' : 'Inactive'}
+                        </span>
                       </td>
                     </tr>
                   ))}
+                  {filteredEmployees.length === 0 && (
+                    <tr><td colSpan={4} className="py-8 text-center text-slate-400 font-semibold">No employees match the current filter.</td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2814,19 +2998,40 @@ export default function DirectManagerDashboard() {
             </div>
           </div>
 
+          {/* Piece Code / Unique ID Lookup — real GET /dashboard/direct-manager/
+               pieces/{piece_code}, the only endpoint with a real per-piece
+               current stage + full stage history (traceability rows below
+               have neither, see the Current Stage column note). */}
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <form
+              onSubmit={(e) => { e.preventDefault(); if (pieceSearchInput.trim()) setSelectedPieceCode(pieceSearchInput.trim()); }}
+              className="flex flex-col sm:flex-row sm:items-center gap-3"
+            >
+              <div className="relative flex-1">
+                <QrCode className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Look up a piece by its code or unique ID (e.g. 1234-BF27P010501-SUEDE_BOMBER-NAVY-2XL-022)"
+                  value={pieceSearchInput}
+                  onChange={(e) => setPieceSearchInput(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 bg-[#f8fafc] border border-slate-200 rounded-xl text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={!pieceSearchInput.trim()}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold cursor-pointer shrink-0"
+              >
+                View Real Stage &amp; History
+              </button>
+            </form>
+          </div>
+
           {/* Traceability Table */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <h3 className="text-base font-extrabold text-slate-900">Live Garment Piece Traceability</h3>
               <div className="flex items-center gap-2">
-                <select
-                  value={filterColour}
-                  onChange={(e) => setFilterColour(e.target.value)}
-                  className="bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-600"
-                >
-                  <option value="all">🎨 All Colours</option>
-                  {availableTraceabilityColours.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
                 <select
                   value={filterSize}
                   onChange={(e) => setFilterSize(e.target.value)}
@@ -2835,9 +3040,9 @@ export default function DirectManagerDashboard() {
                   <option value="all">📏 All Sizes</option>
                   {availableTraceabilitySizes.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-                {(filterColour !== 'all' || filterSize !== 'all') && (
+                {filterSize !== 'all' && (
                   <button
-                    onClick={() => { setFilterColour('all'); setFilterSize('all'); }}
+                    onClick={() => setFilterSize('all')}
                     className="text-xs font-bold text-rose-600 hover:underline cursor-pointer"
                   >
                     Reset
@@ -2853,7 +3058,7 @@ export default function DirectManagerDashboard() {
                     <th className="py-3 px-4">Order</th>
                     <th className="py-3 px-4">Colour</th>
                     <th className="py-3 px-4">Size</th>
-                    <th className="py-3 px-4">Current Stage</th>
+                    <th className="py-3 px-4" title="This list has no stage field — click a row for the real current stage">Current Stage</th>
                     <th className="py-3 px-4">Employee</th>
                   </tr>
                 </thead>
@@ -2864,7 +3069,13 @@ export default function DirectManagerDashboard() {
                       <td className="py-3 px-4 text-slate-800 font-semibold">{p.order_number || '—'}</td>
                       <td className="py-3 px-4 text-slate-700">{p.colour || '—'}</td>
                       <td className="py-3 px-4 text-slate-700">{p.size || '—'}</td>
-                      <td className="py-3 px-4 text-slate-700">{formatStage(p.stage)}</td>
+                      <td className="py-3 px-4">
+                        {p.stage ? (
+                          <span className="text-slate-700">{formatStage(p.stage)}</span>
+                        ) : (
+                          <span className="text-indigo-600 font-bold text-[11px]" title="Not returned by GET /dashboard/store/traceability — click this row to fetch the real current stage">View stage &rarr;</span>
+                        )}
+                      </td>
                       <td className="py-3 px-4 text-slate-600">{p.employee || '—'}</td>
                     </tr>
                   ))}
@@ -2884,9 +3095,9 @@ export default function DirectManagerDashboard() {
       {activeTab === 'tab-drawers' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-6">
           
-          {/* Store Drawer Buffer Graph */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          {/* Store Drawer Buffer — real store{} KPI totals, plain numbers (no chart) */}
+          <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
                   <Box className="w-5 h-5 text-indigo-600" />
@@ -2896,27 +3107,50 @@ export default function DirectManagerDashboard() {
                   Real-time drawer distribution between store buffer inventory and shop floor lines.
                 </p>
               </div>
-              <button onClick={fetchDrawers} disabled={drawersLoading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 disabled:opacity-50 cursor-pointer">
-                <RefreshCw className={`w-3.5 h-3.5 ${drawersLoading ? 'animate-spin' : ''}`} /> Refresh
-              </button>
-            </div>
-
-            <div className="h-[260px] w-full pt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={drawersGraphData} margin={{ top: 10, right: 10, left: -15, bottom: 20 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="category" tick={{ fontSize: 11, fill: '#475569', fontWeight: 600 }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={{ stroke: '#e2e8f0' }} tickLine={false} />
-                  <Tooltip content={<DepartmentMiniGraphTooltip />} />
-                  <Bar dataKey="count" fill="#9333ea" radius={[6, 6, 0, 0]} isAnimationActive={true} />
-                </BarChart>
-              </ResponsiveContainer>
+              <div className="flex items-center gap-4">
+                <div className="text-center">
+                  <span className="block text-lg font-black text-purple-700 font-mono">{storeStats.drawers_in_store ?? '—'}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">In Store</span>
+                </div>
+                <div className="text-center">
+                  <span className="block text-lg font-black text-blue-600 font-mono">{storeStats.drawers_sent ?? '—'}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Sent</span>
+                </div>
+                <div className="text-center">
+                  <span className="block text-lg font-black text-emerald-600 font-mono">{storeStats.drawers_received ?? '—'}</span>
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Received</span>
+                </div>
+                <button onClick={fetchDrawers} disabled={drawersLoading} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-700 disabled:opacity-50 cursor-pointer">
+                  <RefreshCw className={`w-3.5 h-3.5 ${drawersLoading ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Drawer Grid */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-            <h3 className="text-base font-extrabold text-slate-900">Store Drawer Command & Floor Dispatch</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="text-base font-extrabold text-slate-900">Store Drawer Command & Floor Dispatch</h3>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { value: 'all', label: 'All' },
+                  { value: 'LEATHER', label: 'Hold Leather' },
+                  { value: 'LINING', label: 'Hold Lining' },
+                  { value: 'BOTH', label: 'Hold Both' },
+                  { value: 'EMPTY', label: 'Empty' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setFilterDrawerHolding(opt.value)}
+                    className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                      filterDrawerHolding === opt.value ? 'bg-[#0f172a] text-white' : 'bg-[#f8fafc] text-slate-600 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {filteredDrawers.map((dr, idx) => (
                 <div key={`f-drw-${dr.drawer_id || dr.code || idx}-${idx}`} className="p-5 rounded-2xl border border-slate-200 bg-white hover:shadow-md transition-all space-y-3">
@@ -2946,6 +3180,9 @@ export default function DirectManagerDashboard() {
                   </div>
                 </div>
               ))}
+              {filteredDrawers.length === 0 && (
+                <div className="col-span-full py-8 text-center text-xs text-slate-400 font-semibold">No drawers match this filter.</div>
+              )}
             </div>
           </div>
         </motion.div>

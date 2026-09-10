@@ -31,7 +31,8 @@ export const TICKET = {
 // Perfectly packs 8 labels (2 across × 4 down = 262mm height) per single A4 sheet.
 export const BUCKET_LABEL = { widthMm: 98, heightMm: 65.5 };
 export const BUCKET_LABELS_PER_PAGE = 8;
-export const STYLE_LABELS_PER_PAGE = 8;
+// Style barcode labels are small, so they pack 2 across × 8 down = 16 per A4 sheet.
+export const STYLE_LABELS_PER_PAGE = 16;
 
 // ============================================================================
 // 4. BRAND THEMING & WARM COLOR PALETTE
@@ -142,4 +143,4 @@ export const BARCODE_TYPE_LABELS = {
 };
 
 export const STYLE_HISTORY_PAGE_SIZE = 24;
-export const DEFAULT_STYLE_FILTERS = { styleId: 'ALL', size: 'ALL', status: 'ALL' };
+export const DEFAULT_STYLE_FILTERS = { styleId: 'ALL', size: 'ALL', color: 'ALL' };

@@ -1,12 +1,28 @@
 'use client';
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import { PackageSearch, Loader2, Barcode, RotateCcw } from 'lucide-react';
 import {
   apiGetBarcodeDetail, apiPrintBarcodes,
-  apiGetBarcodeOrders, apiGetOrderBarcodeSkus, apiGetOrderBarcodeAnalytics, apiGetOrderBarcodes,
 } from '@/lib/api';
 import { BRAND, STYLE_HISTORY_PAGE_SIZE, DEFAULT_STYLE_FILTERS } from '../../_lib/constants';
 import { statusBadgeClass } from '../../_lib/helpers';
+import {
+  setStyleSelectedOrder,
+  setStyleFilter,
+  resetStyleFilters,
+  setStylePage,
+  togglePrintSelected,
+  setPrintSelected,
+  addPrintSelected,
+  clearPrintSelected,
+  setActiveTab,
+} from '../../_lib/barcodeSlice';
+import {
+  useGetBarcodeOrdersQuery,
+  useGetOrderMetaQuery,
+  useGetOrderBarcodesQuery,
+} from '../../_lib/barcodeApiSlice';
 import ScreenSafeSelect from '../ScreenSafeSelect';
 import LiveBarcodeDetailModal from '../modals/LiveBarcodeDetailModal';
 import StyleGenerationGrid from './StyleGenerationGrid';
@@ -32,171 +48,107 @@ import StyleHistoryTable from './StyleHistoryTable';
  * 4. Submits print payloads to `POST /api/v1/barcode/print`.
  */
 export default function StyleRegistryPanel({ activeTab, token, showToast, setPrintSheetItems }) {
-  // --------------------------------------------------------------------------
-  // 1. ORDER SELECTION & DATA STATE
-  // --------------------------------------------------------------------------
-  const [orders, setOrders] = useState([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
-  const [ordersError, setOrdersError] = useState(null);
-  const [selectedOrderId, setSelectedOrderId] = useState('');
+  const dispatch = useDispatch();
 
   // --------------------------------------------------------------------------
-  // 2. ORDER METADATA & ANALYTICS STATE
+  // 1. REDUX GLOBAL STATE (replaces 6 useState fields)
   // --------------------------------------------------------------------------
-  const [skuOptions, setSkuOptions] = useState([]);
-  const [analytics, setAnalytics] = useState(null);
-  const [orderMetaLoading, setOrderMetaLoading] = useState(false);
-  const [orderMetaError, setOrderMetaError] = useState(null);
+  const selectedOrderId = useSelector((s) => s.barcode.byCategory.style.selectedOrderId);
+  const filters = useSelector((s) => s.barcode.byCategory.style.filters);
+  const page = useSelector((s) => s.barcode.byCategory.style.page);
+  const selectedCodes = useSelector((s) => s.barcode.selection.printSelected.style);
 
   // --------------------------------------------------------------------------
-  // 3. BARCODE PAGINATION & FILTER STATE
+  // 2. RTK QUERY HOOKS (replaces 3 useEffect blocks + 9 useState fields)
   // --------------------------------------------------------------------------
-  const [filters, setFiltersState] = useState(DEFAULT_STYLE_FILTERS);
-  const [page, setPage] = useState(1);
-  const [historyData, setHistoryData] = useState(null);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState(null);
+
+  // --- Orders roster ---
+  const {
+    data: orders = [],
+    isLoading: ordersLoading,
+    error: ordersErrorObj,
+  } = useGetBarcodeOrdersQuery(undefined, { skip: !token });
+  const ordersError = ordersErrorObj?.data?.detail || ordersErrorObj?.error || null;
+
+  // --- Order analytics & SKUs ---
+  const {
+    data: orderMeta,
+    isLoading: orderMetaLoading,
+    error: orderMetaErrorObj,
+  } = useGetOrderMetaQuery(selectedOrderId, {
+    skip: !token || !selectedOrderId,
+  });
+  const skuOptions = orderMeta?.skuOptions ?? [];
+  const analytics = orderMeta?.analytics ?? null;
+  const orderMetaError = orderMetaErrorObj?.data?.detail || orderMetaErrorObj?.error || null;
+
+  // --- Paginated barcodes ---
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    error: historyErrorObj,
+  } = useGetOrderBarcodesQuery(
+    {
+      orderId: selectedOrderId,
+      styleId: filters.styleId,
+      size: filters.size,
+      page,
+      pageSize: STYLE_HISTORY_PAGE_SIZE,
+    },
+    { skip: !token || !selectedOrderId },
+  );
+  const historyError = historyErrorObj?.data?.detail || historyErrorObj?.error || null;
 
   // --------------------------------------------------------------------------
-  // 4. PRINT QUEUE & SELECTION STATE
+  // 3. LOCAL-ONLY STATE (confirmed local, untouched)
   // --------------------------------------------------------------------------
-  const [selectedCodes, setSelectedCodes] = useState(() => new Set());
   const [search, setSearch] = useState('');
   const [printing, setPrinting] = useState(false);
 
-  // --------------------------------------------------------------------------
-  // 5. INSPECTION MODAL STATE
-  // --------------------------------------------------------------------------
+  // Inspection modal state
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState(null);
   const [detailData, setDetailData] = useState(null);
 
   // --------------------------------------------------------------------------
-  // 6. EFFECT: LOAD ORDERS ROSTER (GET /api/v1/barcode/orders)
-  // --------------------------------------------------------------------------
-  useEffect(() => {
-    if (!token) return;
-    let cancelled = false;
-    (async () => {
-      setOrdersLoading(true);
-      setOrdersError(null);
-      try {
-        const rows = await apiGetBarcodeOrders(token);
-        if (!cancelled) setOrders(Array.isArray(rows) ? rows : []);
-      } catch (err) {
-        if (!cancelled) setOrdersError(err.message || 'Failed to load orders.');
-      } finally {
-        if (!cancelled) setOrdersLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [token]);
-
-  // --------------------------------------------------------------------------
-  // 7. EFFECT: LOAD ORDER ANALYTICS & SKUs
-  // --------------------------------------------------------------------------
-  useEffect(() => {
-    if (!token || !selectedOrderId) return;
-    let cancelled = false;
-    (async () => {
-      setOrderMetaLoading(true);
-      setOrderMetaError(null);
-      try {
-        const [skus, an] = await Promise.all([
-          apiGetOrderBarcodeSkus(token, selectedOrderId),
-          apiGetOrderBarcodeAnalytics(token, selectedOrderId),
-        ]);
-        if (cancelled) return;
-        setSkuOptions(Array.isArray(skus) ? skus : []);
-        setAnalytics(an);
-      } catch (err) {
-        if (!cancelled) setOrderMetaError(err.message || 'Failed to load order analytics.');
-      } finally {
-        if (!cancelled) setOrderMetaLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [token, selectedOrderId]);
-
-  // --------------------------------------------------------------------------
-  // 8. EFFECT: LOAD PAGINATED BARCODES FOR ORDER
-  // --------------------------------------------------------------------------
-  useEffect(() => {
-    if (!token || !selectedOrderId) return;
-    let cancelled = false;
-    (async () => {
-      setHistoryLoading(true);
-      setHistoryError(null);
-      try {
-        const data = await apiGetOrderBarcodes(token, selectedOrderId, {
-          styleId: filters.styleId !== 'ALL' ? filters.styleId : undefined,
-          size: filters.size !== 'ALL' ? filters.size : undefined,
-          status: filters.status !== 'ALL' ? filters.status : undefined,
-          page,
-          pageSize: STYLE_HISTORY_PAGE_SIZE,
-        });
-        if (!cancelled) setHistoryData(data);
-      } catch (err) {
-        if (!cancelled) setHistoryError(err.message || 'Failed to load barcode history.');
-      } finally {
-        if (!cancelled) setHistoryLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [token, selectedOrderId, filters, page]);
-
-  // --------------------------------------------------------------------------
-  // 9. ORDER SELECTION & FILTER HELPERS
+  // 4. ORDER SELECTION & FILTER HELPERS
   // --------------------------------------------------------------------------
   const handleSelectOrder = (id) => {
-    setSelectedOrderId(id);
-    setFiltersState(DEFAULT_STYLE_FILTERS);
-    setPage(1);
-    setSelectedCodes(new Set());
+    dispatch(setStyleSelectedOrder(id));
     setSearch('');
-    setSkuOptions([]);
-    setAnalytics(null);
-    setHistoryData(null);
   };
 
   const setFilter = (field, value) => {
-    setFiltersState((prev) => ({ ...prev, [field]: value }));
-    setPage(1);
+    dispatch(setStyleFilter({ field, value }));
   };
 
-  const resetFilters = () => {
-    setFiltersState(DEFAULT_STYLE_FILTERS);
-    setPage(1);
+  const handleResetFilters = () => {
+    dispatch(resetStyleFilters());
   };
 
-  const rows = useMemo(() => historyData?.items || [], [historyData]);
+  // Colour has no server-side filter, so it's applied client-side over the fetched page
+  const rows = useMemo(() => {
+    const items = historyData?.items || [];
+    if (!filters.color || filters.color === 'ALL') return items;
+    return items.filter((r) => r.colour === filters.color);
+  }, [historyData, filters.color]);
 
   // --------------------------------------------------------------------------
-  // 10. CHECKBOX SELECTION HELPERS
+  // 5. CHECKBOX SELECTION HELPERS (using Redux arrays instead of local Sets)
   // --------------------------------------------------------------------------
-  const toggleCode = (code) => setSelectedCodes((prev) => {
-    const next = new Set(prev);
-    next.has(code) ? next.delete(code) : next.add(code);
-    return next;
-  });
+  const toggleCode = (code) => {
+    dispatch(togglePrintSelected({ category: 'style', code }));
+  };
 
-  const selectAllVisible = () => setSelectedCodes((prev) => {
-    const next = new Set(prev);
-    rows.forEach((r) => next.add(r.code));
-    return next;
-  });
+  const clearSelection = () => dispatch(clearPrintSelected('style'));
 
-  const clearSelection = () => setSelectedCodes(new Set());
-
-  const addCodes = (codes) => setSelectedCodes((prev) => {
-    const next = new Set(prev);
-    codes.forEach((c) => next.add(c));
-    return next;
-  });
+  const addCodes = (codes) => {
+    dispatch(addPrintSelected({ category: 'style', codes }));
+  };
 
   // --------------------------------------------------------------------------
-  // 11. INSPECT BARCODE DETAILS (GET /api/v1/barcode/detail)
+  // 6. INSPECT BARCODE DETAILS (GET /api/v1/barcode/detail)
   // --------------------------------------------------------------------------
   const openDetail = useCallback(async (code) => {
     setDetailOpen(true);
@@ -216,8 +168,11 @@ export default function StyleRegistryPanel({ activeTab, token, showToast, setPri
   const currentOrder = useMemo(() => orders.find((o) => o.order_id === selectedOrderId), [orders, selectedOrderId]);
   const rowByCode = useMemo(() => new Map(rows.map((r) => [r.code, r])), [rows]);
 
+  // Wrap selectedCodes array into a Set-like for backward compat with child components
+  const selectedCodesSet = useMemo(() => new Set(selectedCodes), [selectedCodes]);
+
   // --------------------------------------------------------------------------
-  // 12. PRINT NORMALIZATION & SUBMISSION HANDLERS
+  // 7. PRINT NORMALIZATION & SUBMISSION HANDLERS
   // --------------------------------------------------------------------------
   const buildPrintCards = useCallback((labels) => labels.map((l) => {
     const row = rowByCode.get(l.code);
@@ -254,7 +209,7 @@ export default function StyleRegistryPanel({ activeTab, token, showToast, setPri
   }, [token, buildPrintCards, setPrintSheetItems, showToast]);
 
   const handlePrintSelected = () => {
-    if (selectedCodes.size === 0) {
+    if (selectedCodes.length === 0) {
       showToast('Select at least one barcode to print!', 'error');
       return;
     }
@@ -268,8 +223,17 @@ export default function StyleRegistryPanel({ activeTab, token, showToast, setPri
     handlePrint({ order_id: selectedOrderId });
   };
 
+  const handleSendToPrintCenter = () => {
+    if (selectedCodes.length === 0) {
+      showToast('Select at least one barcode to send to Print Center!', 'error');
+      return;
+    }
+    dispatch(setActiveTab('print'));
+    showToast(`${selectedCodes.length} barcode${selectedCodes.length === 1 ? '' : 's'} queued in Print Center!`, 'success');
+  };
+
   // --------------------------------------------------------------------------
-  // 13. CSV AUDIT EXPORT HANDLER
+  // 8. CSV AUDIT EXPORT HANDLER
   // --------------------------------------------------------------------------
   const handleExportCSV = () => {
     const header = ['Code', 'Status', 'SKU', 'Style', 'Colour', 'Size', 'Seq', 'Current Stage', 'Generated At'];
@@ -293,9 +257,10 @@ export default function StyleRegistryPanel({ activeTab, token, showToast, setPri
     return Array.from(map.entries());
   }, [skuOptions]);
   const sizeFilterOptions = useMemo(() => Array.from(new Set(skuOptions.map((s) => s.size).filter(Boolean))), [skuOptions]);
+  const colorFilterOptions = useMemo(() => Array.from(new Set(skuOptions.map((s) => s.colour).filter(Boolean))), [skuOptions]);
 
   // --------------------------------------------------------------------------
-  // 14. RENDER REGISTRY PANEL
+  // 9. RENDER REGISTRY PANEL
   // --------------------------------------------------------------------------
   return (
     <div className="space-y-6 animate-fade-in">
@@ -403,19 +368,15 @@ export default function StyleRegistryPanel({ activeTab, token, showToast, setPri
               />
             </div>
             <div>
-              <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Status</label>
+              <label className="block text-[0.7rem] font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>Color</label>
               <ScreenSafeSelect
-                value={filters.status}
-                onChange={(v) => setFilter('status', v)}
-                placeholder="All Statuses"
-                options={[
-                  { value: 'ALL', label: 'All Statuses' },
-                  { value: 'active', label: 'Active' },
-                  { value: 'retired', label: 'Retired' },
-                ]}
+                value={filters.color}
+                onChange={(v) => setFilter('color', v)}
+                placeholder="All Colors"
+                options={[{ value: 'ALL', label: 'All Colors' }, ...colorFilterOptions.map((c) => ({ value: c, label: c }))]}
               />
             </div>
-            <button onClick={resetFilters} className="btn-warm-secondary !min-h-0 !py-2.5">
+            <button onClick={handleResetFilters} className="btn-warm-secondary !min-h-0 !py-2.5">
               <RotateCcw className="w-4 h-4" /> Reset
             </button>
           </div>
@@ -429,30 +390,33 @@ export default function StyleRegistryPanel({ activeTab, token, showToast, setPri
                 historyError={historyError}
                 search={search}
                 setSearch={setSearch}
-                selectedCodes={selectedCodes}
+                selectedCodes={selectedCodesSet}
                 toggleCode={toggleCode}
-                selectAllVisible={selectAllVisible}
                 clearSelection={clearSelection}
                 addCodes={addCodes}
                 page={page}
-                setPage={setPage}
+                setPage={(p) => dispatch(setStylePage(p))}
                 pages={historyData?.pages || 1}
                 total={historyData?.total || 0}
                 onOpenDetail={openDetail}
                 onPrintSingle={handlePrintSingleCode}
-                onPrintSelected={handlePrintSelected}
+                onSendToPrintCenter={handleSendToPrintCenter}
                 onPrintOrder={handlePrintEntireOrder}
                 printing={printing}
               />
             )}
             {activeTab === 'print' && (
               <StylePrintQueue
-                selectedCodes={selectedCodes}
+                selectedCodes={selectedCodesSet}
                 rowByCode={rowByCode}
+                rows={rows}
+                addCodes={addCodes}
                 onRemove={toggleCode}
                 onClear={clearSelection}
                 onPrintSelected={handlePrintSelected}
                 onPrintOrder={handlePrintEntireOrder}
+                onPrintCodes={(codes) => handlePrint({ codes })}
+                onOpenDetail={openDetail}
                 printing={printing}
               />
             )}
@@ -462,7 +426,7 @@ export default function StyleRegistryPanel({ activeTab, token, showToast, setPri
                 historyLoading={historyLoading}
                 historyError={historyError}
                 page={page}
-                setPage={setPage}
+                setPage={(p) => dispatch(setStylePage(p))}
                 pages={historyData?.pages || 1}
                 total={historyData?.total || 0}
                 onOpenDetail={openDetail}

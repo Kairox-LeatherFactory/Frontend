@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Shirt,
-  AlertTriangle,
   Search,
   Download,
   Filter,
@@ -302,11 +301,12 @@ function DashboardInner() {
   const [filterDate, setFilterDate] = useState('all');
   const [filterOrder, setFilterOrder] = useState('all');
   const [filterStyle, setFilterStyle] = useState('all');
-  const [filterLot, setFilterLot] = useState('all');
-  const [filterEmployee, setFilterEmployee] = useState('all');
-  const [filterStage, setFilterStage] = useState('all');
   const [filterSize, setFilterSize] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [filterColour, setFilterColour] = useState('all');
+
+  // Piece-Level Master Tracker tab's own search — local to that tab, on top
+  // of whatever the universal filter bar already narrowed down to.
+  const [pieceSearchQuery, setPieceSearchQuery] = useState('');
 
   // Modals state
   const [selectedPieceModal, setSelectedPieceModal] = useState(null);
@@ -369,7 +369,6 @@ function DashboardInner() {
         setPiecesLoading(true);
         const params = {};
         if (filterOrder !== 'all') params.order_id = filterOrder;
-        if (filterEmployee !== 'all') params.employee_id = filterEmployee;
         if (filterDate !== 'all') {
           params.start = filterDate;
           params.end = filterDate;
@@ -395,7 +394,7 @@ function DashboardInner() {
     }
     fetchLiningConsumption();
     return () => { isMounted = false; };
-  }, [token, filterOrder, filterEmployee, filterDate]);
+  }, [token, filterOrder, filterDate]);
 
   // Handler to inspect operator/employee and call GET /api/v1/dashboard/lining/employees/{employee_id}
   const handleOpenEmployeeModal = async (emp) => {
@@ -425,11 +424,8 @@ function DashboardInner() {
     setFilterDate('all');
     setFilterOrder('all');
     setFilterStyle('all');
-    setFilterLot('all');
-    setFilterEmployee('all');
-    setFilterStage('all');
     setFilterSize('all');
-    setSearchQuery('');
+    setFilterColour('all');
     triggerToast('Lining filters reset to default view');
   };
 
@@ -466,22 +462,13 @@ function DashboardInner() {
     return Array.from(map.values());
   }, [orderProgress, currentOrder, piecesList]);
 
-  const availableLots = useMemo(
-    () => lotsList.map((l) => ({
-      id: l.lot_id || l.lot_number,
-      label: `${l.lining_type || l.article || 'Lining'} · ${l.colour || l.color || 'Standard'} (${l.thickness || l.uom || 'MTRS'})`,
-      raw: l,
-    })),
-    [lotsList]
-  );
-
   const availableEmployees = useMemo(
     () => employeesList.map((c) => ({ id: c.employee_id || c.id || c.name, name: c.name })),
     [employeesList]
   );
 
-  const availableStages = useMemo(
-    () => Array.from(new Set(piecesList.map((p) => p.stage || p.current_stage || p.status).filter(Boolean))),
+  const availableColours = useMemo(
+    () => Array.from(new Set(piecesList.map((p) => p.colour).filter(Boolean))).sort(),
     [piecesList]
   );
 
@@ -498,43 +485,49 @@ function DashboardInner() {
   // Filtered piece rows computed client-side
   const filteredPieces = useMemo(() => {
     return piecesList.filter((p) => {
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matchesQuery =
-          (p.piece_code && p.piece_code.toLowerCase().includes(q)) ||
-          (p.style && p.style.toLowerCase().includes(q)) ||
-          (p.employee && p.employee.toLowerCase().includes(q)) ||
-          (p.order_number && p.order_number.toLowerCase().includes(q)) ||
-          (p.leather_article && p.leather_article.toLowerCase().includes(q)) ||
-          (p.colour && p.colour.toLowerCase().includes(q));
-        if (!matchesQuery) return false;
-      }
       if (filterStyle !== 'all' && p.style !== filterStyle) return false;
-      // Note: the consumption log carries no lot_id / lining-lot identity per piece
-      // (see meta.unsupported.lining_allocation) — the Lot filter only narrows the
-      // Inventory tab (visibleLots / filteredLotChartData), not this piece list.
-      if (filterStage !== 'all' && (p.stage !== filterStage && p.current_stage !== filterStage && p.status !== filterStage)) return false;
+      if (filterColour !== 'all' && p.colour !== filterColour) return false;
       if (filterSize !== 'all' && p.size !== filterSize) return false;
       return true;
     });
-  }, [piecesList, searchQuery, filterStyle, filterStage, filterSize]);
+  }, [piecesList, filterStyle, filterColour, filterSize]);
+
+  // Piece-Level Master Tracker's own search, layered on top of filteredPieces
+  // (so the universal filter bar still applies, this just narrows further).
+  const searchedPieces = useMemo(() => {
+    if (!pieceSearchQuery) return filteredPieces;
+    const q = pieceSearchQuery.toLowerCase();
+    return filteredPieces.filter((p) =>
+      (p.piece_code && p.piece_code.toLowerCase().includes(q)) ||
+      (p.style && p.style.toLowerCase().includes(q)) ||
+      (p.employee && p.employee.toLowerCase().includes(q)) ||
+      (p.order_number && p.order_number.toLowerCase().includes(q)) ||
+      (p.leather_article && p.leather_article.toLowerCase().includes(q)) ||
+      (p.colour && p.colour.toLowerCase().includes(q))
+    );
+  }, [filteredPieces, pieceSearchQuery]);
 
   // Paginated pieces
   const paginatedPieces = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filteredPieces.slice(start, start + pageSize);
-  }, [filteredPieces, currentPage, pageSize]);
+    return searchedPieces.slice(start, start + pageSize);
+  }, [searchedPieces, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(filteredPieces.length / pageSize) || 1;
+  const totalPages = Math.ceil(searchedPieces.length / pageSize) || 1;
 
   // Real DCM / Meters consumption aggregate per style
+  // `pieces` counts every logged lining event for that style regardless of
+  // whether it carries a consumption value — this is the real Lining-stage
+  // completed count (one row in this lining-only log means that piece has
+  // been lined). `total`/`count` stay consumption-specific, for the DCM avg.
   const styleConsumptionAgg = useMemo(() => {
     const map = new Map();
     filteredPieces.forEach((p) => {
       if (!p.style) return;
       const key = `${p.order_number || ''}::${p.style}`;
-      if (!map.has(key)) map.set(key, { total: 0, count: 0 });
+      if (!map.has(key)) map.set(key, { total: 0, count: 0, pieces: 0 });
       const entry = map.get(key);
+      entry.pieces += 1;
       const val = typeof p.actual_consumption === 'number' ? p.actual_consumption : (typeof p.actual_avg_dcm === 'number' ? p.actual_avg_dcm : null);
       if (typeof val === 'number') {
         entry.total += val;
@@ -574,15 +567,6 @@ function DashboardInner() {
     if (rem < 0) return { label: 'Overdrawn', cls: 'bg-red-100 text-red-800' };
     if (avail > 0 && rem / avail < 0.1) return { label: 'Low Stock', cls: 'bg-amber-100 text-amber-800' };
     return { label: 'Healthy', cls: 'bg-emerald-100 text-emerald-800' };
-  };
-
-  const delayBadgeCls = (status) => {
-    if (!status) return 'bg-slate-100 text-slate-500';
-    const s = String(status).toUpperCase();
-    if (s.includes('DELAY')) return 'bg-rose-100 text-rose-800';
-    if (s.includes('ON_TRACK') || s.includes('ONTRACK')) return 'bg-emerald-100 text-emerald-800';
-    if (s.includes('NO_DEADLINE')) return 'bg-slate-100 text-slate-500';
-    return 'bg-blue-100 text-blue-800';
   };
 
   // Chart datasets derived from filteredPieces
@@ -636,18 +620,10 @@ function DashboardInner() {
   };
 
   const anyPieceFilterActive =
-    filterStyle !== 'all' || filterStage !== 'all' || filterSize !== 'all' || searchQuery !== '' ||
-    filterEmployee !== 'all' || filterDate !== 'all';
-
-  // Lots carry no per-piece linkage in the consumption log, so the Lot filter can
-  // only select a specific lot directly — it cannot be inferred from piece filters.
-  const visibleLots = useMemo(() => {
-    if (filterLot !== 'all') return lotsList.filter((l) => (l.lot_id === filterLot || l.lot_number === filterLot));
-    return lotsList;
-  }, [lotsList, filterLot]);
+    filterStyle !== 'all' || filterSize !== 'all' || filterColour !== 'all' || filterDate !== 'all';
 
   const filteredLotChartData = useMemo(() => {
-    return visibleLots.map((l) => {
+    return lotsList.map((l) => {
       const label = `${l.lining_type || l.article || 'Lining'} · ${l.colour || l.color || 'Standard'}`;
       return {
         label,
@@ -655,12 +631,7 @@ function DashboardInner() {
         used: l.used || 0,
       };
     });
-  }, [visibleLots]);
-
-  const visibleEmployees = useMemo(() => {
-    if (filterEmployee === 'all') return employeesList;
-    return employeesList.filter((c) => (c.employee_id === filterEmployee || c.id === filterEmployee || c.name === filterEmployee));
-  }, [employeesList, filterEmployee]);
+  }, [lotsList]);
 
   const employeeFilteredStats = useMemo(() => {
     const map = new Map();
@@ -759,15 +730,33 @@ function DashboardInner() {
     return withValue.reduce((acc, p) => acc + p.actual_consumption, 0) / withValue.length;
   }, [piecesList]);
 
+  // Built from filteredConsumptionLogs (already date-scoped) instead of the
+  // raw dailyProduction, so picking a date narrows this to that day's real
+  // rows instead of always averaging across every day ever logged.
   const avgDailyAssigned = useMemo(() => {
-    if (dailyProduction.length === 0) return null;
-    return dailyProduction.reduce((acc, d) => acc + (d.assigned || 0), 0) / dailyProduction.length;
-  }, [dailyProduction]);
+    if (filteredConsumptionLogs.length === 0) return null;
+    return filteredConsumptionLogs.reduce((acc, d) => acc + (d.assigned || 0), 0) / filteredConsumptionLogs.length;
+  }, [filteredConsumptionLogs]);
 
   const avgDailyCompleted = useMemo(() => {
-    if (dailyProduction.length === 0) return null;
-    return dailyProduction.reduce((acc, d) => acc + (d.completed || 0), 0) / dailyProduction.length;
-  }, [dailyProduction]);
+    if (filteredConsumptionLogs.length === 0) return null;
+    return filteredConsumptionLogs.reduce((acc, d) => acc + (d.completed || 0), 0) / filteredConsumptionLogs.length;
+  }, [filteredConsumptionLogs]);
+
+  // Real per-day assigned/completed from daily_production for the picked
+  // date — the "Today" tile and the KPI-1 "assigned today" badge otherwise
+  // always show literal today's numbers (productionKpis.*_today) no matter
+  // which date is selected in the filter, which is why they looked frozen.
+  const selectedDayLog = useMemo(() => {
+    if (filterDate === 'all') return null;
+    return filteredConsumptionLogs.reduce(
+      (acc, l) => ({ assigned: acc.assigned + (l.assigned || 0), completed: acc.completed + (l.completed || 0) }),
+      { assigned: 0, completed: 0 }
+    );
+  }, [filteredConsumptionLogs, filterDate]);
+  const dayAssigned = selectedDayLog ? selectedDayLog.assigned : (productionKpis?.assigned_today ?? 0);
+  const dayCompleted = selectedDayLog ? selectedDayLog.completed : (productionKpis?.completed_today ?? 0);
+  const dayPending = selectedDayLog ? Math.max(0, selectedDayLog.assigned - selectedDayLog.completed) : (productionKpis?.pending_today ?? 0);
 
   return (
     <div className="w-full min-w-0 space-y-5">
@@ -815,19 +804,7 @@ function DashboardInner() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-8 gap-2">
-          {/* Quick Search */}
-          <div className="relative col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-2">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search piece, style, operator..."
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#e11d48]"
-            />
-          </div>
-
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
           {/* Date Filter */}
           <div>
             <CompleteDateCalendarPicker
@@ -858,33 +835,13 @@ function DashboardInner() {
             />
           </div>
 
-          {/* Lining Lot Filter */}
+          {/* Colour Filter (client-side, real colour field on the lining log) */}
           <div>
             <ScreenSafeSelect
-              value={filterLot}
-              onChange={(v) => { setFilterLot(v); setCurrentPage(1); }}
-              placeholder="🧵 All Lots"
-              options={availableLots.map((lot) => ({ value: lot.id, label: lot.label }))}
-            />
-          </div>
-
-          {/* Operator Filter (server-side: employee_id) */}
-          <div>
-            <ScreenSafeSelect
-              value={filterEmployee}
-              onChange={(v) => { setFilterEmployee(v); setCurrentPage(1); }}
-              placeholder="👷 All Operators"
-              options={availableEmployees.map((c) => ({ value: c.id, label: c.name }))}
-            />
-          </div>
-
-          {/* Stage / Status Filter */}
-          <div>
-            <ScreenSafeSelect
-              value={filterStage}
-              onChange={(v) => { setFilterStage(v); setCurrentPage(1); }}
-              placeholder="⚡ Stage"
-              options={availableStages.map((st) => ({ value: st, label: formatStage(st) }))}
+              value={filterColour}
+              onChange={(v) => { setFilterColour(v); setCurrentPage(1); }}
+              placeholder="🎨 All Colours"
+              options={availableColours.map((c) => ({ value: c, label: c }))}
             />
           </div>
 
@@ -908,9 +865,6 @@ function DashboardInner() {
           { id: 'tab-inventory', label: '🧵 Lining Stock & Allocation (MTRS / DCM)' },
           { id: 'tab-employees', label: '👷 Operator Performance' },
           { id: 'tab-pieces', label: '🏷️ Piece-Level Master Tracker' },
-          { id: 'tab-damage', label: '⚠️ Damage & Rework Station' },
-          { id: 'tab-analytics', label: '📉 Loss & Waste Analytics (DCM)' },
-          { id: 'tab-flow', label: '🔄 Traceability Flow' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1035,23 +989,23 @@ function DashboardInner() {
                   <div className="text-2xl font-black text-purple-700">{reworkPieces}</div>
                 </div>
                 <div className="bg-blue-50/70 p-3.5 rounded-xl border border-blue-100">
-                  <span className="text-[10px] text-blue-500 uppercase font-semibold">Today</span>
+                  <span className="text-[10px] text-blue-500 uppercase font-semibold">{filterDate !== 'all' ? filterDate : 'Today'}</span>
                   <div className="text-sm font-black text-blue-700 leading-tight mt-1">
-                    {productionKpis?.completed_today ?? 0} done<br />{productionKpis?.pending_today ?? 0} pending
+                    {dayCompleted} done<br />{dayPending} pending
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 4 TOP SUMMARY KPIS */}
-          <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 3 TOP SUMMARY KPIS */}
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {/* KPI 1: Total Order Pieces */}
             <div onClick={() => setActiveTab('tab-pieces')} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group">
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-lg">📦</div>
                 <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                  {productionKpis?.assigned_today ?? 0} assigned today
+                  {dayAssigned} assigned {filterDate !== 'all' ? filterDate : 'today'}
                 </span>
               </div>
               <span className="text-xs font-semibold text-slate-500">Total Pieces ({meta?.scope || 'all orders'})</span>
@@ -1109,20 +1063,6 @@ function DashboardInner() {
               </div>
             </div>
 
-            {/* KPI 4: Damage & Rework */}
-            <div onClick={() => setActiveTab('tab-damage')} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">📊</div>
-              </div>
-              <span className="text-xs font-semibold text-slate-500">Damage & Rework (Today)</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-amber-600">{productionKpis?.damage_today ?? 0} / {productionKpis?.rework_today ?? 0}</span>
-              </div>
-              <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between items-center text-xs text-slate-600 font-semibold">
-                <span>Waste:</span>
-                {typeof liningKpis?.total_lining_waste === 'number' ? <strong className="text-red-600">{liningKpis.total_lining_waste.toLocaleString()} DCM</strong> : <NotAvailableBadge />}
-              </div>
-            </div>
           </div>
 
           {/* DAILY PRODUCTION CADENCE CHART & LOG */}
@@ -1246,7 +1186,7 @@ function DashboardInner() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Per-Style / Order Progress</h3>
-                <p className="text-xs text-slate-500">Real order_progress rows. Actual DCM columns are computed from the loaded lining log.</p>
+                <p className="text-xs text-slate-500">Real order_progress rows for Total Ordered/Minted. Completed, Pending and Actual DCM columns are computed live from the loaded lining log — Completed means the Lining stage specifically, not overall order completion.</p>
               </div>
               <span className="text-xs font-bold px-3 py-1 bg-rose-50 text-[#e11d48] rounded-full border border-rose-200">
                 Standard: 1 dm² = 0.1076 sq.ft
@@ -1262,11 +1202,9 @@ function DashboardInner() {
                     <th className="py-3 px-4">Article</th>
                     <th className="py-3 px-4 text-right">Total Ordered</th>
                     <th className="py-3 px-4 text-right">Minted</th>
-                    <th className="py-3 px-4 text-right">Completed</th>
-                    <th className="py-3 px-4 text-right">Pending</th>
+                    <th className="py-3 px-4 text-right" title="Pieces actually lined for this style — Lining stage only, not overall order completion">Completed (Lining)</th>
+                    <th className="py-3 px-4 text-right" title="Total Ordered minus Lining Completed">Pending (Lining)</th>
                     <th className="py-3 px-4 text-right">Completion %</th>
-                    <th className="py-3 px-4 text-center">Delay Status</th>
-                    <th className="py-3 px-4">Order Date / Deadline</th>
                     <th className="py-3 px-4 text-right">Actual Avg (DCM)</th>
                     <th className="py-3 px-4 text-center">Action</th>
                   </tr>
@@ -1279,6 +1217,10 @@ function DashboardInner() {
                       const sName = s.style_name || s.name;
                       const agg = styleConsumptionAgg.get(`${s.order_number}::${sName}`);
                       const avgDcm = agg && agg.count > 0 ? (agg.total / agg.count) : null;
+                      const totalOrdered = s.total_ordered ?? s.pieces ?? 0;
+                      const liningCompleted = agg?.pieces ?? 0;
+                      const liningPending = Math.max(0, totalOrdered - liningCompleted);
+                      const liningCompletionPct = totalOrdered > 0 ? Math.round((liningCompleted / totalOrdered) * 100) : 0;
                       const isSelected = (selectedStyleDetail?.style_id && selectedStyleDetail.style_id === s.style_id) || (selectedStyleDetail?.style_name === sName);
                       return (
                         <tr
@@ -1293,19 +1235,11 @@ function DashboardInner() {
                           <td className="py-3.5 px-4 font-bold text-slate-900">{sName}</td>
                           <td className="py-3.5 px-4 font-mono text-slate-600">{s.order_number}</td>
                           <td className="py-3.5 px-4">{s.article || '—'}</td>
-                          <td className="py-3.5 px-4 text-right font-bold text-slate-800">{s.total_ordered ?? s.pieces ?? 0}</td>
+                          <td className="py-3.5 px-4 text-right font-bold text-slate-800">{totalOrdered}</td>
                           <td className="py-3.5 px-4 text-right text-slate-700">{s.minted ?? 0}</td>
-                          <td className="py-3.5 px-4 text-right text-emerald-700 font-bold">{s.completed ?? 0}</td>
-                          <td className="py-3.5 px-4 text-right text-amber-700 font-bold">{s.pending ?? 0}</td>
-                          <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-800">{s.completion_pct ?? 0}%</td>
-                          <td className="py-3.5 px-4 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${delayBadgeCls(s.delay_status)}`}>
-                              {s.delay_status ? String(s.delay_status).replace(/_/g, ' ') : '—'}
-                            </span>
-                          </td>
-                          <td className="py-3.5 px-4 font-mono text-slate-600 text-[11px]">
-                            {s.order_date || '—'} / {s.delivery_deadline || '—'}
-                          </td>
+                          <td className="py-3.5 px-4 text-right text-emerald-700 font-bold">{liningCompleted}</td>
+                          <td className="py-3.5 px-4 text-right text-amber-700 font-bold">{liningPending}</td>
+                          <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-800">{liningCompletionPct}%</td>
                           <td className="py-3.5 px-4 text-right font-mono font-extrabold text-[#e11d48]">
                             {avgDcm !== null ? `${avgDcm.toFixed(1)} DCM` : '—'}
                           </td>
@@ -1322,7 +1256,7 @@ function DashboardInner() {
                     })}
                   {orderProgress.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="text-center py-8 text-slate-400 font-medium">No style/order progress data returned for this filter.</td>
+                      <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">No style/order progress data returned for this filter.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1420,11 +1354,7 @@ function DashboardInner() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Lining Inventory Stock & Lot Allocation (MTRS / DCM)</h3>
-                <p className="text-xs text-slate-500">
-                  {filterLot !== 'all' || anyPieceFilterActive
-                    ? `Showing ${visibleLots.length} of ${lotsList.length} lots matching active filters`
-                    : 'Available lining fabric inventory and consumption'}
-                </p>
+                <p className="text-xs text-slate-500">Available lining fabric inventory and consumption</p>
               </div>
               <span className="text-xs font-bold text-slate-500 shrink-0">
                 Total Stock: <strong className="text-slate-900">{(liningKpis?.total_available_lining ?? liningKpis?.total_available_leather ?? 0).toLocaleString()} DCM / MTRS</strong>
@@ -1451,7 +1381,7 @@ function DashboardInner() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium">
-                  {visibleLots.map((lot, idx) => {
+                  {lotsList.map((lot, idx) => {
                     const status = lotStatus(lot);
                     return (
                       <tr key={lot.lot_id || lot.lot_number || idx} className="hover:bg-slate-50 transition-all">
@@ -1482,10 +1412,10 @@ function DashboardInner() {
                       </tr>
                     );
                   })}
-                  {visibleLots.length === 0 && (
+                  {lotsList.length === 0 && (
                     <tr>
                       <td colSpan={13} className="text-center py-8 text-slate-400 font-medium">
-                        {lotsList.length === 0 ? 'No lining inventory lots recorded.' : 'No lots match the current filters.'}
+                        No lining inventory lots recorded.
                       </td>
                     </tr>
                   )}
@@ -1527,11 +1457,8 @@ function DashboardInner() {
            ==================================================================== */}
       {activeTab === 'tab-employees' && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
-          {filterEmployee !== 'all' && (
-            <p className="text-xs font-bold text-slate-500">Showing {visibleEmployees.length} of {employeesList.length} operators matching active filter</p>
-          )}
           <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5">
-            {visibleEmployees.map((emp, idx) => {
+            {employeesList.map((emp, idx) => {
               const inFilter = employeeFilteredStats.get(emp.name);
               const dcmPerPiece = emp.assigned_pieces ? ((emp.used_lining || 0) / emp.assigned_pieces).toFixed(1) : '—';
               return (
@@ -1600,9 +1527,9 @@ function DashboardInner() {
                 </div>
               );
             })}
-            {visibleEmployees.length === 0 && (
+            {employeesList.length === 0 && (
               <div className="col-span-3 text-center py-12 bg-white rounded-2xl border border-slate-200 text-slate-400 font-medium">
-                {employeesList.length === 0 ? 'No lining operators registered.' : 'No operators match the current filter.'}
+                No lining operators registered.
               </div>
             )}
           </div>
@@ -1645,7 +1572,17 @@ function DashboardInner() {
                   <p className="text-[10px] text-slate-400 font-medium mt-1 flex items-center gap-1"><Info className="w-3 h-3" />{meta.unsupported.lining_single_event}</p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={pieceSearchQuery}
+                    onChange={(e) => { setPieceSearchQuery(e.target.value); setCurrentPage(1); }}
+                    placeholder="Search piece, style, operator..."
+                    className="bg-[#f8fafc] border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#e11d48] w-56"
+                  />
+                </div>
                 <span className="text-xs font-bold text-slate-500 shrink-0">Rows per page:</span>
                 <div className="w-20">
                   <ScreenSafeSelect
@@ -1728,7 +1665,7 @@ function DashboardInner() {
             </div>
 
             <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs font-bold text-slate-600">
-              <span>Page {currentPage} of {totalPages} ({filteredPieces.length} items)</span>
+              <span>Page {currentPage} of {totalPages} ({searchedPieces.length} items)</span>
               <div className="flex items-center gap-1.5">
                 <button
                   disabled={currentPage === 1}
@@ -1768,127 +1705,6 @@ function DashboardInner() {
             {filteredStyleChartData.length === 0 && (
               <p className="text-center text-xs text-slate-400 font-medium py-4">No events match the current filters.</p>
             )}
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 6: DAMAGE & REWORK STATION
-           ==================================================================== */}
-      {activeTab === 'tab-damage' && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
-          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="mb-5">
-              <h3 className="text-base font-extrabold text-slate-900">Damage, Defect & Rework Station</h3>
-              <p className="text-xs text-slate-500">Aggregate counts are real backend values; per-piece defect drill-down is tracked across shifts.</p>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-              <div className="bg-rose-50/70 p-4 rounded-xl border border-rose-100">
-                <span className="text-[10px] text-rose-500 uppercase font-bold">Damage (Total)</span>
-                <div className="text-2xl font-black text-rose-600">{damagePieces}</div>
-              </div>
-              <div className="bg-rose-50/70 p-4 rounded-xl border border-rose-100">
-                <span className="text-[10px] text-rose-500 uppercase font-bold">Damage (Today)</span>
-                <div className="text-2xl font-black text-rose-600">{productionKpis?.damage_today ?? 0}</div>
-              </div>
-              <div className="bg-purple-50/70 p-4 rounded-xl border border-purple-100">
-                <span className="text-[10px] text-purple-500 uppercase font-bold">Rework (Total)</span>
-                <div className="text-2xl font-black text-purple-700">{reworkPieces}</div>
-              </div>
-              <div className="bg-purple-50/70 p-4 rounded-xl border border-purple-100">
-                <span className="text-[10px] text-purple-500 uppercase font-bold">Rework (Today)</span>
-                <div className="text-2xl font-black text-purple-700">{productionKpis?.rework_today ?? 0}</div>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
-              <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-xs font-bold text-amber-800">Per-piece damage drill-down note</p>
-                <p className="text-[11px] text-amber-700 mt-1">
-                  {meta?.unsupported?.damage_tracking || 'Defects logged at the inspection station will automatically appear in shift statistics.'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 7: LOSS, WASTE & ANALYTICS (DCM)
-           ==================================================================== */}
-      {activeTab === 'tab-analytics' && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
-          <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-5">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
-              <h3 className="text-sm font-extrabold text-slate-900 mb-1">Lining Waste Loss Breakdown (DCM)</h3>
-              <p className="text-xs text-slate-500 mb-4">Total waste distribution across patterns, trimmings, and off-cuts</p>
-              {typeof liningKpis?.total_lining_waste === 'number' ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-2 py-10">
-                  <span className="text-3xl font-black text-red-600">{liningKpis.total_lining_waste.toLocaleString()} DCM</span>
-                  <span className="text-xs text-slate-500 font-semibold">Total lining waste (material_kpis)</span>
-                </div>
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center gap-3 py-10">
-                  <NotAvailableBadge label="Waste tracking not available yet" />
-                  <p className="text-[11px] text-slate-400 text-center max-w-xs">
-                    {meta?.unsupported?.expected_consumption || 'Consumption baseline is configured per style pattern.'}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-extrabold text-slate-900 mb-1">Operator Throughput & Lining Consumed (filtered)</h3>
-              <p className="text-xs text-slate-500 mb-4">Pieces handled & DCM consumed per operator</p>
-              <div className="h-[260px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={filteredEmployeeChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <Tooltip content={<CustomTooltip unit="" />} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="pieces_cut" name="Pieces Handled" fill="#e11d48" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="dcm_consumed" name="DCM Consumed" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              {filteredEmployeeChartData.length === 0 && (
-                <p className="text-center text-xs text-slate-400 font-medium py-4">No events match the current filters.</p>
-              )}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 8: TRACEABILITY FLOW
-           ==================================================================== */}
-      {activeTab === 'tab-flow' && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-          <div>
-            <h3 className="text-base font-extrabold text-slate-900">End-to-End Factory Traceability Flow</h3>
-            <p className="text-xs text-slate-500">Direct relationship: Order &rarr; Style &rarr; Lining Roll &rarr; Operator &rarr; Piece &rarr; Consumption (DCM)</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            {[
-              { title: '1. Order', desc: currentOrder ? `${currentOrder.order_number} / ${currentOrder.client || 'Client'}` : '—', icon: '📦', color: 'bg-blue-50 text-blue-700' },
-              { title: '2. Style', desc: currentOrder?.styles?.[0] ? `${currentOrder.styles[0].style_name || currentOrder.styles[0].name}${currentOrder.styles[0].thickness ? ` (${currentOrder.styles[0].thickness})` : ''}` : '—', icon: '👗', color: 'bg-purple-50 text-purple-700' },
-              { title: '3. Lining Roll', desc: lotsList[0] ? `${lotsList[0].lining_type || lotsList[0].article || 'Lining'} · ${lotsList[0].colour || 'Std'}` : '—', icon: '🧵', color: 'bg-rose-50 text-rose-700' },
-              { title: '4. Lining Cut', desc: employeesList.length ? employeesList.slice(0, 2).map((c) => c.name).join(' / ') : '—', icon: '✂️', color: 'bg-amber-50 text-amber-700' },
-              { title: '5. Completion', desc: `${overallCompleted} / ${totalOrderPieces} completed`, icon: '✅', color: 'bg-green-50 text-green-700' },
-            ].map((step, i) => (
-              <div key={i} className={`p-4 rounded-xl border border-slate-100 ${step.color} flex flex-col justify-between`}>
-                <div className="text-2xl mb-2">{step.icon}</div>
-                <div>
-                  <h5 className="font-extrabold text-xs">{step.title}</h5>
-                  <p className="text-[10px] font-mono mt-0.5 opacity-80">{step.desc}</p>
-                </div>
-              </div>
-            ))}
           </div>
         </motion.div>
       )}

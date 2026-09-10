@@ -40,6 +40,22 @@ export function getCompactBarcodeId(pieceCode) {
   return pieceCode;
 }
 
+/**
+ * Builds the full descriptive code (e.g. `TEST3-BF27P010501-SUEDE_BOMBER-NAVY-2XL-001`)
+ * from a registry row's SKU code + sequence, for display under a barcode card.
+ * The barcode itself still encodes/shows the short scannable `code` (e.g. `PC-2222Y2`).
+ *
+ * @param {Object} row - Registry row with `sku_code`, `seq`, and `code` fields.
+ * @returns {string} Full descriptive code, falling back to the short code.
+ */
+export function buildFullBarcodeCode(row) {
+  if (!row) return '';
+  if (row.sku_code && row.seq != null) {
+    return `${row.sku_code}-${String(row.seq).padStart(3, '0')}`;
+  }
+  return row.code || '';
+}
+
 // ============================================================================
 // 3. CARD FIELDS BUILDER (METADATA GRID GENERATOR)
 // ============================================================================

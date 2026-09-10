@@ -5,8 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Waypoints,
-  AlertTriangle,
-  Search,
   Download,
   Filter,
   X,
@@ -345,7 +343,6 @@ function StitchingDashboardContent() {
   const [filterStyle, setFilterStyle] = useState('all');
   const [filterStage, setFilterStage] = useState('all');
   const [filterEmployee, setFilterEmployee] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
 
   const [selectedStageDetail, setSelectedStageDetail] = useState(null);
   const [selectedOrderRow, setSelectedOrderRow] = useState(null);
@@ -407,7 +404,6 @@ function StitchingDashboardContent() {
     setFilterStyle('all');
     setFilterStage('all');
     setFilterEmployee('all');
-    setSearchQuery('');
     triggerToast('Filters reset to default view');
   };
 
@@ -498,14 +494,9 @@ function StitchingDashboardContent() {
     return orderProgress.filter((r) => {
       if (filterOrder !== 'all' && r.order_id !== filterOrder) return false;
       if (filterStyle !== 'all' && r.style_name !== filterStyle) return false;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const hay = `${r.order_number || ''} ${r.style_name || ''} ${r.article || ''}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
       return true;
     });
-  }, [orderProgress, filterOrder, filterStyle, searchQuery]);
+  }, [orderProgress, filterOrder, filterStyle]);
 
   const paginatedOrderProgress = useMemo(() => {
     const start = (orderPage - 1) * orderPageSize;
@@ -519,7 +510,7 @@ function StitchingDashboardContent() {
   // Order and/or Style actually changes what the hero shows, instead of the
   // hero staying pinned to whatever single style the backend's `current_style`
   // happens to spotlight. ──
-  const heroFilterActive = filterOrder !== 'all' || filterStyle !== 'all' || searchQuery !== '';
+  const heroFilterActive = filterOrder !== 'all' || filterStyle !== 'all';
 
   const heroAggregate = useMemo(() => {
     if (!heroFilterActive) return null;
@@ -578,6 +569,25 @@ function StitchingDashboardContent() {
     FINAL_FINISH: 'Final Finish',
   };
 
+  // Real per-(date, stage) completed sum from daily_production — the only
+  // place a per-day breakdown exists. `stages[]` itself is a cumulative,
+  // all-time snapshot with no date param on the endpoint, which is why
+  // picking a date used to change nothing on the pipeline cards below except
+  // the chart. When a date is picked, each stage's Done now shows that day's
+  // real completed count instead of the all-time total (Queue/Overall
+  // Remaining still cascade from it via the same formula) — Fusing's own
+  // Queue (total_received, the handoff count from Cutting) has no daily
+  // breakdown anywhere in the API, so it stays the cumulative real value.
+  const dateScopedStageCompleted = useMemo(() => {
+    if (filterDate === 'all') return null;
+    const map = new Map();
+    dailyProduction.forEach((d) => {
+      if (d.work_date !== filterDate || !d.stage) return;
+      map.set(d.stage, (map.get(d.stage) || 0) + (d.completed || 0));
+    });
+    return map;
+  }, [dailyProduction, filterDate]);
+
   // `queue`, per stage, is how many pieces actually finished the stage right
   // before this one — for Fusing (the first stage tracked here), that's
   // total_received (the real handoff count from Cutting); for every stage
@@ -602,12 +612,12 @@ function StitchingDashboardContent() {
         completed_pieces: 0,
         pending_pieces: 0,
       };
-      const completed = row.completed_pieces ?? 0;
+      const completed = dateScopedStageCompleted ? (dateScopedStageCompleted.get(stageKey) ?? 0) : (row.completed_pieces ?? 0);
       const queue = i === 0 ? (row.total_received ?? 0) : (acc[i - 1].completed_pieces ?? 0);
       const overallRemaining = Math.max(0, basePending - completed);
-      return [...acc, { ...row, queue, overallRemaining }];
+      return [...acc, { ...row, completed_pieces: completed, queue, overallRemaining, dateScoped: !!dateScopedStageCompleted }];
     }, []);
-  }, [stages, kpis]);
+  }, [stages, kpis, dateScopedStageCompleted]);
 
   // Backlog size only — NOT a bottleneck. A real bottleneck means a stage is falling
   // behind its expected pace (target vs. time elapsed), which this dashboard doesn't
@@ -640,13 +650,9 @@ function StitchingDashboardContent() {
     return employees.filter((e) => {
       if (filterStage !== 'all' && e.stage !== filterStage) return false;
       if (filterEmployee !== 'all' && e.employee_id !== filterEmployee) return false;
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        if (!(e.name || '').toLowerCase().includes(q) && !(e.designation || '').toLowerCase().includes(q)) return false;
-      }
       return true;
     });
-  }, [employees, filterStage, filterEmployee, searchQuery]);
+  }, [employees, filterStage, filterEmployee]);
 
   const paginatedEmployees = useMemo(() => {
     const start = (empPage - 1) * empPageSize;
@@ -819,19 +825,7 @@ function StitchingDashboardContent() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-6 gap-2">
-          {/* Quick Search */}
-          <div className="relative col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-2">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search order, style, operator..."
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#4f46e5]"
-            />
-          </div>
-
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
           {/* Date Filter (production log dates) */}
           <div>
             <CompleteDateCalendarPicker
@@ -893,9 +887,7 @@ function StitchingDashboardContent() {
           { id: 'tab-orders', label: '👗 Order & Style Progress' },
           { id: 'tab-employees', label: '👷 Employee by Stage' },
           { id: 'tab-pieces', label: '🏷️ Piece Tracker' },
-          { id: 'tab-damage', label: '⚠️ Damage & Rework' },
           { id: 'tab-analytics', label: '📉 Stage Analytics' },
-          { id: 'tab-flow', label: '🔄 Traceability Flow' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -942,6 +934,7 @@ function StitchingDashboardContent() {
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Live funnel stages from GET /api/v1/dashboard/stitching &mdash; Done = completed pieces, Queue = pieces that finished the stage before this one, Overall Remaining = order-wide pending count minus this stage&rsquo;s Done.
+                  {filterDate !== 'all' && ' Date filter active: Done now shows that day’s real completed count (from daily_production) instead of the all-time total.'}
                 </p>
               </div>
 
@@ -1013,7 +1006,7 @@ function StitchingDashboardContent() {
 
                     <div className="mt-3 pt-2.5 border-t border-slate-100 text-[11px] font-semibold space-y-1">
                       <div className="flex justify-between items-center">
-                        <span className="text-slate-500">Done:</span>
+                        <span className="text-slate-500" title={st.dateScoped ? `Completed on ${filterDate}` : 'All-time completed'}>{st.dateScoped ? `Done (${filterDate}):` : 'Done:'}</span>
                         <span className="font-bold text-emerald-700 font-mono">{completed}</span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -1166,7 +1159,7 @@ function StitchingDashboardContent() {
               </div>
             </div>
 
-            <div onClick={() => setActiveTab('tab-damage')} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">⚠️</div>
                 <NotAvailableBadge label="tracking pending" />
@@ -1717,58 +1710,6 @@ function StitchingDashboardContent() {
       )}
 
       {/* ====================================================================
-           TAB 7: DAMAGE & REWORK (unsupported by backend — shown transparently)
-           ==================================================================== */}
-      {activeTab === 'tab-damage' && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
-          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-2xl p-4 mb-5">
-              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <h4 className="text-sm font-extrabold text-amber-900">Damage tracking not yet available</h4>
-                <p className="text-xs text-amber-800 mt-1 leading-relaxed">
-                  {meta?.unsupported?.damage_tracking || 'No damage state or PieceDamage table exists in the schema yet. Counts below are real backend zeros, not fabricated.'}
-                </p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-              <div className="bg-[#f8fafc] p-4 rounded-xl border border-slate-100">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Damage Pieces (kpis.damage_pieces)</span>
-                <div className="text-2xl font-black text-slate-900 mt-1">{damagePieces}</div>
-              </div>
-              <div className="bg-[#f8fafc] p-4 rounded-xl border border-slate-100">
-                <span className="text-[10px] font-bold text-slate-500 uppercase">Rework Pieces (kpis.rework_pieces)</span>
-                <div className="text-2xl font-black text-slate-900 mt-1">{reworkPieces}</div>
-              </div>
-            </div>
-
-            <h4 className="text-xs font-extrabold text-slate-700 uppercase tracking-wider mb-2">Per-Stage Breakdown</h4>
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs md:text-sm text-left">
-                <thead>
-                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                    <th className="py-3 px-4">Stage</th>
-                    <th className="py-3 px-4 text-right">Damage</th>
-                    <th className="py-3 px-4 text-right">Rework</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {sortByCanonicalStageOrder(stages).map((s, idx) => (
-                    <tr key={idx}>
-                      <td className="py-3 px-4 font-bold text-slate-900">{s.label || formatStage(s.stage)}</td>
-                      <td className="py-3 px-4 text-right font-mono">{s.damage_pieces ?? 0}</td>
-                      <td className="py-3 px-4 text-right font-mono">{s.rework_pieces ?? 0}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
            TAB 8: STAGE ANALYTICS
            ==================================================================== */}
       {activeTab === 'tab-analytics' && (
@@ -1814,95 +1755,6 @@ function StitchingDashboardContent() {
                 </div>
               ))}
             </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 9: TRACEABILITY FLOW (GET /employees/{employee_id})
-           ==================================================================== */}
-      {activeTab === 'tab-flow' && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
-          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <h3 className="text-base font-extrabold text-slate-900 mb-1">Piece Traceability Flow</h3>
-            <p className="text-xs text-slate-500 mb-4">Pick an operator to pull their current piece and its full stage history from the backend.</p>
-
-            <div className="flex flex-wrap items-center gap-2 mb-5">
-              {availableEmployees.map((emp) => (
-                <button
-                  key={emp.id}
-                  onClick={() => handleOpenEmployeeModal({ employee_id: emp.id, name: emp.name })}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                    selectedEmployeeModal?.employee_id === emp.id ? 'bg-[#4f46e5] text-white border-[#4f46e5]' : 'bg-[#f8fafc] text-slate-700 border-slate-200 hover:border-indigo-400'
-                  }`}
-                >
-                  {emp.name}
-                </button>
-              ))}
-              {availableEmployees.length === 0 && <span className="text-xs text-slate-400">No operators loaded yet.</span>}
-            </div>
-
-            {employeeTraceLoading && (
-              <div className="text-center py-10 text-slate-400 text-xs font-semibold">Loading traceability…</div>
-            )}
-            {employeeTraceError && !employeeTraceLoading && (
-              <div className="text-xs text-red-600 font-semibold bg-red-50 border border-red-100 rounded-xl px-3 py-2">API error: {employeeTraceError}</div>
-            )}
-
-            {employeeTrace && !employeeTraceLoading && !employeeTrace.piece_code && (
-              <div className="text-center py-10 text-slate-400 text-xs font-semibold">
-                The backend returned no traceable piece for {selectedEmployeeModal?.name || 'this operator'} right now.
-              </div>
-            )}
-
-            {employeeTrace && !employeeTraceLoading && employeeTrace.piece_code && (
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-3 bg-[#f8fafc] border border-slate-100 rounded-2xl p-4">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">Piece Code</span>
-                    <p className="text-sm font-mono font-black text-slate-900">{employeeTrace.piece_code}</p>
-                    <p className="text-xs text-slate-600 mt-1">{employeeTrace.style} &bull; {employeeTrace.colour} &bull; Size {employeeTrace.size} &bull; PO {employeeTrace.order_number}</p>
-                  </div>
-                  <div className="text-right">
-                    <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-indigo-100 text-indigo-800">{employeeTrace.display_stage}</span>
-                    <p className="text-[10px] text-slate-500 mt-1">{employeeTrace.in_store ? `In store: ${employeeTrace.store_label}` : employeeTrace.store_label || ''}</p>
-                  </div>
-                  <button
-                    onClick={() => { handlePieceSearch(employeeTrace.piece_code); setActiveTab('tab-pieces'); }}
-                    className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
-                  >
-                    View full batch →
-                  </button>
-                </div>
-
-                <div className="relative pl-6">
-                  <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-slate-200"></div>
-                  {(employeeTrace.history || []).map((h, idx) => (
-                    <div key={idx} className="relative pb-6 last:pb-0">
-                      <div className={`absolute -left-6 w-4 h-4 rounded-full border-2 ${h.is_store_overlay ? 'bg-amber-400 border-amber-500' : 'bg-indigo-500 border-indigo-600'}`}></div>
-                      <div className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-extrabold text-slate-900">{h.label || formatStage(h.stage)}</span>
-                          <span className="text-[10px] font-mono text-slate-500">{h.work_date}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600">
-                          <User className="w-3 h-3" />
-                          <span>{h.employee || 'Unassigned'}</span>
-                          {h.is_store_overlay && <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-bold">Store: {h.store_status || '—'}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {(!employeeTrace.history || employeeTrace.history.length === 0) && (
-                    <p className="text-xs text-slate-400">No stage history returned for this piece.</p>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {!employeeTrace && !employeeTraceLoading && !employeeTraceError && (
-              <div className="text-center py-10 text-slate-400 text-xs font-semibold">Select an operator above to load their piece traceability.</div>
-            )}
           </div>
         </motion.div>
       )}
@@ -1982,16 +1834,17 @@ function StitchingDashboardContent() {
         )}
       </AnimatePresence>
 
-      {/* ─── EMPLOYEE TRACE MODAL (quick preview; full view lives on Traceability Flow tab) ─── */}
+      {/* ─── EMPLOYEE TRACE MODAL — current piece + full stage history for the
+           selected operator, from GET /employees/{employee_id}. ─── */}
       <AnimatePresence>
-        {selectedEmployeeModal && activeTab !== 'tab-flow' && (
+        {selectedEmployeeModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={() => setSelectedEmployeeModal(null)}>
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6"
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 max-h-[85vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between gap-3 mb-4">
                 <div className="flex items-center gap-3 min-w-0">
@@ -2012,10 +1865,47 @@ function StitchingDashboardContent() {
               )}
               {employeeTrace && !employeeTraceLoading && (
                 employeeTrace.piece_code ? (
-                  <div className="text-xs space-y-2">
-                    <div className="flex justify-between py-1.5 border-b border-slate-100"><span className="text-slate-500">Piece:</span><span className="font-mono font-bold text-slate-800">{employeeTrace.piece_code}</span></div>
-                    <div className="flex justify-between py-1.5 border-b border-slate-100"><span className="text-slate-500">Stage:</span><span className="font-bold text-slate-800">{employeeTrace.display_stage}</span></div>
-                    <div className="flex justify-between py-1.5 border-b border-slate-100"><span className="text-slate-500">Style / Colour:</span><span className="font-bold text-slate-800">{employeeTrace.style} / {employeeTrace.colour}</span></div>
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 bg-[#f8fafc] border border-slate-100 rounded-2xl p-4">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Piece Code</span>
+                        <p className="text-sm font-mono font-black text-slate-900">{employeeTrace.piece_code}</p>
+                        <p className="text-xs text-slate-600 mt-1">{employeeTrace.style} &bull; {employeeTrace.colour} &bull; Size {employeeTrace.size} &bull; PO {employeeTrace.order_number}</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase bg-indigo-100 text-indigo-800">{employeeTrace.display_stage}</span>
+                        <p className="text-[10px] text-slate-500 mt-1">{employeeTrace.in_store ? `In store: ${employeeTrace.store_label}` : employeeTrace.store_label || ''}</p>
+                      </div>
+                      <button
+                        onClick={() => { handlePieceSearch(employeeTrace.piece_code); setActiveTab('tab-pieces'); setSelectedEmployeeModal(null); }}
+                        className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-bold text-indigo-700 hover:bg-indigo-50"
+                      >
+                        View full batch →
+                      </button>
+                    </div>
+
+                    <div className="relative pl-6">
+                      <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-slate-200"></div>
+                      {(employeeTrace.history || []).map((h, idx) => (
+                        <div key={idx} className="relative pb-6 last:pb-0">
+                          <div className={`absolute -left-6 w-4 h-4 rounded-full border-2 ${h.is_store_overlay ? 'bg-amber-400 border-amber-500' : 'bg-indigo-500 border-indigo-600'}`}></div>
+                          <div className="bg-white border border-slate-100 rounded-xl p-3.5 shadow-sm">
+                            <div className="flex items-center justify-between">
+                              <span className="text-xs font-extrabold text-slate-900">{h.label || formatStage(h.stage)}</span>
+                              <span className="text-[10px] font-mono text-slate-500">{h.work_date}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600">
+                              <User className="w-3 h-3" />
+                              <span>{h.employee || 'Unassigned'}</span>
+                              {h.is_store_overlay && <span className="ml-1 px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-bold">Store: {h.store_status || '—'}</span>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                      {(!employeeTrace.history || employeeTrace.history.length === 0) && (
+                        <p className="text-xs text-slate-400">No stage history returned for this piece.</p>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <div className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2.5">
@@ -2023,13 +1913,6 @@ function StitchingDashboardContent() {
                   </div>
                 )
               )}
-
-              <button
-                onClick={() => { setActiveTab('tab-flow'); setSelectedEmployeeModal(null); }}
-                className="mt-4 w-full px-4 py-2 rounded-xl bg-[#4f46e5] text-white text-xs font-bold hover:bg-[#4338ca]"
-              >
-                Open Full Traceability Flow
-              </button>
             </motion.div>
           </div>
         )}

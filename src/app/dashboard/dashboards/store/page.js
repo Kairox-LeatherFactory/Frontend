@@ -43,9 +43,6 @@ import {
   YAxis,
   Tooltip,
   Legend,
-  PieChart,
-  Pie,
-  Cell,
   CartesianGrid,
 } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
@@ -54,7 +51,6 @@ import {
   apiGetStoreDashboard,
   apiGetStoreDrawerDetail,
   apiGetStoreDrawerMovement,
-  apiGetStoreTraceability,
 } from '@/lib/api';
 
 // Badge shown wherever the live backend has no data for a field yet
@@ -231,10 +227,6 @@ function StoreDashboardContent() {
   const [ordersList, setOrdersList] = useState(() => contextOrders || []);
   const [activeOrder, setActiveOrder] = useState(() => contextOrders?.[0] || null);
 
-  const [traceabilityList, setTraceabilityList] = useState([]);
-  const [traceabilityLoading, setTraceabilityLoading] = useState(false);
-  const [traceabilityError, setTraceabilityError] = useState(null);
-
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -326,11 +318,20 @@ function StoreDashboardContent() {
           (d.status_label && d.status_label.toLowerCase().includes(q));
         if (!matchesQuery) return false;
       }
-      // Date
+      // Date — inclusive "existed by this date" rather than "moved on exactly
+      // this date". Drawers only carry two real timestamps (received_at,
+      // sended_at); matching only the exact day meant almost every drawer
+      // vanished the moment any date other than today was picked (very few
+      // drawers move on any single day), so every card built on this list
+      // looked frozen/broken. A drawer now counts for a picked date once it
+      // had been received or sent on or before that date — a real, honest
+      // "as of this date" scope instead of an exact-day-only one.
       if (filterDate !== 'all') {
         const recDate = d.received_at ? d.received_at.slice(0, 10) : null;
         const sendDate = d.sended_at ? d.sended_at.slice(0, 10) : null;
-        if (recDate !== filterDate && sendDate !== filterDate) return false;
+        const receivedByDate = recDate !== null && recDate <= filterDate;
+        const sentByDate = sendDate !== null && sendDate <= filterDate;
+        if (!receivedByDate && !sentByDate) return false;
       }
       // Style
       if (filterStyle !== 'all' && d.style !== filterStyle) return false;
@@ -439,41 +440,6 @@ function StoreDashboardContent() {
     return () => { isMounted = false; };
   }, [token, filterStyle, filterMaterial, refreshKey]);
 
-  // LIVE BACKEND CALL: /api/v1/dashboard/store/traceability (Cutter Traceability tab)
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchTraceability() {
-      if (!token || activeTab !== 'tab-employees') return;
-      try {
-        setTraceabilityLoading(true);
-        setTraceabilityError(null);
-        const params = {};
-        if (filterStyle && filterStyle !== 'all') {
-          const styleObj = stylesList.find((s) => (s.style || s.style_name || s.name) === filterStyle);
-          if (styleObj?.style_id) params.style_id = styleObj.style_id;
-        }
-        if (filterMaterial && filterMaterial !== 'all') params.material_type = filterMaterial;
-        if (searchQuery) params.piece_code = searchQuery;
-
-        const data = await apiGetStoreTraceability(token, params);
-        if (isMounted && data) {
-          setTraceabilityList(
-            Array.isArray(data.pieces) ? data.pieces
-              : Array.isArray(data.traceability) ? data.traceability
-              : Array.isArray(data) ? data
-              : []
-          );
-        }
-      } catch (err) {
-        console.warn('Backend API /api/v1/dashboard/store/traceability notice:', err.message);
-        if (isMounted) setTraceabilityError(err.message);
-      } finally {
-        if (isMounted) setTraceabilityLoading(false);
-      }
-    }
-    fetchTraceability();
-    return () => { isMounted = false; };
-  }, [token, activeTab, filterStyle, filterMaterial, searchQuery, stylesList]);
 
   // Handler to inspect drawer and call /api/v1/dashboard/store/drawers/{drawer_id} & movement
   const handleOpenDrawerModal = async (drawer) => {
@@ -759,9 +725,6 @@ function StoreDashboardContent() {
           { id: 'tab-materials', label: '🧵 Leather & Lining' },
           { id: 'tab-holds', label: '🛑 Hold Management' },
           { id: 'tab-empty', label: '♻️ Empty Drawers' },
-          { id: 'tab-employees', label: '👷 Cutter Traceability' },
-          { id: 'tab-analytics', label: '📉 Store Analytics' },
-          { id: 'tab-flow', label: '🔄 Traceability Flow' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1421,180 +1384,6 @@ function StoreDashboardContent() {
                 </tbody>
               </table>
             </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 7: CUTTER & EMPLOYEE TRACEABILITY
-           ==================================================================== */}
-      {activeTab === 'tab-employees' && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full space-y-5"
-        >
-          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Piece & Cutter Traceability in Store</h3>
-                <p className="text-xs text-slate-500">Identifies which operator cut the leather or lining stored inside each drawer</p>
-              </div>
-              {traceabilityLoading && (
-                <span className="text-[11px] font-bold text-cyan-700 flex items-center gap-1.5">
-                  <RefreshCw className="w-3 h-3 animate-spin" /> Loading traceability...
-                </span>
-              )}
-            </div>
-            {meta?.unsupported?.employee_photo && (
-              <p className="text-[11px] text-slate-400 font-medium mb-3 -mt-2">{meta.unsupported.employee_photo}</p>
-            )}
-            {traceabilityError && (
-              <p className="text-[11px] text-rose-500 font-semibold mb-3 -mt-2">Backend notice: {traceabilityError}</p>
-            )}
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                    <th className="py-3 px-4">Piece Serial Code</th>
-                    <th className="py-3 px-4">Style</th>
-                    <th className="py-3 px-4">Material</th>
-                    <th className="py-3 px-4">Processed By (Cutter)</th>
-                    <th className="py-3 px-4">Assigned Drawer</th>
-                    <th className="py-3 px-4 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {traceabilityList.map((t, idx) => {
-                    const cutterName = t.cutter_name || t.cutter?.name || t.employee_name || t.employee?.name || t.processed_by || t.cut_by;
-                    return (
-                      <tr key={`${t.piece_code || 'trace'}-${idx}`} className="hover:bg-slate-50 transition-all">
-                        <td className="py-3.5 px-4 font-mono font-bold text-slate-900">{t.piece_code}</td>
-                        <td className="py-3.5 px-4 font-bold text-slate-800">{t.style || t.style_name}</td>
-                        <td className="py-3.5 px-4 font-semibold text-cyan-800">{t.material_type}</td>
-                        <td className="py-3.5 px-4 text-slate-900 font-bold">{cutterName || <NotAvailableBadge />}</td>
-                        <td className="py-3.5 px-4 font-mono font-bold text-cyan-700">{t.drawer_code || '—'}</td>
-                        <td className="py-3.5 px-4 text-center">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-800">
-                            {t.status_label || t.state || '—'}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {!traceabilityLoading && traceabilityList.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="text-center py-8 text-slate-400 font-medium">
-                        No traceability records for the current filters.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 8: STORE ANALYTICS
-           ==================================================================== */}
-      {activeTab === 'tab-analytics' && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full space-y-5"
-        >
-          <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Drawer Status Distribution */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-extrabold text-slate-900 mb-1">Drawer Material Distribution</h3>
-              <p className="text-xs text-slate-500 mb-4">Leather, Lining, and Merged pair distribution in store</p>
-              <div className="h-[260px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={[
-                        { name: 'Leather + Lining (Both)', value: filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length, color: '#0891b2' },
-                        { name: 'Leather Only', value: filteredDrawers.filter((d) => d.material_type === 'LEATHER').length, color: '#f97316' },
-                        { name: 'Lining Only', value: filteredDrawers.filter((d) => d.material_type === 'LINING').length, color: '#f43f5e' },
-                        { name: 'Held Drawers', value: heldList.length, color: '#f59e0b' },
-                      ]}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={85}
-                      innerRadius={50}
-                      paddingAngle={4}
-                    >
-                      <Cell fill="#0891b2" />
-                      <Cell fill="#f97316" />
-                      <Cell fill="#f43f5e" />
-                      <Cell fill="#f59e0b" />
-                    </Pie>
-                    <Tooltip content={<CustomTooltip unit="drawers" />} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Daily Movement */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-extrabold text-slate-900 mb-1">Store Daily Movement Trends</h3>
-              <p className="text-xs text-slate-500 mb-4">Received vs Sent vs Emptied drawers</p>
-              <div className="h-[260px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dynamicDailyChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <Tooltip content={<CustomTooltip unit="drawers" />} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="received" name="Received" fill="#0891b2" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="sent" name="Sent to Prod" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 9: TRACEABILITY FLOW
-           ==================================================================== */}
-      {activeTab === 'tab-flow' && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6"
-        >
-          <div>
-            <h3 className="text-base font-extrabold text-slate-900">Complete Store Drawer Movement Lifecycle</h3>
-            <p className="text-xs text-slate-500">Material Received &rarr; Drawer Created &rarr; Leather/Lining Added &rarr; Held/Ready &rarr; Sent to Production &rarr; Drawer Empty &rarr; Reused</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-7 gap-2.5">
-            {[
-              { title: '1. Intake', desc: 'Cut material received', icon: '📦', color: 'bg-blue-50 text-blue-700' },
-              { title: '2. Stored', desc: 'Drawer registered', icon: '🗄️', color: 'bg-cyan-50 text-cyan-700' },
-              { title: '3. Paired', desc: 'Leather + Lining merged', icon: '🧵', color: 'bg-purple-50 text-purple-700' },
-              { title: '4. Ready/Held', desc: 'Staging buffer verification', icon: '🛑', color: 'bg-amber-50 text-amber-700' },
-              { title: '5. Sent Floor', desc: 'Dispatched to Stitching', icon: '⚡', color: 'bg-indigo-50 text-indigo-700' },
-              { title: '6. Emptied', desc: 'Pieces consumed', icon: '✨', color: 'bg-slate-50 text-slate-700' },
-              { title: '7. Reuse Ready', desc: 'Recycled for next style', icon: '♻️', color: 'bg-emerald-50 text-emerald-700' },
-            ].map((step, i) => (
-              <div key={i} className={`p-3.5 rounded-xl border border-slate-100 ${step.color} flex flex-col justify-between`}>
-                <div className="text-2xl mb-1.5">{step.icon}</div>
-                <div>
-                  <h5 className="font-extrabold text-xs">{step.title}</h5>
-                  <p className="text-[10px] font-mono mt-0.5 opacity-80">{step.desc}</p>
-                </div>
-              </div>
-            ))}
           </div>
         </motion.div>
       )}

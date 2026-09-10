@@ -25,7 +25,7 @@ export default function BarcodePagination({ page, pages, setPage }) {
     <div className="flex items-center justify-center gap-3 mt-5">
       {/* Previous Page Button */}
       <button
-        onClick={() => setPage((p) => Math.max(1, p - 1))}
+        onClick={() => setPage(Math.max(1, page - 1))}
         disabled={page <= 1}
         className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-40"
       >
@@ -39,7 +39,7 @@ export default function BarcodePagination({ page, pages, setPage }) {
 
       {/* Next Page Button */}
       <button
-        onClick={() => setPage((p) => Math.min(pages, p + 1))}
+        onClick={() => setPage(Math.min(pages, page + 1))}
         disabled={page >= pages}
         className="btn-warm-secondary !min-h-0 !py-1.5 !px-3 text-xs disabled:opacity-40"
       >

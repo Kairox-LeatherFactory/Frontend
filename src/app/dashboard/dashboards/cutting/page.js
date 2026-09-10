@@ -5,7 +5,6 @@ import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Scissors,
-  AlertTriangle,
   Search,
   Download,
   Filter,
@@ -302,11 +301,9 @@ function DashboardInner() {
   const [filterDate, setFilterDate] = useState('all');
   const [filterOrder, setFilterOrder] = useState('all');
   const [filterStyle, setFilterStyle] = useState('all');
-  const [filterLot, setFilterLot] = useState('all');
   const [filterCutter, setFilterCutter] = useState('all');
-  const [filterStage, setFilterStage] = useState('all');
   const [filterSize, setFilterSize] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [filterColour, setFilterColour] = useState('all');
 
   // Modals state
   const [selectedPieceModal, setSelectedPieceModal] = useState(null);
@@ -319,6 +316,10 @@ function DashboardInner() {
   // Pagination for piece tracker
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  // Piece-Level Master Tracker tab's own search — local to that tab, on top
+  // of whatever the universal filter bar already narrowed down to.
+  const [pieceSearchQuery, setPieceSearchQuery] = useState('');
 
   // Sync tab from URL query params
   useEffect(() => {
@@ -415,11 +416,9 @@ function DashboardInner() {
     setFilterDate('all');
     setFilterOrder('all');
     setFilterStyle('all');
-    setFilterLot('all');
     setFilterCutter('all');
-    setFilterStage('all');
     setFilterSize('all');
-    setSearchQuery('');
+    setFilterColour('all');
     triggerToast('Filters reset to default view');
   };
 
@@ -452,18 +451,13 @@ function DashboardInner() {
     return Array.from(map.values());
   }, [orderProgress, currentOrder]);
 
-  const availableLots = useMemo(
-    () => lotsList.map((l) => ({ id: l.lot_id, label: `${l.article || '—'} · ${l.colour || '—'} (${l.thickness || '—'})` })),
-    [lotsList]
-  );
-
   const availableCutters = useMemo(
     () => cuttersList.map((c) => ({ id: c.employee_id, name: c.name })),
     [cuttersList]
   );
 
-  const availableStages = useMemo(
-    () => Array.from(new Set(piecesList.map((p) => p.stage).filter(Boolean))),
+  const availableColours = useMemo(
+    () => Array.from(new Set(piecesList.map((p) => p.colour).filter(Boolean))).sort(),
     [piecesList]
   );
 
@@ -481,48 +475,52 @@ function DashboardInner() {
   // consumption endpoint returned for the current order/cutter/date params.
   const filteredPieces = useMemo(() => {
     return piecesList.filter((p) => {
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matchesQuery =
-          (p.piece_code && p.piece_code.toLowerCase().includes(q)) ||
-          (p.style && p.style.toLowerCase().includes(q)) ||
-          (p.employee && p.employee.toLowerCase().includes(q)) ||
-          (p.order_number && p.order_number.toLowerCase().includes(q)) ||
-          (p.colour && p.colour.toLowerCase().includes(q));
-        if (!matchesQuery) return false;
-      }
       if (filterStyle !== 'all' && p.style !== filterStyle) return false;
-      if (filterLot !== 'all') {
-        const lot = lotsList.find((l) => l.lot_id === filterLot);
-        if (!lot || p.leather_article !== lot.article || p.colour !== lot.colour) return false;
-      }
-      if (filterStage !== 'all' && p.stage !== filterStage) return false;
+      if (filterColour !== 'all' && p.colour !== filterColour) return false;
       if (filterSize !== 'all' && p.size !== filterSize) return false;
       return true;
     });
-  }, [piecesList, lotsList, searchQuery, filterStyle, filterLot, filterStage, filterSize]);
+  }, [piecesList, filterStyle, filterColour, filterSize]);
+
+  // Piece-Level Master Tracker's own search, layered on top of filteredPieces
+  // (so the universal filter bar still applies, this just narrows further).
+  const searchedPieces = useMemo(() => {
+    if (!pieceSearchQuery) return filteredPieces;
+    const q = pieceSearchQuery.toLowerCase();
+    return filteredPieces.filter((p) =>
+      (p.piece_code && p.piece_code.toLowerCase().includes(q)) ||
+      (p.style && p.style.toLowerCase().includes(q)) ||
+      (p.employee && p.employee.toLowerCase().includes(q)) ||
+      (p.order_number && p.order_number.toLowerCase().includes(q)) ||
+      (p.colour && p.colour.toLowerCase().includes(q))
+    );
+  }, [filteredPieces, pieceSearchQuery]);
 
   // Paginated pieces
   const paginatedPieces = useMemo(() => {
     const start = (currentPage - 1) * pageSize;
-    return filteredPieces.slice(start, start + pageSize);
-  }, [filteredPieces, currentPage, pageSize]);
+    return searchedPieces.slice(start, start + pageSize);
+  }, [searchedPieces, currentPage, pageSize]);
 
-  const totalPages = Math.ceil(filteredPieces.length / pageSize) || 1;
+  const totalPages = Math.ceil(searchedPieces.length / pageSize) || 1;
 
-  // Aggregate actual DCM consumption per (order, style) from the CURRENTLY FILTERED
-  // cut log — this is real, computed from actual_consumption, and reacts to every
-  // active filter (order/cutter/date server-side, style/lot/stage/size/search client-side).
+  // Aggregate per (order, style) from the CURRENTLY FILTERED cut log — real,
+  // computed live, and reacts to every active filter (order/cutter/date
+  // server-side, style/colour/size client-side). `pieces` counts every
+  // logged cut event for that style regardless of whether it carries a
+  // consumption value (this is the real Cutting-stage completed count — one
+  // row in this cutting-only log means that piece has been cut); `total`
+  // sums actual_consumption for the DCM total.
   const styleConsumptionAgg = useMemo(() => {
     const map = new Map();
     filteredPieces.forEach((p) => {
       if (!p.style) return;
       const key = `${p.order_number || ''}::${p.style}`;
-      if (!map.has(key)) map.set(key, { total: 0, count: 0 });
+      if (!map.has(key)) map.set(key, { total: 0, pieces: 0 });
       const entry = map.get(key);
+      entry.pieces += 1;
       if (typeof p.actual_consumption === 'number') {
         entry.total += p.actual_consumption;
-        entry.count += 1;
       }
     });
     return map;
@@ -555,7 +553,7 @@ function DashboardInner() {
         return {
           orderNumber,
           styleName,
-          pieces: v.count,
+          pieces: v.pieces,
           dcm: v.total,
           remainingQty: progressRow?.pending ?? null,
           remainingStock,
@@ -593,16 +591,6 @@ function DashboardInner() {
     if ((lot.remaining ?? 0) < 0) return { label: 'Overdrawn', cls: 'bg-red-100 text-red-800' };
     if (lot.available > 0 && (lot.remaining ?? 0) / lot.available < 0.1) return { label: 'Low Stock', cls: 'bg-amber-100 text-amber-800' };
     return { label: 'Healthy', cls: 'bg-emerald-100 text-emerald-800' };
-  };
-
-  // Real backend field (delay_status on order_progress rows) — not previously surfaced anywhere.
-  const delayBadgeCls = (status) => {
-    if (!status) return 'bg-slate-100 text-slate-500';
-    const s = status.toUpperCase();
-    if (s.includes('DELAY')) return 'bg-red-100 text-red-800';
-    if (s.includes('ON_TRACK') || s.includes('ONTRACK')) return 'bg-emerald-100 text-emerald-800';
-    if (s.includes('NO_DEADLINE')) return 'bg-slate-100 text-slate-500';
-    return 'bg-blue-100 text-blue-800';
   };
 
   // ── Chart datasets — every one of these is derived from `filteredPieces`, so
@@ -652,15 +640,14 @@ function DashboardInner() {
   // Tab 3: lots — narrow the visible lot list to whatever the active filters
   // actually touch, and compute "consumed within this filter" per lot.
   const anyPieceFilterActive =
-    filterStyle !== 'all' || filterStage !== 'all' || filterSize !== 'all' || searchQuery !== '' ||
+    filterStyle !== 'all' || filterSize !== 'all' || filterColour !== 'all' ||
     filterCutter !== 'all' || filterDate !== 'all';
 
   const visibleLots = useMemo(() => {
-    if (filterLot !== 'all') return lotsList.filter((l) => l.lot_id === filterLot);
     if (!anyPieceFilterActive) return lotsList;
     const touched = new Set(filteredPieces.map((p) => `${p.leather_article}::${p.colour}`));
     return lotsList.filter((l) => touched.has(`${l.article}::${l.colour}`));
-  }, [lotsList, filterLot, anyPieceFilterActive, filteredPieces]);
+  }, [lotsList, anyPieceFilterActive, filteredPieces]);
 
   const filteredLotChartData = useMemo(() => {
     const consumedInFilter = new Map();
@@ -739,14 +726,17 @@ function DashboardInner() {
   // (backend-computed order-wide totals) EXCEPT for completed/pending, which
   // the backend under-reports (it can report 0 completed even when real
   // LEATHER_CUTTING consumption events exist for the order/piece). The
-  // consumption endpoint (piecesList) is the only endpoint with piece-level
-  // rows, so it's the ground truth for "how many pieces actually got cut" —
-  // use its distinct piece count instead of trusting production_kpis/current_order
-  // for completed/pending. ──
+  // consumption endpoint is the only one with piece-level rows, so it's the
+  // ground truth for "how many pieces actually got cut" — use its distinct
+  // piece count instead of trusting production_kpis/current_order for
+  // completed/pending. Built from filteredPieces (not the raw piecesList) so
+  // Completed/Pending/Avg DCM actually react to the universal filter bar
+  // (size, order, style, colour, cutter, date, search) instead of always
+  // showing the same unfiltered totals no matter what's selected. ──
   const totalOrderPieces = productionKpis?.total_order_pieces ?? currentOrder?.total_pieces ?? 0;
   const groundTruthCompleted = useMemo(
-    () => new Set(piecesList.map((p) => p.piece_code)).size,
-    [piecesList]
+    () => new Set(filteredPieces.map((p) => p.piece_code)).size,
+    [filteredPieces]
   );
   const overallCompleted = groundTruthCompleted;
   const overallPending = Math.max(0, totalOrderPieces - groundTruthCompleted);
@@ -763,10 +753,10 @@ function DashboardInner() {
     : 0;
 
   const avgDcmPerPiece = useMemo(() => {
-    const withValue = piecesList.filter((p) => typeof p.actual_consumption === 'number');
+    const withValue = filteredPieces.filter((p) => typeof p.actual_consumption === 'number');
     if (withValue.length === 0) return null;
     return withValue.reduce((acc, p) => acc + p.actual_consumption, 0) / withValue.length;
-  }, [piecesList]);
+  }, [filteredPieces]);
 
   const avgDailyAssigned = useMemo(() => {
     if (dailyProduction.length === 0) return null;
@@ -824,19 +814,7 @@ function DashboardInner() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-8 gap-2">
-          {/* Quick Search */}
-          <div className="relative col-span-2 sm:col-span-3 lg:col-span-2 xl:col-span-2">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search piece, style, cutter..."
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#2563eb]"
-            />
-          </div>
-
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
           {/* Date Filter */}
           <div>
             <CompleteDateCalendarPicker
@@ -870,16 +848,6 @@ function DashboardInner() {
             />
           </div>
 
-          {/* Leather Lot Filter (client-side, matched by article+colour) */}
-          <div>
-            <ScreenSafeSelect
-              value={filterLot}
-              onChange={(v) => { setFilterLot(v); setCurrentPage(1); }}
-              placeholder="🧵 All Lots"
-              options={availableLots.map((lot) => ({ value: lot.id, label: lot.label }))}
-            />
-          </div>
-
           {/* Cutter Filter (server-side: employee_id) */}
           <div>
             <ScreenSafeSelect
@@ -890,13 +858,13 @@ function DashboardInner() {
             />
           </div>
 
-          {/* Stage Filter (client-side — real backend field is "stage", not a "status" enum) */}
+          {/* Colour Filter (client-side, real colour field on the cut log) */}
           <div>
             <ScreenSafeSelect
-              value={filterStage}
-              onChange={(v) => { setFilterStage(v); setCurrentPage(1); }}
-              placeholder="⚡ Stage"
-              options={availableStages.map((st) => ({ value: st, label: formatStage(st) }))}
+              value={filterColour}
+              onChange={(v) => { setFilterColour(v); setCurrentPage(1); }}
+              placeholder="🎨 All Colours"
+              options={availableColours.map((c) => ({ value: c, label: c }))}
             />
           </div>
 
@@ -920,9 +888,6 @@ function DashboardInner() {
           { id: 'tab-inventory', label: '🧵 Leather Stock & Allocation (DCM)' },
           { id: 'tab-cutters', label: '✂️ Cutter Performance' },
           { id: 'tab-pieces', label: '🏷️ Piece-Level Master Tracker' },
-          { id: 'tab-damage', label: '⚠️ Damage & Rework Station' },
-          { id: 'tab-analytics', label: '📉 Loss & Waste Analytics (DCM)' },
-          { id: 'tab-flow', label: '🔄 Traceability Flow' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -1130,7 +1095,7 @@ function DashboardInner() {
             </div>
 
             {/* KPI 4: Damage & Rework (waste is unsupported) */}
-            <div onClick={() => setActiveTab('tab-damage')} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
               <div className="flex items-center justify-between mb-3">
                 <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">📊</div>
               </div>
@@ -1208,7 +1173,7 @@ function DashboardInner() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Per-Style / Order Progress</h3>
-                <p className="text-xs text-slate-500">Real order_progress rows. Actual DCM columns are computed from the loaded cut log (currently filtered window), not a full-order total.</p>
+                <p className="text-xs text-slate-500">Real order_progress rows for Total Ordered/Minted. Completed, Pending and Actual DCM Consumed are computed live from the loaded cut log (currently filtered window) — Completed means the Cutting stage specifically, not overall order completion.</p>
               </div>
               <span className="text-xs font-bold px-3 py-1 bg-[#eff6ff] text-[#2563eb] rounded-full">
                 Standard: 1 dm² = 0.1076 sq.ft
@@ -1224,11 +1189,10 @@ function DashboardInner() {
                     <th className="py-3 px-4">Article</th>
                     <th className="py-3 px-4 text-right">Total Ordered</th>
                     <th className="py-3 px-4 text-right">Minted</th>
-                    <th className="py-3 px-4 text-right">Completed</th>
-                    <th className="py-3 px-4 text-right">Pending</th>
+                    <th className="py-3 px-4 text-right" title="Pieces actually cut for this style — Cutting stage only, not overall order completion">Completed (Cutting)</th>
+                    <th className="py-3 px-4 text-right" title="Total Ordered minus Cutting Completed">Pending (Cutting)</th>
                     <th className="py-3 px-4 text-right">Completion %</th>
-                    <th className="py-3 px-4 text-center">Delay Status</th>
-                    <th className="py-3 px-4 text-right">Actual Avg (DCM)</th>
+                    <th className="py-3 px-4 text-right">Actual DCM Consumed</th>
                     <th className="py-3 px-4 text-center">Action</th>
                   </tr>
                 </thead>
@@ -1238,7 +1202,10 @@ function DashboardInner() {
                     .filter((s) => filterOrder === 'all' || s.order_id === filterOrder)
                     .map((s, idx) => {
                       const agg = styleConsumptionAgg.get(`${s.order_number}::${s.style_name}`);
-                      const avgDcm = agg && agg.count > 0 ? (agg.total / agg.count) : null;
+                      const cuttingCompleted = agg?.pieces ?? 0;
+                      const cuttingPending = Math.max(0, (s.total_ordered ?? 0) - cuttingCompleted);
+                      const cuttingCompletionPct = s.total_ordered > 0 ? Math.round((cuttingCompleted / s.total_ordered) * 100) : 0;
+                      const actualDcmTotal = agg && agg.total > 0 ? agg.total : null;
                       const isSelected = selectedStyleDetail?.style_id === s.style_id;
                       return (
                         <tr
@@ -1255,16 +1222,11 @@ function DashboardInner() {
                           <td className="py-3.5 px-4">{s.article || '—'}</td>
                           <td className="py-3.5 px-4 text-right font-bold text-slate-800">{s.total_ordered}</td>
                           <td className="py-3.5 px-4 text-right text-slate-700">{s.minted}</td>
-                          <td className="py-3.5 px-4 text-right text-emerald-700 font-bold">{s.completed}</td>
-                          <td className="py-3.5 px-4 text-right text-amber-700 font-bold">{s.pending}</td>
-                          <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-800">{s.completion_pct}%</td>
-                          <td className="py-3.5 px-4 text-center">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${delayBadgeCls(s.delay_status)}`}>
-                              {s.delay_status ? s.delay_status.replace(/_/g, ' ') : '—'}
-                            </span>
-                          </td>
+                          <td className="py-3.5 px-4 text-right text-emerald-700 font-bold">{cuttingCompleted}</td>
+                          <td className="py-3.5 px-4 text-right text-amber-700 font-bold">{cuttingPending}</td>
+                          <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-800">{cuttingCompletionPct}%</td>
                           <td className="py-3.5 px-4 text-right font-mono font-extrabold text-[#2563eb]">
-                            {avgDcm !== null ? `${avgDcm.toFixed(1)} DCM` : '—'}
+                            {actualDcmTotal !== null ? `${actualDcmTotal.toFixed(1)} DCM` : '—'}
                           </td>
                           <td className="py-3.5 px-4 text-center">
                             <button
@@ -1279,13 +1241,38 @@ function DashboardInner() {
                     })}
                   {orderProgress.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="text-center py-8 text-slate-400 font-medium">No style/order progress data returned for this filter.</td>
+                      <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">No style/order progress data returned for this filter.</td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
           </div>
+
+          {/* Real per-style stage breakdown for the current order (current_order.styles[].stages) —
+               placed right under the table (not scrolled below everything else), and capped/centered
+               to a comfortable width so a small number of styles doesn't render as one bar stranded
+               off to one side of a full-width chart. */}
+          {currentOrder && styleStageChartData.rows.length > 0 && (
+            <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+              <h3 className="text-sm font-extrabold text-slate-900 mb-1">Style Progress by Stage — Order {currentOrder.order_number}</h3>
+              <p className="text-xs text-slate-500 mb-4">Real stage distribution per style, straight from current_order.styles[].stages</p>
+              <div className="h-[300px] w-full max-w-2xl mx-auto">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={styleStageChartData.rows} barCategoryGap="35%">
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+                    <XAxis dataKey="style_name" tick={{ fontSize: 11, fill: '#64748b' }} interval={0} angle={-20} textAnchor="end" height={70} />
+                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
+                    <Tooltip content={<CustomTooltip unit="pcs" />} />
+                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
+                    {styleStageChartData.stageKeys.map((k, i) => (
+                      <Bar key={k} dataKey={k} name={formatStage(k)} stackId="stages" fill={STAGE_COLORS[i % STAGE_COLORS.length]} maxBarSize={80} radius={i === styleStageChartData.stageKeys.length - 1 ? [6, 6, 0, 0] : undefined} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
 
           {/* Real size-wise breakdown, computed from the loaded cut log */}
           {selectedStyleDetail && (
@@ -1319,28 +1306,6 @@ function DashboardInner() {
                   ))}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* Real per-style stage breakdown for the current order (current_order.styles[].stages) */}
-          {currentOrder && styleStageChartData.rows.length > 0 && (
-            <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-extrabold text-slate-900 mb-1">Style Progress by Stage — Order {currentOrder.order_number}</h3>
-              <p className="text-xs text-slate-500 mb-4">Real stage distribution per style, straight from current_order.styles[].stages</p>
-              <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={styleStageChartData.rows}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="style_name" tick={{ fontSize: 11, fill: '#64748b' }} interval={0} angle={-20} textAnchor="end" height={70} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} allowDecimals={false} />
-                    <Tooltip content={<CustomTooltip unit="pcs" />} />
-                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-                    {styleStageChartData.stageKeys.map((k, i) => (
-                      <Bar key={k} dataKey={k} name={formatStage(k)} stackId="stages" fill={STAGE_COLORS[i % STAGE_COLORS.length]} radius={i === styleStageChartData.stageKeys.length - 1 ? [6, 6, 0, 0] : undefined} />
-                    ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
             </div>
           )}
 
@@ -1378,7 +1343,7 @@ function DashboardInner() {
               <div>
                 <h3 className="text-base font-extrabold text-slate-900">Leather Inventory Stock & Lot Allocation (DCM)</h3>
                 <p className="text-xs text-slate-500">
-                  {filterLot !== 'all' || anyPieceFilterActive
+                  {anyPieceFilterActive
                     ? `Showing ${visibleLots.length} of ${lotsList.length} lots that match the active filters`
                     : 'Available hide inventory and consumption in Decimeters (DCM / dm²)'}
                 </p>
@@ -1393,12 +1358,10 @@ function DashboardInner() {
                 <thead>
                   <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
                     <th className="py-3 px-4">Article</th>
-                    <th className="py-3 px-4">Type</th>
                     <th className="py-3 px-4">Colour</th>
                     <th className="py-3 px-4">Thickness</th>
                     <th className="py-3 px-4">UOM</th>
                     <th className="py-3 px-4 text-right">Available (DCM)</th>
-                    <th className="py-3 px-4 text-right">Allocated (DCM)</th>
                     <th className="py-3 px-4 text-right">Consumed (DCM)</th>
                     <th className="py-3 px-4 text-right">Remaining (DCM)</th>
                     <th className="py-3 px-4 text-right">Pieces Cut</th>
@@ -1412,12 +1375,10 @@ function DashboardInner() {
                     return (
                       <tr key={lot.lot_id} className="hover:bg-slate-50 transition-all">
                         <td className="py-3.5 px-4 font-bold text-slate-900">{lot.article}</td>
-                        <td className="py-3.5 px-4 text-slate-500">{lot.leather_type || '—'}</td>
                         <td className="py-3.5 px-4">{lot.colour}</td>
                         <td className="py-3.5 px-4">{lot.thickness}</td>
                         <td className="py-3.5 px-4 uppercase text-slate-500">{lot.uom}</td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{(lot.available ?? 0).toLocaleString()}</td>
-                        <td className="py-3.5 px-4 text-right"><div className="flex justify-end"><NotAvailableBadge /></div></td>
                         <td className="py-3.5 px-4 text-right font-mono text-purple-700 font-bold">{(lot.consumed ?? 0).toLocaleString()}</td>
                         <td className={`py-3.5 px-4 text-right font-mono font-black ${(lot.remaining ?? 0) < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
                           {(lot.remaining ?? 0).toLocaleString()}
@@ -1439,7 +1400,7 @@ function DashboardInner() {
                   })}
                   {visibleLots.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="text-center py-8 text-slate-400 font-medium">
+                      <td colSpan={10} className="text-center py-8 text-slate-400 font-medium">
                         {lotsList.length === 0 ? 'No leather inventory lots recorded.' : 'No lots match the current filters.'}
                       </td>
                     </tr>
@@ -1587,7 +1548,17 @@ function DashboardInner() {
                 <h3 className="text-base font-extrabold text-slate-900">Piece-Level Master Traceability Tracker</h3>
                 <p className="text-xs text-slate-500">Every logged cut event with actual DCM consumption, cutter, and current stage</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={pieceSearchQuery}
+                    onChange={(e) => { setPieceSearchQuery(e.target.value); setCurrentPage(1); }}
+                    placeholder="Search piece, style, cutter..."
+                    className="bg-[#f8fafc] border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#2563eb] w-56"
+                  />
+                </div>
                 <span className="text-xs font-bold text-slate-500 shrink-0">Rows per page:</span>
                 <div className="w-20">
                   <ScreenSafeSelect
@@ -1665,7 +1636,7 @@ function DashboardInner() {
             </div>
 
             <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs font-bold text-slate-600">
-              <span>Page {currentPage} of {totalPages} ({filteredPieces.length} items)</span>
+              <span>Page {currentPage} of {totalPages} ({searchedPieces.length} items)</span>
               <div className="flex items-center gap-1.5">
                 <button
                   disabled={currentPage === 1}
@@ -1707,122 +1678,6 @@ function DashboardInner() {
             {filteredStyleChartData.length === 0 && (
               <p className="text-center text-xs text-slate-400 font-medium py-4">No cut events match the current filters.</p>
             )}
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 6: DAMAGE & REWORK STATION
-           ==================================================================== */}
-      {activeTab === 'tab-damage' && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
-          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="mb-5">
-              <h3 className="text-base font-extrabold text-slate-900">Damage, Defect & Rework Station</h3>
-              <p className="text-xs text-slate-500">Aggregate counts are real backend values; per-piece damage drill-down is not yet supported.</p>
-            </div>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-              <div className="bg-red-50/70 p-4 rounded-xl border border-red-100">
-                <span className="text-[10px] text-red-500 uppercase font-bold">Damage (Total)</span>
-                <div className="text-2xl font-black text-red-600">{damagePieces}</div>
-              </div>
-              <div className="bg-red-50/70 p-4 rounded-xl border border-red-100">
-                <span className="text-[10px] text-red-500 uppercase font-bold">Damage (Today)</span>
-                <div className="text-2xl font-black text-red-600">{productionKpis?.damage_today ?? 0}</div>
-              </div>
-              <div className="bg-purple-50/70 p-4 rounded-xl border border-purple-100">
-                <span className="text-[10px] text-purple-500 uppercase font-bold">Rework (Total)</span>
-                <div className="text-2xl font-black text-purple-700">{reworkPieces}</div>
-              </div>
-              <div className="bg-purple-50/70 p-4 rounded-xl border border-purple-100">
-                <span className="text-[10px] text-purple-500 uppercase font-bold">Rework (Today)</span>
-                <div className="text-2xl font-black text-purple-700">{productionKpis?.rework_today ?? 0}</div>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200">
-              <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="text-xs font-bold text-amber-800">Per-piece damage drill-down is not available yet</p>
-                <p className="text-[11px] text-amber-700 mt-1">
-                  {meta?.unsupported?.damage_tracking || 'No damage state or PieceDamage table exists in the schema yet.'}
-                </p>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 7: LOSS, WASTE & ANALYTICS (DCM)
-           ==================================================================== */}
-      {activeTab === 'tab-analytics' && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full space-y-5">
-          <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Waste breakdown — genuinely unsupported */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
-              <h3 className="text-sm font-extrabold text-slate-900 mb-1">Leather Waste Loss Breakdown (DCM)</h3>
-              <p className="text-xs text-slate-500 mb-4">Total waste distribution across patterns, trimmings, and flaws</p>
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 py-10">
-                <NotAvailableBadge label="Waste tracking not available yet" />
-                <p className="text-[11px] text-slate-400 text-center max-w-xs">
-                  {meta?.unsupported?.expected_consumption || 'Only actual consumption is stored on the cut event; expected/waste needs a BOM baseline.'}
-                </p>
-              </div>
-            </div>
-
-            {/* Cutter throughput within the current filter — reacts live to every active filter */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-sm font-extrabold text-slate-900 mb-1">Cutter Throughput & Leather Consumed (filtered)</h3>
-              <p className="text-xs text-slate-500 mb-4">Pieces cut & DCM consumed per cutter, computed live from the currently filtered cut log</p>
-              <div className="h-[260px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={filteredCutterChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <Tooltip content={<CustomTooltip unit="" />} />
-                    <Legend wrapperStyle={{ fontSize: 11 }} />
-                    <Bar dataKey="pieces_cut" name="Pieces Cut" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="dcm_consumed" name="DCM Consumed" fill="#8b5cf6" radius={[6, 6, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              {filteredCutterChartData.length === 0 && (
-                <p className="text-center text-xs text-slate-400 font-medium py-4">No cut events match the current filters.</p>
-              )}
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 8: TRACEABILITY FLOW
-           ==================================================================== */}
-      {activeTab === 'tab-flow' && (
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
-          <div>
-            <h3 className="text-base font-extrabold text-slate-900">End-to-End Factory Traceability Flow</h3>
-            <p className="text-xs text-slate-500">Direct relationship: Order &rarr; Style &rarr; Leather Lot &rarr; Cutter &rarr; Piece &rarr; Consumption (DCM)</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            {[
-              { title: '1. Order', desc: currentOrder ? `${currentOrder.order_number} / ${currentOrder.client}` : '—', icon: '📦', color: 'bg-blue-50 text-blue-700' },
-              { title: '2. Style', desc: currentOrder?.styles?.[0] ? `${currentOrder.styles[0].style_name} (${currentOrder.styles[0].article || '—'})` : '—', icon: '👗', color: 'bg-purple-50 text-purple-700' },
-              { title: '3. Leather Lot', desc: lotsList[0] ? `${lotsList[0].article} · ${lotsList[0].colour}` : '—', icon: '🧵', color: 'bg-emerald-50 text-emerald-700' },
-              { title: '4. Cutting', desc: cuttersList.length ? cuttersList.slice(0, 2).map((c) => c.name).join(' / ') : '—', icon: '✂️', color: 'bg-amber-50 text-amber-700' },
-              { title: '5. Completion', desc: `${overallCompleted} / ${totalOrderPieces} completed`, icon: '✅', color: 'bg-green-50 text-green-700' },
-            ].map((step, i) => (
-              <div key={i} className={`p-4 rounded-xl border border-slate-100 ${step.color} flex flex-col justify-between`}>
-                <div className="text-2xl mb-2">{step.icon}</div>
-                <div>
-                  <h5 className="font-extrabold text-xs">{step.title}</h5>
-                  <p className="text-[10px] font-mono mt-0.5 opacity-80">{step.desc}</p>
-                </div>
-              </div>
-            ))}
           </div>
         </motion.div>
       )}

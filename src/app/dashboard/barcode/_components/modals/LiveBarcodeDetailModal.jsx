@@ -27,7 +27,13 @@ export default function LiveBarcodeDetailModal({ open, loading, error, data, onC
   const [exporting, setExporting] = useState(null);
 
   // Extract nested entity payload (piece, employee, drawer, or material lot)
-  const payload = data ? (data.piece || data.employee || data.drawer || data.lot) : null;
+  const rawPayload = data ? (data.piece || data.employee || data.drawer || data.lot) : null;
+
+  // Style/piece lookups hide internal production-routing fields not meant for this quick-view card
+  const HIDDEN_PIECE_KEYS = ['drawer', 'material_requirement', 'needs_lining', 'leather_consumption_dcm'];
+  const payload = rawPayload
+    ? Object.fromEntries(Object.entries(rawPayload).filter(([key]) => !HIDDEN_PIECE_KEYS.includes(key)))
+    : null;
 
   // --------------------------------------------------------------------------
   // 2. EXPORT SYMBOL TO PNG / PDF

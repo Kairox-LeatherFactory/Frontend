@@ -1,19 +1,45 @@
 'use client';
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { useSelector, useDispatch } from 'react-redux';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { Barcode } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import {
-  apiGetEmployees, apiListDrawers, apiGetMaterialLots, apiGetBarcodeMaterials,
-} from '@/lib/api';
-import {
   BRAND, TABS, CATEGORIES, CATEGORY_SUBTITLES, CATEGORY_LABELS,
   DEFAULT_HISTORY_FILTERS, EMPTY_LIST,
   BUCKET_LABEL, BUCKET_LABELS_PER_PAGE, STYLE_LABELS_PER_PAGE,
 } from './_lib/constants';
-import { normalizeEmployee, getCompactBarcodeId, chunkArray } from './_lib/helpers';
+import { getCompactBarcodeId, chunkArray } from './_lib/helpers';
 import { captureNodeToCanvas, saveCanvasAsPng, savePdfBlob } from './_lib/exporters';
+import {
+  setCategory as setReduxCategory,
+  setActiveTab as setReduxActiveTab,
+  addGenerated,
+  addHistory,
+  markPrinted as markPrintedAction,
+  setDrawerStateFilter,
+  setDrawerSeqFrom,
+  setDrawerSeqTo,
+  togglePrintSelected,
+  setPrintSelected,
+  addPrintSelected,
+  clearPrintSelected,
+  selectAllPrint,
+  toggleGroupPrint,
+  toggleExpandedOrder,
+  toggleExpandedGroup,
+  toggleExpandedHistoryOrder,
+  setHistoryFilter,
+  resetHistoryFilters,
+  setDetailCode,
+  setPreviewOpen,
+} from './_lib/barcodeSlice';
+import {
+  useGetEmployeesQuery,
+  useListDrawersQuery,
+  useGetBarcodeMaterialsQuery,
+} from './_lib/barcodeApiSlice';
 import ToastStack from './_components/ToastStack';
 import ResolveBarcodeWidget from './_components/ResolveBarcodeWidget';
 import StyleRegistryPanel from './_components/style/StyleRegistryPanel';
@@ -58,70 +84,70 @@ export default function BarcodeManagementPage() {
 
   const { user, token } = useAuth();
   const operatorLabel = user ? user.replace(/_/g, ' ').toUpperCase() : 'UNKNOWN';
-
-  // Active top-level category & active sub-tab
-  const [category, setCategory] = useState('style'); // 'style' | 'employee' | 'bucket' | 'material'
-  const [activeTab, setActiveTab] = useState('generation'); // 'generation' | 'print' | 'history'
+  const dispatch = useDispatch();
 
   // ==========================================================================
-  // SECTION 2: EMPLOYEE CATEGORY STATE & DIRECTORY
+  // SECTION 2: REDUX GLOBAL STATE (replaces 18 useState calls)
   // ==========================================================================
-  const [employeeStore, setEmployeeStore] = useState(() => ({ generated: [], history: [] }));
-  const [employeeDirectory, setEmployeeDirectory] = useState([]);
-  const [employeesLoading, setEmployeesLoading] = useState(false);
-  const [employeesError, setEmployeesError] = useState(null);
-  const [employeesReloadKey, setEmployeesReloadKey] = useState(0);
+  const category = useSelector((s) => s.barcode.ui.activeCategory);
+  const activeTab = useSelector((s) => s.barcode.ui.activeTab);
 
-  /** Triggers a reload of the employee directory roster. */
-  const reloadEmployees = useCallback(() => setEmployeesReloadKey((k) => k + 1), []);
+  const employeeStore = useSelector((s) => s.barcode.byCategory.employee);
+  const bucketStore = useSelector((s) => s.barcode.byCategory.bucket);
+  const materialStore = useSelector((s) => s.barcode.byCategory.material);
 
-  // ==========================================================================
-  // SECTION 3: BUCKET / DRAWER CATEGORY STATE & DIRECTORY
-  // ==========================================================================
-  const [bucketStore, setBucketStore] = useState(() => ({ generated: [], history: [] }));
-  const [drawerDirectory, setDrawerDirectory] = useState([]);
-  const [drawerTotal, setDrawerTotal] = useState(0);
-  const [drawerLoading, setDrawerLoading] = useState(false);
-  const [drawerError, setDrawerError] = useState(null);
-  const [drawerReloadKey, setDrawerReloadKey] = useState(0);
-  const [drawerStateFilter, setDrawerStateFilter] = useState('ALL');
-  const [drawerSeqFrom, setDrawerSeqFrom] = useState('');
-  const [drawerSeqTo, setDrawerSeqTo] = useState('');
+  const drawerStateFilter = useSelector((s) => s.barcode.byCategory.bucket.stateFilter);
+  const drawerSeqFrom = useSelector((s) => s.barcode.byCategory.bucket.seqFrom);
+  const drawerSeqTo = useSelector((s) => s.barcode.byCategory.bucket.seqTo);
 
-  /** Triggers a reload of the live drawer directory. */
-  const reloadDrawers = useCallback(() => setDrawerReloadKey((k) => k + 1), []);
+  const printSelections = useSelector((s) => s.barcode.selection.printSelected);
+  const expandedOrdersByCat = useSelector((s) => s.barcode.selection.expandedOrders);
+  const expandedGroupsByCat = useSelector((s) => s.barcode.selection.expandedGroups);
+  const expandedHistoryOrdersByCat = useSelector((s) => s.barcode.selection.expandedHistoryOrders);
+  const historyFiltersByCat = useSelector((s) => s.barcode.selection.historyFilters);
+
+  const detailCode = useSelector((s) => s.barcode.modals.detailCode);
+  const previewOpen = useSelector((s) => s.barcode.modals.previewOpen);
 
   // ==========================================================================
-  // SECTION 4: MATERIAL CATEGORY STATE & DIRECTORY
+  // SECTION 3: RTK QUERY HOOKS (replaces 3 useEffect fetch blocks + 12 useState fields)
   // ==========================================================================
-  const [materialStore, setMaterialStore] = useState(() => ({ generated: [], history: [] }));
-  const [materialDirectory, setMaterialDirectory] = useState([]);
-  const [materialsLoading, setMaterialsLoading] = useState(false);
-  const [materialsError, setMaterialsError] = useState(null);
-  const [materialsReloadKey, setMaterialsReloadKey] = useState(0);
+  const {
+    data: employeeDirectory = [],
+    isLoading: employeesLoading,
+    error: employeesErrorObj,
+    refetch: refetchEmployees,
+  } = useGetEmployeesQuery(undefined, {
+    skip: !hasMounted || category !== 'employee' || !token,
+  });
+  const employeesError = employeesErrorObj?.data?.detail || employeesErrorObj?.error || null;
 
-  /** Triggers a reload of the material lot directory. */
-  const reloadMaterials = useCallback(() => setMaterialsReloadKey((k) => k + 1), []);
+  const {
+    data: drawerData,
+    isLoading: drawerLoading,
+    error: drawerErrorObj,
+    refetch: refetchDrawers,
+  } = useListDrawersQuery(
+    { state: drawerStateFilter, seqFrom: drawerSeqFrom, seqTo: drawerSeqTo },
+    { skip: !hasMounted || category !== 'bucket' || !token },
+  );
+  const drawerDirectory = drawerData?.items ?? [];
+  const drawerTotal = drawerData?.total ?? 0;
+  const drawerError = drawerErrorObj?.data?.detail || drawerErrorObj?.error || null;
+
+  const {
+    data: materialDirectory = [],
+    isLoading: materialsLoading,
+    error: materialsErrorObj,
+    refetch: refetchMaterials,
+  } = useGetBarcodeMaterialsQuery(undefined, {
+    skip: !hasMounted || category !== 'material' || !token,
+  });
+  const materialsError = materialsErrorObj?.data?.detail || materialsErrorObj?.error || null;
 
   // ==========================================================================
-  // SECTION 5: ISOLATED PER-CATEGORY UI STATE (SELECTIONS, EXPANSIONS, FILTERS)
+  // SECTION 4: LOCAL-ONLY STATE (confirmed local, untouched by RTK migration)
   // ==========================================================================
-  const [printSelections, setPrintSelections] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set(), material: new Set() }));
-  const [expandedOrdersByCat, setExpandedOrdersByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set(), material: new Set() }));
-  const [expandedGroupsByCat, setExpandedGroupsByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set(), material: new Set() }));
-  const [expandedHistoryOrdersByCat, setExpandedHistoryOrdersByCat] = useState(() => ({ style: new Set(), employee: new Set(), bucket: new Set(), material: new Set() }));
-  const [historyFiltersByCat, setHistoryFiltersByCat] = useState(() => ({
-    style: { ...DEFAULT_HISTORY_FILTERS },
-    employee: { ...DEFAULT_HISTORY_FILTERS },
-    bucket: { ...DEFAULT_HISTORY_FILTERS },
-    material: { ...DEFAULT_HISTORY_FILTERS },
-  }));
-
-  // ==========================================================================
-  // SECTION 6: MODALS, PRINT QUEUE & TOASTS
-  // ==========================================================================
-  const [detailCode, setDetailCode] = useState(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [printSheetItems, setPrintSheetItems] = useState([]);
   const printSheetRef = useRef(null);
 
@@ -140,114 +166,27 @@ export default function BarcodeManagementPage() {
   }, []);
 
   // ==========================================================================
-  // SECTION 7: ACTIVE CATEGORY DERIVED DATA
+  // SECTION 5: ACTIVE CATEGORY DERIVED DATA
   // ==========================================================================
   const activeGenerated = category === 'employee' ? employeeStore.generated : category === 'bucket' ? bucketStore.generated : category === 'material' ? materialStore.generated : EMPTY_LIST;
   const activeHistory = category === 'employee' ? employeeStore.history : category === 'bucket' ? bucketStore.history : category === 'material' ? materialStore.history : EMPTY_LIST;
-  const activeSelectedPrint = printSelections[category];
-  const activeExpandedOrders = expandedOrdersByCat[category];
-  const activeExpandedGroups = expandedGroupsByCat[category];
-  const activeExpandedHistoryOrders = expandedHistoryOrdersByCat[category];
+  // Convert Redux arrays → Sets for backward compatibility with child components
+  // that use .has() and .size (PrintTab, HistoryTab)
+  const activeSelectedPrint = useMemo(() => new Set(printSelections[category]), [printSelections, category]);
+  const activeExpandedOrders = useMemo(() => new Set(expandedOrdersByCat[category]), [expandedOrdersByCat, category]);
+  const activeExpandedGroups = useMemo(() => new Set(expandedGroupsByCat[category]), [expandedGroupsByCat, category]);
+  const activeExpandedHistoryOrders = useMemo(() => new Set(expandedHistoryOrdersByCat[category]), [expandedHistoryOrdersByCat, category]);
   const activeHistoryFilters = historyFiltersByCat[category];
   const activeLabels = CATEGORY_LABELS[category];
 
   /** Switches the active category and defaults view to Generation tab. */
   const switchCategory = useCallback((cat) => {
-    setCategory(cat);
-    setActiveTab('generation');
-  }, []);
+    dispatch(setReduxCategory(cat));
+  }, [dispatch]);
 
   // ==========================================================================
-  // SECTION 8: DATA FETCHING EFFECTS
+  // SECTION 6: PRINT TRIGGER SIDE-EFFECT
   // ==========================================================================
-
-  // --- Fetch Drawers (GET /api/v1/drawers) ---
-  useEffect(() => {
-    if (!hasMounted || category !== 'bucket' || !token) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setDrawerLoading(true);
-      setDrawerError(null);
-      try {
-        const params = { limit: 500 };
-        if (drawerStateFilter !== 'ALL') params.state = drawerStateFilter;
-        if (drawerSeqFrom) params.seq_from = parseInt(drawerSeqFrom, 10);
-        if (drawerSeqTo) params.seq_to = parseInt(drawerSeqTo, 10);
-
-        const res = await apiListDrawers(token, params);
-        if (cancelled) return;
-        if (res && Array.isArray(res.items)) {
-          setDrawerDirectory(res.items);
-          setDrawerTotal(res.total ?? res.items.length);
-        } else if (Array.isArray(res)) {
-          setDrawerDirectory(res);
-          setDrawerTotal(res.length);
-        } else {
-          setDrawerDirectory([]);
-          setDrawerTotal(0);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        setDrawerDirectory([]);
-        setDrawerError(err?.message || 'Failed to load drawers from server.');
-      } finally {
-        if (!cancelled) setDrawerLoading(false);
-      }
-    }, 100);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [category, token, drawerReloadKey, drawerStateFilter, drawerSeqFrom, drawerSeqTo, hasMounted]);
-
-  // --- Fetch Material Lots (GET /api/v1/barcode/materials or /materials/lots) ---
-  useEffect(() => {
-    if (!hasMounted || category !== 'material' || !token) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setMaterialsLoading(true);
-      setMaterialsError(null);
-      try {
-        let res;
-        try {
-          res = await apiGetBarcodeMaterials(token, { active_only: false });
-        } catch (e) {
-          res = await apiGetMaterialLots(token);
-        }
-        if (cancelled) return;
-        const items = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
-        setMaterialDirectory(items);
-      } catch (err) {
-        if (cancelled) return;
-        setMaterialDirectory([]);
-        setMaterialsError(err?.message || 'Failed to load materials from server.');
-      } finally {
-        if (!cancelled) setMaterialsLoading(false);
-      }
-    }, 100);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [category, token, materialsReloadKey, hasMounted]);
-
-  // --- Fetch Employee Roster (GET /api/v1/employees) ---
-  useEffect(() => {
-    if (!hasMounted || category !== 'employee' || !token) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setEmployeesLoading(true);
-      setEmployeesError(null);
-      try {
-        const rows = await apiGetEmployees(token);
-        if (cancelled) return;
-        setEmployeeDirectory((Array.isArray(rows) ? rows : []).map(normalizeEmployee));
-      } catch (err) {
-        if (cancelled) return;
-        setEmployeeDirectory([]);
-        setEmployeesError(err?.message || 'Failed to load the employee roster.');
-      } finally {
-        if (!cancelled) setEmployeesLoading(false);
-      }
-    }, 100);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [category, token, employeesReloadKey, hasMounted]);
-
-  // --- Trigger Browser Print Dialog Side-Effect ---
   useEffect(() => {
     if (printSheetItems.length === 0) return;
     const sheet = printSheetRef.current;
@@ -261,7 +200,7 @@ export default function BarcodeManagementPage() {
   }, [printSheetItems]);
 
   // ==========================================================================
-  // SECTION 9: EMPLOYEE BARCODE GENERATION LOGIC
+  // SECTION 7: EMPLOYEE BARCODE GENERATION LOGIC
   // ==========================================================================
   const generateEmployeeDept = useCallback((departmentName, employees) => {
     const alreadyGenIds = new Set(employeeStore.generated.filter((r) => r.client === departmentName).map((r) => r.size));
@@ -299,9 +238,10 @@ export default function BarcodeManagementPage() {
       createdDate: new Date().toLocaleString(),
       printStatus: 'PENDING',
     };
-    setEmployeeStore((prev) => ({ generated: [...prev.generated, ...newRecords], history: [historyEntry, ...prev.history] }));
+    dispatch(addGenerated({ category: 'employee', records: newRecords }));
+    dispatch(addHistory({ category: 'employee', entry: historyEntry }));
     showToast(pending.length === 1 ? `Generated barcode for ${pending[0].name}!` : `Generated ${pending.length} employee ID barcodes for ${departmentName}!`, 'success');
-  }, [employeeStore, showToast, operatorLabel]);
+  }, [employeeStore, showToast, operatorLabel, dispatch]);
 
   const generateSelectedEmployees = useCallback((employees) => {
     if (employees.length === 0) {
@@ -343,17 +283,13 @@ export default function BarcodeManagementPage() {
       showToast('No employee barcodes available to send to Print Center!', 'error');
       return;
     }
-    setPrintSelections((prev) => {
-      const next = new Set(prev.employee);
-      codes.forEach((b) => next.add(b.pieceCode));
-      return { ...prev, employee: next };
-    });
+    dispatch(addPrintSelected({ category: 'employee', codes: codes.map((b) => b.pieceCode) }));
     showToast(`Queued ${codes.length} employee barcodes to Print Center!`, 'success');
-    setActiveTab('print');
-  }, [employeeStore, showToast]);
+    dispatch(setReduxActiveTab('print'));
+  }, [employeeStore, showToast, dispatch]);
 
   // ==========================================================================
-  // SECTION 10: MATERIAL BARCODE GENERATION LOGIC
+  // SECTION 8: MATERIAL BARCODE GENERATION LOGIC
   // ==========================================================================
   const generateMaterialLots = useCallback((lots) => {
     const alreadyGenCodes = new Set(materialStore.generated.map((r) => r.pieceCode));
@@ -399,13 +335,10 @@ export default function BarcodeManagementPage() {
       printStatus: 'PENDING',
     };
 
-    setMaterialStore((prev) => ({
-      generated: [...prev.generated, ...newRecords],
-      history: [historyEntry, ...prev.history],
-    }));
-
+    dispatch(addGenerated({ category: 'material', records: newRecords }));
+    dispatch(addHistory({ category: 'material', entry: historyEntry }));
     showToast(pending.length === 1 ? `Generated barcode for Lot ${pending[0].barcode || pending[0].article}!` : `Generated ${pending.length} Material Lot barcodes!`, 'success');
-  }, [materialStore, showToast, operatorLabel]);
+  }, [materialStore, showToast, operatorLabel, dispatch]);
 
   const generateAllRemainingMaterials = useCallback(() => {
     if (materialDirectory.length === 0) {
@@ -420,14 +353,14 @@ export default function BarcodeManagementPage() {
       showToast('No generated material barcodes to send to Print Center!', 'error');
       return;
     }
-    const allCodes = new Set(materialStore.generated.map((b) => b.pieceCode));
-    setPrintSelections((prev) => ({ ...prev, material: allCodes }));
-    setActiveTab('print');
-    showToast(`Loaded ${allCodes.size} material barcodes into Print Center!`, 'info');
-  }, [materialStore.generated, showToast]);
+    const allCodes = materialStore.generated.map((b) => b.pieceCode);
+    dispatch(setPrintSelected({ category: 'material', codes: allCodes }));
+    dispatch(setReduxActiveTab('print'));
+    showToast(`Loaded ${allCodes.length} material barcodes into Print Center!`, 'info');
+  }, [materialStore.generated, showToast, dispatch]);
 
   // ==========================================================================
-  // SECTION 11: DRAWER / BUCKET BARCODE GENERATION LOGIC
+  // SECTION 9: DRAWER / BUCKET BARCODE GENERATION LOGIC
   // ==========================================================================
   const buildDrawerRecords = useCallback((rows, batchId) => rows.map((drw) => {
     const seq = drw.seq ?? 0;
@@ -479,13 +412,11 @@ export default function BarcodeManagementPage() {
     }
     const batchId = `DRW-BATCH-${Date.now().toString().slice(-6)}`;
     const newRecords = buildDrawerRecords(pending, batchId);
-    setBucketStore((prev) => ({
-      generated: [...prev.generated, ...newRecords],
-      history: [drawerBatchHistoryEntry(batchId, newRecords), ...prev.history],
-    }));
+    dispatch(addGenerated({ category: 'bucket', records: newRecords }));
+    dispatch(addHistory({ category: 'bucket', entry: drawerBatchHistoryEntry(batchId, newRecords) }));
     showToast(`Generated ${newRecords.length} drawer barcode label${newRecords.length === 1 ? '' : 's'}!`, 'success');
     if (skipped > 0) showToast(`${skipped} drawer${skipped === 1 ? '' : 's'} skipped — no registry barcode to encode.`, 'info');
-  }, [bucketStore, buildDrawerRecords, drawerBatchHistoryEntry, showToast]);
+  }, [bucketStore, buildDrawerRecords, drawerBatchHistoryEntry, showToast, dispatch]);
 
   const generateAllRemainingDrawers = useCallback(() => {
     if (drawerDirectory.length === 0) {
@@ -501,31 +432,17 @@ export default function BarcodeManagementPage() {
       showToast('Generate drawer labels first — nothing to send to Print Center!', 'error');
       return;
     }
-    setPrintSelections((prev) => {
-      const next = new Set(prev.bucket);
-      codes.forEach((b) => next.add(b.pieceCode));
-      return { ...prev, bucket: next };
-    });
+    dispatch(addPrintSelected({ category: 'bucket', codes: codes.map((b) => b.pieceCode) }));
     showToast(`Queued ${codes.length} drawer barcodes to Print Center!`, 'success');
-    setActiveTab('print');
-  }, [bucketStore, showToast]);
+    dispatch(setReduxActiveTab('print'));
+  }, [bucketStore, showToast, dispatch]);
 
   // ==========================================================================
-  // SECTION 12: PRINTING & BULK EXPORT ACTIONS
+  // SECTION 10: PRINTING & BULK EXPORT ACTIONS
   // ==========================================================================
   const markPrinted = useCallback((codes) => {
-    if (category === 'employee') {
-      setEmployeeStore((prev) => ({
-        ...prev,
-        generated: prev.generated.map((b) => codes.includes(b.pieceCode) ? { ...b, printStatus: 'PRINTED', printCount: b.printCount + 1 } : b),
-      }));
-    } else if (category === 'bucket') {
-      setBucketStore((prev) => ({
-        ...prev,
-        generated: prev.generated.map((b) => codes.includes(b.pieceCode) ? { ...b, printStatus: 'PRINTED', printCount: b.printCount + 1 } : b),
-      }));
-    }
-  }, [category]);
+    dispatch(markPrintedAction({ category, codes }));
+  }, [category, dispatch]);
 
   const executeThermalPrint = useCallback((codes) => {
     if (!codes || codes.length === 0) {
@@ -534,10 +451,10 @@ export default function BarcodeManagementPage() {
     }
     const items = codes.map((c) => activeGenerated.find((b) => b.pieceCode === c)).filter(Boolean);
     markPrinted(codes);
-    setPreviewOpen(false);
+    dispatch(setPreviewOpen(false));
     showToast(`Sending ${items.length} ID card${items.length === 1 ? '' : 's'} to printer (4 per page)...`, 'success');
     setPrintSheetItems(items);
-  }, [markPrinted, showToast, activeGenerated]);
+  }, [markPrinted, showToast, activeGenerated, dispatch]);
 
   const handlePrintSingle = useCallback((pieceCode) => {
     executeThermalPrint([pieceCode]);
@@ -559,17 +476,17 @@ export default function BarcodeManagementPage() {
     const items = printable
       .map((d) => existingByCode.get(d.barcode) || freshByCode.get(d.barcode))
       .filter(Boolean);
-    const printedCodes = new Set(items.map((r) => r.pieceCode));
+    const printedCodes = items.map((r) => r.pieceCode);
 
-    setBucketStore((prev) => ({
-      generated: [...prev.generated, ...fresh].map((r) => printedCodes.has(r.pieceCode)
-        ? { ...r, printStatus: 'PRINTED', printCount: r.printCount + 1 } : r),
-      history: fresh.length > 0 ? [drawerBatchHistoryEntry(batchId, fresh), ...prev.history] : prev.history,
-    }));
+    if (fresh.length > 0) {
+      dispatch(addGenerated({ category: 'bucket', records: fresh }));
+      dispatch(addHistory({ category: 'bucket', entry: drawerBatchHistoryEntry(batchId, fresh) }));
+    }
+    dispatch(markPrintedAction({ category: 'bucket', codes: printedCodes }));
     setPrintSheetItems(items);
     showToast(`Printing all ${items.length} drawer labels (4 per page)...`, 'success');
     if (skipped > 0) showToast(`${skipped} drawer${skipped === 1 ? '' : 's'} skipped — no registry barcode to encode.`, 'info');
-  }, [drawerDirectory, bucketStore, buildDrawerRecords, drawerBatchHistoryEntry, showToast]);
+  }, [drawerDirectory, bucketStore, buildDrawerRecords, drawerBatchHistoryEntry, showToast, dispatch]);
 
   const handleDownloadAll = useCallback(async (format) => {
     const codes = Array.from(activeSelectedPrint);
@@ -614,22 +531,18 @@ export default function BarcodeManagementPage() {
   }, [activeSelectedPrint, activeGenerated, category, showToast]);
 
   const handleOpenPreview = useCallback(() => {
-    if (activeSelectedPrint.size === 0) {
+    if (activeSelectedPrint.length === 0) {
       showToast('Please select at least one barcode to preview/print!', 'error');
       return;
     }
-    setPreviewOpen(true);
-  }, [activeSelectedPrint, showToast]);
+    dispatch(setPreviewOpen(true));
+  }, [activeSelectedPrint, showToast, dispatch]);
 
   const handlePrintGroupDirect = useCallback((items) => {
     const codes = items.map((i) => i.pieceCode);
-    setPrintSelections((prev) => {
-      const next = new Set(prev[category]);
-      codes.forEach((c) => next.add(c));
-      return { ...prev, [category]: next };
-    });
-    setPreviewOpen(true);
-  }, [category]);
+    dispatch(addPrintSelected({ category, codes }));
+    dispatch(setPreviewOpen(true));
+  }, [category, dispatch]);
 
   const handleExportCSV = useCallback((rows) => {
     const header = ['Batch No', 'Order ID', 'Client', 'Style', 'Color', 'Size', 'Qty', 'Generated By', 'Created Date', 'Print Status'];
@@ -647,14 +560,14 @@ export default function BarcodeManagementPage() {
   }, [category]);
 
   // ==========================================================================
-  // SECTION 13: HISTORY FILTER HANDLERS & OPTIONS LISTS
+  // SECTION 11: HISTORY FILTER HANDLERS & OPTIONS LISTS
   // ==========================================================================
-  const setHistoryFilter = useCallback((field, value) => setHistoryFiltersByCat((prev) => ({ ...prev, [category]: { ...prev[category], [field]: value } })), [category]);
-  const resetHistoryFilters = useCallback(() => setHistoryFiltersByCat((prev) => ({ ...prev, [category]: { ...DEFAULT_HISTORY_FILTERS } })), [category]);
+  const handleSetHistoryFilter = useCallback((field, value) => dispatch(setHistoryFilter({ category, field, value })), [category, dispatch]);
+  const handleResetHistoryFilters = useCallback(() => dispatch(resetHistoryFilters(category)), [category, dispatch]);
 
-  const toggleExpandedOrder = useCallback((id) => setExpandedOrdersByCat((prev) => { const s = new Set(prev[category]); s.has(id) ? s.delete(id) : s.add(id); return { ...prev, [category]: s }; }), [category]);
-  const toggleExpandedGroup = useCallback((key) => setExpandedGroupsByCat((prev) => { const s = new Set(prev[category]); s.has(key) ? s.delete(key) : s.add(key); return { ...prev, [category]: s }; }), [category]);
-  const toggleExpandedHistoryOrder = useCallback((id) => setExpandedHistoryOrdersByCat((prev) => { const s = new Set(prev[category]); s.has(id) ? s.delete(id) : s.add(id); return { ...prev, [category]: s }; }), [category]);
+  const handleToggleExpandedOrder = useCallback((id) => dispatch(toggleExpandedOrder({ category, id })), [category, dispatch]);
+  const handleToggleExpandedGroup = useCallback((key) => dispatch(toggleExpandedGroup({ category, key })), [category, dispatch]);
+  const handleToggleExpandedHistoryOrder = useCallback((id) => dispatch(toggleExpandedHistoryOrder({ category, id })), [category, dispatch]);
 
   const employeeHistoryOptions = useMemo(() => {
     const depts = Array.from(new Set(employeeDirectory.map((e) => e.department)));
@@ -686,17 +599,15 @@ export default function BarcodeManagementPage() {
   const activeHistoryOptions = category === 'employee' ? employeeHistoryOptions : category === 'bucket' ? bucketHistoryOptions : category === 'material' ? materialHistoryOptions : [];
 
   const handleViewFromHistory = useCallback(() => {
-    setActiveTab('generation');
-  }, []);
+    dispatch(setReduxActiveTab('generation'));
+  }, [dispatch]);
 
   const handleReprintFromHistory = useCallback((b) => {
-    setPrintSelections((prev) => {
-      const next = new Set(activeGenerated.filter((x) => x.batchNo === b.batchNo).map((x) => x.pieceCode));
-      return { ...prev, [category]: next };
-    });
-    setActiveTab('print');
+    const codes = activeGenerated.filter((x) => x.batchNo === b.batchNo).map((x) => x.pieceCode);
+    dispatch(setPrintSelected({ category, codes }));
+    dispatch(setReduxActiveTab('print'));
     showToast(`Loaded batch ${b.batchNo} into Print Center!`, 'info');
-  }, [activeGenerated, category, showToast]);
+  }, [activeGenerated, category, showToast, dispatch]);
 
   const detailBarcode = detailCode ? activeGenerated.find((b) => b.pieceCode === detailCode) : null;
   const isBucketSheet = category === 'bucket';
@@ -714,7 +625,7 @@ export default function BarcodeManagementPage() {
   }
 
   // ==========================================================================
-  // SECTION 14: RENDER MASTER DASHBOARD VIEW
+  // SECTION 12: RENDER MASTER DASHBOARD VIEW
   // ==========================================================================
   return (
     <div className="w-full space-y-6 pb-12">
@@ -746,13 +657,14 @@ export default function BarcodeManagementPage() {
           #app-shell { display: none !important; }
           .toast-stack { display: none !important; }
           #thermalPrintSheet { display: block !important; position: static; width: 100%; margin: 0; padding: 0; background: #fff !important; }
+          #thermalPrintSheet * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
           .print-page {
             display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
             gap: 8mm; width: 100%; height: 280mm; page-break-after: always; box-sizing: border-box;
           }
           .print-page:last-child { page-break-after: auto; }
           .print-page-barcodes {
-            display: flex; flex-direction: column;
+            display: grid; grid-template-columns: 1fr 1fr; align-content: start;
             gap: 3mm; width: 100%; page-break-after: always; box-sizing: border-box;
           }
           .print-page-barcodes:last-child { page-break-after: auto; }
@@ -793,7 +705,7 @@ export default function BarcodeManagementPage() {
       {/* Floating Notification Toast Stack */}
       <ToastStack toasts={toasts} />
 
-      {/* --- Section 14.1: Dashboard Top Header & Scanner Lookup Widget --- */}
+      {/* --- Section 12.1: Dashboard Top Header & Scanner Lookup Widget --- */}
       <motion.div className="flex items-start justify-between flex-wrap gap-4">
         <div>
           <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: BRAND.accent }}>Production · Piece-Level Traceability</p>
@@ -805,7 +717,7 @@ export default function BarcodeManagementPage() {
         <ResolveBarcodeWidget token={token} showToast={showToast} />
       </motion.div>
 
-      {/* --- Section 14.2: Category Switcher Pills (Style / Employee / Bucket / Material) --- */}
+      {/* --- Section 12.2: Category Switcher Pills (Style / Employee / Bucket / Material) --- */}
       <motion.div className="flex items-center gap-1.5 p-1.5 rounded-2xl w-fit flex-wrap" style={{ background: '#fff', border: `1px solid ${BRAND.border}` }}>
         {CATEGORIES.map((c) => {
           const Icon = c.icon;
@@ -831,7 +743,7 @@ export default function BarcodeManagementPage() {
         })}
       </motion.div>
 
-      {/* --- Section 14.3: Sub-Tab Switcher Pills (Batch Generation / Print Center / Batch History) --- */}
+      {/* --- Section 12.3: Sub-Tab Switcher Pills (Batch Generation / Print Center / Batch History) --- */}
       <motion.div className="flex items-center gap-1.5 p-1.5 rounded-2xl w-fit" style={{ background: '#fff', border: `1px solid ${BRAND.border}` }}>
         {TABS.map((t) => {
           const Icon = t.icon;
@@ -839,7 +751,7 @@ export default function BarcodeManagementPage() {
           return (
             <button
               key={t.id}
-              onClick={() => setActiveTab(t.id)}
+              onClick={() => dispatch(setReduxActiveTab(t.id))}
               className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
               style={{ color: isActive ? '#fff' : BRAND.textMuted }}
             >
@@ -857,7 +769,7 @@ export default function BarcodeManagementPage() {
         })}
       </motion.div>
 
-      {/* --- Section 14.4: Category Sub-View Renderer --- */}
+      {/* --- Section 12.4: Category Sub-View Renderer --- */}
       {category === 'style' && (
         <StyleRegistryPanel activeTab={activeTab} token={token} showToast={showToast} setPrintSheetItems={setPrintSheetItems} />
       )}
@@ -870,12 +782,12 @@ export default function BarcodeManagementPage() {
               employees={employeeDirectory}
               employeesLoading={employeesLoading}
               employeesError={token ? employeesError : 'Sign in to load the employee roster.'}
-              onRetryEmployees={reloadEmployees}
+              onRetryEmployees={refetchEmployees}
               employeeGenerated={employeeStore.generated}
               onGenerateSelected={generateSelectedEmployees}
               onGenerateAllRemaining={generateAllRemainingEmployees}
               onSendToPrintCenter={sendEmployeesToPrintCenter}
-              onOpenDetail={setDetailCode}
+              onOpenDetail={(code) => dispatch(setDetailCode(code))}
               onPrintSingle={handlePrintSingle}
             />
           )}
@@ -886,21 +798,21 @@ export default function BarcodeManagementPage() {
               drawers={drawerDirectory}
               drawersLoading={drawerLoading}
               drawersError={token ? drawerError : 'Sign in to load the drawer pool.'}
-              onRetryDrawers={reloadDrawers}
+              onRetryDrawers={refetchDrawers}
               drawerTotal={drawerTotal}
               drawerGenerated={bucketStore.generated}
               onGenerateSelected={generateDrawerLabels}
               onGenerateAllRemaining={generateAllRemainingDrawers}
               onPrintAll={printAllDrawerLabels}
               onSendToPrintCenter={sendDrawersToPrintCenter}
-              onOpenDetail={setDetailCode}
+              onOpenDetail={(code) => dispatch(setDetailCode(code))}
               onPrintSingle={handlePrintSingle}
               stateFilter={drawerStateFilter}
-              setStateFilter={setDrawerStateFilter}
+              setStateFilter={(v) => dispatch(setDrawerStateFilter(v))}
               seqFrom={drawerSeqFrom}
-              setSeqFrom={setDrawerSeqFrom}
+              setSeqFrom={(v) => dispatch(setDrawerSeqFrom(v))}
               seqTo={drawerSeqTo}
-              setSeqTo={setDrawerSeqTo}
+              setSeqTo={(v) => dispatch(setDrawerSeqTo(v))}
             />
           )}
 
@@ -910,16 +822,16 @@ export default function BarcodeManagementPage() {
               materials={materialDirectory}
               materialsLoading={materialsLoading}
               materialsError={token ? materialsError : 'Sign in to load material lots.'}
-              onRetryMaterials={reloadMaterials}
+              onRetryMaterials={refetchMaterials}
               materialGenerated={materialStore.generated}
               onGenerateSelected={generateMaterialLots}
               onGenerateAllRemaining={generateAllRemainingMaterials}
               onSendToPrintCenter={sendMaterialsToPrintCenter}
-              onOpenDetail={setDetailCode}
+              onOpenDetail={(code) => dispatch(setDetailCode(code))}
               onPrintSingle={handlePrintSingle}
               token={token}
               showToast={showToast}
-              onRefreshAll={reloadMaterials}
+              onRefreshAll={refetchMaterials}
             />
           )}
 
@@ -929,16 +841,23 @@ export default function BarcodeManagementPage() {
               generatedBarcodesStore={activeGenerated}
               selectedPrintBarcodes={activeSelectedPrint}
               expandedOrders={activeExpandedOrders}
-              onToggleOrderExpand={toggleExpandedOrder}
+              onToggleOrderExpand={handleToggleExpandedOrder}
               expandedGroups={activeExpandedGroups}
-              onToggleExpand={toggleExpandedGroup}
-              onToggleGroup={(items, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); items.forEach((i) => checked ? next.add(i.pieceCode) : next.delete(i.pieceCode)); return { ...prev, [category]: next }; })}
-              onTogglePiece={(code, checked) => setPrintSelections((prev) => { const next = new Set(prev[category]); checked ? next.add(code) : next.delete(code); return { ...prev, [category]: next }; })}
-              onSelectAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set(activeGenerated.map((b) => b.pieceCode)) }))}
-              onClearAll={() => setPrintSelections((prev) => ({ ...prev, [category]: new Set() }))}
+              onToggleExpand={handleToggleExpandedGroup}
+              onToggleGroup={(items, checked) => dispatch(toggleGroupPrint({ category, codes: items.map((i) => i.pieceCode), checked }))}
+              onTogglePiece={(code, checked) => {
+                if (checked) {
+                  dispatch(addPrintSelected({ category, codes: [code] }));
+                } else {
+                  const updated = activeSelectedPrint.filter((c) => c !== code);
+                  dispatch(setPrintSelected({ category, codes: updated }));
+                }
+              }}
+              onSelectAll={() => dispatch(selectAllPrint({ category, codes: activeGenerated.map((b) => b.pieceCode) }))}
+              onClearAll={() => dispatch(clearPrintSelected(category))}
               onOpenPreview={handleOpenPreview}
               onPrintGroupDirect={handlePrintGroupDirect}
-              onOpenDetail={setDetailCode}
+              onOpenDetail={(code) => dispatch(setDetailCode(code))}
               onPrintSingle={handlePrintSingle}
               onDownloadAll={handleDownloadAll}
               bulkExporting={bulkExporting}
@@ -951,24 +870,24 @@ export default function BarcodeManagementPage() {
             <HistoryTab
               batchHistoryStore={activeHistory}
               filters={activeHistoryFilters}
-              setFilter={setHistoryFilter}
-              resetFilters={resetHistoryFilters}
+              setFilter={handleSetHistoryFilter}
+              resetFilters={handleResetHistoryFilters}
               options={activeHistoryOptions}
               onView={handleViewFromHistory}
               onReprint={handleReprintFromHistory}
               onExportCSV={() => handleExportCSV(activeHistory)}
               expandedOrders={activeExpandedHistoryOrders}
-              onToggleOrderExpand={toggleExpandedHistoryOrder}
+              onToggleOrderExpand={handleToggleExpandedHistoryOrder}
               labels={activeLabels}
             />
           )}
         </div>
       )}
 
-      {/* --- Section 14.5: Global Modals --- */}
+      {/* --- Section 12.5: Global Modals --- */}
       <DetailModal
         barcode={detailBarcode}
-        onClose={() => setDetailCode(null)}
+        onClose={() => dispatch(setDetailCode(null))}
         onPrint={handlePrintSingle}
         labels={activeLabels}
         category={category}
@@ -977,11 +896,11 @@ export default function BarcodeManagementPage() {
       <PrintPreviewModal
         open={previewOpen}
         codes={Array.from(activeSelectedPrint)}
-        onClose={() => setPreviewOpen(false)}
+        onClose={() => dispatch(setPreviewOpen(false))}
         onConfirm={() => executeThermalPrint(Array.from(activeSelectedPrint))}
       />
 
-      {/* --- Section 14.6: Portal Printable Sheet --- */}
+      {/* --- Section 12.6: Portal Printable Sheet --- */}
       {createPortal(
         <div id="thermalPrintSheet" ref={printSheetRef} style={{ display: 'none' }}>
           {isBucketSheet
@@ -1022,7 +941,7 @@ export default function BarcodeManagementPage() {
                   <div className="print-page" key={pageIdx}>
                     {group.map((b) => (
                       <div className="print-ticket-cell" key={b.pieceCode}>
-                        <EmployeeTicketCard barcode={b} />
+                        <EmployeeTicketCard barcode={b} width={300} />
                       </div>
                     ))}
                   </div>
@@ -1048,7 +967,7 @@ export default function BarcodeManagementPage() {
         document.body
       )}
 
-      {/* --- Section 14.7: Off-Screen DOM Container for Bulk PNG/PDF Export --- */}
+      {/* --- Section 12.7: Off-Screen DOM Container for Bulk PNG/PDF Export --- */}
       {bulkExportItems && (
         <div style={{ position: 'fixed', top: 0, left: '-99999px', background: '#fff' }}>
           <div ref={bulkExportRef}>
