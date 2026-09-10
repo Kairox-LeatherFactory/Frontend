@@ -11,7 +11,7 @@ import {
   useGetMyHistoryQuery, 
   useCheckInMutation, 
   useCheckOutMutation 
-} from '@/store/slices/apiSlice';
+} from '@/store/slices/attendanceApiSlice';
 
 export default function MyAttendanceView() {
    const user = useSelector(state => state.auth.user);

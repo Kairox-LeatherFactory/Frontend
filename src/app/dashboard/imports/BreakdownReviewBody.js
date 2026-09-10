@@ -1,132 +1,26 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import {
-  apiGetBreakdown,
-  apiPatchBreakdownSku,
-  apiDeleteBreakdownSku,
-  apiCancelBreakdownStyles,
-  apiReleaseBreakdownStyles,
-  apiGetDrawerPool,
-  apiGrowDrawerPool,
-  apiAllocateWaitingDrawers,
-} from '@/lib/api';
+import { Toast, StatusBadge, SkuRow } from './shared';
+
+import { 
+  useGetBreakdownQuery, 
+  useGetDrawerPoolQuery,
+  useCancelBreakdownStylesMutation,
+  useReleaseBreakdownStylesMutation,
+  useGrowDrawerPoolMutation,
+  useAllocateWaitingDrawersMutation
+} from '@/store/slices/importsApiSlice';
 import { StyleAccessoriesPanel } from '../entry/AccessorySection/AccessoriesSpec';
 import {
   Search, Lock, Loader2, Package, CheckCircle2, XCircle, AlertTriangle,
   Trash2, Save, Rocket, Ban, Boxes, RefreshCw, X, Barcode as BarcodeIcon, ArrowLeft,
   ChevronDown, CheckSquare,
 } from 'lucide-react';
+import { LiningPromptModal, ReleaseResultModal } from './ReleaseModals';
 
-function Toast({ msg, type }) {
-  if (!msg) return null;
-  const isSuccess = type === 'success';
-  return (
-    <div className="fixed bottom-6 right-6 z-[999999] animate-fade-in">
-      <div className={`px-6 py-4 rounded-2xl shadow-2xl font-bold text-sm flex items-center gap-3 border max-w-sm ${isSuccess ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-red-50 border-red-200 text-red-900'}`}>
-        {isSuccess ? <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" /> : <XCircle className="w-5 h-5 text-red-500 shrink-0" />}
-        {msg}
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({ status }) {
-  const map = {
-    DRAFT: { bg: '#fffbeb', color: '#a86022', border: '#fde68a', text: 'DRAFT' },
-    RELEASED: { bg: '#f0fdf4', color: '#10b981', border: '#bbf7d0', text: 'RELEASED' },
-    CANCELLED: { bg: '#f5f5f5', color: '#888', border: '#e2e2e2', text: 'CANCELLED' },
-  };
-  const s = map[status] || map.DRAFT;
-  return (
-    <span className="px-2.5 py-1 rounded-md text-[9px] font-black tracking-wider shrink-0" style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}>
-      {s.text}
-    </span>
-  );
-}
-
-// One editable SKU row inside a DRAFT style card.
-function SkuRow({ sku, editable, onSaved, onDeleted, token, showToast }) {
-  const [editing, setEditing] = useState(false);
-  const [qty, setQty] = useState(sku.qty_ordered ?? '');
-  const [size, setSize] = useState(sku.size ?? '');
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await apiPatchBreakdownSku(token, sku.sku_id, {
-        qty_ordered: qty === '' ? undefined : Number(qty),
-        size: size || undefined,
-      });
-      showToast('SKU updated.', 'success');
-      setEditing(false);
-      onSaved();
-    } catch (e) {
-      showToast(e.message || 'Update failed.', 'error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    setDeleting(true);
-    try {
-      await apiDeleteBreakdownSku(token, sku.sku_id);
-      showToast('SKU line removed.', 'success');
-      onDeleted();
-    } catch (e) {
-      showToast(e.message || 'Delete failed — pieces may already be minted for this line.', 'error');
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
-      <span className="font-mono font-bold text-slate-700 flex-1 min-w-0 truncate">{sku.sku_code}</span>
-      <span className="text-slate-500">{sku.colour || sku.color_code || '—'}</span>
-      {editing ? (
-        <input value={size} onChange={(e) => setSize(e.target.value)} className="w-14 h-7 px-1.5 border rounded text-center font-bold" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
-      ) : (
-        <span className="text-slate-500 w-14 text-center">{sku.size || '—'}</span>
-      )}
-      {editing ? (
-        <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} className="w-16 h-7 px-1.5 border rounded text-center font-bold" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
-      ) : (
-        <span className="font-black w-16 text-center" style={{ color: '#c8834a' }}>{sku.qty_ordered} pcs</span>
-      )}
-      {editable && (
-        editing ? (
-          <button onClick={handleSave} disabled={saving} className="p-1.5 rounded-lg bg-emerald-500 text-white shrink-0 disabled:opacity-50">
-            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-          </button>
-        ) : (
-          <button onClick={() => setEditing(true)} className="p-1.5 rounded-lg bg-white border shrink-0" style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#c8834a' }}>
-            Edit
-          </button>
-        )
-      )}
-      {editable && (
-        <button onClick={handleDelete} disabled={deleting} className="p-1.5 rounded-lg bg-red-50 text-red-500 shrink-0 disabled:opacity-50" title="Delete this line (only if no pieces minted yet)">
-          {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-        </button>
-      )}
-    </div>
-  );
-}
-
-/**
- * The full Breakdown Review & Release screen, as a reusable body — used
- * both standalone (src/app/dashboard/imports/page.js, URL-driven via
- * ?order=) and embedded inline inside the Production Logger's "Breakdown
- * Review" tab (src/app/dashboard/entry/page.js), where "back" means
- * returning to that tab's order list rather than a page navigation.
- * @param {{ initialOrderNumber?: string, onBack: () => void, backLabel?: string }} props
- */
 export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, backLabel = 'Back to Breakdown Review', onBackToProduction }) {
   const router = useRouter();
   const { user, token } = useAuth();
@@ -134,9 +28,6 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
 
   const [orderNumberInput, setOrderNumberInput] = useState(initialOrderNumber);
   const [activeOrderNumber, setActiveOrderNumber] = useState(initialOrderNumber);
-  const [breakdown, setBreakdown] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [selectedStyleIds, setSelectedStyleIds] = useState([]);
   const [expandedStyleIds, setExpandedStyleIds] = useState([]);
   const [releasing, setReleasing] = useState(false);
@@ -144,9 +35,6 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
   const [releaseResult, setReleaseResult] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
   const [toastType, setToastType] = useState('success');
-
-  const [drawerPool, setDrawerPool] = useState(null);
-  const [poolLoading, setPoolLoading] = useState(false);
   const [growAmount, setGrowAmount] = useState('');
   const [growing, setGrowing] = useState(false);
   const [allocating, setAllocating] = useState(false);
@@ -160,33 +48,15 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
     setTimeout(() => setToastMsg(null), 3500);
   };
 
-  const loadBreakdown = useCallback(async (orderNumber) => {
-    if (!orderNumber || !token) return;
-    setLoading(true); setError(''); setSelectedStyleIds([]);
-    try {
-      const data = await apiGetBreakdown(token, orderNumber);
-      setBreakdown(data);
-    } catch (e) {
-      setError(e.message || 'Failed to load breakdown.');
-      setBreakdown(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [token]);
-
-  const loadPool = useCallback(() => {
-    if (!token) return;
-    setPoolLoading(true);
-    apiGetDrawerPool(token)
-      .then(setDrawerPool)
-      .catch(() => setDrawerPool(null))
-      .finally(() => setPoolLoading(false));
-  }, [token]);
-
-  useEffect(() => {
-    if (activeOrderNumber) loadBreakdown(activeOrderNumber);
-    loadPool();
-  }, [activeOrderNumber, loadBreakdown, loadPool]);
+  const { data: breakdown, isLoading: loading, error } = useGetBreakdownQuery(activeOrderNumber, { 
+    skip: !activeOrderNumber 
+  });
+  
+  const { data: drawerPool, isLoading: poolLoading } = useGetDrawerPoolQuery();
+  const [cancelBreakdownStyles] = useCancelBreakdownStylesMutation();
+  const [releaseBreakdownStyles] = useReleaseBreakdownStylesMutation();
+  const [growDrawerPoolMutation] = useGrowDrawerPoolMutation();
+  const [allocateWaitingDrawers] = useAllocateWaitingDrawersMutation();
 
   const handleSearch = () => {
     const v = orderNumberInput.trim();
@@ -219,12 +89,11 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
     setShowLiningPrompt(false);
     setReleasing(true);
     try {
-      const result = await apiReleaseBreakdownStyles(token, activeOrderNumber, selectedStyleIds, false, needsLining);
+    const result = await releaseBreakdownStyles({ orderNumber: activeOrderNumber, styleIds: selectedStyleIds, needsLining }).unwrap();
+
       setReleaseResult(result);
       showToast(result.message || 'Styles released to production.', 'success');
       setSelectedStyleIds([]);
-      await loadBreakdown(activeOrderNumber);
-      loadPool();
     } catch (e) {
       showToast(e.message || 'Release failed.', 'error');
     } finally {
@@ -236,10 +105,9 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
     if (selectedStyleIds.length === 0) return;
     setCancelling(true);
     try {
-      const result = await apiCancelBreakdownStyles(token, activeOrderNumber, selectedStyleIds);
+const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, styleIds: selectedStyleIds }).unwrap();
       showToast(`${result.cancelled?.length || 0} style(s) cancelled.`, 'success');
       setSelectedStyleIds([]);
-      await loadBreakdown(activeOrderNumber);
     } catch (e) {
       showToast(e.message || 'Cancel failed.', 'error');
     } finally {
@@ -252,10 +120,9 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
     if (!add || add < 1) return;
     setGrowing(true);
     try {
-      const result = await apiGrowDrawerPool(token, add);
+    const result = await growDrawerPoolMutation({ add }).unwrap();
       showToast(`Added ${result.added} drawers. Pool is now ${result.pool_size}.`, 'success');
       setGrowAmount('');
-      loadPool();
     } catch (e) {
       showToast(e.message || 'Failed to grow drawer pool.', 'error');
     } finally {
@@ -266,9 +133,8 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
   const handleAllocateWaiting = async () => {
     setAllocating(true);
     try {
-      const result = await apiAllocateWaitingDrawers(token);
+    const result = await allocateWaitingDrawers().unwrap();
       showToast(`Allocated ${result.allocated} piece(s) into free drawers. ${result.still_waiting} still waiting.`, 'success');
-      loadPool();
     } catch (e) {
       showToast(e.message || 'Allocation failed.', 'error');
     } finally {
@@ -448,8 +314,6 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
                         editable={isDraft && style.editable !== false}
                         token={token}
                         showToast={showToast}
-                        onSaved={() => loadBreakdown(activeOrderNumber)}
-                        onDeleted={() => loadBreakdown(activeOrderNumber)}
                       />
                     ))}
 
@@ -509,104 +373,18 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
           </div>
         </div>
       )}
+      <LiningPromptModal
+        show={showLiningPrompt}
+        count={selectedStyleIds.length}
+        onClose={() => setShowLiningPrompt(false)}
+        onConfirm={confirmRelease}
+      />
+      <ReleaseResultModal
+        result={releaseResult}
+        onClose={() => setReleaseResult(null)}
+        onBackToProduction={onBackToProduction}
+      />
 
-      {/* ── Lining prompt — asked once per Release click, answer applies to
-          the whole selected batch. ── */}
-      {showLiningPrompt && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/60 backdrop-blur-md animate-fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden mx-4">
-            <div className="p-6 sm:p-8 space-y-4">
-              <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>Does this need lining?</h3>
-              <p className="text-xs font-bold text-slate-500">
-                {selectedStyleIds.length} style(s) selected for release. This answer applies to all of them.
-              </p>
-              <div className="flex gap-3 justify-end pt-2">
-                <button onClick={() => setShowLiningPrompt(false)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-slate-100 text-slate-600">Cancel</button>
-                <button onClick={() => confirmRelease(false)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-white border text-slate-700" style={{ borderColor: 'rgba(200,131,74,0.3)' }}>No</button>
-                <button onClick={() => confirmRelease(true)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white" style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>Yes</button>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* ── Release result modal ── */}
-      {/* Ported to document.body — `fixed inset-0` was resolving against the
-          page's own animate-fade-in wrapper (which has a transform),
-          not the viewport, so the modal opened off-screen/overlapping
-          instead of centered. Same fix as the Materials Lot Detail modal. */}
-      {releaseResult && typeof document !== 'undefined' && createPortal(
-        <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/60 backdrop-blur-md animate-fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl overflow-hidden">
-            <div className="p-6 border-b flex justify-between items-start" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-              <div>
-                <h3 className="font-black text-xl" style={{ color: '#2d1f0e' }}>Release Complete</h3>
-                <p className="text-xs text-slate-500 font-bold mt-1">{releaseResult.message}</p>
-              </div>
-              <button onClick={() => setReleaseResult(null)} className="p-2 bg-slate-100 rounded-full"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-100">
-                  <p className="text-[10px] font-black uppercase text-emerald-700">Pieces Minted</p>
-                  <p className="text-xl font-black text-emerald-800">{releaseResult.minted?.pieces_minted ?? 0}</p>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <p className="text-[10px] font-black uppercase text-slate-500">Drawers Reused / Minted</p>
-                  <p className="text-xl font-black text-slate-800">{releaseResult.minted?.drawers_reused ?? 0} / {releaseResult.minted?.drawers_minted ?? 0}</p>
-                </div>
-              </div>
-              {releaseResult.minted?.pieces_waiting_for_drawer > 0 && (
-                <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5">
-                  <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
-                  <div>
-                    <p className="font-black text-sm text-rose-800">{releaseResult.minted.pieces_waiting_for_drawer} piece(s) waiting for a drawer</p>
-                    <p className="text-xs text-rose-600 mt-0.5">These pieces have barcodes but no drawer yet — grow the drawer pool above, or wait for drawers to free up.</p>
-                  </div>
-                </div>
-              )}
-              {releaseResult.rejected?.length > 0 && (
-                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200">
-                  <p className="text-xs font-black text-amber-800 mb-1">{releaseResult.rejected.length} style(s) rejected</p>
-                  {releaseResult.rejected.map((r, i) => (
-                    <div key={i} className="text-[11px] text-amber-700 mb-1 last:mb-0">
-                      <p className="font-bold">{r.style_code}: {r.reason}</p>
-                      {r.blockers?.length > 0 && (
-                        <ul className="list-disc list-inside pl-1 mt-0.5 space-y-0.5">
-                          {r.blockers.map((b, j) => <li key={j}>{b}</li>)}
-                        </ul>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="p-6 pt-0 flex gap-3">
-              <button onClick={() => setReleaseResult(null)} className="flex-1 h-12 rounded-xl font-black text-xs uppercase bg-slate-100 text-slate-600">
-                Stay Here
-              </button>
-              <button
-                onClick={() => {
-                  // When embedded inline (Production Logger's Breakdown
-                  // tab), we're already at /dashboard/entry — router.push
-                  // to the same path is a no-op, so the parent's own
-                  // "switch tab back to Manual" callback is required there.
-                  // Standalone (/dashboard/imports) has no such callback,
-                  // so it falls back to a real navigation.
-                  if (onBackToProduction) onBackToProduction();
-                  else router.push('/dashboard/entry');
-                }}
-                className="flex-1 h-12 rounded-xl font-black text-xs uppercase text-white"
-                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-              >
-                Back to Production
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
     </div>
   );
 }

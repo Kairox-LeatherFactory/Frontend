@@ -183,7 +183,7 @@ function NavPendingBar() {
 
 export default function DashboardLayout({ children }) {
   const { user, logout, ROLES } = useAuth();
-  const { orders } = useData();
+  const {  } = useData();
 
   const router = useRouter();
   const pathname = usePathname();

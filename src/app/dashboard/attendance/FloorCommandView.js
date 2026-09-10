@@ -14,8 +14,9 @@ import {
   useScanCheckInMutation, 
   useAddEmployeeMutation, 
   useProxyCheckInMutation, 
-  useProxyCheckOutMutation 
-} from '@/store/slices/apiSlice';
+  useProxyCheckOutMutation
+} from 
+'@/store/slices/attendanceApiSlice';
 
 export default function FloorCommandView({ workers = [], onWorkerAdded, isSecurity }) {
  const [search, setSearch] = useState('');

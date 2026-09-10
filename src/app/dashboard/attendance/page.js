@@ -6,7 +6,7 @@ import {
  Users,
   CalendarDays,Building2,QrCode
 } from 'lucide-react';
-import { useGetEmployeesQuery } from '@/store/slices/apiSlice';
+import { useGetEmployeesQuery } from '@/store/slices/attendanceApiSlice';
 
 import { motion} from 'framer-motion';
 import {

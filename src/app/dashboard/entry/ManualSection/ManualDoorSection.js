@@ -15,9 +15,11 @@ import {
   useProductionCuttingMutation,
   useProductionLogTwoDoorMutation,
   useLazyGetSkuPiecesQuery,
-  useLazyGetAttendanceTodayQuery,
-} from "@/store/slices/apiSlice";
 
+} from "@/store/slices/apiSlice";
+import {
+  useLazyGetAttendanceTodayQuery
+} from "@/store/slices/attendanceApiSlice";
 import { useRoleAccess, normalizeRosterArray } from "../shared";
 import { useSelector, useDispatch } from 'react-redux';
 import { 

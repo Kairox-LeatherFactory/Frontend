@@ -1,6 +1,5 @@
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useAuth } from '@/context/AuthContext';
 import { useLazyGetBarcodeOrdersQuery } from '@/store/slices/apiSlice';
 import {
   useLazyGetOrderTreeQuery,
@@ -119,7 +118,7 @@ export default function StyleStageProgress() {
     ? Math.round(orderDetail.total_quantity * orderDetail.completion_pct / 100)
     : null;
   const orderBalanceQty = orderCompletedQty != null ? orderDetail.total_quantity - orderCompletedQty : null;
-
+  console.log("PIECE DATA:", pieceOptions[0]);
   return (
     <div className="space-y-8 animate-fade-in">
 
@@ -156,20 +155,20 @@ export default function StyleStageProgress() {
           disabled={!selectedOrderId}
           loading={stylesLoading}
         />
-        <SearchCombobox
-          label="Piece"
+          <SearchCombobox
+                label="Piece"
           icon={Boxes}
           placeholder={selectedStyleId ? 'Select a piece...' : 'Select a style first'}
           value={selectedPieceCode}
           options={pieceOptions}
-          getKey={(p) => p.code || p.piece_code || p.barcode}
-          getLabel={(p) => p.code || p.piece_code || p.barcode}
+          getKey={(p) => p.piece_code}
+          getLabel={(p) => p.piece_code}
           getSub={(p) => [p.colour, p.size, p.current_stage].filter(Boolean).join(' · ')}
-          onSelect={(p) => setSelectedPieceCode(p.code || p.piece_code || p.barcode)}
+          onSelect={(p) => setSelectedPieceCode(p.piece_code)}
           disabled={!selectedStyleId}
           loading={piecesLoading}
         />
-      </div>
+        </div>
 
       {!selectedOrderId && (
         <div className="p-10 rounded-2xl text-center" style={{ background: '#faf6f0', border: '1px dashed rgba(200,131,74,0.3)' }}>

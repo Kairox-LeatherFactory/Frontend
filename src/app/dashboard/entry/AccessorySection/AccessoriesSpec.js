@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback} from 'react';
 import {
   CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight, Copy, Truck, PackageCheck,
 } from 'lucide-react';

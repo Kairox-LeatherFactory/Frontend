@@ -5,7 +5,8 @@ import { Activity, Filter, CheckCircle2, RefreshCw, Loader2, Users, Settings, Cl
 import SpotlightCard from '@/components/SpotlightCard';
 import { motion } from 'framer-motion';
 import { AlertBanner, Badge, fmtTime, fmtDist, Paginator } from './shared';
-import { useGetAttendanceTodayQuery, useGetAttendanceConfigQuery,useUpdateAttendanceConfigMutation } from '@/store/slices/apiSlice';
+import { useGetAttendanceTodayQuery, useGetAttendanceConfigQuery,useUpdateAttendanceConfigMutation }
+ from '@/store/slices/attendanceApiSlice';
 
 export default function OperationsHRView() {
  const [configForm, setConfigForm] = useState({});

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { useGetAttendanceTodayQuery } from '@/store/slices/apiSlice';
+import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
 import {
   CheckCircle2, AlertTriangle, AlertCircle, Activity,
   ChevronLeft, ChevronRight, Lock, Users, Search,

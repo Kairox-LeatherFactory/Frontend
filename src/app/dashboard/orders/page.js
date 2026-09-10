@@ -1,18 +1,24 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useData } from '@/context/DataContext';
 import { useAuth } from '@/context/AuthContext';
 import { Building2, Plus, X, Loader2, Search, CheckCircle2, XCircle } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { staggerContainer, fadeUpItem } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
+import { useGetClientsQuery, useCreateClientMutation } from '@/store/slices/entryApiSlice';
 
 export default function OrdersTreeBrowser() {
-  const { clients = [], createClient, apiLoading } = useData();
+  const { data: clientsData = [], isLoading: apiLoading } = useGetClientsQuery();
+  const [createClient] = useCreateClientMutation();
   const { user } = useAuth();
   
+  // Transform data to match original format
+  const clients = useMemo(() => 
+    clientsData.map(c => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—' })), 
+  [clientsData]);
+
   // Local state for dynamically created clients (fallback if no API)
   const [localClients, setLocalClients] = useState([]);
 
@@ -301,12 +307,12 @@ export default function OrdersTreeBrowser() {
 
                 try {
                   if (createClient) {
-                    await createClient(
-                      newClientName.trim(), 
-                      newCompanyCode.trim(), 
-                      newOrderNumber.trim(), 
-                      newCountry.trim()
-                    );
+                    await createClient({
+                      name: newClientName.trim(), 
+                      code: newCompanyCode.trim(), 
+                      order_number: newOrderNumber.trim(), 
+                      country: newCountry.trim()
+                    }).unwrap();
                   } else {
                     const newClient = {
                       id: 'cli_' + Math.random().toString(36).substring(2, 10),
