@@ -130,9 +130,13 @@ const NAV_ICONS = {
   '/dashboard/admin': ShieldCheck,
   '/dashboard/settings': Settings,
   '/dashboard/procurement': ShoppingCart,
-  '/dashboard/procurement/intake': UploadCloud,
-  '/dashboard/procurement/inventory': Layers,
-  '/dashboard/procurement/po': ShoppingCart,
+  '/dashboard/procurement/procurement': ShoppingCart,
+  '/dashboard/procurement/procurement/intake': UploadCloud,
+  '/dashboard/procurement/procurement/inventory': Layers,
+  '/dashboard/procurement/procurement/po': ShoppingCart,
+  '/dashboard/procurement/procurement/chat': ShoppingCart,
+  '/dashboard/procurement/procurement/production': ShoppingCart,
+  '/dashboard/procurement/procurement/notifications': ShoppingCart,
 };
 
 const navStagger = {
@@ -291,24 +295,24 @@ export default function DashboardLayout({ children }) {
         href: '/dashboard/barcode',
       },
 
-      // // Procurement Suite
-      // {
-      //   name: 'Procurement',
-      //   href: '/dashboard/procurement',
-      //   divider: true,
-      // },
-      // {
-      //   name: 'New Intake',
-      //   href: '/dashboard/procurement/intake',
-      // },
-      // {
-      //   name: 'Inventory Check',
-      //   href: '/dashboard/procurement/inventory',
-      // },
-      // {
-      //   name: 'PO Tracker',
-      //   href: '/dashboard/procurement/po',
-      // },
+      // Procurement Suite
+      {
+        name: 'Procurement',
+        href: '/dashboard/procurement/procurement',
+        divider: true,
+      },
+      {
+        name: 'New Intake',
+        href: '/dashboard/procurement/procurement/intake',
+      },
+      {
+        name: 'Inventory Check',
+        href: '/dashboard/procurement/procurement/inventory',
+      },
+      {
+        name: 'PO Tracker',
+        href: '/dashboard/procurement/procurement/po',
+      },
 
       // Admin
       {
