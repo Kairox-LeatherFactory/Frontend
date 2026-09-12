@@ -38,7 +38,7 @@ export default function ProductionBoard() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
-      <Link href="/dashboard/procurement/procurement" className="flex items-center gap-2 text-xs font-black text-slate-500">
+      <Link href="/dashboard/procurement" className="flex items-center gap-2 text-xs font-black text-slate-500">
         <ArrowLeft className="w-4 h-4" /> Procurement
       </Link>
 

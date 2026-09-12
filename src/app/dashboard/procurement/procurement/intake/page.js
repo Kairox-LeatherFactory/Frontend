@@ -468,7 +468,7 @@ export default function ProcurementIntakePage() {
       const b = await apiGetOrderBreakdown(token, submissionId).catch(() => null);
       if (b) setBreakdown(b);
 
-      router.push(`/dashboard/procurement/procurement/bom/${targetId}`);
+      router.push(`/dashboard/procurement/bom/${targetId}`);
     } catch (e) {
       alert(e.message);
     } finally {

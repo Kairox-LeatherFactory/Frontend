@@ -54,7 +54,7 @@ export default function InventoryPage() {
     setGenerating(true);
     try {
       await apiGeneratePOs(token, bom.id);
-      router.push('/dashboard/procurement/procurement/po');
+      router.push('/dashboard/procurement/po');
     } catch (e) {
       setMsg(e.message);
     } finally {

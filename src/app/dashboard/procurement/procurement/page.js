@@ -1,158 +1,16 @@
 'use client';
-import { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { FileUp, Boxes, Warehouse, ShoppingCart, Factory, Bell, MessageCircle, ArrowRight, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
-import SpotlightCard from '@/components/SpotlightCard';
-import { useAuth } from '@/context/AuthContext';
-import { apiGetSubmission, apiGetOrderBreakdown, apiGetNotifications, apiGetProductionTracking, apiGetPOs } from '../lib/api';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 
-const cards = [
-  ['Stage 1', 'Intake & Upload', '/dashboard/procurement/procurement/intake', FileUp],
-  ['Stage 2/3', 'BOM Review', '/dashboard/procurement/procurement/bom/11223344-5566-7788-99aa-bbccddeeff00', Boxes],
-  ['Stage 4', 'Inventory Check', '/dashboard/procurement/procurement/inventory', Warehouse],
-  ['Stage 5', 'Purchase Orders', '/dashboard/procurement/procurement/po', ShoppingCart],
-  ['Production', 'Production Board', '/dashboard/procurement/procurement/production', Factory]
-];
-
-export default function ProcurementOverview() {
-  const { token } = useAuth();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  // Fetch procurement overview data
+export default function ProcurementLegacyRedirect() {
+  const router = useRouter();
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        const [sub, b, n, t, po] = await Promise.all([
-          apiGetSubmission(token, null),
-          apiGetOrderBreakdown(token, null),
-          apiGetNotifications(token),
-          apiGetProductionTracking(token),
-          apiGetPOs(token)
-        ]);
-        setData({ sub, b, n, t, po });
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, [token]);
-
-  if (loading) {
-    return (
-      <div className="p-12 text-center flex flex-col items-center justify-center min-h-[40vh]">
-        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#c8834a] mb-2" />
-        <p className="text-xs font-black text-[#2d1f0e] uppercase tracking-wider">Loading Procurement Overview...</p>
-      </div>
-    );
-  }
-
+    router.replace('/dashboard/procurement');
+  }, [router]);
   return (
-    <div className="space-y-7 max-w-6xl mx-auto pb-12">
-      {/* Header + Start New Submission Action */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl bg-white border" style={{ borderColor: 'rgba(200,131,74,.15)' }}>
-        <div>
-          <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">KairoX Procurement · Control Center</p>
-          <h1 className="text-3xl font-black mt-1" style={{ color: '#2d1f0e' }}>Procurement Overview</h1>
-          <p className="text-sm text-slate-500 mt-1">Manage intake, BOMs, inventory checks, and production tracking.</p>
-        </div>
-
-        <Link
-          href="/dashboard/procurement/procurement/intake"
-          className="px-5 py-3 rounded-2xl bg-[#2d1f0e] text-white text-xs font-black hover:bg-[#3d2b1a] transition-all shadow-md flex items-center justify-center gap-2 shrink-0"
-        >
-          <FileUp className="w-4 h-4 text-[#c8834a]" />
-          <span>+ Start New Intake Submission</span>
-        </Link>
-      </div>
-
-      {/* Stage Cards Flow */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-3">
-        {cards.map(([stage, title, href, Icon]) => (
-          <Link key={stage} href={href}>
-            <SpotlightCard className="p-4 rounded-2xl bg-white h-full" spotlightColor="rgba(200,131,74,.04)" style={{ border: '1px solid rgba(200,131,74,.14)' }}>
-              <Icon className="w-6 h-6 text-[#c8834a]" />
-              <p className="text-[10px] uppercase font-black text-slate-400 mt-4">{stage}</p>
-              <p className="font-black mt-1">{title}</p>
-              <ArrowRight className="w-4 h-4 mt-3 text-slate-400" />
-            </SpotlightCard>
-          </Link>
-        ))}
-      </div>
-
-      {/* Metrics Row */}
-      <div className="grid lg:grid-cols-3 gap-4">
-        <Metric title="Submission" value={data.sub.ready_for_stage_2 ? 'Ready for Stage 2' : 'Incomplete'} ok={data.sub.ready_for_stage_2} />
-        <Metric title="Styles extracted" value={data.b.status === 'ready' ? data.b.styles.length : 0} />
-        <Metric title="POs" value={data.po.count} />
-      </div>
-
-      {/* Production & Notifications */}
-      <div className="grid lg:grid-cols-2 gap-5">
-        <SpotlightCard className="p-5 rounded-3xl bg-white" spotlightColor="rgba(200,131,74,.04)">
-          <h2 className="font-black mb-4">Production progress</h2>
-          {data.t.trackers.map((t) => (
-            <div key={t.id} className="p-3 rounded-xl bg-slate-50 mb-2">
-              <div className="flex justify-between">
-                <b>{t.style_name}</b>
-                <span className="text-[10px] font-black uppercase">{t.status}</span>
-              </div>
-              <p className="text-[10px] text-slate-500 mt-1">POs confirmed {t.po_confirmed_count}/{t.po_count}</p>
-            </div>
-          ))}
-        </SpotlightCard>
-
-        <SpotlightCard className="p-5 rounded-3xl bg-white" spotlightColor="rgba(200,131,74,.04)">
-          <h2 className="font-black mb-4 flex items-center gap-2">
-            <Bell className="w-4 h-4 text-[#c8834a]" /> Notifications
-          </h2>
-          {data.n.notifications.map((n) => (
-            <div key={n.id} className="p-3 rounded-xl border mb-2">
-              <div className="flex gap-2">
-                <span className={`mt-1 w-2 h-2 rounded-full ${n.read ? 'bg-slate-300' : 'bg-orange-500'}`} />
-                <div>
-                  <b className="text-xs">{n.title}</b>
-                  <p className="text-[10px] text-slate-500 mt-1">{n.message}</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </SpotlightCard>
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex flex-wrap gap-2">
-        <Link href="/dashboard/procurement/procurement/notifications" className="px-4 py-2.5 rounded-xl border text-xs font-black">
-          <Bell className="w-4 h-4 inline mr-2" />
-          Notifications
-        </Link>
-        <Link href="/dashboard/procurement/procurement/chat" className="px-4 py-2.5 rounded-xl border text-xs font-black">
-          <MessageCircle className="w-4 h-4 inline mr-2" />
-          Factory Chat
-        </Link>
-        <Link href="/dashboard/procurement/procurement/production" className="px-4 py-2.5 rounded-xl bg-[#2d1f0e] text-white text-xs font-black">
-          <Factory className="w-4 h-4 inline mr-2" />
-          Open Production Board
-        </Link>
-        <Link href="/dashboard/procurement/procurement/intake" className="px-4 py-2.5 rounded-xl bg-[#c8834a] text-white text-xs font-black">
-          <FileUp className="w-4 h-4 inline mr-2" />
-          Open Intake
-        </Link>
-      </div>
-    </div>
-  );
-}
-
-function Metric({ title, value, ok }) {
-  return (
-    <div className="p-4 rounded-2xl bg-white border border-slate-200">
-      <div className="flex justify-between">
-        <p className="text-[10px] uppercase font-black text-slate-400">{title}</p>
-        {ok ? <CheckCircle2 className="w-4 h-4 text-green-600" /> : <AlertTriangle className="w-4 h-4 text-amber-500" />}
-      </div>
-      <p className="text-xl font-black mt-1 capitalize">{value}</p>
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <Loader2 className="w-7 h-7 animate-spin text-[#c8834a]" />
     </div>
   );
 }
