@@ -432,7 +432,7 @@ export async function apiGetPatterns(token, styleSignature, clientId) {
           headers: { Authorization: `Bearer ${token}` }
         });
       }
-    } catch (e2) {}
+    } catch (e2) { }
     const s = loadStore();
     const existing = s.patterns?.[`${styleSignature}_${clientId}`];
     if (existing) return [existing];
@@ -470,15 +470,9 @@ export async function apiGenerateBom(token, styleId) {
 }
 
 export async function apiGetBom(token, id) {
-  try {
-    return await http(`${V1}/procurement/boms/${id}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-  } catch (e1) {
-    return await http(`${V1}/procurement/order-styles/${id}/bom`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-  }
+  return await http(`${V1}/procurement/order-styles/${id}/bom`, {
+    headers: { Authorization: `Bearer ${token}` }
+  });
 }
 
 export async function apiPatchBomItems(token, id, body) {
