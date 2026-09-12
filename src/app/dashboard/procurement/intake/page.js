@@ -364,14 +364,17 @@ export default function ProcurementIntakePage() {
       const styleSig = dxfTargetStyle?.style_signature || patternNameInput;
 
       // 1. Call POST /procurement/patterns?style_signature={style_signature}&client_id={client_id}
-      await apiUploadPattern(token, styleSig, clientId, file);
+      const uploadRes = await apiUploadPattern(token, styleSig, clientId, file);
       
       // 2. Call GET /procurement/patterns?style_signature={style_signature}&client_id={client_id}
       const patRes = await apiGetPatterns(token, styleSig, clientId);
       
       const specId = specResult?.document?.id || gate?.spec_sheet?.document_id || gate?.spec_sheet?.id || 'spec-doc-001';
 
-      const patternRefId = patRes?.id || patRes?.pattern_reference_id;
+      const patObj = Array.isArray(patRes) ? patRes[0] : (patRes?.data && Array.isArray(patRes.data) ? patRes.data[0] : patRes);
+      const uploadObj = Array.isArray(uploadRes) ? uploadRes[0] : (uploadRes?.data && Array.isArray(uploadRes.data) ? uploadRes.data[0] : uploadRes);
+
+      const patternRefId = patObj?.pattern_reference_id || patObj?.id || patObj?.pattern_id || uploadObj?.pattern_reference_id || uploadObj?.id || uploadObj?.pattern_id;
 
       // 3. Attach pattern reference ID & spec ID to style (POST /procurement/order-styles/{style_id}/attachments)
       const updatedStyle = await apiAttachStyle(token, dxfTargetStyle.id, {

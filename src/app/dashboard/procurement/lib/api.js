@@ -367,6 +367,7 @@ export async function apiUploadPattern(token, styleSignature, clientId, file) {
     const patId = 'pat-ref-' + Math.random().toString(36).substring(2, 9);
     const specId = s.submission?.spec_sheet?.id || IDS.spec_doc;
     const pat = {
+      id: patId,
       pattern_reference_id: patId,
       style_signature: styleSignature,
       client_id: clientId,
@@ -400,6 +401,7 @@ export async function apiGetPatterns(token, styleSignature, clientId) {
     const patId = 'pat-ref-' + Math.random().toString(36).substring(2, 9);
     const specId = s.submission?.spec_sheet?.id || IDS.spec_doc;
     return {
+      id: patId,
       pattern_reference_id: patId,
       style_signature: styleSignature,
       client_id: clientId,
