@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { UploadCloud, FileText, CheckCircle2, X, Loader2, ArrowRight, AlertCircle, ShieldCheck, Brain, GitBranch, RefreshCw, UserCheck, Play } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiGetClients, apiOpenSubmission, apiUploadSlot, apiGetSubmission, apiStartOrderBreakdown, apiGetOrderBreakdown, apiAttachStyle, apiGenerateBom, apiUploadPattern, apiGetPatterns } from '../lib/api';
+import { apiGetClients, apiOpenSubmission, apiUploadSlot, apiGetSubmission, apiStartOrderBreakdown, apiGetOrderBreakdown, apiAttachStyle, apiGenerateBom, apiGetBom, apiUploadPattern, apiGetPatterns } from '../lib/api';
 
 function DropZone({ label, accept, icon: Icon, file, onFile, onClear, description, disabled }) {
   const inputRef = useRef(null);
