@@ -347,9 +347,9 @@ export async function apiAttachStyle(token, styleId, body = {}) {
   }
 }
 
-export async function apiUploadPattern(token, patternName, clientId, file) {
+export async function apiUploadPattern(token, styleSignature, clientId, file) {
   const params = new URLSearchParams();
-  if (patternName) params.append('pattern_name', patternName);
+  if (styleSignature) params.append('style_signature', styleSignature);
   if (clientId) params.append('client_id', clientId);
 
   const endpoint = `${V1}/procurement/patterns?${params.toString()}`;
@@ -368,23 +368,23 @@ export async function apiUploadPattern(token, patternName, clientId, file) {
     const specId = s.submission?.spec_sheet?.id || IDS.spec_doc;
     const pat = {
       pattern_reference_id: patId,
-      pattern_name: patternName,
+      style_signature: styleSignature,
       client_id: clientId,
       filename: file?.name || 'pattern.dxf',
       spec_id: specId,
       status: 'uploaded'
     };
     s.patterns = s.patterns || {};
-    s.patterns[`${patternName}_${clientId}`] = pat;
+    s.patterns[`${styleSignature}_${clientId}`] = pat;
     saveStore(s);
     await sleep(250);
     return pat;
   }
 }
 
-export async function apiGetPatterns(token, patternName, clientId) {
+export async function apiGetPatterns(token, styleSignature, clientId) {
   const params = new URLSearchParams();
-  if (patternName) params.append('pattern_name', patternName);
+  if (styleSignature) params.append('style_signature', styleSignature);
   if (clientId) params.append('client_id', clientId);
 
   const endpoint = `${V1}/procurement/patterns?${params.toString()}`;
@@ -395,13 +395,13 @@ export async function apiGetPatterns(token, patternName, clientId) {
     });
   } catch (e) {
     const s = loadStore();
-    const existing = s.patterns?.[`${patternName}_${clientId}`];
+    const existing = s.patterns?.[`${styleSignature}_${clientId}`];
     if (existing) return existing;
     const patId = 'pat-ref-' + Math.random().toString(36).substring(2, 9);
     const specId = s.submission?.spec_sheet?.id || IDS.spec_doc;
     return {
       pattern_reference_id: patId,
-      pattern_name: patternName,
+      style_signature: styleSignature,
       client_id: clientId,
       spec_id: specId,
       status: 'active'

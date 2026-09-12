@@ -361,12 +361,13 @@ export default function ProcurementIntakePage() {
     setUploadingDxf(true);
     try {
       const clientId = activeClient?.id || activeClient?._id || selectedClientId;
+      const styleSig = dxfTargetStyle?.style_signature || patternNameInput;
+
+      // 1. Call POST /procurement/patterns?style_signature={style_signature}&client_id={client_id}
+      await apiUploadPattern(token, styleSig, clientId, file);
       
-      // 1. Call POST /procurement/patterns?pattern_name={user_input}&client_id={client_id}
-      await apiUploadPattern(token, patternNameInput, clientId, file);
-      
-      // 2. Call GET /procurement/patterns?pattern_name={user_input}&client_id={client_id}
-      const patRes = await apiGetPatterns(token, patternNameInput, clientId);
+      // 2. Call GET /procurement/patterns?style_signature={style_signature}&client_id={client_id}
+      const patRes = await apiGetPatterns(token, styleSig, clientId);
       
       const specId = specResult?.document?.id || gate?.spec_sheet?.document_id || gate?.spec_sheet?.id || 'spec-doc-001';
 
@@ -402,11 +403,11 @@ export default function ProcurementIntakePage() {
   const generate = async (style) => {
     setGenerating((g) => ({ ...g, [style.id]: true }));
     try {
-      await apiGenerateBom(token, style.id);
-      const b = await apiGetOrderBreakdown(token, submissionId);
-      setBreakdown(b);
-      const updated = b.styles.find((s) => s.id === style.id);
-      if (updated?.bom_id) router.push(`/dashboard/procurement/bom/${updated.bom_id}`);
+      const res = await apiGenerateBom(token, style.id);
+      const b = await apiGetOrderBreakdown(token, submissionId).catch(() => null);
+      if (b) setBreakdown(b);
+      const targetId = res?.bom_id || res?.order_style_id || style.id;
+      router.push(`/dashboard/procurement/bom/${targetId}`);
     } catch (e) {
       alert(e.message);
     } finally {
