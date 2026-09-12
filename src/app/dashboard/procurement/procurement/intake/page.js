@@ -375,21 +375,20 @@ export default function ProcurementIntakePage() {
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
         patRes = await apiGetPatterns(token, styleSig, clientId).catch(() => null);
 
-        const patObj = typeof patRes === 'string' 
-          ? { id: patRes } 
-          : (Array.isArray(patRes) ? patRes[0] : (patRes?.data && Array.isArray(patRes.data) ? patRes.data[0] : patRes));
+        const patList = Array.isArray(patRes) ? patRes : (patRes?.data && Array.isArray(patRes.data) ? patRes.data : (patRes ? [patRes] : []));
+        const currentPat = patList.find((p) => p && (p.is_current === true || p.is_current === 'true')) || patList[0];
         
         const uploadObj = typeof uploadRes === 'string' 
           ? { id: uploadRes } 
           : (Array.isArray(uploadRes) ? uploadRes[0] : (uploadRes?.data && Array.isArray(uploadRes.data) ? uploadRes.data[0] : uploadRes));
 
         patternRefId = 
-          patObj?.pattern_reference_id || 
-          patObj?.id || 
-          patObj?.pattern_id || 
-          patObj?._id ||
+          currentPat?.id || 
+          currentPat?.pattern_reference_id || 
+          currentPat?.pattern_id || 
+          currentPat?._id ||
+          uploadObj?.id ||
           uploadObj?.pattern_reference_id || 
-          uploadObj?.id || 
           uploadObj?.pattern_id || 
           uploadObj?._id;
 

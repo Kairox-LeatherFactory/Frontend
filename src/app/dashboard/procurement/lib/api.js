@@ -413,23 +413,40 @@ export async function apiGetPatterns(token, styleSignature, clientId) {
   const endpoint = `${V1}/procurement/patterns?${params.toString()}`;
 
   try {
-    return await http(endpoint, {
+    const res = await http(endpoint, {
       headers: { Authorization: `Bearer ${token}` }
     });
+    if (Array.isArray(res) && res.length > 0) return res;
+    // If empty with client_id, try fetching with style_signature only
+    if (clientId && styleSignature) {
+      const fallbackRes = await http(`${V1}/procurement/patterns?style_signature=${encodeURIComponent(styleSignature)}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (Array.isArray(fallbackRes) && fallbackRes.length > 0) return fallbackRes;
+    }
+    return res;
   } catch (e) {
+    try {
+      if (styleSignature) {
+        return await http(`${V1}/procurement/patterns?style_signature=${encodeURIComponent(styleSignature)}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+    } catch (e2) {}
     const s = loadStore();
     const existing = s.patterns?.[`${styleSignature}_${clientId}`];
-    if (existing) return existing;
+    if (existing) return [existing];
     const patId = 'pat-ref-' + Math.random().toString(36).substring(2, 9);
     const specId = s.submission?.spec_sheet?.id || IDS.spec_doc;
-    return {
+    return [{
       id: patId,
       pattern_reference_id: patId,
       style_signature: styleSignature,
       client_id: clientId,
       spec_id: specId,
-      status: 'active'
-    };
+      status: 'active',
+      is_current: true
+    }];
   }
 }
 
