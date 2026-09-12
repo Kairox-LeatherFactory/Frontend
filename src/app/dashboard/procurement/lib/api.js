@@ -10,7 +10,7 @@ const IDS = {
   order_doc: 'b1c2d3e4-5f60-7182-93a4-b5c6d7e8f901',
   spec_doc: 'e5f60718-293a-4b5c-6d7e-8f90a1b2c3d4',
   style_clermont: '4b5c6d7e-8f90-0112-2334-4556677889900',
-  style_carnaby:  '7e8f9001-1223-3445-5667-788990011223',
+  style_carnaby: '7e8f9001-1223-3445-5667-788990011223',
   bom_clermont: '11223344-5566-7788-99aa-bbccddeeff00',
   bom_carnaby: '22334455-6677-8899-aabb-ccddeeff0011',
   check_clermont: 'cc001122-3344-5566-7788-99aabbccddee',
@@ -42,7 +42,7 @@ async function http(path, options = {}) {
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     let json;
-    try { json = JSON.parse(text); } catch {}
+    try { json = JSON.parse(text); } catch { }
     const err = new Error(json?.detail?.message || json?.detail || json?.error || text || `HTTP ${res.status}`);
     err.status = res.status;
     err.body = json;
@@ -74,81 +74,81 @@ const BREAKDOWN_READY = {
   styles: [
     {
       id: IDS.style_clermont, style_signature: 'CLERMONT', style_name: 'CLERMONT', material: 'SHEEP GLASS', qty: 60,
-      per_size_qty: {46:10,48:20,50:20,52:10},
+      per_size_qty: { 46: 10, 48: 20, 50: 20, 52: 10 },
       colors: [
-        {color_key:'BLACK',color_label:'NERO / BLACK',qty:40,per_size_qty:{46:6,48:14,50:14,52:6},warnings:[]},
-        {color_key:'COGNAC',color_label:'COGNAC',qty:20,per_size_qty:{46:4,48:6,50:6,52:4},warnings:[]}
-      ], warnings: [], spec_document_id: IDS.spec_doc, spec_match_status:'suggested',
-      pattern_reference_id:'f6071829-3a4b-5c6d-7e8f-90a1b2c3d4e5', dxf_match_status:'suggested', bom_id:null
+        { color_key: 'BLACK', color_label: 'NERO / BLACK', qty: 40, per_size_qty: { 46: 6, 48: 14, 50: 14, 52: 6 }, warnings: [] },
+        { color_key: 'COGNAC', color_label: 'COGNAC', qty: 20, per_size_qty: { 46: 4, 48: 6, 50: 6, 52: 4 }, warnings: [] }
+      ], warnings: [], spec_document_id: IDS.spec_doc, spec_match_status: 'suggested',
+      pattern_reference_id: 'f6071829-3a4b-5c6d-7e8f-90a1b2c3d4e5', dxf_match_status: 'suggested', bom_id: null
     },
     {
-      id: IDS.style_carnaby, style_signature:'CARNABY', style_name:'CARNABY', material:'GOAT SUEDE', qty:40,
-      per_size_qty:{48:15,50:15,52:10},
-      colors:[{color_key:'TAUPE',color_label:'TAUPE',qty:40,per_size_qty:{48:15,50:15,52:10},warnings:[]}],
-      warnings:['size_column_ambiguous'], spec_document_id:null, spec_match_status:'none',
-      pattern_reference_id:'1829304b-5c6d-7e8f-90a1-b2c3d4e5f607', dxf_match_status:'confirmed', bom_id:null
+      id: IDS.style_carnaby, style_signature: 'CARNABY', style_name: 'CARNABY', material: 'GOAT SUEDE', qty: 40,
+      per_size_qty: { 48: 15, 50: 15, 52: 10 },
+      colors: [{ color_key: 'TAUPE', color_label: 'TAUPE', qty: 40, per_size_qty: { 48: 15, 50: 15, 52: 10 }, warnings: [] }],
+      warnings: ['size_column_ambiguous'], spec_document_id: null, spec_match_status: 'none',
+      pattern_reference_id: '1829304b-5c6d-7e8f-90a1-b2c3d4e5f607', dxf_match_status: 'confirmed', bom_id: null
     }
   ]
 };
 
 const BOM_ITEMS = [
-  {id:'aa000001-0000-0000-0000-000000000001',category:'main_material',name:'SHEEP GLASS',material_color:'BLACK',qty_per_garment:34.5,uom:'dm2',unit_price:1.8,bulk_qty:2070,total_cost:62.1,dcm_source:'template',dcm_confidence:.95,annotation:null},
-  {id:'aa000001-0000-0000-0000-000000000002',category:'sub_material',name:'GOAT SUEDE',material_color:'BLACK',qty_per_garment:2.6,uom:'dm2',unit_price:2.1,bulk_qty:156,total_cost:5.46,dcm_source:'ai_estimate',dcm_confidence:.5,annotation:'estimated from POM area — confirm at cutting'},
-  {id:'aa000001-0000-0000-0000-000000000003',category:'lining',name:'VISCOSE LINING',material_color:'BLACK',qty_per_garment:1.2,uom:'mtr',unit_price:3.4,bulk_qty:72,total_cost:4.08,dcm_source:'similar_style',dcm_confidence:.7,annotation:null},
-  {id:'aa000001-0000-0000-0000-000000000004',category:'thread',name:'POLY THREAD 40/2',material_color:'BLACK',qty_per_garment:120,uom:'mtr',unit_price:.01,bulk_qty:7200,total_cost:1.2,dcm_source:null,dcm_confidence:null,annotation:null},
-  {id:'aa000001-0000-0000-0000-000000000005',category:'accessory',name:'YKK ZIP #5 60CM',material_color:'BLACK',qty_per_garment:1,uom:'pcs',unit_price:1.41,bulk_qty:60,total_cost:1.41,dcm_source:null,dcm_confidence:null,annotation:null},
-  {id:'aa000001-0000-0000-0000-000000000006',category:'manufacturing',name:'CUTTING + STITCHING',material_color:null,qty_per_garment:1,uom:null,unit_price:30,bulk_qty:60,total_cost:30,dcm_source:null,dcm_confidence:null,annotation:null},
-  {id:'aa000001-0000-0000-0000-000000000007',category:'packaging',name:'POLYBAG + CARTON',material_color:null,qty_per_garment:1,uom:null,unit_price:3,bulk_qty:60,total_cost:3,dcm_source:null,dcm_confidence:null,annotation:null},
-  {id:'aa000001-0000-0000-0000-000000000008',category:'fob_charge',name:'FOB CHARGE',material_color:null,qty_per_garment:1,uom:null,unit_price:5,bulk_qty:60,total_cost:5,dcm_source:null,dcm_confidence:null,annotation:null},
+  { id: 'aa000001-0000-0000-0000-000000000001', category: 'main_material', name: 'SHEEP GLASS', material_color: 'BLACK', qty_per_garment: 34.5, uom: 'dm2', unit_price: 1.8, bulk_qty: 2070, total_cost: 62.1, dcm_source: 'template', dcm_confidence: .95, annotation: null },
+  { id: 'aa000001-0000-0000-0000-000000000002', category: 'sub_material', name: 'GOAT SUEDE', material_color: 'BLACK', qty_per_garment: 2.6, uom: 'dm2', unit_price: 2.1, bulk_qty: 156, total_cost: 5.46, dcm_source: 'ai_estimate', dcm_confidence: .5, annotation: 'estimated from POM area — confirm at cutting' },
+  { id: 'aa000001-0000-0000-0000-000000000003', category: 'lining', name: 'VISCOSE LINING', material_color: 'BLACK', qty_per_garment: 1.2, uom: 'mtr', unit_price: 3.4, bulk_qty: 72, total_cost: 4.08, dcm_source: 'similar_style', dcm_confidence: .7, annotation: null },
+  { id: 'aa000001-0000-0000-0000-000000000004', category: 'thread', name: 'POLY THREAD 40/2', material_color: 'BLACK', qty_per_garment: 120, uom: 'mtr', unit_price: .01, bulk_qty: 7200, total_cost: 1.2, dcm_source: null, dcm_confidence: null, annotation: null },
+  { id: 'aa000001-0000-0000-0000-000000000005', category: 'accessory', name: 'YKK ZIP #5 60CM', material_color: 'BLACK', qty_per_garment: 1, uom: 'pcs', unit_price: 1.41, bulk_qty: 60, total_cost: 1.41, dcm_source: null, dcm_confidence: null, annotation: null },
+  { id: 'aa000001-0000-0000-0000-000000000006', category: 'manufacturing', name: 'CUTTING + STITCHING', material_color: null, qty_per_garment: 1, uom: null, unit_price: 30, bulk_qty: 60, total_cost: 30, dcm_source: null, dcm_confidence: null, annotation: null },
+  { id: 'aa000001-0000-0000-0000-000000000007', category: 'packaging', name: 'POLYBAG + CARTON', material_color: null, qty_per_garment: 1, uom: null, unit_price: 3, bulk_qty: 60, total_cost: 3, dcm_source: null, dcm_confidence: null, annotation: null },
+  { id: 'aa000001-0000-0000-0000-000000000008', category: 'fob_charge', name: 'FOB CHARGE', material_color: null, qty_per_garment: 1, uom: null, unit_price: 5, bulk_qty: 60, total_cost: 5, dcm_source: null, dcm_confidence: null, annotation: null },
 ];
 
 const BOM_BASE = {
-  id: IDS.bom_clermont,status:'draft',revision:1,currency:'USD',order_qty:60,garment_fob_price:107.25,bulk_total:6435,
-  cutting_confirmed_at:null,approved_at:null,rejection_reason:null,export_document_id:null,exported_at:null,items:BOM_ITEMS
+  id: IDS.bom_clermont, status: 'draft', revision: 1, currency: 'USD', order_qty: 60, garment_fob_price: 107.25, bulk_total: 6435,
+  cutting_confirmed_at: null, approved_at: null, rejection_reason: null, export_document_id: null, exported_at: null, items: BOM_ITEMS
 };
 
 const INVENTORY = [
-  {inventory_item_id:'b0001111-2222-3333-4444-555566667777',description:'SHEEP GLASS BLACK',normalized_key:'sheep glass black',uom:'dm2',qty_on_hand:3400,rate:1.72,color:'BLACK',is_active:true},
-  {inventory_item_id:'b0002222-3333-4444-5555-666677778888',description:'GOAT SUEDE BLACK',normalized_key:'goat suede black',uom:'dm2',qty_on_hand:100,rate:2.05,color:'BLACK',is_active:true},
-  {inventory_item_id:'b0003333-4444-5555-6666-777788889999',description:'VISCOSE LINING FABRIC BLACK',normalized_key:'viscose lining fabric black',uom:'mtr',qty_on_hand:0,rate:3.4,color:'BLACK',is_active:true},
-  {inventory_item_id:'b0004444-5555-6666-7777-888899990000',description:'POLYESTER THREAD 40/2 BLACK',normalized_key:'polyester thread 40/2 black',uom:'mtr',qty_on_hand:50000,rate:.01,color:'BLACK',is_active:true},
-  {inventory_item_id:'b0005555-6666-7777-8888-99990000aaaa',description:'YKK ZIP #5 60CM BLACK',normalized_key:'ykk zip #5 60cm black',uom:'pcs',qty_on_hand:240,rate:1.41,color:'BLACK',is_active:true},
+  { inventory_item_id: 'b0001111-2222-3333-4444-555566667777', description: 'SHEEP GLASS BLACK', normalized_key: 'sheep glass black', uom: 'dm2', qty_on_hand: 3400, rate: 1.72, color: 'BLACK', is_active: true },
+  { inventory_item_id: 'b0002222-3333-4444-5555-666677778888', description: 'GOAT SUEDE BLACK', normalized_key: 'goat suede black', uom: 'dm2', qty_on_hand: 100, rate: 2.05, color: 'BLACK', is_active: true },
+  { inventory_item_id: 'b0003333-4444-5555-6666-777788889999', description: 'VISCOSE LINING FABRIC BLACK', normalized_key: 'viscose lining fabric black', uom: 'mtr', qty_on_hand: 0, rate: 3.4, color: 'BLACK', is_active: true },
+  { inventory_item_id: 'b0004444-5555-6666-7777-888899990000', description: 'POLYESTER THREAD 40/2 BLACK', normalized_key: 'polyester thread 40/2 black', uom: 'mtr', qty_on_hand: 50000, rate: .01, color: 'BLACK', is_active: true },
+  { inventory_item_id: 'b0005555-6666-7777-8888-99990000aaaa', description: 'YKK ZIP #5 60CM BLACK', normalized_key: 'ykk zip #5 60cm black', uom: 'pcs', qty_on_hand: 240, rate: 1.41, color: 'BLACK', is_active: true },
 ];
 
 const SUPPLIERS = [
-  {id:IDS.sup_sn,name:'S.N. TRADERS',phone:'+919840012345',email:'sales@sntraders.in',service:'Leather supply',gstin:'33AABCS1429B1ZP',address:'12 Anna Salai, Chennai 600002',currency:'INR',payment_terms_days:60,lead_time_days:10,is_active:true,email_status:'valid',supplier_type:'leather',state_code:'33',whatsapp_phone:'+919840012345',has_contact:true},
-  {id:IDS.sup_zip,name:'ZIP WORLD',phone:'+912266778899',email:null,service:'Zips and trims',gstin:'27AACZW1234K1Z5',address:'Andheri East, Mumbai 400069',currency:'INR',payment_terms_days:45,lead_time_days:7,is_active:true,email_status:'unknown',supplier_type:'accessory',state_code:'27',whatsapp_phone:'+912266778899',has_contact:true},
-  {id:IDS.sup_ameen,name:'AL-AMEEN LEATHERS',phone:'+919876543210',email:'sales@alameen.in',service:'Leather supply',gstin:'33AABCA1234B1Z1',address:'Chennai',currency:'INR',payment_terms_days:60,lead_time_days:12,is_active:true,email_status:'valid',supplier_type:'leather',state_code:'33',whatsapp_phone:'+919876543210',has_contact:true},
-  {id:IDS.sup_textile,name:'TEXTILE HOUSE',phone:'+919999000111',email:'sales@textilehouse.in',service:'Lining and textiles',gstin:'27AATFT1234K1Z5',address:'Mumbai',currency:'INR',payment_terms_days:45,lead_time_days:8,is_active:true,email_status:'valid',supplier_type:'accessory',state_code:'27',whatsapp_phone:'+919999000111',has_contact:true},
-  {id:IDS.sup_lining,name:'CHENNAI LININGS',phone:null,email:null,service:'Lining',gstin:'33AABCL1234A1Z8',address:'Chennai',currency:'INR',payment_terms_days:60,lead_time_days:10,is_active:true,email_status:'unknown',supplier_type:'accessory',state_code:'33',whatsapp_phone:null,has_contact:false},
+  { id: IDS.sup_sn, name: 'S.N. TRADERS', phone: '+919840012345', email: 'sales@sntraders.in', service: 'Leather supply', gstin: '33AABCS1429B1ZP', address: '12 Anna Salai, Chennai 600002', currency: 'INR', payment_terms_days: 60, lead_time_days: 10, is_active: true, email_status: 'valid', supplier_type: 'leather', state_code: '33', whatsapp_phone: '+919840012345', has_contact: true },
+  { id: IDS.sup_zip, name: 'ZIP WORLD', phone: '+912266778899', email: null, service: 'Zips and trims', gstin: '27AACZW1234K1Z5', address: 'Andheri East, Mumbai 400069', currency: 'INR', payment_terms_days: 45, lead_time_days: 7, is_active: true, email_status: 'unknown', supplier_type: 'accessory', state_code: '27', whatsapp_phone: '+912266778899', has_contact: true },
+  { id: IDS.sup_ameen, name: 'AL-AMEEN LEATHERS', phone: '+919876543210', email: 'sales@alameen.in', service: 'Leather supply', gstin: '33AABCA1234B1Z1', address: 'Chennai', currency: 'INR', payment_terms_days: 60, lead_time_days: 12, is_active: true, email_status: 'valid', supplier_type: 'leather', state_code: '33', whatsapp_phone: '+919876543210', has_contact: true },
+  { id: IDS.sup_textile, name: 'TEXTILE HOUSE', phone: '+919999000111', email: 'sales@textilehouse.in', service: 'Lining and textiles', gstin: '27AATFT1234K1Z5', address: 'Mumbai', currency: 'INR', payment_terms_days: 45, lead_time_days: 8, is_active: true, email_status: 'valid', supplier_type: 'accessory', state_code: '27', whatsapp_phone: '+919999000111', has_contact: true },
+  { id: IDS.sup_lining, name: 'CHENNAI LININGS', phone: null, email: null, service: 'Lining', gstin: '33AABCL1234A1Z8', address: 'Chennai', currency: 'INR', payment_terms_days: 60, lead_time_days: 10, is_active: true, email_status: 'unknown', supplier_type: 'accessory', state_code: '33', whatsapp_phone: null, has_contact: false },
 ];
 
 const seedPOs = () => ({
-  [IDS.po_resolved]: {id:IDS.po_resolved,po_number:null,status:'draft',revision:1,supplier_id:IDS.sup_sn,bom_id:IDS.bom_clermont,client_order_id:'3a4b5c6d-7e8f-9001-1223-3445566778899',buyer_ref:'#BOG-SS27-001',issue_date:null,delivery_days:10,payment_terms_days:60,currency:'INR',gst_mode:'INTRA',subtotal:114.8,cgst:6.89,sgst:6.89,igst:0,round_off:.42,total:129,needs_supplier:false,no_contact_channel:false,match_method:'ledger',candidates:{ranked:[{supplier_id:IDS.sup_sn,supplier_name:'S.N. TRADERS',score:.91,txn_count:6,has_contact:true,last_rate:2.05,last_purchased_at:'2026-05-02'},{supplier_id:IDS.sup_ameen,supplier_name:'AL-AMEEN LEATHERS',score:.64,txn_count:3,has_contact:true,last_rate:2.18,last_purchased_at:'2025-11-20'}]},approved_at:null,rejected_at:null,rejection_reason:null,sent_at:null,pdf_document_id:null,current_rung:0,next_escalation_at:null,acknowledged_at:null,acknowledged_channel:null,items:[{id:IDS.po_item_suede,item_no:1,description:'GOAT SUEDE',color:'BLACK',uom:'dm2',qty:56,unit_price:2.05,amount:114.8,inventory_item_id:'b0002222-3333-4444-5555-666677778888',bom_item_id:'aa000001-0000-0000-0000-000000000002'}],supplier:clone(SUPPLIERS[0])},
-  [IDS.po_needs]: {id:IDS.po_needs,po_number:null,status:'draft',revision:1,supplier_id:null,bom_id:IDS.bom_clermont,client_order_id:'3a4b5c6d-7e8f-9001-1223-3445566778899',buyer_ref:'#BOG-SS27-001',issue_date:null,delivery_days:10,payment_terms_days:60,currency:'INR',gst_mode:'INTER',subtotal:244.8,cgst:0,sgst:0,igst:29.38,round_off:-.18,total:274,needs_supplier:true,no_contact_channel:false,match_method:null,candidates:{method:'fuzzy',ranked:[{supplier_id:IDS.sup_textile,supplier_name:'TEXTILE HOUSE',score:.41,txn_count:2,has_contact:true,last_rate:3.3,last_purchased_at:'2025-08-14'},{supplier_id:IDS.sup_lining,supplier_name:'CHENNAI LININGS',score:.38,txn_count:5,has_contact:false,last_rate:3.1,last_purchased_at:'2025-06-02'}],suggestion:'TEXTILE HOUSE',ambiguous:true},approved_at:null,rejected_at:null,rejection_reason:null,sent_at:null,pdf_document_id:null,current_rung:0,next_escalation_at:null,acknowledged_at:null,acknowledged_channel:null,items:[{id:IDS.po_item_lining,item_no:1,description:'VISCOSE LINING',color:'BLACK',uom:'mtr',qty:72,unit_price:3.4,amount:244.8,inventory_item_id:null,bom_item_id:'aa000001-0000-0000-0000-000000000003'}],supplier:null}
+  [IDS.po_resolved]: { id: IDS.po_resolved, po_number: null, status: 'draft', revision: 1, supplier_id: IDS.sup_sn, bom_id: IDS.bom_clermont, client_order_id: '3a4b5c6d-7e8f-9001-1223-3445566778899', buyer_ref: '#BOG-SS27-001', issue_date: null, delivery_days: 10, payment_terms_days: 60, currency: 'INR', gst_mode: 'INTRA', subtotal: 114.8, cgst: 6.89, sgst: 6.89, igst: 0, round_off: .42, total: 129, needs_supplier: false, no_contact_channel: false, match_method: 'ledger', candidates: { ranked: [{ supplier_id: IDS.sup_sn, supplier_name: 'S.N. TRADERS', score: .91, txn_count: 6, has_contact: true, last_rate: 2.05, last_purchased_at: '2026-05-02' }, { supplier_id: IDS.sup_ameen, supplier_name: 'AL-AMEEN LEATHERS', score: .64, txn_count: 3, has_contact: true, last_rate: 2.18, last_purchased_at: '2025-11-20' }] }, approved_at: null, rejected_at: null, rejection_reason: null, sent_at: null, pdf_document_id: null, current_rung: 0, next_escalation_at: null, acknowledged_at: null, acknowledged_channel: null, items: [{ id: IDS.po_item_suede, item_no: 1, description: 'GOAT SUEDE', color: 'BLACK', uom: 'dm2', qty: 56, unit_price: 2.05, amount: 114.8, inventory_item_id: 'b0002222-3333-4444-5555-666677778888', bom_item_id: 'aa000001-0000-0000-0000-000000000002' }], supplier: clone(SUPPLIERS[0]) },
+  [IDS.po_needs]: { id: IDS.po_needs, po_number: null, status: 'draft', revision: 1, supplier_id: null, bom_id: IDS.bom_clermont, client_order_id: '3a4b5c6d-7e8f-9001-1223-3445566778899', buyer_ref: '#BOG-SS27-001', issue_date: null, delivery_days: 10, payment_terms_days: 60, currency: 'INR', gst_mode: 'INTER', subtotal: 244.8, cgst: 0, sgst: 0, igst: 29.38, round_off: -.18, total: 274, needs_supplier: true, no_contact_channel: false, match_method: null, candidates: { method: 'fuzzy', ranked: [{ supplier_id: IDS.sup_textile, supplier_name: 'TEXTILE HOUSE', score: .41, txn_count: 2, has_contact: true, last_rate: 3.3, last_purchased_at: '2025-08-14' }, { supplier_id: IDS.sup_lining, supplier_name: 'CHENNAI LININGS', score: .38, txn_count: 5, has_contact: false, last_rate: 3.1, last_purchased_at: '2025-06-02' }], suggestion: 'TEXTILE HOUSE', ambiguous: true }, approved_at: null, rejected_at: null, rejection_reason: null, sent_at: null, pdf_document_id: null, current_rung: 0, next_escalation_at: null, acknowledged_at: null, acknowledged_channel: null, items: [{ id: IDS.po_item_lining, item_no: 1, description: 'VISCOSE LINING', color: 'BLACK', uom: 'mtr', qty: 72, unit_price: 3.4, amount: 244.8, inventory_item_id: null, bom_item_id: 'aa000001-0000-0000-0000-000000000003' }], supplier: null }
 });
 
 const freshState = () => ({
-  submission:{submission_id:IDS.submission,status:'open',order_sheet:null,spec_sheet:null},
-  breakdown:null, breakdownPolls:0, boms:{[IDS.bom_clermont]:clone(BOM_BASE)},
-  inventoryChecks:{}, pos:{}, suppliers:clone(SUPPLIERS), notifications:[
-    {id:IDS.notif_bom,type:'bom_review',title:'BOM ready for MD review',message:'CLERMONT BOM is ready for approval.',read:false,created_at:now()},
-    {id:IDS.notif_po,type:'po_approval',title:'PO awaiting approval',message:'A supplier PO needs cross-check approval.',read:false,created_at:now()}
+  submission: { submission_id: IDS.submission, status: 'open', order_sheet: null, spec_sheet: null },
+  breakdown: null, breakdownPolls: 0, boms: { [IDS.bom_clermont]: clone(BOM_BASE) },
+  inventoryChecks: {}, pos: {}, suppliers: clone(SUPPLIERS), notifications: [
+    { id: IDS.notif_bom, type: 'bom_review', title: 'BOM ready for MD review', message: 'CLERMONT BOM is ready for approval.', read: false, created_at: now() },
+    { id: IDS.notif_po, type: 'po_approval', title: 'PO awaiting approval', message: 'A supplier PO needs cross-check approval.', read: false, created_at: now() }
   ],
-  trackers:[
-    {id:IDS.track_clermont,client_order_id:'3a4b5c6d-7e8f-9001-1223-3445566778899',order_number:'BOG-SS27-001',client_name:'BOGGI MILANO',style_id:IDS.style_clermont,style_name:'CLERMONT',bom_id:IDS.bom_clermont,status:'awaiting_bom',po_count:0,po_confirmed_count:0,material_ready_at:null,released_at:null},
-    {id:IDS.track_carnaby,client_order_id:'3a4b5c6d-7e8f-9001-1223-3445566778899',order_number:'BOG-SS27-001',client_name:'BOGGI MILANO',style_id:IDS.style_carnaby,style_name:'CARNABY',bom_id:IDS.bom_carnaby,status:'material_ready',po_count:1,po_confirmed_count:1,material_ready_at:now(),released_at:null}
+  trackers: [
+    { id: IDS.track_clermont, client_order_id: '3a4b5c6d-7e8f-9001-1223-3445566778899', order_number: 'BOG-SS27-001', client_name: 'BOGGI MILANO', style_id: IDS.style_clermont, style_name: 'CLERMONT', bom_id: IDS.bom_clermont, status: 'awaiting_bom', po_count: 0, po_confirmed_count: 0, material_ready_at: null, released_at: null },
+    { id: IDS.track_carnaby, client_order_id: '3a4b5c6d-7e8f-9001-1223-3445566778899', order_number: 'BOG-SS27-001', client_name: 'BOGGI MILANO', style_id: IDS.style_carnaby, style_name: 'CARNABY', bom_id: IDS.bom_carnaby, status: 'material_ready', po_count: 1, po_confirmed_count: 1, material_ready_at: now(), released_at: null }
   ]
 });
 
-function loadStore(){
-  if(typeof window==='undefined') return freshState();
-  try { const raw=localStorage.getItem(key); return raw ? JSON.parse(raw) : freshState(); } catch { return freshState(); }
+function loadStore() {
+  if (typeof window === 'undefined') return freshState();
+  try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : freshState(); } catch { return freshState(); }
 }
-function saveStore(s){ if(typeof window!=='undefined') localStorage.setItem(key,JSON.stringify(s)); }
+function saveStore(s) { if (typeof window !== 'undefined') localStorage.setItem(key, JSON.stringify(s)); }
 
-export async function apiLogin(phone='9876543210',password='password'){ await sleep(200); return {access_token:'mock.jwt.token',token_type:'bearer'}; }
-export async function apiMe(){ return {id:IDS.user_md,name:'Tanveer Ahmed',phone:'9000000001',email:'tanveer@ptexports.com',role:'managing_director',is_active:true}; }
+export async function apiLogin(phone = '9876543210', password = 'password') { await sleep(200); return { access_token: 'mock.jwt.token', token_type: 'bearer' }; }
+export async function apiMe() { return { id: IDS.user_md, name: 'Tanveer Ahmed', phone: '9000000001', email: 'tanveer@ptexports.com', role: 'managing_director', is_active: true }; }
 
 // --- Stage 1: Intake (Live + Fallback) ---
 export async function apiOpenSubmission(token, clientId = null) {
@@ -317,29 +317,51 @@ export async function apiGetOrderBreakdown(token, id) {
 }
 
 export async function apiAttachStyle(token, styleId, body = {}) {
+  const patId = body.pattern_reference_id || body.pattern_id || body.dxf_id;
+  const specId = body.spec_document_id || body.spec_id;
+
+  const payload = {};
+  if (patId) {
+    payload.pattern_reference_id = patId;
+    payload.pattern_id = patId;
+    payload.dxf_id = patId;
+  }
+  if (specId) {
+    payload.spec_document_id = specId;
+    payload.spec_id = specId;
+  }
+  if (body.clear_spec) {
+    payload.clear_spec = true;
+  }
+
+  const params = new URLSearchParams();
+  if (patId) params.append('pattern_reference_id', patId);
+  if (specId) params.append('spec_document_id', specId);
+  const queryStr = params.toString() ? `?${params.toString()}` : '';
+
   try {
-    return await http(`${V1}/procurement/order-styles/${styleId}/attachments`, {
+    return await http(`${V1}/procurement/order-styles/${styleId}/attachments${queryStr}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify(payload)
     });
   } catch (e) {
     const s = loadStore();
     if (!s.breakdown) throw new Error('Order breakdown not found.');
     const st = s.breakdown.styles.find((x) => x.id === styleId);
     if (!st) throw new Error('order_style_not_found');
-    if (body.spec_document_id) {
-      st.spec_document_id = body.spec_document_id;
+    if (specId) {
+      st.spec_document_id = specId;
       st.spec_match_status = 'confirmed';
     } else if (body.clear_spec) {
       st.spec_document_id = null;
       st.spec_match_status = 'none';
     }
-    if (body.pattern_reference_id || body.dxf_id) {
-      st.pattern_reference_id = body.pattern_reference_id || body.dxf_id;
+    if (patId) {
+      st.pattern_reference_id = patId;
       st.dxf_match_status = 'confirmed';
     }
     saveStore(s);

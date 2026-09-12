@@ -168,7 +168,7 @@ export default function ProcurementIntakePage() {
   const [clients, setClients] = useState([]);
   const [selectedClientId, setSelectedClientId] = useState('');
   const [activeClient, setActiveClient] = useState(null);
-  
+
   // Confirmation Modal state
   const [pendingClient, setPendingClient] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -236,7 +236,7 @@ export default function ProcurementIntakePage() {
       const r = await apiOpenSubmission(token, clientId);
       const subId = r.submission_id || r.id;
       setSubmissionId(subId);
-      
+
       // Use response directly or initialize gate state
       if (r.ready_for_stage_2 !== undefined || r.order_sheet !== undefined) {
         setGate(r);
@@ -365,10 +365,10 @@ export default function ProcurementIntakePage() {
 
       // 1. Call POST /procurement/patterns?style_signature={style_signature}&client_id={client_id}
       const uploadRes = await apiUploadPattern(token, styleSig, clientId, file);
-      
+
       // 2. Call GET /procurement/patterns?style_signature={style_signature}&client_id={client_id}
       const patRes = await apiGetPatterns(token, styleSig, clientId);
-      
+
       const specId = specResult?.document?.id || gate?.spec_sheet?.document_id || gate?.spec_sheet?.id || 'spec-doc-001';
 
       const patObj = Array.isArray(patRes) ? patRes[0] : (patRes?.data && Array.isArray(patRes.data) ? patRes.data[0] : patRes);
@@ -401,7 +401,13 @@ export default function ProcurementIntakePage() {
   };
 
   const confirmStyle = async (style) => {
-    const updated = await apiAttachStyle(token, style.id, {});
+    const specId = style.spec_document_id || style.spec_id || specResult?.document?.id || gate?.spec_sheet?.document_id || gate?.spec_sheet?.id;
+    const patId = style.pattern_reference_id || style.pattern_id || style.dxf_id;
+
+    const updated = await apiAttachStyle(token, style.id, {
+      pattern_reference_id: patId,
+      spec_document_id: specId
+    });
     setBreakdown((b) => ({ ...b, styles: b.styles.map((s) => (s.id === style.id ? updated : s)) }));
   };
 
