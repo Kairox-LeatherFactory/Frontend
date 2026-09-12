@@ -448,7 +448,7 @@ export default function ProcurementIntakePage() {
     try {
       // 1. Call POST /procurement/order-styles/{style_id}/generate-bom
       const res = await apiGenerateBom(token, style.id);
-      const targetId = res?.bom_id || res?.order_style_id || style.id;
+      const targetId = res?.order_style_id || style?.id || style?.order_style_id || res?.bom_id;
 
       // 2. Poll GET /procurement/boms/{id} or /procurement/order-styles/{id}/bom every 5s until BOM is ready
       const maxRetries = 12;
