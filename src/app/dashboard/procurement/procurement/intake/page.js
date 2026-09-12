@@ -371,9 +371,11 @@ export default function ProcurementIntakePage() {
       
       const specId = specResult?.document?.id || gate?.spec_sheet?.document_id || gate?.spec_sheet?.id || 'spec-doc-001';
 
-      // 3. Attach pattern reference ID & spec ID to style
+      const patternRefId = patRes?.id || patRes?.pattern_reference_id;
+
+      // 3. Attach pattern reference ID & spec ID to style (POST /procurement/order-styles/{style_id}/attachments)
       const updatedStyle = await apiAttachStyle(token, dxfTargetStyle.id, {
-        pattern_reference_id: patRes.pattern_reference_id || patRes.id,
+        pattern_reference_id: patternRefId,
         spec_document_id: specId
       });
 
@@ -383,8 +385,8 @@ export default function ProcurementIntakePage() {
           ...s,
           ...updatedStyle,
           dxf_match_status: 'confirmed',
-          pattern_reference_id: patRes.pattern_reference_id || patRes.id,
-          spec_id: patRes.spec_id || specId
+          pattern_reference_id: patternRefId,
+          spec_id: patRes?.spec_id || specId
         } : s))
       }));
     } catch (err) {
