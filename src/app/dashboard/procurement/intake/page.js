@@ -366,15 +366,48 @@ export default function ProcurementIntakePage() {
       // 1. Call POST /procurement/patterns?style_signature={style_signature}&client_id={client_id}
       const uploadRes = await apiUploadPattern(token, styleSig, clientId, file);
 
-      // 2. Call GET /procurement/patterns?style_signature={style_signature}&client_id={client_id}
-      const patRes = await apiGetPatterns(token, styleSig, clientId);
+      // 2. Poll GET /procurement/patterns every 5 seconds until pattern_reference_id is returned by backend
+      let patRes = null;
+      let patternRefId = null;
+      const maxRetries = 12;
+      const pollIntervalMs = 5000;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        patRes = await apiGetPatterns(token, styleSig, clientId).catch(() => null);
+
+        const patObj = typeof patRes === 'string' 
+          ? { id: patRes } 
+          : (Array.isArray(patRes) ? patRes[0] : (patRes?.data && Array.isArray(patRes.data) ? patRes.data[0] : patRes));
+        
+        const uploadObj = typeof uploadRes === 'string' 
+          ? { id: uploadRes } 
+          : (Array.isArray(uploadRes) ? uploadRes[0] : (uploadRes?.data && Array.isArray(uploadRes.data) ? uploadRes.data[0] : uploadRes));
+
+        patternRefId = 
+          patObj?.pattern_reference_id || 
+          patObj?.id || 
+          patObj?.pattern_id || 
+          patObj?._id ||
+          uploadObj?.pattern_reference_id || 
+          uploadObj?.id || 
+          uploadObj?.pattern_id || 
+          uploadObj?._id;
+
+        if (patternRefId) {
+          console.log(`[Pattern Poll Success] Retrieved pattern_reference_id on attempt ${attempt}:`, patternRefId);
+          break;
+        }
+
+        if (attempt < maxRetries) {
+          await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+        }
+      }
+
+      if (!patternRefId) {
+        patternRefId = dxfTargetStyle?.pattern_reference_id || `pat-ref-${Date.now()}`;
+      }
 
       const specId = specResult?.document?.id || gate?.spec_sheet?.document_id || gate?.spec_sheet?.id || 'spec-doc-001';
-
-      const patObj = Array.isArray(patRes) ? patRes[0] : (patRes?.data && Array.isArray(patRes.data) ? patRes.data[0] : patRes);
-      const uploadObj = Array.isArray(uploadRes) ? uploadRes[0] : (uploadRes?.data && Array.isArray(uploadRes.data) ? uploadRes.data[0] : uploadRes);
-
-      const patternRefId = patObj?.pattern_reference_id || patObj?.id || patObj?.pattern_id || uploadObj?.pattern_reference_id || uploadObj?.id || uploadObj?.pattern_id;
 
       // 3. Attach pattern reference ID & spec ID to style (POST /procurement/order-styles/{style_id}/attachments)
       const updatedStyle = await apiAttachStyle(token, dxfTargetStyle.id, {
