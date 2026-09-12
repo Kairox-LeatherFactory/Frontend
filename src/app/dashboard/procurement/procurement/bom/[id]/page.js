@@ -38,7 +38,24 @@ export default function BOMReviewPage() {
   };
 
   useEffect(() => {
-    if (id) load();
+    let timer = null;
+    if (id) {
+      load();
+      timer = setInterval(async () => {
+        try {
+          const fresh = await apiGetBom(token, id);
+          if (fresh) {
+            setBom(fresh);
+            if (fresh.items?.length > 0 && fresh.status !== 'queued' && fresh.status !== 'processing') {
+              clearInterval(timer);
+            }
+          }
+        } catch (e) {}
+      }, 5000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
   }, [id]);
 
   const rows = useMemo(() => bom?.items?.filter((i) => filter === 'All' || i.category === filter) || [], [bom, filter]);

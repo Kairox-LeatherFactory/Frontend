@@ -446,10 +446,28 @@ export default function ProcurementIntakePage() {
   const generate = async (style) => {
     setGenerating((g) => ({ ...g, [style.id]: true }));
     try {
+      // 1. Call POST /procurement/order-styles/{style_id}/generate-bom
       const res = await apiGenerateBom(token, style.id);
+      const targetId = res?.bom_id || res?.order_style_id || style.id;
+
+      // 2. Poll GET /procurement/boms/{id} or /procurement/order-styles/{id}/bom every 5s until BOM is ready
+      const maxRetries = 12;
+      const pollIntervalMs = 5000;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const bomData = await apiGetBom(token, targetId).catch(() => null);
+        if (bomData && (bomData.items?.length > 0 || ['ready', 'draft', 'ready_for_review', 'approved'].includes(bomData?.status))) {
+          console.log(`[BOM Poll Success] BOM ready on attempt ${attempt}:`, bomData);
+          break;
+        }
+        if (attempt < maxRetries) {
+          await new Promise((r) => setTimeout(r, pollIntervalMs));
+        }
+      }
+
       const b = await apiGetOrderBreakdown(token, submissionId).catch(() => null);
       if (b) setBreakdown(b);
-      const targetId = res?.bom_id || res?.order_style_id || style.id;
+
       router.push(`/dashboard/procurement/procurement/bom/${targetId}`);
     } catch (e) {
       alert(e.message);
