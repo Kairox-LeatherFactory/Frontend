@@ -433,11 +433,17 @@ export async function apiGetBom(token, id) {
     return await http(`${V1}/procurement/boms/${id}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
-  } catch (e) {
-    const s = loadStore();
-    const b = s.boms[id];
-    if (!b) throw new Error('BOM not found.');
-    return clone(b);
+  } catch (e1) {
+    try {
+      return await http(`${V1}/procurement/order-styles/${id}/bom`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+    } catch (e2) {
+      const s = loadStore();
+      const b = s.boms[id] || Object.values(s.boms)[0];
+      if (!b) throw new Error('BOM not found.');
+      return clone(b);
+    }
   }
 }
 
