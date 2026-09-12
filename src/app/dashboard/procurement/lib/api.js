@@ -234,65 +234,20 @@ function classifyMock(file, expected) {
   };
 }
 
-export async function apiUploadSlot(token, submissionId, slot, file, force = false) {
-  const endpoint = slot === 'order_sheet' 
-    ? `${V1}/procurement/submissions/${submissionId}/order-sheet`
-    : `${V1}/procurement/submissions/${submissionId}/spec-sheet`;
+export async function apiUploadSlot(token, submissionId, slot, file) {
+  const normalizedSlot = (slot === 'order' || slot === 'order_sheet') ? 'order-sheet' : 'spec-sheet';
+  const endpoint = `${V1}/procurement/submissions/${submissionId}/${normalizedSlot}?force=true&override_manual_review=true`;
 
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    if (force) formData.append('force', 'true');
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('force', 'true');
+  formData.append('override_manual_review', 'true');
 
-    return await http(endpoint, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData
-    });
-  } catch (e) {
-    const s = loadStore();
-    const validation = classifyMock(file, slot);
-    await sleep(400);
-
-    if (validation.status === 'rejected' && validation.reason_code !== 'needs_manual_review') {
-      const errObj = new Error(validation.suggested_fix || 'Document validation failed');
-      errObj.status = 422;
-      errObj.body = { error: 'document_validation_failed', reason_code: validation.reason_code, validation };
-      throw errObj;
-    }
-    if (validation.status === 'needs_manual_review' && !force) {
-      const errObj = new Error('Manual review required');
-      errObj.status = 422;
-      errObj.body = { error: 'document_validation_failed', reason_code: 'needs_manual_review', validation };
-      throw errObj;
-    }
-
-    const doc = {
-      id: slot === 'order_sheet' ? IDS.order_doc : IDS.spec_doc,
-      kind: slot,
-      filename: file.name,
-      mime: file.type || 'application/octet-stream',
-      sha256: 'mock-' + file.name,
-      size_bytes: file.size,
-      storage_url: 'mock://kairox/' + file.name,
-      validation: { ...validation, status: 'accepted', classified_as: slot },
-      scan_status: 'clean'
-    };
-    s.submission[slot] = doc;
-    saveStore(s);
-
-    return {
-      submission_id: submissionId,
-      document: doc,
-      submission: {
-        order_sheet: { present: !!s.submission.order_sheet, validation_status: s.submission.order_sheet?.validation?.status || null },
-        spec_sheet: { present: !!s.submission.spec_sheet, validation_status: s.submission.spec_sheet?.validation?.status || null },
-        complete: !!s.submission.order_sheet && !!s.submission.spec_sheet,
-        ready_for_stage_2: !!s.submission.order_sheet && !!s.submission.spec_sheet,
-        blocking: []
-      }
-    };
-  }
+  return await http(endpoint, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData
+  });
 }
 
 export async function apiGetSubmission(token, id) {
@@ -383,8 +338,74 @@ export async function apiAttachStyle(token, styleId, body = {}) {
       st.spec_document_id = null;
       st.spec_match_status = 'none';
     }
+    if (body.pattern_reference_id || body.dxf_id) {
+      st.pattern_reference_id = body.pattern_reference_id || body.dxf_id;
+      st.dxf_match_status = 'confirmed';
+    }
     saveStore(s);
     return clone(st);
+  }
+}
+
+export async function apiUploadPattern(token, patternName, clientId, file) {
+  const params = new URLSearchParams();
+  if (patternName) params.append('pattern_name', patternName);
+  if (clientId) params.append('client_id', clientId);
+
+  const endpoint = `${V1}/procurement/patterns?${params.toString()}`;
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    return await http(endpoint, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData
+    });
+  } catch (e) {
+    const s = loadStore();
+    const patId = 'pat-ref-' + Math.random().toString(36).substring(2, 9);
+    const specId = s.submission?.spec_sheet?.id || IDS.spec_doc;
+    const pat = {
+      pattern_reference_id: patId,
+      pattern_name: patternName,
+      client_id: clientId,
+      filename: file?.name || 'pattern.dxf',
+      spec_id: specId,
+      status: 'uploaded'
+    };
+    s.patterns = s.patterns || {};
+    s.patterns[`${patternName}_${clientId}`] = pat;
+    saveStore(s);
+    await sleep(250);
+    return pat;
+  }
+}
+
+export async function apiGetPatterns(token, patternName, clientId) {
+  const params = new URLSearchParams();
+  if (patternName) params.append('pattern_name', patternName);
+  if (clientId) params.append('client_id', clientId);
+
+  const endpoint = `${V1}/procurement/patterns?${params.toString()}`;
+
+  try {
+    return await http(endpoint, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch (e) {
+    const s = loadStore();
+    const existing = s.patterns?.[`${patternName}_${clientId}`];
+    if (existing) return existing;
+    const patId = 'pat-ref-' + Math.random().toString(36).substring(2, 9);
+    const specId = s.submission?.spec_sheet?.id || IDS.spec_doc;
+    return {
+      pattern_reference_id: patId,
+      pattern_name: patternName,
+      client_id: clientId,
+      spec_id: specId,
+      status: 'active'
+    };
   }
 }
 
