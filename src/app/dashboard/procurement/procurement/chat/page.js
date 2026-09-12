@@ -5,4 +5,62 @@ import Link from 'next/link';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
 import { apiChat } from '../../lib/api';
-export default function ProcurementChat() { const { token } = useAuth(); const [q, setQ] = useState(''); const [loading, setLoading] = useState(false); const [messages, setMessages] = useState([]); const ask = async () => { if (!q.trim()) return; const text = q.trim(); setQ(''); setMessages(m => [...m, { role: 'user', text }]); setLoading(true); try { const r = await apiChat(token, text, false); setMessages(m => [...m, { role: 'assistant', text: r.answer, data: r.data, tool: r.tool }]) } finally { setLoading(false) } }; return <div className="max-w-3xl mx-auto space-y-5 pb-12"><Link href="/dashboard/procurement" className="flex items-center gap-2 text-xs font-black text-slate-500"><ArrowLeft className="w-4 h-4" /> Procurement</Link><div><p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Intelligence</p><h1 className="text-3xl font-black mt-1 flex items-center gap-2"><Bot className="w-7 h-7 text-[#c8834a]" /> Factory Chat</h1><p className="text-xs text-slate-500 mt-1">Deterministic mock of `POST /chat`; structured data is rendered below the answer.</p></div><SpotlightCard className="p-5 rounded-3xl bg-white min-h-[420px] flex flex-col" spotlightColor="rgba(200,131,74,.04)" style={{ border: '1px solid rgba(200,131,74,.15)' }}><div className="flex-1 space-y-3">{messages.length === 0 && <div className="p-4 rounded-2xl bg-slate-50 text-xs text-slate-500">Try: “Is CLERMONT on schedule?” or “What is the bottleneck?”</div>}{messages.map((m, i) => <div key={i} className={`max-w-[90%] p-3 rounded-2xl text-xs ${m.role === 'user' ? 'ml-auto bg-[#2d1f0e] text-white' : 'bg-slate-50 text-slate-800'}`}><p>{m.text}</p>{m.data && <pre className="mt-2 p-2 rounded-lg bg-white/70 text-[9px] overflow-x-auto">{JSON.stringify(m.data, null, 2)}</pre>}</div>)}{loading && <div className="text-xs text-slate-400"><Loader2 className="w-4 h-4 animate-spin inline mr-2" />Thinking…</div>}</div><div className="flex gap-2 mt-4"><input value={q} onChange={e => setQ(e.target.value)} onKeyDown={e => e.key === 'Enter' && ask()} placeholder="Ask about schedule, bottlenecks…" className="flex-1 h-11 px-4 rounded-xl border text-xs" /><button onClick={ask} disabled={loading} className="h-11 px-4 rounded-xl bg-[#c8834a] text-white"><Send className="w-4 h-4" /></button></div></SpotlightCard></div> }
+
+export default function ProcurementChat() {
+  const { token } = useAuth();
+  const [q, setQ] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [messages, setMessages] = useState([]);
+
+  const ask = async () => {
+    if (!q.trim()) return;
+    const text = q.trim();
+    setQ('');
+    setMessages((m) => [...m, { role: 'user', text }]);
+    setLoading(true);
+    try {
+      const r = await apiChat(token, text, false);
+      setMessages((m) => [...m, { role: 'assistant', text: r.answer, data: r.data, tool: r.tool }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-5 pb-12">
+      <Link href="/dashboard/procurement/procurement" className="flex items-center gap-2 text-xs font-black text-slate-500">
+        <ArrowLeft className="w-4 h-4" /> Procurement
+      </Link>
+      <div>
+        <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Intelligence</p>
+        <h1 className="text-3xl font-black mt-1 flex items-center gap-2">
+          <Bot className="w-7 h-7 text-[#c8834a]" /> Factory Chat
+        </h1>
+        <p className="text-xs text-slate-500 mt-1">Deterministic mock of `POST /chat`; structured data is rendered below the answer.</p>
+      </div>
+
+      <SpotlightCard className="p-5 rounded-3xl bg-white min-h-[420px] flex flex-col" spotlightColor="rgba(200,131,74,.04)" style={{ border: '1px solid rgba(200,131,74,.15)' }}>
+        <div className="flex-1 space-y-3">
+          {messages.length === 0 && <div className="p-4 rounded-2xl bg-slate-50 text-xs text-slate-500">Try: “Is CLERMONT on schedule?” or “What is the bottleneck?”</div>}
+          {messages.map((m, i) => (
+            <div key={i} className={`max-w-[90%] p-3 rounded-2xl text-xs ${m.role === 'user' ? 'ml-auto bg-[#2d1f0e] text-white' : 'bg-slate-50 text-slate-800'}`}>
+              <p>{m.text}</p>
+              {m.data && <pre className="mt-2 p-2 rounded-lg bg-white/70 text-[9px] overflow-x-auto">{JSON.stringify(m.data, null, 2)}</pre>}
+            </div>
+          ))}
+          {loading && (
+            <div className="text-xs text-slate-400">
+              <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> Thinking…
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 mt-4">
+          <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && ask()} placeholder="Ask about schedule, bottlenecks…" className="flex-1 h-11 px-4 rounded-xl border text-xs" />
+          <button onClick={ask} disabled={loading} className="h-11 px-4 rounded-xl bg-[#c8834a] text-white">
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+      </SpotlightCard>
+    </div>
+  );
+}
