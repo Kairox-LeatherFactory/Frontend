@@ -4,7 +4,7 @@ import { ArrowLeft, Bot, Send, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiChat } from '../../lib/api';
+import { apiChat } from '../lib/api';
 
 export default function ProcurementChat() {
   const { token } = useAuth();

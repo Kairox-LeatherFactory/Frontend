@@ -1,6 +1,6 @@
 // production logger main file 
 "use client";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState,useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
@@ -14,13 +14,7 @@ import {
   useLazyBarcodeResolveQuery,
   useLazyGetBarcodeOrdersQuery
 } from "@/store/slices/apiSlice";
-import {
-  apiImportPreview,
-  apiImportCommit,
-
-} from "@/lib/api";
 import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
-
 import {
   Lock,
   CheckCircle2,
@@ -28,19 +22,23 @@ import {
   Users,
   FileSpreadsheet,
   X,
-  Upload,
   Barcode,
   Loader2,
   Store,
-  AlertTriangle,
 } from "lucide-react";
 import SpotlightCard from "@/components/SpotlightCard";
 import {
   useRoleAccess,
   CameraScannerModal,
-  normalizeRosterArray,
 } from "./shared";
 import dynamic from "next/dynamic";
+import DynamicDataViewer from "./components/DynamicDataViewer";
+import BucketResultModal from "./components/BucketResultModal";
+import OrderNumberModal from "./components/OrderNumberModal";
+import { ExcelPreviewModal, CommitConfirmationModal } from "./components/ImportPreviewModal";
+import { useWorkerVerification } from "./hooks/useWorkerVerification";
+import { useBreakdownImport } from "./hooks/useBreakdownImport";
+
 const BarcodeDoorSection = dynamic(
   () => import("./BarcodeSection/BarcodeDoorSection"),
 );
@@ -51,153 +49,7 @@ const StoreHubSection = dynamic(() => import("./StoreSection/StoreHubSection"));
 const BreakdownReviewBody = dynamic(
   () => import("../imports/BreakdownReviewBody"),
 );
-function DynamicDataViewer({ data }) {
-  if (!data)
-    return (
-      <div className="text-slate-400 italic text-center p-4">
-        No data available
-      </div>
-    );
 
-  if (typeof data === "string") {
-    return (
-      <div className="p-4 text-slate-700 bg-slate-50 rounded-xl">{data}</div>
-    );
-  }
-
-  if (data.clients && typeof data.clients === "object") {
-    const clientsData = Object.entries(data.clients);
-
-    return (
-      <div className="space-y-6">
-        {clientsData.map(([clientName, details]) => (
-          <div
-            key={clientName}
-            className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4"
-          >
-            <div className="flex items-center justify-between border-b pb-3">
-              <span className="text-xs font-black uppercase text-amber-700 bg-amber-50 px-3 py-1 rounded-lg border border-amber-200">
-                Sheet / Client: {clientName}
-              </span>
-              <span className="text-xs font-bold text-slate-500">
-                Warnings:{" "}
-                <strong className="text-emerald-600">
-                  {details.warnings?.length || 0}
-                </strong>
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-3 text-center">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">
-                  Order Lines
-                </p>
-                <p className="text-lg font-black text-slate-800">
-                  {details.order_lines}
-                </p>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">
-                  Pieces Ordered
-                </p>
-                <p className="text-lg font-black text-amber-600">
-                  {details.pieces_ordered?.toLocaleString()}
-                </p>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <p className="text-[10px] font-bold text-slate-400 uppercase">
-                  Styles Count
-                </p>
-                <p className="text-lg font-black text-slate-800">
-                  {details.styles?.length || 0}
-                </p>
-              </div>
-            </div>
-
-            {details.styles && details.styles.length > 0 && (
-              <div className="space-y-2 pt-2">
-                <h4 className="text-xs font-bold text-slate-600 uppercase tracking-wider">
-                  Detected Styles
-                </h4>
-                <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-wrap gap-2">
-                    {details.styles.map((style, idx) => (
-                      <span
-                        key={idx}
-                        className="text-xs font-bold bg-white text-slate-700 px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs"
-                      >
-                        {style}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  let tableRows = Array.isArray(data)
-    ? data
-    : typeof data === "object"
-      ? Object.values(data).find(Array.isArray) || [data]
-      : [];
-
-  if (tableRows.length === 0)
-    return (
-      <div className="text-slate-400 italic text-center p-4">
-        No records found
-      </div>
-    );
-
-  const keys = Array.from(
-    new Set(
-      tableRows.flatMap((row) =>
-        row && typeof row === "object" ? Object.keys(row) : [],
-      ),
-    ),
-  );
-
-  return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 shadow-sm bg-white">
-      <table className="min-w-full text-left text-xs bg-white">
-        <thead className="bg-slate-100 text-slate-700 font-black uppercase tracking-wider">
-          <tr>
-            {keys.map((k) => (
-              <th
-                key={k}
-                className="px-4 py-3 border-b border-slate-200 whitespace-nowrap"
-              >
-                {String(k).replace(/_/g, " ")}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100">
-          {tableRows.map((row, i) => (
-            <tr key={i} className="hover:bg-slate-50 transition-colors">
-              {keys.map((k) => {
-                const val = row ? row[k] : "-";
-                return (
-                  <td
-                    key={k}
-                    className="px-4 py-2.5 text-slate-700 font-medium whitespace-nowrap"
-                  >
-                    {typeof val === "object" && val !== null
-                      ? JSON.stringify(val)
-                      : String(val ?? "-")}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
 
 export default function ProductionLogEntry() {
   const searchParams = useSearchParams();
@@ -236,14 +88,7 @@ export default function ProductionLogEntry() {
       ? searchParams.get("order") || null
       : null,
   ); // order_number | null — set = show the detail/release screen inline, unset = show the list
-  const [barcodeWorkerInput, setBarcodeWorkerInput] = useState("");
-
-  const [barcodeWorkerChecking, setBarcodeWorkerChecking] = useState(false);
-  const [barcodeNotCheckedInModal, setBarcodeNotCheckedInModal] =
-    useState(null); // { workerName }
-  const [barcodeDcm, setBarcodeDcm] = useState("");
-  
-    // REDUX DATA PULL
+  // REDUX DATA PULL & ACTION WRAPPERS
   const successMsg = useSelector(state => state.entry.successMsg);
   const errorMsg = useSelector(state => state.entry.errorMsg);
   const barcodeWorker = useSelector(state => state.entry.barcodeWorker);
@@ -253,7 +98,6 @@ export default function ProductionLogEntry() {
   const lotThickness = useSelector(state => state.entry.lotThickness);
   const lotResults = useSelector(state => state.entry.lotResults);
 
-  // REDUX ACTION WRAPPERS
   const setSuccessMsg = (msg) => dispatch(setMessages({ success: msg }));
   const setErrorMsg = (msg) => dispatch(setMessages({ error: msg }));
   const setBarcodeWorker = (worker) => dispatch(reduxSetBarcodeWorker(worker));
@@ -263,6 +107,24 @@ export default function ProductionLogEntry() {
   const setLotColor = (val) => dispatch(setLotDetails({ color: val }));
   const setLotThickness = (val) => dispatch(setLotDetails({ thickness: val }));
   const setLotResults = (val) => dispatch(setLotDetails({ results: val }));
+const [barcodeDcm, setBarcodeDcm] = useState("");
+
+  const {
+    barcodeWorkerInput,
+    setBarcodeWorkerInput,
+    barcodeWorkerChecking,
+    barcodeNotCheckedInModal,
+    setBarcodeNotCheckedInModal,
+    workerInputRef,
+    handleVerifyBarcodeWorker,
+  } = useWorkerVerification({
+    workers,
+    token,
+    triggerBarcodeResolve,
+    setBarcodeWorker,
+    setErrorMsg,
+    setSuccessMsg,
+  });
 
 
 
@@ -280,24 +142,36 @@ export default function ProductionLogEntry() {
   const [completedStagesMap, setCompletedStagesMap] = useState({});
   const [storeReceiveStatus, setStoreReceiveStatus] = useState("pending"); // 'pending', 'received', 'sended'
 
-  const fileInputRef = useRef(null);
-  const [uploadLoading, setUploadLoading] = useState(false);
-  const [showPreviewModal, setShowPreviewModal] = useState(false);
-  const [previewData, setPreviewData] = useState(null);
-  const [fileName, setFileName] = useState("");
-  const [commitLoading, setCommitLoading] = useState(false);
-  const [commitSuccess, setCommitSuccess] = useState("");
-  const [uploadError, setUploadError] = useState("");
-  
-  const [showCommitConfirmation, setShowCommitConfirmation] = useState(false);
-  const [commitResult, setCommitResult] = useState(null);
-  const [pendingBreakdownOrder, setPendingBreakdownOrder] = useState(null);
-  const [showOrderNumModal, setShowOrderNumModal] = useState(false);
-  const [uploadOrderNumber, setUploadOrderNumber] = useState("");
-  const [uploadOrderNumberError, setUploadOrderNumberError] = useState("");
-  const [mounted, setMounted] = useState(false);
+   const {
+    fileInputRef,
+    uploadLoading,
+    showPreviewModal,
+    setShowPreviewModal,
+    previewData,
+    fileName,
+    commitLoading,
+    commitSuccess,
+    setCommitSuccess,
+    uploadError,
+    setUploadError,
+    showCommitConfirmation,
+    setShowCommitConfirmation,
+    commitResult,
+    setCommitResult,
+    pendingBreakdownOrder,
+    setPendingBreakdownOrder,
+    showOrderNumModal,
+    setShowOrderNumModal,
+    uploadOrderNumber,
+    setUploadOrderNumber,
+    uploadOrderNumberError,
+    setUploadOrderNumberError,
+    handleFileUpload,
+    handleCommit,
+  } = useBreakdownImport({ token });
 
-  const workerInputRef = useRef(null);
+  const [mounted, setMounted] = useState(false);
+// const workerInputRef = useRef(null);
 
   // Reset worker verification state when navigating between doors/tabs so each slide requires a fresh scan
   useEffect(() => {
@@ -320,152 +194,6 @@ export default function ProductionLogEntry() {
       return next;
     });
   };
-
-  const handleVerifyBarcodeWorker = async (inputCode) => {
-    const rawCode =
-      typeof inputCode === "string" ? inputCode : barcodeWorkerInput;
-    const query = (rawCode || "").trim();
-    if (!query) return;
-    setBarcodeWorkerChecking(true);
-    setBarcodeNotCheckedInModal(null);
-    setErrorMsg("");
-
-    try {
-      const queryLower = query.toLowerCase();
-      let matchedWorker = workers.find(
-        (w) =>
-          String(w.id) === query ||
-          String(w.employee_barcode || "").toLowerCase() === queryLower ||
-          String(w.name || "")
-            .toLowerCase()
-            .includes(queryLower),
-      );
-      if (!matchedWorker) {
-        try {
-          const resolved = await triggerBarcodeResolve(query).unwrap();
-          if (resolved?.type === "EMPLOYEE" && resolved.employee?.id) {
-            const byId = workers.find(
-              (w) => String(w.id) === String(resolved.employee.id),
-            );
-            matchedWorker = byId || {
-              id: resolved.employee.id,
-              name: resolved.employee.name || `Worker (${query})`,
-              designation: resolved.employee.designation || "Production Worker",
-              employee_barcode: resolved.code || query,
-            };
-          }
-        } catch (resolveErr) {
-          console.warn("Barcode resolve fallback warning:", resolveErr.message);
-        }
-      }
-
-      const targetWorker = matchedWorker || {
-        id: query,
-        name: `Worker (${query})`,
-        designation: "Production Worker",
-        employee_barcode: query,
-      };
-
-      // Check Attendance Check-In Status
-      try {
-        const response = await fetch(
-          `/api/v1/attendance/today?t=${Date.now()}`,
-          { headers: { Authorization: `Bearer ${token}` } },
-        );
-        const rosterData = await response.json();
-        const rosterArray = normalizeRosterArray(rosterData);
-        const workerRoster =
-          rosterArray.find(
-            (r) =>
-              String(r.employee_id) === String(targetWorker.id) ||
-              (r.employee_barcode &&
-                String(r.employee_barcode).toLowerCase() ===
-                  query.toLowerCase()) ||
-              (r.barcode &&
-                String(r.barcode).toLowerCase() === query.toLowerCase()),
-          ) || null;
-
-        if (!workerRoster || workerRoster.check_out_at) {
-          setBarcodeNotCheckedInModal({
-            workerName: targetWorker.name,
-            workerId: targetWorker.id,
-            barcode: targetWorker.employee_barcode || query,
-          });
-          setBarcodeWorkerInput("");
-          setBarcodeWorkerChecking(false);
-          setTimeout(() => workerInputRef.current?.focus(), 100);
-          return;
-        }
-      } catch (attErr) {
-        console.warn("Attendance check fallback warning:", attErr);
-      }
-
-      setBarcodeWorker(targetWorker);
-      setBarcodeWorkerInput("");
-      setSuccessMsg(`✅ Worker ${targetWorker.name} verified & checked-in!`);
-
-      // FIX 2: Auto-switch barcodeStage to first allowed operation if current stage is restricted for this role (e.g. stitching_manager)
-      if (
-        !isStageAllowedForRole(barcodeStage) &&
-        allowedOperations.length > 0
-      ) {
-        setBarcodeStage(allowedOperations[0]);
-      }
-    } catch (err) {
-      setErrorMsg(`Worker verification failed: ${err.message}`);
-      setBarcodeWorkerInput("");
-      setTimeout(() => workerInputRef.current?.focus(), 100);
-    } finally {
-      setBarcodeWorkerChecking(false);
-    }
-  };
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file || !uploadOrderNumber) {
-      setUploadOrderNumberError("Please enter an Order Number first");
-      return;
-    }
-    setUploadLoading(true);
-    setUploadError("");
-    try {
-      const data = await apiImportPreview(token, file, uploadOrderNumber);
-      setPreviewData(data);
-      setFileName(file.name);
-      setShowPreviewModal(true);
-      setShowOrderNumModal(false);
-    } catch (err) {
-      setUploadError(err.message);
-    } finally {
-      setUploadLoading(false);
-    }
-  };
-
-  const handleCommit = async () => {
-    const file = fileInputRef.current?.files[0];
-    if (!file) return;
-    setCommitLoading(true);
-    try {
-      const result = await apiImportCommit(token, file, uploadOrderNumber);
-      setShowPreviewModal(false);
-    if (result?.written?.release_required ?? result?.release_required) {
-        const orderNumber = uploadOrderNumber;
-        setUploadOrderNumber("");
-   
-        setCommitResult(result?.written ?? result);
-        setPendingBreakdownOrder(orderNumber);
-        setShowCommitConfirmation(true);
-        return;
-      }
-      setCommitSuccess("File imported and database updated successfully!");
-      setUploadOrderNumber("");
-    } catch (err) {
-      setUploadError(err.message);
-    } finally {
-      setCommitLoading(false);
-    }
-  };
-
   
   useEffect(() => {
     if (activeDoor === "store" && !isFullAccess && !isStoreAccess) {
@@ -981,484 +709,55 @@ export default function ProductionLogEntry() {
           ))}
       </SpotlightCard>
 
-      {/* EXCEL PREVIEW MODAL */}
-      {mounted &&
-        showPreviewModal &&
-        createPortal(
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-4xl max-h-[90vh] flex flex-col relative overflow-hidden">
-              <div className="flex justify-between items-center p-6 border-b border-slate-100">
-                <div>
-                  <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
-                    <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                    Excel Import Preview
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium mt-1">
-                    File: {fileName} — Review before importing to database
-                  </p>
-                </div>
-                <button
-                  onClick={() => setShowPreviewModal(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+            {/* EXCEL IMPORT PREVIEW MODAL */}
+      <ExcelPreviewModal
+        mounted={mounted}
+        showPreviewModal={showPreviewModal}
+        setShowPreviewModal={setShowPreviewModal}
+        fileName={fileName}
+        previewData={previewData}
+        handleCommit={handleCommit}
+        commitLoading={commitLoading}
+        uploadError={uploadError}
+      />
 
-              <div className="p-6 overflow-auto bg-slate-50 flex-1 text-sm">
-                {previewData ? (
-                  <DynamicDataViewer data={previewData} />
-                ) : (
-                  <div className="text-center py-12 text-slate-500 font-bold">
-                    No preview data available.
-                  </div>
-                )}
-              </div>
+      {/* COMMIT CONFIRMATION MODAL */}
+      <CommitConfirmationModal
+        mounted={mounted}
+        showCommitConfirmation={showCommitConfirmation}
+        setShowCommitConfirmation={setShowCommitConfirmation}
+        fileName={fileName}
+        commitResult={commitResult}
+        pendingBreakdownOrder={pendingBreakdownOrder}
+        setSelectedBreakdownOrder={setSelectedBreakdownOrder}
+        setPendingBreakdownOrder={setPendingBreakdownOrder}
+        setCommitResult={setCommitResult}
+        handleSetActiveDoor={handleSetActiveDoor}
+      />
 
-              <div className="flex gap-3 p-6 border-t border-slate-100 bg-white rounded-b-2xl">
-                <button
-                  onClick={() => setShowPreviewModal(false)}
-                  className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleCommit}
-                  disabled={commitLoading || !!uploadError}
-                  className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
-                >
-                  {commitLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Importing...
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="w-4 h-4" /> Confirm &amp; Import to
-                      Database
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
 
-      {/* COMMIT CONFIRMATION MODAL — the real `written` result from the
-          commit response (what was actually saved), not a re-show of the
-          pre-commit preview. */}
-      {mounted &&
-        showCommitConfirmation &&
-        createPortal(
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm animate-fade-in p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md relative overflow-hidden border-t-4 border-amber-500">
-              <div className="p-6 pb-4 text-center">
-                <div className="w-14 h-14 rounded-full bg-emerald-50 border-2 border-emerald-200 flex items-center justify-center mx-auto mb-3">
-                  <CheckCircle2 className="w-7 h-7 text-emerald-600" />
-                </div>
-                <h3 className="text-lg font-black text-slate-950">
-                  Committed to Database
-                </h3>
-                <p className="text-xs text-slate-500 font-medium mt-1">
-                  File: {fileName} — saved as DRAFT, styles now awaiting
-                  release.
-                </p>
-              </div>
+          {/* ORDER NUMBER MODAL */}
+      <OrderNumberModal
+        mounted={mounted}
+        showOrderNumModal={showOrderNumModal}
+        setShowOrderNumModal={setShowOrderNumModal}
+        uploadOrderNumber={uploadOrderNumber}
+        setUploadOrderNumber={setUploadOrderNumber}
+        uploadOrderNumberError={uploadOrderNumberError}
+        setUploadOrderNumberError={setUploadOrderNumberError}
+        uploadLoading={uploadLoading}
+        fileInputRef={fileInputRef}
+      />
 
-              <div className="px-6 pb-2">
-                {commitResult ? (
-                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 space-y-3">
-                    <p className="text-[11px] font-black uppercase tracking-wide text-amber-800 text-center">
-                      Please review what was saved before continuing
-                    </p>
-                    <div className="flex items-center justify-between bg-white rounded-lg px-3 py-2 border border-amber-100">
-                      <span className="text-xs font-black text-slate-700">
-                        Order {commitResult.order_number}
-                      </span>
-                      <span
-                        className="text-[10px] font-black uppercase px-2 py-1 rounded-md"
-                        style={
-                          commitResult.release_required
-                            ? {
-                                color: "#a86022",
-                                background: "rgba(200,131,74,0.12)",
-                              }
-                            : { color: "#047857", background: "#ecfdf5" }
-                        }
-                      >
-                        {commitResult.release_required
-                          ? "Release Required"
-                          : "No Release Needed"}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2 text-center">
-                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">
-                          Styles
-                        </p>
-                        <p className="text-base font-black text-slate-800">
-                          {commitResult.styles ?? 0}
-                        </p>
-                      </div>
-                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">
-                          Pieces Minted
-                        </p>
-                        <p className="text-base font-black text-slate-800">
-                          {commitResult.pieces_minted ?? 0}
-                        </p>
-                      </div>
-                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">
-                          SKUs Created
-                        </p>
-                        <p className="text-base font-black text-emerald-600">
-                          {commitResult.skus_created ?? 0}
-                        </p>
-                      </div>
-                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">
-                          SKUs Updated
-                        </p>
-                        <p className="text-base font-black text-amber-600">
-                          {commitResult.skus_updated ?? 0}
-                        </p>
-                      </div>
-                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">
-                          Operations
-                        </p>
-                        <p className="text-base font-black text-slate-800">
-                          {commitResult.operations ?? 0}
-                        </p>
-                      </div>
-                      <div className="p-2.5 bg-white rounded-lg border border-amber-100">
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">
-                          Rates
-                        </p>
-                        <p className="text-base font-black text-slate-800">
-                          {commitResult.rates ?? 0}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-12 text-slate-500 font-bold">
-                    No summary available.
-                  </div>
-                )}
-              </div>
 
-              <div className="p-6 pt-4">
-                <button
-                  onClick={() => {
-                    setShowCommitConfirmation(false);
-                    handleSetActiveDoor("breakdown");
-                    setSelectedBreakdownOrder(pendingBreakdownOrder);
-                    setPendingBreakdownOrder(null);
-                    setCommitResult(null);
-                  }}
-                  className="w-full py-3 px-6 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
-                >
-                  Continue to Breakdown Review
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {/* ORDER NUMBER MODAL */}
-      {mounted &&
-        typeof document !== "undefined" &&
-        document.body &&
-        showOrderNumModal &&
-        createPortal(
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-            <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 sm:p-8 space-y-5 relative">
-              <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center"
-                    style={{ background: "rgba(200,131,74,0.12)" }}
-                  >
-                    <FileSpreadsheet
-                      className="w-4 h-4"
-                      style={{ color: "#c8834a" }}
-                    />
-                  </div>
-                  <div>
-                    <h3
-                      className="text-base font-black"
-                      style={{ color: "#2d1f0e" }}
-                    >
-                      Upload Breakdown Sheet
-                    </h3>
-                    <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                      Step 1 of 2 — Enter Order Number
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => {
-                    setShowOrderNumModal(false);
-                    setUploadOrderNumberError("");
-                  }}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-1.5">
-                <label
-                  className="text-[11px] font-black uppercase tracking-widest block"
-                  style={{ color: "#9a7a5a" }}
-                >
-                  Order Number <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  autoFocus
-                  placeholder="e.g. 1001"
-                  value={uploadOrderNumber}
-                  onChange={(e) => {
-                    setUploadOrderNumber(e.target.value.trim());
-                    setUploadOrderNumberError("");
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && uploadOrderNumber.trim()) {
-                      e.preventDefault();
-                      fileInputRef.current?.click();
-                    }
-                  }}
-                  className={`w-full px-4 py-3 rounded-xl border text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 transition-colors ${
-                    uploadOrderNumberError
-                      ? "border-red-400 bg-red-50 focus:ring-red-400/20"
-                      : "border-slate-200 focus:ring-[#c8834a]/20 focus:border-[#c8834a]"
-                  }`}
-                />
-                {uploadOrderNumberError ? (
-                  <p className="text-xs font-bold text-red-600 flex items-start gap-1.5 pt-1">
-                    <span className="mt-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center shrink-0">
-                      !
-                    </span>
-                    {uploadOrderNumberError}
-                  </p>
-                ) : (
-                  <p className="text-[10px] text-slate-400 font-medium">
-                    Must match an existing order. The sheet SKUs will be written
-                    into this order.
-                  </p>
-                )}
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowOrderNumModal(false);
-                    setUploadOrderNumberError("");
-                  }}
-                  className="flex-1 py-3 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
-                  style={{ background: "#f1f5f9", color: "#475569" }}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  disabled={!uploadOrderNumber.trim() || uploadLoading}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex-1 py-3 rounded-xl text-xs font-extrabold text-white shadow-md flex items-center justify-center gap-2 transition-all hover:-translate-y-0.5 disabled:opacity-40 disabled:translate-y-0 cursor-pointer"
-                  style={{
-                    background: "linear-gradient(135deg, #c8834a, #e8a06a)",
-                  }}
-                >
-                  {uploadLoading ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />{" "}
-                      Uploading...
-                    </>
-                  ) : (
-                    <>
-                      <FileSpreadsheet className="w-3.5 h-3.5" /> Choose File
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {/* PARTIAL-ACCEPT BUCKET RESULTS MODAL (Contract v3.0) */}
-      {mounted &&
-        showBucketModal &&
-        bucketResult &&
-        createPortal(
-          <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/70 backdrop-blur-md animate-fade-in p-4">
-            <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-lg overflow-hidden relative">
-              <div className="bg-slate-900 text-white p-5 flex items-center justify-between border-b border-slate-800">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-400">
-                    <CheckCircle2 className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-black text-base">
-                      Production Logging Response
-                    </h3>
-                    <p className="text-xs text-slate-400 font-semibold">
-                      Stage:{" "}
-                      {bucketResult.stage || bucketResult.stages?.[0] || "N/A"}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowBucketModal(false)}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-                {/* Logged Bucket */}
-                {bucketResult.logged && bucketResult.logged.length > 0 && (
-                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 space-y-2">
-                    <div className="flex items-center gap-2 font-black text-xs text-emerald-800 uppercase tracking-wider">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                      Logged Successfully ({bucketResult.logged.length})
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {bucketResult.logged.map((code) => (
-                        <span
-                          key={code}
-                          className="px-2 py-1 rounded bg-white text-emerald-700 font-mono font-bold text-xs border border-emerald-200 shadow-sm"
-                        >
-                          {code}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Rework Bucket */}
-                {bucketResult.rework && bucketResult.rework.length > 0 && (
-                  <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-2">
-                    <div className="flex items-center gap-2 font-black text-xs text-amber-800 uppercase tracking-wider">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                      Rework Flagged ({bucketResult.rework.length})
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {bucketResult.rework.map((code) => (
-                        <span
-                          key={code}
-                          className="px-2 py-1 rounded bg-white text-amber-700 font-mono font-bold text-xs border border-amber-200 shadow-sm"
-                        >
-                          {code}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Sequence Blocked Bucket */}
-                {bucketResult.sequence_blocked &&
-                  bucketResult.sequence_blocked.length > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
-                      <div className="flex items-center gap-2 font-black text-xs text-red-800 uppercase tracking-wider">
-                        <AlertTriangle className="w-4 h-4 text-red-500" />
-                        Sequence Blocked ({bucketResult.sequence_blocked.length}
-                        )
-                      </div>
-                      <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
-                        {bucketResult.sequence_blocked.map((msg, i) => {
-                          const pieceStr =
-                            typeof msg === "string" ? msg : JSON.stringify(msg);
-                          const reasonObj = bucketResult.blocked?.find(
-                            (b) => b.piece === pieceStr,
-                          );
-                          return (
-                            <li key={i}>
-                              <span>{pieceStr}</span>
-                              {reasonObj && (
-                                <div className="text-[10px] text-red-500 font-medium mt-0.5">
-                                  {reasonObj.reason}
-                                </div>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  )}
-
-                {/* Merge Blocked Bucket */}
-                {bucketResult.merge_blocked &&
-                  bucketResult.merge_blocked.length > 0 && (
-                    <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-2">
-                      <div className="flex items-center gap-2 font-black text-xs text-orange-800 uppercase tracking-wider">
-                        <AlertTriangle className="w-4 h-4 text-orange-500" />
-                        Merge Gate Blocked ({bucketResult.merge_blocked.length})
-                      </div>
-                      <ul className="text-xs text-orange-700 font-semibold space-y-1.5 list-disc pl-5">
-                        {bucketResult.merge_blocked.map((msg, i) => {
-                          const pieceStr =
-                            typeof msg === "string" ? msg : JSON.stringify(msg);
-                          const reasonObj = bucketResult.blocked?.find(
-                            (b) => b.piece === pieceStr,
-                          );
-                          return (
-                            <li key={i}>
-                              <span>{pieceStr}</span>
-                              {reasonObj && (
-                                <div className="text-[10px] text-orange-600 font-medium mt-0.5">
-                                  {reasonObj.reason}
-                                </div>
-                              )}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  )}
-
-                {/* Not Found Bucket */}
-                {bucketResult.not_found &&
-                  bucketResult.not_found.length > 0 && (
-                    <div className="bg-slate-100 border border-slate-200 rounded-2xl p-4 space-y-2">
-                      <div className="flex items-center gap-2 font-black text-xs text-slate-700 uppercase tracking-wider">
-                        <XCircle className="w-4 h-4 text-slate-400" />
-                        Not Found ({bucketResult.not_found.length})
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {bucketResult.not_found.map((code) => (
-                          <span
-                            key={code}
-                            className="px-2 py-1 rounded bg-white text-slate-600 font-mono font-bold text-xs border border-slate-200"
-                          >
-                            {code}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-              </div>
-
-              <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end">
-                <button
-                  onClick={() => setShowBucketModal(false)}
-                  className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-slate-900 hover:bg-slate-800 transition-colors shadow-md cursor-pointer"
-                >
-                  Close & Continue
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-
-      {activeDoor === "store" && (
+            {/* PARTIAL-ACCEPT BUCKET RESULTS MODAL (Contract v3.0) */}
+      <BucketResultModal
+        mounted={mounted}
+        showBucketModal={showBucketModal}
+        bucketResult={bucketResult}
+        onClose={() => setShowBucketModal(false)}
+      />
+   {activeDoor === "store" && (
         <StoreHubSection
           setSuccessMsg={setSuccessMsg}
           setErrorMsg={setErrorMsg}

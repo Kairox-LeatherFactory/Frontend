@@ -4,7 +4,7 @@ import { ArrowLeft, Bell, Check, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiGetNotifications, apiOpenNotification } from '../../lib/api';
+import { apiGetNotifications, apiOpenNotification } from '../lib/api';
 
 export default function Notifications() {
   const { token } = useAuth();

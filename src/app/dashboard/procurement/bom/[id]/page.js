@@ -256,7 +256,7 @@ export default function BOMReviewPage() {
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-slate-600 bg-slate-50 p-2.5 rounded-xl">
+                      <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-[#2d1f0e]/80 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
                         <div><b>UOM:</b> {item.uom || 'pcs'}</div>
                         <div><b>Bulk Qty:</b> {Number(item.bulk_qty || 0).toFixed(3)}</div>
                         <div className="col-span-2 flex items-center justify-between mt-1">

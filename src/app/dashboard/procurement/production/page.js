@@ -4,7 +4,7 @@ import { ArrowLeft, Factory, CheckCircle2, Play, Loader2, RefreshCw } from 'luci
 import Link from 'next/link';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiGetProductionTracking, apiTransitionTracking } from '../../lib/api';
+import { apiGetProductionTracking, apiTransitionTracking } from '../lib/api';
 
 const rungs = ['awaiting_bom', 'bom_approved', 'inventory_checked', 'po_raised', 'po_confirmed', 'material_ready', 'released_to_production', 'in_production', 'completed'];
 
@@ -60,41 +60,37 @@ export default function ProductionBoard() {
           <Loader2 className="w-7 h-7 animate-spin mx-auto text-[#c8834a]" />
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="space-y-4">
           {rows.map((t) => {
             const idx = rungs.indexOf(t.status);
             return (
               <SpotlightCard key={t.id} className="p-5 rounded-3xl bg-white" spotlightColor="rgba(200,131,74,.04)" style={{ border: '1px solid rgba(200,131,74,.15)' }}>
-                <div className="flex flex-col xl:flex-row xl:items-center gap-5">
-                  <div className="w-56 shrink-0">
-                    <p className="text-[10px] text-slate-400 font-mono">{t.order_number}</p>
-                    <h3 className="font-black text-lg">{t.style_name}</h3>
-                    <p className="text-xs text-slate-500">{t.client_name}</p>
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-black text-[#2d1f0e]">{t.style_name}</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Tracker ID: {t.id} · Current Rung: <b className="text-amber-800">{t.status}</b></p>
                   </div>
-                  <div className="flex-1">
-                    <div className="flex gap-1">
-                      {rungs.map((r, i) => (
-                        <div key={r} title={r} className={`h-2 flex-1 rounded-full ${i <= idx ? 'bg-[#c8834a]' : 'bg-slate-100'}`} />
-                      ))}
-                    </div>
-                    <div className="mt-2 flex justify-between text-[9px] font-bold text-slate-400">
-                      <span>{rungs[0]}</span>
-                      <span className="text-[#c8834a] uppercase">{t.status}</span>
-                      <span>{rungs[rungs.length - 1]}</span>
-                    </div>
+                  <div className="flex items-center gap-2">
+                    {t.status === 'material_ready' && (
+                      <button onClick={() => release(t)} disabled={busy === t.id} className="px-4 py-2 rounded-xl bg-[#2d1f0e] text-white text-xs font-black hover:bg-[#3d2b1a]">
+                        {busy === t.id ? <Loader2 className="w-4 h-4 animate-spin inline mr-1" /> : <Play className="w-4 h-4 inline mr-1 text-[#c8834a]" />}
+                        Release to Production
+                      </button>
+                    )}
+                    {idx >= rungs.indexOf('released_to_production') && (
+                      <span className="px-3 py-1.5 rounded-xl bg-green-100 text-green-700 text-xs font-black flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" /> Handed off to Phase 1
+                      </span>
+                    )}
                   </div>
-                  <div className="text-xs font-bold text-slate-500">POs {t.po_confirmed_count}/{t.po_count}</div>
-                  {t.status === 'material_ready' && (
-                    <button onClick={() => release(t)} disabled={busy === t.id} className="px-4 py-2.5 rounded-xl bg-[#2d1f0e] text-white text-xs font-black">
-                      {busy === t.id ? <Loader2 className="w-4 h-4 animate-spin inline mr-2" /> : <Play className="w-4 h-4 inline mr-2" />}
-                      Release to Production
-                    </button>
-                  )}
-                  {t.status === 'released_to_production' && (
-                    <span className="px-3 py-2 rounded-xl bg-green-100 text-green-700 text-xs font-black">
-                      <CheckCircle2 className="w-4 h-4 inline mr-1" /> Released
-                    </span>
-                  )}
+                </div>
+
+                <div className="mt-4 pt-4 border-t flex flex-wrap gap-2">
+                  {rungs.map((r, i) => (
+                    <div key={r} className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase ${i <= idx ? 'bg-amber-100 text-amber-900 border border-amber-300' : 'bg-slate-100 text-slate-400'}`}>
+                      {r.replace(/_/g, ' ')}
+                    </div>
+                  ))}
                 </div>
               </SpotlightCard>
             );

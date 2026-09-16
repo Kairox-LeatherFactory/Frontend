@@ -1,12 +1,9 @@
 'use client';
-
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link, { useLinkStatus } from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-
-
 import {
   Factory,
   LayoutDashboard,
@@ -130,13 +127,12 @@ const NAV_ICONS = {
   '/dashboard/admin': ShieldCheck,
   '/dashboard/settings': Settings,
   '/dashboard/procurement': ShoppingCart,
-  '/dashboard/procurement/procurement': ShoppingCart,
-  '/dashboard/procurement/procurement/intake': UploadCloud,
-  '/dashboard/procurement/procurement/inventory': Layers,
-  '/dashboard/procurement/procurement/po': ShoppingCart,
-  '/dashboard/procurement/procurement/chat': ShoppingCart,
-  '/dashboard/procurement/procurement/production': ShoppingCart,
-  '/dashboard/procurement/procurement/notifications': ShoppingCart,
+  '/dashboard/procurement/intake': UploadCloud,
+  '/dashboard/procurement/inventory': Layers,
+  '/dashboard/procurement/po': ShoppingCart,
+  '/dashboard/procurement/chat': ShoppingCart,
+  '/dashboard/procurement/production': ShoppingCart,
+  '/dashboard/procurement/notifications': ShoppingCart,
 };
 
 const navStagger = {
@@ -298,20 +294,20 @@ export default function DashboardLayout({ children }) {
       // Procurement Suite
       {
         name: 'Procurement',
-        href: '/dashboard/procurement/procurement',
+        href: '/dashboard/procurement',
         divider: true,
       },
       {
         name: 'New Intake',
-        href: '/dashboard/procurement/procurement/intake',
+        href: '/dashboard/procurement/intake',
       },
       {
         name: 'Inventory Check',
-        href: '/dashboard/procurement/procurement/inventory',
+        href: '/dashboard/procurement/inventory',
       },
       {
         name: 'PO Tracker',
-        href: '/dashboard/procurement/procurement/po',
+        href: '/dashboard/procurement/po',
       },
 
       // Admin
