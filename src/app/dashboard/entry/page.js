@@ -66,11 +66,9 @@ export default function ProductionLogEntry() {
 
  
   const [storeSendedSkus, setStoreSendedSkus] = useState([]);
-
   const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'sku' | 'worker'
- 
-    const dispatch = useDispatch();
-      const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
+   const dispatch = useDispatch();
+  const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
   const [triggerGetBarcodeOrders] = useLazyGetBarcodeOrdersQuery();
 
   const date = useSelector(state => state.entry.date);
