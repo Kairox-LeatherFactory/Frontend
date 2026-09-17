@@ -937,10 +937,65 @@ export async function apiChat(token, question) {
     };
   }
   return {
-    answer: 'The bottleneck is PASTING. 41 pieces are queued against a throughput of 12/day.',
-    tool: 'bottleneck',
-    data: { stage: 'PASTING', queued: 41, throughput_per_day: 12, backlog_days: 3.4 }
+    answer: 'I checked your procurement records. S.N. TRADERS, ZIP WORLD, and AL-AMEEN LEATHERS are your top active suppliers.',
+    tool: 'general_query',
+    data: null
   };
+}
+
+// ─── Webhook Simulation Helpers (Twilio WhatsApp, Voice & Amazon SES) ───
+export async function apiSimulateTwilioWhatsappWebhook(payload = {}) {
+  try {
+    return await http(`${V1}/procurement/webhooks/twilio/whatsapp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    const s = loadStore();
+    const poId = payload.po_id || IDS.po_clermont_leather;
+    const p = s.pos[poId];
+    if (p) {
+      p.status = 'confirmed';
+      p.acknowledged_channel = 'whatsapp';
+      p.acknowledged_at = now();
+      saveStore(s);
+    }
+    return { status: 'acknowledged_via_whatsapp', po_id: poId };
+  }
+}
+
+export async function apiSimulateTwilioVoiceWebhook(payload = {}) {
+  try {
+    return await http(`${V1}/procurement/webhooks/twilio/voice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    const s = loadStore();
+    const poId = payload.po_id || IDS.po_clermont_leather;
+    const p = s.pos[poId];
+    if (p) {
+      p.status = 'confirmed';
+      p.acknowledged_channel = 'phone_ivr';
+      p.acknowledged_at = now();
+      saveStore(s);
+    }
+    return { status: 'acknowledged_via_voice_call', po_id: poId };
+  }
+}
+
+export async function apiSimulateSesWebhook(payload = {}) {
+  try {
+    return await http(`${V1}/procurement/webhooks/ses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    return { status: 'ses_event_processed', event_type: payload.event_type || 'Delivery' };
+  }
 }
 
 export function resetMock() {

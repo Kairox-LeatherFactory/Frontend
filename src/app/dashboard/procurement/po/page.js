@@ -13,7 +13,8 @@ import { useAuth } from '@/context/AuthContext';
 import {
   apiGetPOs, apiGetSuppliers, apiGetProductionTracking,
   apiPatchPOItems, apiSubmitPO, apiApprovePO, apiRejectPO,
-  apiSendPO, apiAcknowledgePO, apiTransitionTracking, IDS, MOCK_IDS
+  apiSendPO, apiAcknowledgePO, apiTransitionTracking,
+  apiSimulateTwilioWhatsappWebhook, apiSimulateTwilioVoiceWebhook, IDS, MOCK_IDS
 } from '../lib/api';
 import { MOCK_SUPPLIERS } from '../lib/mockDataPack';
 
@@ -679,13 +680,45 @@ export default function SupplierPOPage() {
                   </button>
                 )}
                 {selectedPo.status === 'sent' && (
-                  <button
-                    onClick={() => handleStatusChange(selectedPo.id, 'acknowledge')}
-                    disabled={actionLoading}
-                    className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-black text-xs rounded-xl"
-                  >
-                    Manual Acknowledge
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={async () => {
+                        setActionLoading(true);
+                        await apiSimulateTwilioWhatsappWebhook({ po_id: selectedPo.id });
+                        showToast('success', 'Simulated Twilio WhatsApp ACK Webhook!');
+                        setActionLoading(false);
+                        setSelectedPo(null);
+                        loadData();
+                      }}
+                      disabled={actionLoading}
+                      className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5"
+                    >
+                      <span>📲 WhatsApp ACK</span>
+                    </button>
+
+                    <button
+                      onClick={async () => {
+                        setActionLoading(true);
+                        await apiSimulateTwilioVoiceWebhook({ po_id: selectedPo.id });
+                        showToast('success', 'Simulated Twilio IVR Call ACK Webhook!');
+                        setActionLoading(false);
+                        setSelectedPo(null);
+                        loadData();
+                      }}
+                      disabled={actionLoading}
+                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-xl flex items-center gap-1.5"
+                    >
+                      <span>📞 Phone IVR ACK</span>
+                    </button>
+
+                    <button
+                      onClick={() => handleStatusChange(selectedPo.id, 'acknowledge')}
+                      disabled={actionLoading}
+                      className="px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-xl"
+                    >
+                      Manual Acknowledge
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
