@@ -8,7 +8,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { 
   setActiveDoor, setDate, 
   setMessages, setBarcodeWorker as reduxSetBarcodeWorker, 
-  setBarcodeStage as reduxSetBarcodeStage,  setLotDetails 
+  setBarcodeStage as reduxSetBarcodeStage,setLotDetails 
 } from '@/store/slices/entrySlice';
 import {
   useLazyBarcodeResolveQuery,
