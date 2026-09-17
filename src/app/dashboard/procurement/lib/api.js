@@ -565,22 +565,47 @@ export async function apiRunInventoryCheck(token, id) {
   }
 }
 
-export async function apiGetInventoryCheck(token, id) {
+export async function apiGetBomInventoryCheck(token, bomId) {
   try {
-    return await http(`${V1}/procurement/inventory-checks/${id}`, {
+    const res = await http(`${V1}/procurement/boms/${bomId}/inventory-check`, {
       headers: { Authorization: `Bearer ${token}` }
     });
-  } catch (e) {
-    const s = loadStore();
-    const c = s.inventoryChecks[id] || s.inventoryChecks[IDS.check_clermont];
-    if (!c) throw new Error('No inventory check found.');
-    return clone(c);
-  }
+    if (res && (res.inventory_check_id || res.id)) return res;
+  } catch (e) {}
+  const s = loadStore();
+  const checkId = bomId === IDS.bom_carnaby ? IDS.check_carnaby : IDS.check_clermont;
+  return clone(s.inventoryChecks[checkId] || MOCK_INVENTORY_CHECK_CLERMONT);
+}
+
+export async function apiGetInventoryCheck(token, id) {
+  try {
+    const res = await http(`${V1}/procurement/inventory-checks/${id}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (res && (res.inventory_check_id || res.id)) return res;
+  } catch (e) {}
+  const s = loadStore();
+  const c = s.inventoryChecks[id] || s.inventoryChecks[IDS.check_clermont];
+  return clone(c || MOCK_INVENTORY_CHECK_CLERMONT);
+}
+
+export async function apiGetInventoryChecks(token) {
+  try {
+    const res = await http(`${V1}/procurement/inventory-checks`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (res && (res.checks?.length > 0 || (Array.isArray(res) && res.length > 0))) {
+      return Array.isArray(res) ? { checks: res } : res;
+    }
+  } catch (e) {}
+  const s = loadStore();
+  const checks = Object.values(s.inventoryChecks || {});
+  return { checks: checks.length > 0 ? checks.map(clone) : [clone(MOCK_INVENTORY_CHECK_CLERMONT)] };
 }
 
 export async function apiGetInventoryItems(token) {
   try {
-    return await http(`${V1}/procurement/inventory-items`, {
+    return await http(`${V1}/procurement/inventory/items`, {
       headers: { Authorization: `Bearer ${token}` }
     });
   } catch (e) {
@@ -594,7 +619,7 @@ export async function apiInventoryPreview(token, file) {
   try {
     const formData = new FormData();
     formData.append('file', file);
-    return await http(`${V1}/inventory/preview`, {
+    return await http(`${V1}/procurement/inventory/preview`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData
@@ -618,7 +643,7 @@ export async function apiInventoryCommit(token, file) {
   try {
     const formData = new FormData();
     formData.append('file', file);
-    return await http(`${V1}/inventory/commit`, {
+    return await http(`${V1}/procurement/inventory/commit`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData
@@ -664,34 +689,36 @@ export async function apiGetPOs(token, filters = {}) {
     if (filters.status) query.append('status', filters.status);
     const queryStr = query.toString() ? `?${query.toString()}` : '';
 
-    return await http(`${V1}/procurement/purchase-orders${queryStr}`, {
+    const res = await http(`${V1}/procurement/pos${queryStr}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
-  } catch (e) {
-    const s = loadStore();
-    let rows = Object.values(s.pos);
-    if (filters.needs_supplier !== undefined) rows = rows.filter((p) => p.needs_supplier === filters.needs_supplier);
-    if (filters.status) rows = rows.filter((p) => p.status === filters.status);
-    return { purchase_orders: rows.map(clone), count: rows.length };
-  }
+    if (res && (res.purchase_orders?.length > 0 || (Array.isArray(res) && res.length > 0))) {
+      return Array.isArray(res) ? { purchase_orders: res, count: res.length } : res;
+    }
+  } catch (e) {}
+  const s = loadStore();
+  let rows = Object.values(s.pos);
+  if (filters.needs_supplier !== undefined) rows = rows.filter((p) => p.needs_supplier === filters.needs_supplier);
+  if (filters.status) rows = rows.filter((p) => p.status === filters.status);
+  return { purchase_orders: rows.map(clone), count: rows.length };
 }
 
 export async function apiGetPO(token, id) {
   try {
-    return await http(`${V1}/procurement/purchase-orders/${id}`, {
+    const res = await http(`${V1}/procurement/pos/${id}`, {
       headers: { Authorization: `Bearer ${token}` }
     });
-  } catch (e) {
-    const s = loadStore();
-    const p = s.pos[id];
-    if (!p) throw new Error('PO not found.');
-    return clone(p);
-  }
+    if (res && (res.po_number || res.id)) return res;
+  } catch (e) {}
+  const s = loadStore();
+  const p = s.pos[id];
+  if (!p) throw new Error('PO not found.');
+  return clone(p);
 }
 
 export async function apiPatchPOItems(token, id, body) {
   try {
-    return await http(`${V1}/procurement/purchase-orders/${id}`, {
+    return await http(`${V1}/procurement/pos/${id}/items`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -733,7 +760,7 @@ export async function apiPatchPOItems(token, id, body) {
 
 export async function apiSubmitPO(token, id) {
   try {
-    return await http(`${V1}/procurement/purchase-orders/${id}/submit`, {
+    return await http(`${V1}/procurement/pos/${id}/submit`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -747,7 +774,7 @@ export async function apiSubmitPO(token, id) {
 
 export async function apiApprovePO(token, id) {
   try {
-    return await http(`${V1}/procurement/purchase-orders/${id}/approve`, {
+    return await http(`${V1}/procurement/pos/${id}/approve`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -761,7 +788,7 @@ export async function apiApprovePO(token, id) {
 
 export async function apiRejectPO(token, id, reason) {
   try {
-    return await http(`${V1}/procurement/purchase-orders/${id}/reject`, {
+    return await http(`${V1}/procurement/pos/${id}/reject`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -779,7 +806,7 @@ export async function apiRejectPO(token, id, reason) {
 
 export async function apiSendPO(token, id) {
   try {
-    return await http(`${V1}/procurement/purchase-orders/${id}/send`, {
+    return await http(`${V1}/procurement/pos/${id}/send`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` }
     });
@@ -791,9 +818,23 @@ export async function apiSendPO(token, id) {
   }
 }
 
+export async function apiCancelPO(token, id) {
+  try {
+    return await http(`${V1}/procurement/pos/${id}/cancel`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch (e) {
+    const s = loadStore();
+    const p = s.pos[id];
+    if (p) { p.status = 'cancelled'; saveStore(s); }
+    return { po_id: id, status: 'cancelled' };
+  }
+}
+
 export async function apiAcknowledgePO(token, id, body = {}) {
   try {
-    return await http(`${V1}/procurement/purchase-orders/${id}/acknowledge`, {
+    return await http(`${V1}/procurement/pos/${id}/acknowledge`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -833,7 +874,7 @@ export async function apiGetSuppliers(token) {
 
 export async function apiGetProductionTracking(token) {
   try {
-    return await http(`${V1}/procurement/production-trackers`, {
+    return await http(`${V1}/procurement/production-tracking`, {
       headers: { Authorization: `Bearer ${token}` }
     });
   } catch (e) {
@@ -844,7 +885,7 @@ export async function apiGetProductionTracking(token) {
 
 export async function apiTransitionTracking(token, id, status) {
   try {
-    return await http(`${V1}/procurement/production-trackers/${id}/transition`, {
+    return await http(`${V1}/procurement/production-tracking/${id}/transition`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

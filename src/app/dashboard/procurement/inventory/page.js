@@ -12,7 +12,8 @@ import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
 import {
   apiInventoryPreview, apiInventoryCommit,
-  apiGetInventoryCheck, apiRunInventoryCheck, apiGetInventoryItems, apiGeneratePOs, IDS
+  apiGetInventoryCheck, apiGetBomInventoryCheck, apiGetInventoryChecks,
+  apiRunInventoryCheck, apiGetInventoryItems, apiGeneratePOs, IDS
 } from '../lib/api';
 
 function InventoryPreviewViewer({ data }) {
@@ -58,7 +59,7 @@ function InventoryPreviewViewer({ data }) {
             <span>{keptPct}% stock rows</span>
           </div>
           <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 rounded-full transition-all" style={{ width: `${keptPct}%` }} />
+            <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${keptPct}%` }} />
           </div>
         </div>
 
@@ -248,7 +249,10 @@ export default function InventoryPage() {
     try {
       const [checkRes, itemsRes] = await Promise.all([
         apiRunInventoryCheck(token, IDS.bom_clermont),
-        apiGetInventoryItems(token)
+        apiGetInventoryItems(token),
+        apiGetBomInventoryCheck(token, IDS.bom_clermont).catch(() => null),
+        apiGetInventoryCheck(token, IDS.check_clermont).catch(() => null),
+        apiGetInventoryChecks(token).catch(() => null)
       ]);
       setInventoryCheck(checkRes);
       setInventoryItems(itemsRes.items || []);
