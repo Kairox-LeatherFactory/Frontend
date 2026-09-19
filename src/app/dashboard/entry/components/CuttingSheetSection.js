@@ -16,14 +16,14 @@ const INITIAL_ROW = {
   id: '',
   date: '',
   orderId: '',
-  styleName: '', 
-  sizeName: '',  
-  skuId: '',     
+  styleName: '',
+  sizeName: '',
+  skuId: '',
   lotId: '',
   workerId: '',
   rcNo: '',
   skins: Array(17).fill(''),
-  status: 'draft', 
+  status: 'draft',
   barcode: null,
   errorMsg: null,
 };
@@ -55,7 +55,7 @@ export default function CuttingSheetSection() {
       newRows[index] = { ...newRows[index], [field]: value };
 
       if (field === 'styleName' || field === 'sizeName') {
-         newRows[index].skuId = '';
+        newRows[index].skuId = '';
       }
 
       const cascadeFields = ['date', 'orderId', 'styleName', 'lotId'];
@@ -65,22 +65,38 @@ export default function CuttingSheetSection() {
         for (let i = index + 1; i < newRows.length; i++) {
           const targetRow = newRows[i];
           const isTargetEmpty = !targetRow.orderId && !targetRow.styleName && !targetRow.lotId;
-          const isTargetMatchingOld = 
-             targetRow.orderId === prev[index].orderId &&
-             targetRow.styleName === prev[index].styleName &&
-             targetRow.lotId === prev[index].lotId;
+
+          // Check if this empty row is acting as a spacer (i.e., there is data in some row below it)
+          let isTargetSpacer = false;
+          if (isTargetEmpty) {
+            for (let j = i + 1; j < newRows.length; j++) {
+              if (newRows[j].orderId || newRows[j].styleName || newRows[j].lotId) {
+                isTargetSpacer = true;
+                break;
+              }
+            }
+          }
+
+          if (isTargetSpacer) {
+            break; // Stop cascading if we hit a user-defined spacer row
+          }
+
+          const isTargetMatchingOld =
+            targetRow.orderId === prev[index].orderId &&
+            targetRow.styleName === prev[index].styleName &&
+            targetRow.lotId === prev[index].lotId;
 
           if (isTargetEmpty || isTargetMatchingOld) {
-            newRows[i] = { 
-               ...targetRow, 
-               date: currentRow.date,
-               orderId: currentRow.orderId,
-               styleName: currentRow.styleName,
-               lotId: currentRow.lotId
+            newRows[i] = {
+              ...targetRow,
+              date: currentRow.date,
+              orderId: currentRow.orderId,
+              styleName: currentRow.styleName,
+              lotId: currentRow.lotId
             };
             if (field === 'orderId' || field === 'styleName') {
-               newRows[i].sizeName = '';
-               newRows[i].skuId = '';
+              newRows[i].sizeName = '';
+              newRows[i].skuId = '';
             }
           } else {
             break;
@@ -105,24 +121,13 @@ export default function CuttingSheetSection() {
   const insertRowBelow = useCallback((index) => {
     setRows(prev => {
       const newRows = [...prev];
-      const prevRow = newRows[index];
-      newRows.splice(index + 1, 0, createDefaultRow({
-        date: prevRow.date,
-        orderId: prevRow.orderId,
-        styleName: prevRow.styleName,
-        lotId: prevRow.lotId,
-        workerId: prevRow.workerId, 
-      }));
+      // Insert a completely fresh blank row (no date copied) to act as a pure separator
+      newRows.splice(index + 1, 0, createDefaultRow({ date: '' }));
       return newRows;
     });
     
-    // Auto-focus the new row's size dropdown slightly after render
-    setTimeout(() => {
-      const selects = document.querySelectorAll(`select[data-col="sizeName"]`);
-      if (selects[index + 1]) {
-        selects[index + 1].focus();
-      }
-    }, 50);
+    // Auto-focus the new row's date or order dropdown slightly after render
+    setTimeout(() => {}, 50);
   }, []);
 
   const duplicateRow = useCallback((index) => {
@@ -144,7 +149,7 @@ export default function CuttingSheetSection() {
 
   const deleteRow = useCallback((id) => {
     setRows(prev => {
-      if (prev.length === 1) return prev; 
+      if (prev.length === 1) return prev;
       return prev.filter(r => r.id !== id);
     });
   }, []);
@@ -179,7 +184,7 @@ export default function CuttingSheetSection() {
       sku_id: row.skuId,
       lot_id: row.lotId,
       worker_id: row.workerId,
-      rc_no: row.rcNo || undefined, 
+      rc_no: row.rcNo || undefined,
       measurements: row.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).map(Number),
       total_skins: totalSkins,
       total_sqft: Number(totalSqft),
@@ -212,6 +217,21 @@ export default function CuttingSheetSection() {
   const grandTotalSkins = rows.reduce((sum, r) => sum + r.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).length, 0);
   const grandTotalSqft = rows.reduce((sum, r) => sum + r.skins.reduce((acc, curr) => acc + (curr !== '' && !isNaN(curr) ? parseFloat(curr) : 0), 0), 0).toFixed(2);
 
+  // Calculate dynamic Serial Numbers (resets to 1 after an empty row)
+  const sNoArray = useMemo(() => {
+    let currentSNo = 0;
+    return rows.map((row) => {
+      const isEmpty = !row.orderId && !row.styleName && !row.lotId && !row.date && !row.workerId;
+      if (isEmpty) {
+        currentSNo = 0; // reset for the next group
+        return '';
+      } else {
+        currentSNo += 1;
+        return currentSNo;
+      }
+    });
+  }, [rows]);
+
   return (
     <div className="flex flex-col h-full bg-[#f8f9fa] overflow-hidden animate-fade-in text-xs">
       <style>{`
@@ -235,7 +255,7 @@ export default function CuttingSheetSection() {
           border-color: #fefce8;
         }
       `}</style>
-      
+
       {/* Header */}
       <div className="flex-none bg-white border-b px-4 py-3 flex items-center justify-between z-40 shadow-sm relative">
         <div>
@@ -291,6 +311,7 @@ export default function CuttingSheetSection() {
                 <CuttingSheetRow
                   key={row.id}
                   index={index}
+                  sNo={sNoArray[index]}
                   row={row}
                   ordersList={ordersList}
                   lotsList={lotsList}
@@ -328,6 +349,7 @@ export default function CuttingSheetSection() {
 
 const CuttingSheetRow = React.memo(({
   index,
+  sNo,
   row,
   ordersList,
   lotsList,
@@ -393,7 +415,7 @@ const CuttingSheetRow = React.memo(({
       if (e.key === 'ArrowDown') r += 1;
       if (e.key === 'ArrowLeft') c -= 1;
       if (e.key === 'ArrowRight') c += 1;
-      
+
       const target = document.querySelector(`input[data-row="${r}"][data-col="${c}"]`);
       if (target) {
         target.focus();
@@ -421,7 +443,7 @@ const CuttingSheetRow = React.memo(({
   return (
     <tr className={rowClass}>
       <td className="p-0 sticky left-0 z-10 border-r border-slate-300 bg-slate-100 group-focus-within:bg-yellow-100 text-center font-bold text-slate-500">
-        <span>{index + 1}</span>
+        <span>{sNo}</span>
       </td>
 
       <td className="p-0 sticky left-10 z-10 border-r border-slate-300 bg-white group-focus-within:bg-[#fefce8]">
@@ -473,13 +495,13 @@ const CuttingSheetRow = React.memo(({
         >
           <option value="">{articleDisplay ? articleDisplay : ''}</option>
           {lotsList.map((l) => (
-             <option key={l.lot_id} value={l.lot_id}>{l.article}</option>
+            <option key={l.lot_id} value={l.lot_id}>{l.article}</option>
           ))}
         </select>
       </td>
 
       <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534] group-focus-within:bg-transparent">
-         {colourDisplay}
+        {colourDisplay}
       </td>
 
       <td className="p-0 border-r border-slate-300 bg-[#f8fafc] group-focus-within:bg-transparent">
