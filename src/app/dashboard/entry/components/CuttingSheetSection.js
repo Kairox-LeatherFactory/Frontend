@@ -65,23 +65,7 @@ export default function CuttingSheetSection() {
         for (let i = index + 1; i < newRows.length; i++) {
           const targetRow = newRows[i];
           const isTargetEmpty = !targetRow.orderId && !targetRow.styleName && !targetRow.lotId;
-
-          // Check if this empty row is acting as a spacer (i.e., there is data in some row below it)
-          let isTargetSpacer = false;
-          if (isTargetEmpty) {
-            for (let j = i + 1; j < newRows.length; j++) {
-              if (newRows[j].orderId || newRows[j].styleName || newRows[j].lotId) {
-                isTargetSpacer = true;
-                break;
-              }
-            }
-          }
-
-          if (isTargetSpacer) {
-            break; // Stop cascading if we hit a user-defined spacer row
-          }
-
-          const isTargetMatchingOld =
+          const isTargetMatchingOld = 
             targetRow.orderId === prev[index].orderId &&
             targetRow.styleName === prev[index].styleName &&
             targetRow.lotId === prev[index].lotId;
@@ -587,34 +571,36 @@ const CuttingSheetRow = React.memo(({
         ) : (
           <span className="text-[10px] text-slate-300 font-bold uppercase cursor-not-allowed">Incomplete</span>
         )}
-      </td>
 
-      {/* Floating Actions on Hover (Crud) */}
-      {!isLocked && (
-        <div className="absolute right-[112px] top-0 bottom-0 flex items-center opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-l from-slate-100 via-slate-100 to-transparent pl-4 pr-1 z-10">
-          <button
-            onClick={() => onAddBelow(index)}
-            title="Add Row Below"
-            className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 rounded mr-1"
-          >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onDuplicate(index)}
-            title="Duplicate Row"
-            className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded mr-1"
-          >
-            <Copy className="w-3.5 h-3.5" />
-          </button>
-          <button
-            onClick={() => onDelete(row.id)}
-            title="Delete Row"
-            className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
+        {/* Floating Actions on Hover (Crud) */}
+        {!isLocked && (
+          <div className="absolute right-full top-0 bottom-0 flex items-center opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-l from-slate-100 via-slate-100 to-transparent pl-4 pr-1 z-10 pointer-events-none">
+            <div className="pointer-events-auto flex items-center">
+              <button
+                onClick={() => onAddBelow(index)}
+                title="Add Row Below"
+                className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 rounded mr-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onDuplicate(index)}
+                title="Duplicate Row"
+                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded mr-1"
+              >
+                <Copy className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => onDelete(row.id)}
+                title="Delete Row"
+                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
+      </td>
     </tr>
   );
 });
