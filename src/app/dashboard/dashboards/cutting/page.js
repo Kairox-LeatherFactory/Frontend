@@ -29,6 +29,7 @@ import {
   apiGetCuttingEmployeeDetail,
   apiGetCuttingConsumption,
 } from '@/lib/api';
+import CuttingJobSheetTab from './_components/tabs/CuttingJobSheetTab';
 
 // Interactive Monthly Calendar Filter Picker Component
 function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates = [], themeColor = '#2563eb' }) {
@@ -888,6 +889,7 @@ function DashboardInner() {
           { id: 'tab-inventory', label: '🧵 Leather Stock & Allocation (DCM)' },
           { id: 'tab-cutters', label: '✂️ Cutter Performance' },
           { id: 'tab-pieces', label: '🏷️ Piece-Level Master Tracker' },
+          { id: 'tab-jobsheet', label: '📋 Issue Job Sheet' },
         ].map((tab) => (
           <button
             key={tab.id}

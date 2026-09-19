@@ -1,13 +1,25 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, CheckCircle2, XCircle, Save, Loader2, AlertTriangle, FileDown, Lock, RotateCcw, PackageCheck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, XCircle, Save, Loader2, AlertTriangle, FileDown, Lock, RotateCcw, PackageCheck, Info, AlertCircle } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
 import { apiGetBom, apiPatchBomItems, apiConfirmCutting, apiApproveBom, apiRejectBom, apiReopenBom, apiExportBom } from '../../lib/api';
 
+const CATEGORY_MAP = {
+  'All': 'All Materials',
+  main_material: 'Leather & Main',
+  sub_material: 'Sub Materials',
+  lining: 'Lining & Inner',
+  thread: 'Threads',
+  accessory: 'Hardware & Metals',
+  manufacturing: 'Labor & Mfg',
+  packaging: 'Packaging',
+  fob_charge: 'Other Charges'
+};
+
+const getCategoryLabel = (key) => CATEGORY_MAP[key] || key;
 const categories = ['All', 'main_material', 'sub_material', 'lining', 'thread', 'accessory', 'manufacturing', 'packaging', 'fob_charge'];
-const sourceLabel = (s) => (s ? `${s.dcm_source} · ${Math.round((s.dcm_confidence || 0) * 100)}%` : '—');
 
 export default function BOMReviewPage() {
   const { id } = useParams();
@@ -17,11 +29,11 @@ export default function BOMReviewPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('All');
-  const [viewMode, setViewMode] = useState('grid');
   const [expandedItems, setExpandedItems] = useState({});
   const [drafts, setDrafts] = useState({});
   const [toast, setToast] = useState(null);
   const [reason, setReason] = useState('');
+  const [showRejectModal, setShowRejectModal] = useState(false);
 
   const md = user === 'managing_director' || user === 'direct_manager';
   const cutting = ['cutting_manager', 'direct_manager', 'managing_director'].includes(user);
@@ -49,13 +61,8 @@ export default function BOMReviewPage() {
         bulk_total: totalCost
       };
     }
-    if (res.data && Array.isArray(res.data)) {
-      return normalizeBom(res.data, styleId);
-    }
-    return {
-      ...res,
-      items: res.items || res.bom_items || []
-    };
+    if (res.data && Array.isArray(res.data)) return normalizeBom(res.data, styleId);
+    return { ...res, items: res.items || res.bom_items || [] };
   };
 
   const load = async () => {
@@ -80,24 +87,17 @@ export default function BOMReviewPage() {
           const fresh = normalizeBom(raw, id);
           if (fresh) {
             setBom(fresh);
-            if (fresh.items?.length > 0 && fresh.status !== 'queued' && fresh.status !== 'processing') {
-              clearInterval(timer);
-            }
+            if (fresh.items?.length > 0 && fresh.status !== 'queued' && fresh.status !== 'processing') clearInterval(timer);
           }
         } catch (e) {}
       }, 5000);
     }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
+    return () => { if (timer) clearInterval(timer); };
   }, [id]);
 
   const rows = useMemo(() => bom?.items?.filter((i) => filter === 'All' || i.category === filter) || [], [bom, filter]);
+  const toggleExpand = (itemId) => setExpandedItems((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
   const edit = (item, field, value) => setDrafts((d) => ({ ...d, [item.id]: { ...(d[item.id] || {}), [field]: value } }));
-
-  const toggleExpand = (itemId) => {
-    setExpandedItems((prev) => ({ ...prev, [itemId]: !prev[itemId] }));
-  };
 
   const save = async () => {
     const edits = [];
@@ -108,7 +108,7 @@ export default function BOMReviewPage() {
       const r = await apiPatchBomItems(token, id, { base_revision: bom.revision, edits });
       setBom(r.recomputed);
       setDrafts({});
-      setToast({ type: r.reconfirm_required ? 'warn' : 'success', msg: r.reconfirm_required ? 'Quantity changed after cutting confirmation. Re-confirm cutting.' : 'BOM updated; server recomputed totals.' });
+      setToast({ type: r.reconfirm_required ? 'warn' : 'success', msg: r.reconfirm_required ? 'Usage changed after cutting confirmation. Re-confirm cutting required.' : 'Changes saved successfully!' });
     } catch (e) {
       setToast({ type: 'error', msg: e.message });
       if (e.status === 409) await load();
@@ -129,274 +129,256 @@ export default function BOMReviewPage() {
     }
   };
 
-  if (loading) return <div className="p-12 text-center"><Loader2 className="w-7 h-7 animate-spin mx-auto text-[#c8834a]" /></div>;
-  if (!bom) return <div className="p-12 text-center font-bold">BOM not found.</div>;
+  if (loading) return <div className="p-12 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#c8834a]" /></div>;
+  if (!bom) return <div className="p-12 text-center font-bold text-[#c8834a]">BOM not found.</div>;
+
+  const hasDrafts = Object.keys(drafts).length > 0;
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto pb-12">
-      <button onClick={() => router.back()} className="flex items-center gap-2 text-xs font-black text-slate-500 hover:text-[#2d1f0e]">
-        <ArrowLeft className="w-4 h-4" /> Back
+    <div className="space-y-6 max-w-6xl mx-auto pb-32">
+      <button onClick={() => router.back()} className="flex items-center gap-2 text-xs font-black text-amber-900/60 hover:text-[#c8834a] transition-colors">
+        <ArrowLeft className="w-4 h-4" /> Back to Intake
       </button>
 
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div>
-          <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Procurement · Stage 2/3</p>
-          <h1 className="text-3xl font-black mt-1" style={{ color: '#2d1f0e' }}>BOM Review & Approval</h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Style / Order Style ID: <span className="font-mono text-amber-800">{bom.order_style_id || id}</span> · Revision {bom.revision || 1} · Order Qty {bom.order_qty || 500}
+          <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Procurement · Phase 3</p>
+          <h1 className="text-3xl font-black mt-1 text-[#2d1f0e]">Material Breakdown (BOM)</h1>
+          <p className="text-xs text-amber-900/60 mt-1 font-medium">
+            Order Style ID: <span className="font-mono text-amber-800 bg-amber-50 px-1 rounded">{bom.order_style_id || id}</span> · Revision {bom.revision || 1} · Order Qty: {bom.order_qty || 500} items
           </p>
         </div>
         <div className="flex gap-2 flex-wrap items-center">
-          <span className={`px-3 py-2 rounded-xl text-xs font-black uppercase ${bom.status === 'approved' ? 'bg-green-100 text-green-700' : bom.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'}`}>
-            Status: {bom.status}
+          <span className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider ${bom.status === 'approved' ? 'bg-[#f0faeb] text-[#347526]' : bom.status === 'rejected' ? 'bg-[#faebeb] text-[#752626]' : 'bg-[#faf6f0] text-[#c8834a] border border-[#c8834a]/20'}`}>
+            Status: {bom.status?.replace(/_/g, ' ')}
           </span>
-          {bom.cutting_confirmed_at && <span className="px-3 py-2 rounded-xl bg-green-100 text-green-700 text-xs font-black">Cutting Confirmed</span>}
+          {bom.cutting_confirmed_at && <span className="px-4 py-2 rounded-xl bg-[#f0faeb] text-[#347526] text-xs font-black border border-[#347526]/20">Cutting Confirmed</span>}
         </div>
       </div>
 
       {toast && (
-        <div className={`p-3.5 rounded-xl text-xs font-bold flex items-center justify-between ${toast.type === 'error' ? 'bg-red-50 text-red-700 border border-red-200' : toast.type === 'warn' ? 'bg-amber-50 text-amber-800 border border-amber-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+        <div className={`p-4 rounded-2xl text-xs font-black flex items-center justify-between ${toast.type === 'error' ? 'bg-[#faebeb] text-[#752626] border border-[#752626]/20' : toast.type === 'warn' ? 'bg-[#faf6f0] text-[#c8834a] border border-[#c8834a]/20' : 'bg-[#f0faeb] text-[#347526] border border-[#347526]/20'}`}>
           <span>{toast.msg}</span>
-          <button onClick={() => setToast(null)} className="text-slate-400 hover:text-slate-600 font-black ml-2">✕</button>
+          <button onClick={() => setToast(null)} className="opacity-50 hover:opacity-100 transition-opacity">✕</button>
         </div>
       )}
 
       {bom.status === 'draft' && (
-        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex gap-3 text-xs text-amber-900">
-          <AlertTriangle className="w-5 h-5 shrink-0 text-amber-600" />
-          <div><b>Human-in-the-loop gate.</b> Check DCM values at cutting. Click any item card to expand and edit DCM / Unit Price values.</div>
+        <div className="p-4 rounded-2xl bg-[#faf6f0] border border-[#c8834a]/30 flex gap-3 text-xs text-[#c8834a]">
+          <AlertTriangle className="w-5 h-5 shrink-0" />
+          <div><b className="font-black">Review Required.</b> Please verify the "Usage per Item" and "Unit Price" for all materials before sending to purchasing. Click any item card to edit its details.</div>
         </div>
       )}
 
-      <div className="grid md:grid-cols-3 gap-4">
-        <Metric title="Garment FOB" value={`${bom.currency || 'USD'} ${Number(bom.garment_fob_price || 0).toFixed(2)}`} />
-        <Metric title="Bulk Total" value={`${bom.currency || 'USD'} ${Number(bom.bulk_total || 0).toFixed(2)}`} />
-        <Metric title="Revision" value={bom.revision || 1} />
-      </div>
+      {/* Rejection Modal */}
+      {showRejectModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md p-6 rounded-3xl bg-white shadow-2xl border border-amber-100">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2.5 rounded-2xl bg-[#faebeb] text-[#752626]">
+                <XCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-[#752626]">Reject Bill of Materials</h3>
+                <p className="text-xs text-slate-500 font-medium">Please provide a reason for rejection.</p>
+              </div>
+            </div>
 
-      <SpotlightCard className="p-5 rounded-3xl bg-white" spotlightColor="rgba(200,131,74,.04)" style={{ border: '1px solid rgba(200,131,74,.15)' }}>
-        {/* Header Controls: Filters + View Mode Toggle */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
-          <div className="flex flex-wrap gap-1.5">
-            {categories.map((c) => (
-              <button key={c} onClick={() => setFilter(c)} className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all ${filter === c ? 'bg-[#2d1f0e] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                {c}
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="E.g., Leather usage is too high, please check again."
+              className="w-full p-4 rounded-2xl bg-[#faf6f0] border border-amber-200/60 text-xs font-bold text-[#2d1f0e] outline-none focus:border-[#c8834a] min-h-[100px] resize-none"
+            />
+
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setShowRejectModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+              >
+                Cancel
               </button>
-            ))}
-          </div>
-
-          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl shrink-0 self-start sm:self-auto">
-            <button
-              onClick={() => setViewMode('grid')}
-              className={`px-3 py-1 rounded-lg text-[10px] font-black transition-all ${viewMode === 'grid' ? 'bg-white text-[#2d1f0e] shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
-            >
-              Grid View
-            </button>
-            <button
-              onClick={() => setViewMode('table')}
-              className={`px-3 py-1 rounded-lg text-[10px] font-black transition-all ${viewMode === 'table' ? 'bg-white text-[#2d1f0e] shadow-sm' : 'text-slate-500 hover:text-slate-900'}`}
-            >
-              Table View
-            </button>
+              <button
+                onClick={() => {
+                  if (!reason.trim()) {
+                    setToast({ type: 'error', msg: 'Please enter a rejection reason.' });
+                    return;
+                  }
+                  setShowRejectModal(false);
+                  action(() => apiRejectBom(token, id, reason), 'BOM rejected.');
+                }}
+                className="px-5 py-2.5 rounded-xl bg-[#752626] text-white text-xs font-black hover:bg-[#5a1c1c] transition-all shadow-md flex items-center gap-2"
+              >
+                <XCircle className="w-4 h-4" /> Confirm Rejection
+              </button>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* View Mode 1: Grid Cards with Click to Expand */}
-        {viewMode === 'grid' ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {rows.map((item) => {
-              const d = drafts[item.id] || {};
-              const expanded = !!expandedItems[item.id];
-              return (
-                <div
-                  key={item.id}
-                  className={`p-4 rounded-2xl border transition-all ${expanded ? 'bg-[#fff9f0] border-[#c8834a]/60 shadow-md' : 'bg-white border-slate-200 hover:border-[#c8834a]/40 cursor-pointer'}`}
-                >
-                  <div onClick={() => toggleExpand(item.id)} className="flex items-start justify-between gap-2 cursor-pointer">
-                    <div>
-                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 border border-amber-200">
-                        {item.category}
-                      </span>
-                      <h4 className="font-black text-sm text-[#2d1f0e] mt-1.5">{item.name}</h4>
-                      <p className="text-[11px] text-slate-500">{item.material_color || 'Standard Color'}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-black text-[#c8834a]">{bom.currency || 'USD'} {Number(d.unit_price ?? item.total_cost ?? 0).toFixed(2)}</p>
-                      <button className="text-[10px] font-bold text-amber-800 underline mt-1">
-                        {expanded ? '▲ Collapse' : '▼ Click to Expand'}
-                      </button>
-                    </div>
+      {/* Top Metric Cards */}
+      <div className="grid md:grid-cols-3 gap-4">
+        <Metric title="Cost per Item" value={`${bom.currency || 'USD'} ${Number(bom.garment_fob_price || 0).toFixed(2)}`} />
+        <Metric title="Total Production Cost" value={`${bom.currency || 'USD'} ${Number(bom.bulk_total || 0).toFixed(2)}`} />
+        <Metric title="Revision Version" value={bom.revision || 1} />
+      </div>
+
+      {/* Container matching old UI style but with cream aesthetics */}
+      <SpotlightCard className="p-5 rounded-3xl bg-white border border-[#c8834a]/15" spotlightColor="rgba(200,131,74,.05)">
+        
+        {/* Category Filters */}
+        <div className="flex flex-wrap gap-1.5 mb-6 pb-4 border-b border-[#c8834a]/10">
+          {categories.map((c) => (
+            <button 
+              key={c} 
+              onClick={() => setFilter(c)} 
+              className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wide transition-all ${filter === c ? 'bg-[#c8834a] text-white shadow-md' : 'bg-[#faf6f0] text-[#c8834a]/70 hover:bg-[#c8834a]/10'}`}
+            >
+              {getCategoryLabel(c)}
+            </button>
+          ))}
+        </div>
+
+        {/* Grid of Items */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {rows.map((item) => {
+            const d = drafts[item.id] || {};
+            const expanded = !!expandedItems[item.id];
+            
+            return (
+              <div
+                key={item.id}
+                className={`p-4 rounded-2xl border transition-all ${expanded ? 'bg-[#faf6f0] border-[#c8834a]/40 shadow-sm' : 'bg-white border-[#c8834a]/15 hover:border-[#c8834a]/30 cursor-pointer'}`}
+              >
+                <div onClick={() => toggleExpand(item.id)} className="flex items-start justify-between gap-2 cursor-pointer">
+                  <div>
+                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-white text-[#c8834a] border border-[#c8834a]/20">
+                      {getCategoryLabel(item.category)}
+                    </span>
+                    <h4 className="font-black text-sm text-[#2d1f0e] mt-2 leading-tight">{item.name}</h4>
+                    <p className="text-[11px] font-medium text-amber-900/50 mt-0.5">{item.material_color || 'Standard Color'}</p>
                   </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-[#c8834a]">{bom.currency || 'USD'} {Number(d.unit_price ?? item.total_cost ?? 0).toFixed(2)}</p>
+                    <button className="text-[9px] font-black uppercase tracking-wider text-[#c8834a]/60 hover:text-[#c8834a] mt-2 bg-white px-1.5 py-0.5 rounded shadow-sm border border-slate-100">
+                      {expanded ? '▲ Close' : '▼ Edit'}
+                    </button>
+                  </div>
+                </div>
 
-                  {/* Expanded Content Details */}
-                  {expanded && (
-                    <div className="mt-4 pt-3 border-t border-amber-200/60 space-y-3 text-xs animate-fade-in" onClick={(e) => e.stopPropagation()}>
-                      <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border border-slate-100">
-                        <div>
-                          <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">DCM / Qty per garment</label>
+                {/* Expanded Content Details */}
+                {expanded && (
+                  <div className="mt-4 pt-3 border-t border-[#c8834a]/10 space-y-3 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+                    <div className="grid grid-cols-2 gap-2 bg-white p-2.5 rounded-xl border border-[#c8834a]/10">
+                      <div>
+                        <label className="text-[9px] font-black uppercase text-amber-900/60 block mb-1">Usage per Item</label>
+                        <div className="relative">
                           <input
                             type="number"
                             step="0.001"
                             value={d.dcm ?? item.qty_per_garment}
                             disabled={['approved', 'locked'].includes(bom.status)}
                             onChange={(e) => edit(item, 'dcm', e.target.value)}
-                            className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-[#faf6f0] font-bold text-xs outline-none"
+                            className="w-full pl-2 pr-6 py-1.5 rounded-lg border border-[#c8834a]/30 bg-[#faf6f0] font-black text-xs text-[#2d1f0e] outline-none focus:border-[#c8834a]"
                           />
+                          <span className="absolute right-2 top-1.5 text-[9px] font-black text-amber-900/40">{item.uom || 'pcs'}</span>
                         </div>
-                        <div>
-                          <label className="text-[9px] font-black uppercase text-slate-400 block mb-1">Unit Price ({bom.currency || 'USD'})</label>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black uppercase text-amber-900/60 block mb-1">Unit Price</label>
+                        <div className="relative">
+                          <span className="absolute left-2 top-1.5 text-[9px] font-black text-amber-900/40">{bom.currency || '$'}</span>
                           <input
                             type="number"
                             step="0.01"
                             value={d.unit_price ?? item.unit_price}
                             disabled={['approved', 'locked'].includes(bom.status)}
                             onChange={(e) => edit(item, 'unit_price', e.target.value)}
-                            className="w-full px-2 py-1.5 rounded-lg border border-amber-200 bg-[#faf6f0] font-bold text-xs outline-none"
+                            className="w-full pl-6 pr-2 py-1.5 rounded-lg border border-[#c8834a]/30 bg-[#faf6f0] font-black text-xs text-[#2d1f0e] outline-none focus:border-[#c8834a]"
                           />
                         </div>
                       </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-[#2d1f0e]/80 bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
-                        <div><b>UOM:</b> {item.uom || 'pcs'}</div>
-                        <div><b>Bulk Qty:</b> {Number(item.bulk_qty || 0).toFixed(3)}</div>
-                        <div className="col-span-2 flex items-center justify-between mt-1">
-                          <span>Confidence / Source:</span>
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-black ${item.dcm_confidence != null && item.dcm_confidence < 0.7 ? 'bg-red-100 text-red-700' : 'bg-slate-200 text-slate-700'}`}>
-                            {sourceLabel(item)}
-                          </span>
-                        </div>
-                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          /* View Mode 2: Table View */
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead>
-                <tr className="text-left text-[10px] uppercase text-slate-400 border-b">
-                  <th className="py-3 pr-4">Item</th>
-                  <th>Category</th>
-                  <th>DCM / Qty</th>
-                  <th>UOM</th>
-                  <th>Unit price</th>
-                  <th>Bulk qty</th>
-                  <th>Cost</th>
-                  <th>Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((item) => {
-                  const d = drafts[item.id] || {};
-                  return (
-                    <tr key={item.id} className="border-b last:border-0">
-                      <td className="py-3 pr-4">
-                        <b>{item.name}</b>
-                        <div className="text-[10px] text-slate-400">{item.material_color || '—'}</div>
-                      </td>
-                      <td>{item.category}</td>
-                      <td>
-                        <input type="number" step="0.001" value={d.dcm ?? item.qty_per_garment} disabled={['approved', 'locked'].includes(bom.status)} onChange={(e) => edit(item, 'dcm', e.target.value)} className="w-24 px-2 py-1.5 rounded-lg border font-bold" />
-                      </td>
-                      <td>{item.uom || '—'}</td>
-                      <td>
-                        <input type="number" step="0.01" value={d.unit_price ?? item.unit_price} disabled={['approved', 'locked'].includes(bom.status)} onChange={(e) => edit(item, 'unit_price', e.target.value)} className="w-24 px-2 py-1.5 rounded-lg border font-bold" />
-                      </td>
-                      <td>{Number(item.bulk_qty || 0).toFixed(3)}</td>
-                      <td>{Number(item.total_cost || 0).toFixed(2)}</td>
-                      <td>
-                        <span className={`px-2 py-1 rounded-full text-[9px] font-black ${item.dcm_confidence != null && item.dcm_confidence < 0.7 ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-600'}`}>{sourceLabel(item)}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
 
-        {Object.keys(drafts).length > 0 && (
-          <div className="mt-5 flex justify-end">
-            <button onClick={save} disabled={saving} className="px-5 py-2.5 rounded-xl bg-[#2d1f0e] text-white text-xs font-black shadow-md hover:bg-[#3d2b1a] transition-all">
-              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin inline mr-2" /> : <Save className="w-3.5 h-3.5 inline mr-2" />}
-              Save changes
-            </button>
-          </div>
-        )}
+                    <div className="flex items-center justify-between text-[10px] font-medium text-amber-900/70 bg-white/50 p-2 rounded-lg border border-[#c8834a]/5">
+                      <span><b>Unit:</b> {item.uom || 'pcs'}</span>
+                      <span><b>Total Required:</b> <span className="font-black text-[#c8834a]">{Number(item.bulk_qty || 0).toFixed(2)} {item.uom}</span></span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
       </SpotlightCard>
 
-      {/* Action Buttons: Confirm Cutting, Approve BOM, Reject BOM, Reopen BOM, Export */}
-      <div className="flex flex-wrap gap-2 justify-end items-center">
-        {cutting && ['draft', 'ready_for_review'].includes(bom.status) && (
-          <button onClick={() => action(() => apiConfirmCutting(token, id), 'Cutting confirmed; MD review is now enabled.')} className="px-4 py-2.5 rounded-xl bg-[#c8834a] text-white text-xs font-black hover:bg-[#b0703c]">
-            <PackageCheck className="w-4 h-4 inline mr-2" />
-            Confirm Cutting
-          </button>
-        )}
+      {/* Sticky Bottom Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-xl border-t border-[#c8834a]/15 shadow-[0_-10px_40px_rgba(200,131,74,0.05)] z-40">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          
+          <div className="flex-1 w-full sm:w-auto">
+            {hasDrafts && (
+              <p className="text-xs font-black text-[#c8834a] flex items-center gap-2">
+                <AlertCircle className="w-4 h-4"/> You have unsaved changes.
+              </p>
+            )}
+          </div>
 
-        {md && (bom.status === 'ready_for_review' || bom.status === 'draft') && (
-          <>
-            <button
-              onClick={() => {
-                if (!reason.trim()) {
-                  setToast({ type: 'error', msg: 'Please enter a rejection reason below.' });
-                  return;
-                }
-                action(() => apiRejectBom(token, id, reason), 'BOM rejected.');
-              }}
-              className="px-4 py-2.5 rounded-xl bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 text-xs font-black"
-            >
-              <XCircle className="w-4 h-4 inline mr-2" />
-              Reject BOM
-            </button>
-            <button
-              onClick={() => action(() => apiApproveBom(token, id, false), 'BOM approved successfully!')}
-              className="px-5 py-2.5 rounded-xl bg-green-600 text-white text-xs font-black hover:bg-green-700 shadow-md"
-            >
-              <CheckCircle2 className="w-4 h-4 inline mr-2" />
-              Approve BOM (POST /procurement/boms/{id}/approve)
-            </button>
-          </>
-        )}
+          <div className="flex flex-wrap items-center justify-end gap-3 w-full sm:w-auto">
+            {hasDrafts && (
+              <button onClick={save} disabled={saving} className="px-6 py-3 rounded-2xl bg-[#2d1f0e] text-white text-xs font-black shadow-lg hover:bg-[#1a1208] transition-all flex items-center gap-2">
+                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                Save Changes
+              </button>
+            )}
 
-        {bom.status === 'rejected' && md && (
-          <button onClick={() => action(() => apiReopenBom(token, id), 'BOM reopened.')} className="px-4 py-2.5 rounded-xl bg-amber-100 text-amber-800 text-xs font-black hover:bg-amber-200">
-            <RotateCcw className="w-4 h-4 inline mr-2" />
-            Reopen BOM (POST /procurement/boms/{id}/reopen)
-          </button>
-        )}
+            {!hasDrafts && cutting && ['draft', 'ready_for_review'].includes(bom.status) && (
+              <button onClick={() => action(() => apiConfirmCutting(token, id), 'Cutting confirmed!')} className="px-6 py-3 rounded-2xl bg-[#c8834a] text-white text-xs font-black hover:bg-[#b0703c] transition-all flex items-center gap-2 shadow-lg shadow-[#c8834a]/20">
+                <PackageCheck className="w-4 h-4" /> Confirm Cutting
+              </button>
+            )}
 
-        {md && (
-          <button onClick={() => action(() => apiExportBom(token, id), 'BOM PDF export created.')} className="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-black hover:bg-slate-800">
-            <FileDown className="w-4 h-4 inline mr-2" />
-            Export PDF
-          </button>
-        )}
-      </div>
+            {!hasDrafts && md && (bom.status === 'ready_for_review' || bom.status === 'draft') && (
+              <>
+                <button
+                  onClick={() => setShowRejectModal(true)}
+                  className="px-5 py-3 rounded-2xl bg-[#faebeb] text-[#752626] border border-[#752626]/20 hover:bg-[#f5dada] text-xs font-black transition-all"
+                >
+                  Reject BOM
+                </button>
+                <button
+                  onClick={() => action(() => apiApproveBom(token, id, false), 'BOM approved successfully!')}
+                  className="px-6 py-3 rounded-2xl bg-[#c8834a] text-white text-xs font-black hover:bg-[#b0703c] shadow-lg shadow-[#c8834a]/20 transition-all flex items-center gap-2"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Approve BOM
+                </button>
+              </>
+            )}
 
-      {(bom.status === 'ready_for_review' || bom.status === 'draft') && md && (
-        <div className="flex items-center gap-2">
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Rejection reason (only required when clicking Reject BOM)"
-            className="flex-1 px-3.5 py-2.5 rounded-xl border border-amber-200 text-xs font-bold text-[#2d1f0e] bg-white outline-none focus:border-[#c8834a]"
-          />
-          <Lock className="w-4 h-4 text-slate-300" />
+            {!hasDrafts && bom.status === 'rejected' && md && (
+              <button onClick={() => action(() => apiReopenBom(token, id), 'BOM reopened.')} className="px-6 py-3 rounded-2xl bg-[#faf6f0] text-[#c8834a] border border-[#c8834a]/30 text-xs font-black hover:bg-amber-50 transition-all flex items-center gap-2">
+                <RotateCcw className="w-4 h-4" /> Reopen BOM
+              </button>
+            )}
+            
+            {!hasDrafts && md && (
+              <button onClick={() => action(() => apiExportBom(token, id), 'Exporting...')} className="px-6 py-3 rounded-2xl bg-[#faf6f0] text-[#c8834a] border border-[#c8834a]/30 hover:bg-amber-50 transition-all text-xs font-black flex items-center gap-2">
+                <FileDown className="w-4 h-4" /> Download PDF
+              </button>
+            )}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
 function Metric({ title, value }) {
   return (
-    <div className="p-4 rounded-2xl bg-white border border-slate-200">
-      <p className="text-[10px] font-black uppercase text-slate-400">{title}</p>
-      <p className="text-xl font-black mt-1">{value}</p>
+    <div className="p-4 rounded-2xl bg-white border border-[#c8834a]/15">
+      <p className="text-[10px] font-black uppercase text-amber-900/50">{title}</p>
+      <p className="text-xl font-black mt-1 text-[#2d1f0e]">{value}</p>
     </div>
   );
 }

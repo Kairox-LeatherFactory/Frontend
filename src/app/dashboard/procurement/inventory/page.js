@@ -5,243 +5,120 @@ import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Package, AlertTriangle, CheckCircle2,
   AlertCircle, ShoppingCart, TrendingDown, Warehouse,
-  ArrowRight, ChevronDown, ChevronUp, FileSpreadsheet,
-  Loader2, X, Upload, Search, RefreshCw, Layers
+  ArrowRight, FileSpreadsheet, Loader2, XCircle, Search, RefreshCw, Scissors, Paperclip, Ruler, Box
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
 import {
   apiInventoryPreview, apiInventoryCommit,
-  apiGetInventoryCheck, apiGetBomInventoryCheck, apiGetInventoryChecks,
+  apiGetInventoryChecks,
   apiRunInventoryCheck, apiGetInventoryItems, apiGeneratePOs, IDS
 } from '../lib/api';
 
+const CATEGORY_MAP = {
+  main_material: { label: 'Leather & Main', icon: Scissors },
+  sub_material: { label: 'Sub Materials', icon: Paperclip },
+  lining: { label: 'Lining & Inner', icon: Scissors },
+  thread: { label: 'Threads', icon: Ruler },
+  accessory: { label: 'Hardware', icon: Paperclip },
+  manufacturing: { label: 'Labor & Mfg', icon: Box },
+  packaging: { label: 'Packaging', icon: Box },
+  fob_charge: { label: 'Other', icon: Box }
+};
+const getCategoryIcon = (key) => CATEGORY_MAP[key]?.icon || Box;
+
 function InventoryPreviewViewer({ data }) {
   const [showDropped, setShowDropped] = useState(false);
-  const [showKept, setShowKept] = useState(false);
   const [showWarnings, setShowWarnings] = useState(false);
   if (!data) return null;
 
-  if (data.raw_count !== undefined || data.kept !== undefined || data.dropped !== undefined || data.rows !== undefined) {
-    const dropped = Array.isArray(data.dropped) ? data.dropped : [];
-    const keptRows = Array.isArray(data.rows) ? data.rows : [];
-    const warnings = Array.isArray(data.warnings) ? data.warnings : [];
-    
-    const droppedCount = dropped.length;
-    const keptCount = keptRows.length > 0 ? keptRows.length : (data.kept ?? 0);
-    const rawCount = data.raw_count ?? (droppedCount + keptCount);
-    const keptPct = rawCount > 0 ? Math.round((keptCount / rawCount) * 100) : 0;
-    
-    const formatHeader = (key) => key.replace(/_/g, ' ').toUpperCase();
+  const dropped = Array.isArray(data.dropped) ? data.dropped : [];
+  const keptRows = Array.isArray(data.rows) ? data.rows : [];
+  const warnings = Array.isArray(data.warnings) ? data.warnings : [];
+  
+  const droppedCount = dropped.length;
+  const keptCount = keptRows.length > 0 ? keptRows.length : (data.kept ?? 0);
+  const rawCount = data.raw_count ?? (droppedCount + keptCount);
+  const keptPct = rawCount > 0 ? Math.round((keptCount / rawCount) * 100) : 0;
 
-    return (
-      <div className="space-y-5">
-        {/* Summary Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="bg-white rounded-xl border border-slate-200 p-4 text-center shadow-sm">
-            <p className="text-2xl font-black text-slate-800">{rawCount.toLocaleString()}</p>
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mt-1">Total Rows</p>
-          </div>
-          <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-4 text-center shadow-sm">
-            <p className="text-2xl font-black text-emerald-700">{keptCount.toLocaleString()}</p>
-            <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mt-1">✓ Kept ({keptPct}%)</p>
-          </div>
-          <div className="bg-amber-50 rounded-xl border border-amber-200 p-4 text-center shadow-sm">
-            <p className="text-2xl font-black text-amber-700">{droppedCount.toLocaleString()}</p>
-            <p className="text-xs font-bold text-amber-600 uppercase tracking-wider mt-1">⚠ Dropped</p>
-          </div>
+  return (
+    <div className="space-y-6">
+      {/* Summary Stats */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-[#faf6f0] rounded-2xl border border-amber-900/10 p-4 text-center">
+          <p className="text-2xl font-black text-[#2d1f0e]">{rawCount.toLocaleString()}</p>
+          <p className="text-[10px] font-black text-amber-900/50 uppercase tracking-wider mt-1">Total Rows</p>
         </div>
-
-        {/* Progress bar */}
-        <div>
-          <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
-            <span>Import Coverage</span>
-            <span>{keptPct}% stock rows</span>
-          </div>
-          <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
-            <div className="h-full bg-emerald-500 transition-all duration-500" style={{ width: `${keptPct}%` }} />
-          </div>
+        <div className="bg-[#f0faeb] rounded-2xl border border-[#347526]/20 p-4 text-center">
+          <p className="text-2xl font-black text-[#347526]">{keptCount.toLocaleString()}</p>
+          <p className="text-[10px] font-black text-[#347526]/70 uppercase tracking-wider mt-1">✓ Kept ({keptPct}%)</p>
         </div>
-
-        {/* Dropped Rows Toggle */}
-        {droppedCount > 0 && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowDropped(v => !v)}
-              className="flex items-center gap-2 text-xs font-black text-amber-700 bg-amber-50 border border-amber-200 px-4 py-2 rounded-lg hover:bg-amber-100 transition-colors cursor-pointer"
-            >
-              {showDropped ? '▲ Hide' : '▼ Show'} {droppedCount} Dropped Rows (non-stock / empty)
-            </button>
-
-            {showDropped && (
-              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 max-h-64 overflow-y-auto">
-                <table className="min-w-full text-left text-xs bg-white">
-                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider sticky top-0">
-                    <tr>
-                      <th className="px-4 py-2 border-b border-slate-200 w-16">Row #</th>
-                      <th className="px-4 py-2 border-b border-slate-200">Description</th>
-                      <th className="px-4 py-2 border-b border-slate-200 w-32">Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {dropped.map((d, i) => (
-                      <tr key={i} className="hover:bg-amber-50">
-                        <td className="px-4 py-1.5 text-slate-400 font-mono">{d.row}</td>
-                        <td className="px-4 py-1.5 text-slate-600 truncate max-w-xs" title={d.description}>{d.description}</td>
-                        <td className="px-4 py-1.5">
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">
-                            {d.reason}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Kept Rows Toggle */}
-        {keptRows.length > 0 && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowKept(v => !v)}
-              className="flex items-center gap-2 text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-4 py-2 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
-            >
-              {showKept ? '▲ Hide' : '▼ Show'} {keptRows.length} Kept Rows (valid stock items)
-            </button>
-
-            {showKept && (
-              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 max-h-64 overflow-y-auto shadow-sm">
-                <table className="min-w-full text-left text-xs bg-white">
-                  <thead className="bg-slate-100 text-slate-900 font-extrabold uppercase tracking-wider sticky top-0 z-10 shadow-sm">
-                    <tr>
-                      {Object.keys(keptRows[0] || {}).map(k => (
-                        <th key={k} className="px-4 py-2 border-b border-slate-300 whitespace-nowrap text-slate-800">
-                          {formatHeader(k)}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {keptRows.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-100 transition-colors">
-                        {Object.keys(keptRows[0] || {}).map(k => (
-                          <td key={k} className="px-4 py-1.5 text-slate-900 font-semibold whitespace-nowrap">
-                            {k === 'qty_on_hand' || k === 'quantity' || k === 'qty' ? (
-                              <span className="font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded">
-                                {row[k] !== null && row[k] !== undefined ? Number(row[k]).toLocaleString() : '-'}
-                              </span>
-                            ) : k === 'rate' || k === 'unit_price' || k === 'price' ? (
-                              <span className="font-extrabold text-slate-900">
-                                {row[k] ? `₹${Number(row[k]).toFixed(2)}` : '-'}
-                              </span>
-                            ) : k === 'normalized_key' ? (
-                              <span className="font-mono text-[10px] text-slate-700 font-bold">
-                                {String(row[k] ?? '-')}
-                              </span>
-                            ) : (
-                              <span className="truncate max-w-[200px] block font-semibold text-slate-900" title={String(row[k] ?? '-')}>
-                                {String(row[k] ?? '-')}
-                              </span>
-                            )}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Warnings Toggle */}
-        {warnings.length > 0 && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setShowWarnings(v => !v)}
-              className="flex items-center gap-2 text-xs font-black text-blue-700 bg-blue-50 border border-blue-200 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"
-            >
-              {showWarnings ? '▲ Hide' : '▼ Show'} {warnings.length} Warnings
-            </button>
-
-            {showWarnings && (
-              <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 max-h-64 overflow-y-auto shadow-sm">
-                <table className="min-w-full text-left text-xs bg-white">
-                  <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider sticky top-0">
-                    <tr>
-                      <th className="px-4 py-2 border-b border-slate-200">Warning Details</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {warnings.map((w, i) => (
-                      <tr key={i} className="hover:bg-blue-50">
-                        <td className="px-4 py-2 text-slate-700">{String(w)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+        <div className="bg-[#faebeb] rounded-2xl border border-[#752626]/20 p-4 text-center">
+          <p className="text-2xl font-black text-[#752626]">{droppedCount.toLocaleString()}</p>
+          <p className="text-[10px] font-black text-[#752626]/70 uppercase tracking-wider mt-1">⚠ Dropped</p>
+        </div>
       </div>
-    );
-  }
 
-  return (
-    <div className="text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap">
-      {JSON.stringify(data, null, 2)}
+      <div>
+        <div className="flex justify-between text-[10px] font-black text-amber-900/50 uppercase mb-2">
+          <span>Import Coverage</span>
+          <span>{keptPct}% valid stock</span>
+        </div>
+        <div className="h-3 bg-[#faf6f0] rounded-full overflow-hidden border border-amber-900/10">
+          <div className="h-full bg-[#347526] transition-all duration-500" style={{ width: `${keptPct}%` }} />
+        </div>
+      </div>
+
+      {droppedCount > 0 && (
+        <div>
+          <button
+            type="button"
+            onClick={() => setShowDropped(v => !v)}
+            className="flex items-center gap-2 text-xs font-black text-[#752626] bg-[#faebeb] px-4 py-2 rounded-xl hover:bg-[#f5dada] transition-colors cursor-pointer w-full justify-center"
+          >
+            {showDropped ? '▲ Hide' : '▼ Show'} {droppedCount} Dropped Rows
+          </button>
+
+          {showDropped && (
+            <div className="mt-3 overflow-y-auto max-h-48 space-y-2 pr-2">
+              {dropped.map((d, i) => (
+                <div key={i} className="p-3 bg-[#faebeb]/50 rounded-xl border border-[#752626]/10 flex justify-between items-center text-xs">
+                  <div>
+                    <span className="font-mono text-[#752626]/50 mr-3 text-[10px]">Row {d.row}</span>
+                    <span className="font-bold text-[#752626]">{d.description || 'Empty Row'}</span>
+                  </div>
+                  <span className="text-[10px] font-black px-2 py-1 rounded bg-white text-[#752626] shadow-sm">
+                    {d.reason}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
-  );
-}
-
-const STATUS_BADGE = {
-  sufficient: { label: 'Sufficient', color: '#16a34a', bg: '#f0fdf4', border: 'rgba(22,163,74,0.2)', icon: CheckCircle2 },
-  partial: { label: 'Partial Stock', color: '#d97706', bg: '#fffbeb', border: 'rgba(217,119,6,0.2)', icon: AlertTriangle },
-  out_of_stock: { label: 'Out of Stock', color: '#dc2626', bg: '#fef2f2', border: 'rgba(220,38,38,0.2)', icon: AlertCircle },
-};
-
-function StockBadge({ status }) {
-  const cfg = STATUS_BADGE[status] || STATUS_BADGE.out_of_stock;
-  const Icon = cfg.icon;
-  return (
-    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black"
-      style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
-      <Icon className="w-3 h-3" /> {cfg.label}
-    </span>
   );
 }
 
 export default function InventoryPage() {
   const router = useRouter();
   const { token } = useAuth();
-
-  // Active Tab: 'check' | 'master'
   const [activeTab, setActiveTab] = useState('check');
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
 
-  // Stage 4 Data States
   const [inventoryCheck, setInventoryCheck] = useState(null);
   const [inventoryItems, setInventoryItems] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [genLoading, setGenLoading] = useState(false);
 
-  // ─── Excel Upload States ───
+  // Excel Upload
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [previewData, setPreviewData] = useState(null);
   const [selectedFile, setSelectedFile] = useState(null);
   const [fileName, setFileName] = useState('');
   const [uploadLoading, setUploadLoading] = useState(false);
   const [commitLoading, setCommitLoading] = useState(false);
-  const [uploadError, setUploadError] = useState('');
-  const [commitSuccess, setCommitSuccess] = useState('');
   const fileInputRef = useRef(null);
 
   const loadData = async () => {
@@ -249,410 +126,297 @@ export default function InventoryPage() {
     try {
       const [checkRes, itemsRes] = await Promise.all([
         apiRunInventoryCheck(token, IDS.bom_clermont),
-        apiGetInventoryItems(token),
-        apiGetBomInventoryCheck(token, IDS.bom_clermont).catch(() => null),
-        apiGetInventoryCheck(token, IDS.check_clermont).catch(() => null),
-        apiGetInventoryChecks(token).catch(() => null)
+        apiGetInventoryItems(token)
       ]);
       setInventoryCheck(checkRes);
       setInventoryItems(itemsRes.items || []);
     } catch (err) {
-      console.error('Failed to load inventory check:', err);
-      showToast('error', `Failed to load inventory: ${err.message}`);
+      setToast({ type: 'error', msg: 'Failed to load inventory data.' });
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    loadData();
-  }, [token]);
+  useEffect(() => { loadData(); }, []);
 
   const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (!file) return;
     setFileName(file.name);
     setSelectedFile(file);
-    setUploadError('');
-    setCommitSuccess('');
     setUploadLoading(true);
-
     try {
-      const data = await apiInventoryPreview(token, file);
-      setPreviewData(data);
+      const preview = await apiInventoryPreview(token, file);
+      setPreviewData(preview);
       setShowPreviewModal(true);
     } catch (err) {
-      setUploadError(`Preview failed: ${err.message}`);
+      setToast({ type: 'error', msg: `Upload failed: ${err.message}` });
     } finally {
       setUploadLoading(false);
-      e.target.value = null;
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleCommit = async () => {
     if (!selectedFile) return;
     setCommitLoading(true);
-    setUploadError('');
     try {
       await apiInventoryCommit(token, selectedFile);
-      setCommitSuccess('Import committed successfully! Data saved to database.');
-      showToast('success', 'Import committed successfully!');
+      setToast({ type: 'success', msg: 'Inventory imported successfully!' });
       setShowPreviewModal(false);
       await loadData();
     } catch (err) {
-      setUploadError(`Commit failed: ${err.message}`);
+      setToast({ type: 'error', msg: `Commit failed: ${err.message}` });
     } finally {
       setCommitLoading(false);
     }
-  };
-
-  const showToast = (type, msg) => {
-    setToast({ type, msg });
-    setTimeout(() => setToast(null), 4000);
   };
 
   const handleGeneratePOs = async () => {
     setGenLoading(true);
     try {
       await apiGeneratePOs(token, IDS.bom_clermont);
-      showToast('success', 'Generated Supplier Purchase Orders successfully!');
+      setToast({ type: 'success', msg: 'Purchase Orders auto-generated successfully!' });
       setTimeout(() => router.push('/dashboard/procurement/po'), 1000);
     } catch (err) {
-      showToast('error', `PO Generation failed: ${err.message}`);
+      setToast({ type: 'error', msg: `PO Generation failed: ${err.message}` });
     } finally {
       setGenLoading(false);
     }
   };
 
-  // Filtered Stock Master Items
   const filteredItems = useMemo(() => {
     return inventoryItems.filter(item => {
       const q = searchQuery.toLowerCase();
       const desc = (item.description || '').toLowerCase();
       const key = (item.normalized_key || '').toLowerCase();
-      const color = (item.color || '').toLowerCase();
-      return desc.includes(q) || key.includes(q) || color.includes(q);
+      return desc.includes(q) || key.includes(q);
     });
   }, [inventoryItems, searchQuery]);
 
-  return (
-    <div className="space-y-6 animate-fade-in">
+  if (loading) return <div className="p-12 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-[#c8834a]" /></div>;
 
-      {/* ─── TOAST ─── */}
+  return (
+    <div className="space-y-6 max-w-6xl mx-auto pb-32 animate-fade-in">
+
       {toast && (
-        <div className="fixed top-6 right-6 z-[999] max-w-sm animate-fade-in">
-          <div className="flex items-start gap-3 p-4 rounded-2xl shadow-xl font-semibold text-sm"
-            style={{
-              background: toast.type === 'success' ? '#f0fdf4' : toast.type === 'error' ? '#fef2f2' : '#fff9f0',
-              border: `1px solid ${toast.type === 'success' ? 'rgba(22,163,74,0.25)' : toast.type === 'error' ? 'rgba(220,38,38,0.2)' : 'rgba(200,131,74,0.3)'}`,
-              color: toast.type === 'success' ? '#166534' : toast.type === 'error' ? '#991b1b' : '#92400e',
-            }}>
-            {toast.type === 'success' ? <CheckCircle2 className="w-4 h-4 flex-shrink-0 mt-0.5" /> : <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />}
-            <p>{toast.msg}</p>
-          </div>
+        <div className={`p-4 rounded-2xl text-xs font-black flex items-center justify-between ${toast.type === 'error' ? 'bg-[#faebeb] text-[#752626] border border-[#752626]/20' : 'bg-[#f0faeb] text-[#347526] border border-[#347526]/20'}`}>
+          <span>{toast.msg}</span>
+          <button onClick={() => setToast(null)} className="opacity-50 hover:opacity-100 transition-opacity">✕</button>
         </div>
       )}
 
-      {/* ─── HEADER ─── */}
+      {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <Link href="/dashboard/procurement" className="flex items-center gap-1.5 text-xs font-bold mb-3 w-fit transition-opacity hover:opacity-70" style={{ color: '#9a7a5a' }}>
-            <ArrowLeft className="w-3.5 h-3.5" /> All Submissions
+          <Link href="/dashboard/procurement" className="flex items-center gap-2 text-xs font-black text-amber-900/60 hover:text-[#c8834a] transition-colors mb-4 w-fit">
+            <ArrowLeft className="w-4 h-4" /> Back to Orders
           </Link>
-          <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>
-            Procurement · Stage 4 — Inventory Check & Master
-          </p>
-          <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Stock vs. Demand Engine</h1>
-          <p className="font-medium mt-0.5" style={{ color: '#9a7a5a' }}>
-            Calculate BOM shortfalls against stock on hand. Generate Purchase Orders for missing raw materials.
+          <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Procurement · Phase 4</p>
+          <h1 className="text-3xl font-black mt-1 text-[#2d1f0e]">Inventory Control</h1>
+          <p className="text-xs text-amber-900/60 mt-1 font-medium max-w-xl">
+            Check missing materials against warehouse stock before purchasing. Upload stock reports from external systems.
           </p>
         </div>
         
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={loadData}
-            className="p-2.5 rounded-xl bg-white border border-amber-200/60 text-[#2d1f0e] hover:bg-amber-50 transition-colors"
-            title="Refresh Stock Data"
-          >
+        <div className="flex items-center gap-3">
+          <button onClick={loadData} className="p-3 rounded-2xl bg-[#faf6f0] text-[#c8834a] hover:bg-amber-50 transition-colors">
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
           
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xls,.csv"
-            onChange={handleFileUpload}
-            className="hidden"
-            id="inventory-file-upload"
-          />
+          <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleFileUpload} className="hidden" />
           <button
-            type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadLoading}
-            className="h-11 py-0 px-4 flex items-center gap-2 font-bold text-xs rounded-xl transition-all active:scale-95 disabled:opacity-50"
-            style={{
-              background: 'transparent',
-              border: '1px solid #c8834a',
-              color: '#c8834a'
-            }}
+            className="px-5 py-3 rounded-2xl bg-white border border-[#c8834a]/30 text-[#c8834a] text-xs font-black flex items-center gap-2 hover:bg-amber-50 transition-all shadow-sm"
           >
-            {uploadLoading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Previewing...</>
-            ) : (
-              <><FileSpreadsheet className="w-4 h-4" /> Upload Excel Spreadsheet</>
-            )}
+            {uploadLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+            Import Stock List
           </button>
         </div>
       </div>
 
-      {/* ─── TAB BAR ─── */}
-      <div className="flex items-center gap-2 border-b border-amber-900/10 pb-2">
+      {/* TABS */}
+      <div className="flex items-center gap-2 border-b border-[#c8834a]/10 pb-2 mt-4">
         <button
           onClick={() => setActiveTab('check')}
-          className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 transition-all ${
-            activeTab === 'check'
-              ? 'bg-[#2d1f0e] text-white shadow-sm'
-              : 'text-slate-600 hover:bg-amber-100/50'
+          className={`px-5 py-2.5 rounded-2xl font-black text-xs flex items-center gap-2 transition-all ${
+            activeTab === 'check' ? 'bg-[#c8834a] text-white shadow-md shadow-[#c8834a]/20' : 'text-amber-900/60 hover:bg-[#faf6f0]'
           }`}
         >
-          <Warehouse className="w-3.5 h-3.5" /> Stock vs. Demand Check
+          <Warehouse className="w-4 h-4" /> Material Check
         </button>
         <button
           onClick={() => setActiveTab('master')}
-          className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 transition-all ${
-            activeTab === 'master'
-              ? 'bg-[#2d1f0e] text-white shadow-sm'
-              : 'text-slate-600 hover:bg-amber-100/50'
+          className={`px-5 py-2.5 rounded-2xl font-black text-xs flex items-center gap-2 transition-all ${
+            activeTab === 'master' ? 'bg-[#c8834a] text-white shadow-md shadow-[#c8834a]/20' : 'text-amber-900/60 hover:bg-[#faf6f0]'
           }`}
         >
-          <Package className="w-3.5 h-3.5" /> Stock Master Directory ({inventoryItems.length})
+          <Package className="w-4 h-4" /> Warehouse Stock
         </button>
       </div>
 
-      {/* ─── TAB 1: STOCK VS DEMAND CHECK ─── */}
+      {/* TAB 1: MATERIAL CHECK */}
       {activeTab === 'check' && (
         <div className="space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {[
-              { label: 'Total BOM Lines', value: inventoryCheck?.summary?.lines_total || 6, icon: Package, color: '#9a7a5a' },
-              { label: 'Sufficient Stock', value: inventoryCheck?.summary?.sufficient || 3, icon: CheckCircle2, color: '#16a34a' },
-              { label: 'Partial Stock', value: inventoryCheck?.summary?.partial || 1, icon: TrendingDown, color: '#d97706' },
-              { label: 'Out of Stock', value: inventoryCheck?.summary?.out_of_stock || 2, icon: AlertCircle, color: '#dc2626' },
-            ].map(({ label, value, icon: Icon, color }) => (
-              <SpotlightCard key={label} className="p-4 bg-white rounded-2xl shadow-sm border border-amber-900/10" spotlightColor="rgba(200,131,74,0.05)">
-                <div className="flex items-center gap-2 mb-1">
-                  <Icon className="w-4 h-4" style={{ color }} />
-                  <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>{label}</p>
-                </div>
-                <p className="text-2xl font-black" style={{ color }}>{value}</p>
-              </SpotlightCard>
-            ))}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <Metric title="Total Lines" value={inventoryCheck?.summary?.lines_total || 6} icon={Package} />
+            <Metric title="In Stock" value={inventoryCheck?.summary?.sufficient || 3} icon={CheckCircle2} />
+            <Metric title="Partial" value={inventoryCheck?.summary?.partial || 1} icon={TrendingDown} />
+            <Metric title="Missing" value={inventoryCheck?.summary?.out_of_stock || 2} icon={AlertCircle} />
           </div>
 
-          {/* BOM Stock Check Card */}
-          <SpotlightCard className="bg-white rounded-3xl shadow-xl overflow-hidden border border-amber-900/15" spotlightColor="rgba(200,131,74,0.04)">
-            <div className="p-5 border-b border-amber-900/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#faf6f0]">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-200/60 text-amber-900">
-                    BOGGI MILANO · #BOG-SS27-001
-                  </span>
-                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-red-100 text-red-700">
-                    Badge: {inventoryCheck?.summary?.badge || 'out_of_stock'}
-                  </span>
-                </div>
-                <h3 className="text-xl font-black text-[#2d1f0e] mt-1">CLERMONT BOM Inventory Audit</h3>
-                <p className="text-xs text-slate-500 font-semibold">
-                  Total Shortfall Value: <b className="text-red-700">₹{inventoryCheck?.summary?.shortfall_value?.toLocaleString() || '1,247.60'} INR</b>
-                </p>
-              </div>
-
-              <button
-                onClick={handleGeneratePOs}
-                disabled={genLoading}
-                className="h-10 px-5 rounded-xl font-black text-xs text-white flex items-center gap-2 transition-all hover:shadow-lg active:scale-95 disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
-              >
-                {genLoading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Generating POs...</>
-                ) : (
-                  <><ShoppingCart className="w-4 h-4" /> Auto-Generate Supplier POs <ArrowRight className="w-3.5 h-3.5" /></>
-                )}
-              </button>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-5 rounded-3xl border border-[#c8834a]/20 shadow-sm">
+            <div>
+              <p className="text-[10px] font-black uppercase text-[#c8834a] mb-1">Target BOM: CLERMONT SS27</p>
+              <h3 className="text-xl font-black text-[#2d1f0e]">Material Shortfalls</h3>
+              <p className="text-xs font-bold text-amber-900/60 mt-0.5">Missing materials required for production</p>
             </div>
+            <button
+              onClick={handleGeneratePOs}
+              disabled={genLoading}
+              className="px-6 py-3 rounded-2xl bg-[#c8834a] text-white text-xs font-black flex items-center gap-2 hover:bg-[#b0703c] transition-all shadow-lg shadow-[#c8834a]/20 disabled:opacity-50"
+            >
+              {genLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ShoppingCart className="w-4 h-4" />}
+              Generate Supplier POs <ArrowRight className="w-4 h-4 ml-1" />
+            </button>
+          </div>
 
-            {/* Inventory Line Items Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs font-semibold">
-                <thead>
-                  <tr className="font-black uppercase tracking-wider bg-[#faf6f0] text-slate-600 border-b border-amber-900/10">
-                    <th className="p-3.5 pl-6">Category / Material</th>
-                    <th className="p-3.5">Color</th>
-                    <th className="p-3.5">Required</th>
-                    <th className="p-3.5">Available (Stock)</th>
-                    <th className="p-3.5">Reserved</th>
-                    <th className="p-3.5">Shortfall Qty</th>
-                    <th className="p-3.5">Stock Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {inventoryCheck?.lines?.map((line) => (
-                    <tr key={line.bom_item_id} className="hover:bg-amber-50/30 transition-colors">
-                      <td className="p-3.5 pl-6">
-                        <p className="font-black text-[#2d1f0e]">{line.name}</p>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase">{line.category}</p>
-                      </td>
-                      <td className="p-3.5 text-slate-600">{line.material_color || 'BLACK'}</td>
-                      <td className="p-3.5 font-mono font-bold text-slate-900">{line.required_qty} {line.uom}</td>
-                      <td className="p-3.5 font-mono text-slate-700">{line.available_qty} {line.uom}</td>
-                      <td className="p-3.5 font-mono text-slate-700">{line.reserved_for_this_bom} {line.uom}</td>
-                      <td className="p-3.5 font-mono font-black" style={{ color: line.shortfall_qty > 0 ? '#dc2626' : '#16a34a' }}>
-                        {line.shortfall_qty > 0 ? `−${line.shortfall_qty} ${line.uom}` : '✓ 0'}
-                      </td>
-                      <td className="p-3.5">
-                        <StockBadge status={line.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {inventoryCheck?.lines?.map((line) => {
+              const Icon = getCategoryIcon(line.category);
+              const missing = line.shortfall_qty > 0;
+              return (
+                <SpotlightCard key={line.bom_item_id} className={`p-5 rounded-3xl border transition-all ${missing ? 'bg-white border-[#c8834a]/30 shadow-md shadow-[#c8834a]/5' : 'bg-[#faf6f0]/50 border-transparent opacity-75 hover:opacity-100'}`}>
+                  <div className="flex justify-between items-start gap-3 mb-4">
+                    <div className="flex items-start gap-3">
+                      <div className={`p-2.5 rounded-xl ${missing ? 'bg-[#faebeb] text-[#752626]' : 'bg-white text-[#c8834a]'}`}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-sm text-[#2d1f0e] leading-snug">{line.name}</h4>
+                        <p className="text-[11px] font-bold text-amber-900/50 mt-0.5">{line.material_color || 'Standard'}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div className="p-2.5 rounded-xl bg-[#faf6f0] border border-[#c8834a]/10">
+                      <p className="text-[9px] font-black uppercase text-amber-900/40">Required</p>
+                      <p className="font-black text-xs text-[#2d1f0e]">{line.required_qty} {line.uom}</p>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-[#faf6f0] border border-[#c8834a]/10">
+                      <p className="text-[9px] font-black uppercase text-amber-900/40">In Stock</p>
+                      <p className="font-black text-xs text-[#2d1f0e]">{line.available_qty} {line.uom}</p>
+                    </div>
+                  </div>
 
-            {/* Excluded Non-Material Charges */}
-            {inventoryCheck?.excluded && (
-              <div className="p-4 bg-slate-50 border-t border-slate-200 text-xs font-semibold text-slate-600">
-                <p className="font-black uppercase text-[10px] text-slate-400 mb-1">Excluded Non-Material Items</p>
-                <div className="flex gap-4">
-                  {inventoryCheck.excluded.map(ex => (
-                    <span key={ex.bom_item_id} className="px-2 py-1 rounded bg-slate-200 text-slate-700 font-mono text-[10px]">
-                      {ex.name} ({ex.category})
+                  <div className={`flex items-center justify-between p-3 rounded-xl border ${missing ? 'bg-[#faebeb]/50 border-[#752626]/20' : 'bg-[#f0faeb]/50 border-[#347526]/20'}`}>
+                    <span className={`text-[10px] font-black uppercase ${missing ? 'text-[#752626]' : 'text-[#347526]'}`}>
+                      {missing ? 'Missing Amount' : 'Fully Covered'}
                     </span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </SpotlightCard>
+                    <span className={`font-black ${missing ? 'text-[#752626] text-lg' : 'text-[#347526]'}`}>
+                      {missing ? `${line.shortfall_qty} ${line.uom}` : '✓'}
+                    </span>
+                  </div>
+                </SpotlightCard>
+              );
+            })}
+          </div>
         </div>
       )}
 
-      {/* ─── TAB 2: STOCK MASTER DIRECTORY ─── */}
+      {/* TAB 2: WAREHOUSE STOCK */}
       {activeTab === 'master' && (
-        <div className="space-y-4">
-          {/* Search bar */}
-          <div className="flex items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-amber-900/10">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search inventory items by description, normalized key, or color..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full h-10 pl-9 pr-4 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30"
-              />
-            </div>
-            <span className="text-xs font-bold text-slate-500">
-              Showing {filteredItems.length} of {inventoryItems.length} items
+        <div className="space-y-6">
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-[#c8834a]/50" />
+            <input
+              type="text"
+              placeholder="Search warehouse stock by name or item code..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-12 pr-4 py-4 rounded-3xl border border-[#c8834a]/20 bg-white font-bold text-sm text-[#2d1f0e] outline-none focus:border-[#c8834a] shadow-sm"
+            />
+            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xs font-black text-[#c8834a] bg-[#faf6f0] px-3 py-1.5 rounded-xl">
+              {filteredItems.length} items
             </span>
           </div>
 
-          {/* Master Table */}
-          <div className="bg-white rounded-3xl shadow-sm border border-amber-900/10 overflow-hidden">
-            <table className="w-full text-left text-xs font-semibold">
-              <thead>
-                <tr className="bg-[#faf6f0] text-slate-600 font-black uppercase border-b border-amber-900/10">
-                  <th className="p-3.5 pl-6">Description</th>
-                  <th className="p-3.5">Normalized Key</th>
-                  <th className="p-3.5">Color</th>
-                  <th className="p-3.5">UOM</th>
-                  <th className="p-3.5">Qty on Hand</th>
-                  <th className="p-3.5">Unit Rate (INR)</th>
-                  <th className="p-3.5">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredItems.map(item => (
-                  <tr key={item.id} className="hover:bg-amber-50/30 transition-colors">
-                    <td className="p-3.5 pl-6 font-black text-[#2d1f0e]">{item.description}</td>
-                    <td className="p-3.5 font-mono text-[11px] text-slate-600">{item.normalized_key}</td>
-                    <td className="p-3.5 text-slate-700">{item.color}</td>
-                    <td className="p-3.5 font-mono text-slate-700">{item.uom}</td>
-                    <td className="p-3.5 font-mono font-black" style={{ color: item.qty_on_hand > 0 ? '#16a34a' : '#dc2626' }}>
-                      {item.qty_on_hand?.toLocaleString()}
-                    </td>
-                    <td className="p-3.5 font-mono font-bold text-slate-900">₹{item.rate?.toFixed(2)}</td>
-                    <td className="p-3.5">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        Active Stock
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {filteredItems.map(item => (
+              <SpotlightCard key={item.id} className="p-5 rounded-3xl bg-white border border-[#c8834a]/15 hover:border-[#c8834a]/40 transition-all cursor-pointer">
+                <div className="flex justify-between items-start mb-3">
+                  <h4 className="font-black text-sm text-[#2d1f0e] leading-snug">{item.description}</h4>
+                </div>
+                <div className="space-y-2 text-xs font-medium text-amber-900/70 mb-4">
+                  <p className="flex justify-between"><span>Code:</span> <span className="font-mono text-[#2d1f0e]">{item.normalized_key}</span></p>
+                  <p className="flex justify-between"><span>Color:</span> <span className="text-[#2d1f0e]">{item.color}</span></p>
+                </div>
+                <div className="flex items-center justify-between pt-3 border-t border-[#c8834a]/10">
+                  <p className="text-[10px] font-black uppercase text-amber-900/50">Stock</p>
+                  <p className={`font-black ${item.qty_on_hand > 0 ? 'text-[#347526]' : 'text-[#752626]'}`}>
+                    {item.qty_on_hand?.toLocaleString()} <span className="text-[10px] uppercase ml-0.5">{item.uom}</span>
+                  </p>
+                </div>
+              </SpotlightCard>
+            ))}
           </div>
         </div>
       )}
 
-      {/* ─── EXCEL PREVIEW MODAL ─── */}
+      {/* EXCEL UPLOAD MODAL */}
       {showPreviewModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[90vh] flex flex-col text-slate-900">
-            <div className="flex justify-between items-center p-6 border-b border-slate-200">
-              <div>
-                <h3 className="text-xl font-black text-slate-950 flex items-center gap-2">
-                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
-                  Excel Import Preview
-                </h3>
-                <p className="text-xs text-slate-700 font-bold mt-1">
-                  File: {fileName} — Review before importing to database
-                </p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md p-6 rounded-3xl bg-white shadow-2xl border border-amber-100">
+            <div className="flex items-center justify-between mb-6 pb-4 border-b border-[#c8834a]/10">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-[#faf6f0] text-[#c8834a]">
+                  <FileSpreadsheet className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-[#2d1f0e]">Import Preview</h3>
+                  <p className="text-xs text-amber-900/60 font-bold max-w-[200px] truncate">{fileName}</p>
+                </div>
               </div>
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
+              <button onClick={() => setShowPreviewModal(false)} className="p-2 rounded-xl text-slate-400 hover:bg-slate-100">
+                <XCircle className="w-6 h-6" />
               </button>
             </div>
 
-            <div className="p-6 overflow-auto bg-white flex-1 text-sm text-slate-900">
-              {previewData ? (
-                <InventoryPreviewViewer data={previewData} />
-              ) : (
-                <div className="text-center py-12 text-slate-700 font-bold">No preview data available.</div>
-              )}
-              {uploadError && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl">
-                  {uploadError}
-                </div>
-              )}
-            </div>
+            <InventoryPreviewViewer data={previewData} />
 
-            <div className="flex gap-3 p-6 border-t border-slate-200 bg-white rounded-b-2xl">
+            <div className="flex justify-end gap-2 mt-6">
               <button
                 onClick={() => setShowPreviewModal(false)}
-                className="py-3 px-6 bg-slate-100 hover:bg-slate-200 text-slate-950 font-extrabold text-xs rounded-xl transition-all cursor-pointer"
+                className="px-5 py-3 rounded-xl border border-amber-900/10 text-xs font-bold text-amber-900/60 hover:bg-[#faf6f0]"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCommit}
                 disabled={commitLoading}
-                className="py-3 px-6 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold text-xs rounded-xl flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer"
+                className="px-6 py-3 rounded-xl bg-[#c8834a] text-white text-xs font-black hover:bg-[#b0703c] transition-all shadow-md flex items-center gap-2"
               >
-                {commitLoading ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> Importing...</>
-                ) : (
-                  <><Upload className="w-4 h-4" /> Confirm & Import to Database</>
-                )}
+                {commitLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                Confirm Import
               </button>
             </div>
           </div>
         </div>
       )}
+    </div>
+  );
+}
 
+function Metric({ title, value, icon: Icon }) {
+  return (
+    <div className="p-5 rounded-3xl bg-white border border-[#c8834a]/15 flex items-center justify-between">
+      <div>
+        <p className="text-[10px] font-black uppercase text-amber-900/50">{title}</p>
+        <p className="text-2xl font-black mt-1 text-[#2d1f0e]">{value}</p>
+      </div>
+      <div className="p-3 bg-[#faf6f0] rounded-2xl text-[#c8834a]"><Icon className="w-5 h-5" /></div>
     </div>
   );
 }

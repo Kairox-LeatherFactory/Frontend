@@ -655,9 +655,12 @@ const [triggerGetPieces] = useLazyGetSkuPiecesQuery();
     try {
       let bucketRes = null;
       try {
-        const isCutStage = selectedStage.toUpperCase().includes("CUT");
+        let context = "PIPELINE";
+        if (selectedStage === "Cutting") context = "LEATHER_CUT";
+        else if (selectedStage === "Lining") context = "LINING_CUT";
+
         const logPayload = {
-          screen_context: isCutStage ? "LEATHER_CUT" : "PIPELINE",
+          screen_context: context,
           actor: currentWorker?.employee_barcode
             ? { employee_barcode: currentWorker.employee_barcode }
             : { employee_id: workerId },
@@ -666,14 +669,10 @@ const [triggerGetPieces] = useLazyGetSkuPiecesQuery();
               ? { piece_barcodes: scannedBarcodes }
               : { sku_id: skuObj.sku_id, piece_seqs: selectedPieces },
           work_date: date,
-          ...(isCutStage
-            ? { consumption: { dcm: Number(barcodeDcm || 10) } }
-            : {}),
         };
         bucketRes = await productionLogTwoDoor(logPayload).unwrap();
         const hasRealBlocks =
-          bucketRes?.sequence_blocked?.length > 0 ||
-          bucketRes?.merge_blocked?.length > 0 ||
+          bucketRes?.blocked?.length > 0 ||
           bucketRes?.not_found?.length > 0;
         if (bucketRes && hasRealBlocks) {
           setBucketResult(bucketRes);

@@ -2376,4 +2376,15 @@ async function materialSpecApiError(res, fallback) {
   return err;
 }
 
-
+export async function apiIssueCuttingJobSheet(token, payload) {
+  console.warn('[apiIssueCuttingJobSheet] Mocking issue:', payload);
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        barcode_id: `CUT-${Math.floor(Math.random() * 10000)}`,
+        timestamp: new Date().toISOString()
+      });
+    }, 1000);
+  });
+}

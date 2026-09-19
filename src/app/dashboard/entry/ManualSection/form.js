@@ -67,11 +67,10 @@ export default function ManualDoorForm({
   isSavingCutting,
   checklistSubmitting,
   setShowAnalyticsModal,
-})
-{
-    return(
-        <>
-<form onSubmit={handleSubmit} className="space-y-8 animate-fade-in">
+}) {
+  return (
+    <>
+      <form onSubmit={handleSubmit} className="space-y-8 animate-fade-in">
         {/* STEP 1: Worker Selection */}
         <div
           className="space-y-6 p-6 rounded-2xl shadow-sm relative overflow-visible"
@@ -258,13 +257,12 @@ export default function ManualDoorForm({
                       setSelectedStage(stage);
                       setPieceSeqs("");
                     }}
-                    className={`p-2.5 rounded-xl text-xs font-black transition-all text-center border relative ${
-                      isDisabled
-                        ? "opacity-40 grayscale bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
-                        : isSelected
-                          ? "bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02] cursor-pointer"
-                          : "bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50 cursor-pointer"
-                    }`}
+                    className={`p-2.5 rounded-xl text-xs font-black transition-all text-center border relative ${isDisabled
+                      ? "opacity-40 grayscale bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
+                      : isSelected
+                        ? "bg-[#c8834a] text-white border-[#c8834a] shadow-sm scale-[1.02] cursor-pointer"
+                        : "bg-[#faf6f0] text-slate-700 border-slate-200/60 hover:border-[#c8834a]/50 cursor-pointer"
+                      }`}
                     title={
                       noWorker
                         ? "🔒 Select a worker first"
@@ -395,11 +393,10 @@ export default function ManualDoorForm({
                                   setSkuCode(s.code);
                                   setIsSkuOpen(false);
                                 }}
-                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-1 cursor-pointer border ${
-                                  isSelected
-                                    ? "bg-[#c8834a] text-white border-[#c8834a] shadow-sm"
-                                    : "hover:bg-amber-50/60 text-slate-800 border-transparent"
-                                }`}
+                                className={`w-full p-3 text-left transition-colors rounded-xl flex items-center justify-between text-xs font-bold my-1 cursor-pointer border ${isSelected
+                                  ? "bg-[#c8834a] text-white border-[#c8834a] shadow-sm"
+                                  : "hover:bg-amber-50/60 text-slate-800 border-transparent"
+                                  }`}
                               >
                                 <div className="pr-2 break-words whitespace-normal text-left flex flex-col gap-0.5">
                                   {isSelected && (
@@ -488,200 +485,53 @@ export default function ManualDoorForm({
           </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
-            {selectedStage === "Cutting" || selectedStage === "Lining" ? (
-              <div className="flex flex-col gap-3 md:col-span-2 space-y-4">
-                <div>
-                  <label
-                    htmlFor="cutting-count-input"
-                    className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5 mb-2"
-                  >
-                    <Scissors className="w-4 h-4 text-amber-600" /> Cut Piece
-                    Count (Total Quantity) *
-                  </label>
-                  <p className="text-[10px] text-slate-500 mb-2">
-                    Enter the exact total number of cut pieces for this SKU
-                    bundle block creation.
-                  </p>
+            <div className="flex flex-col gap-3 md:col-span-2">
+              <div className="flex justify-between items-end">
+                <label
+                  htmlFor="piece-seq-input"
+                  className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5"
+                >
+                  <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers
+                  (Sequence) *
+                </label>
+                <button
+                  type="button"
+                  onClick={openChecklistModal}
+                  className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+                  style={{
+                    background: "linear-gradient(135deg, #c8834a, #e8a06a)",
+                    color: "#fff",
+                  }}
+                >
+                  <ListChecks className="w-3.5 h-3.5" /> Select from Checklist
+                </button>
+              </div>
+              <p className="text-[10px] text-slate-500 -mt-2">
+                Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8),
+                or use the checklist.
+              </p>
+              <div className="flex flex-col sm:flex-row items-stretch gap-4">
+                <div className="relative flex-1">
                   <input
-                    type="number"
-                    id="cutting-count-input"
-                    placeholder="e.g. 50"
-                    value={cuttingCount}
-                    onChange={(e) => setCuttingCount(e.target.value)}
-                    className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm transition-all rounded-xl outline-none"
-                    required
-                    min="1"
+                    type="text"
+                    id="piece-seq-input"
+                    placeholder="e.g. 1, 2, 5-8"
+                    value={pieceSeqs}
+                    onChange={(e) => setPieceSeqs(e.target.value)}
+                    className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all rounded-xl outline-none"
                   />
                 </div>
-
-                {(selectedStage === "Cutting" ||
-                  selectedStage === "Lining") && (
-                  <div className="space-y-4 pt-4 border-t border-slate-200">
-                    <div>
-                      <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center gap-1.5 mb-2">
-                        <Scissors className="w-4 h-4 text-[#c8834a]" /> Total
-                        Cut Area (DCM) / Count *
-                      </label>
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="Enter DCM value or Cut Piece count (e.g. 45)..."
-                        value={barcodeDcm}
-                        onChange={(e) => setBarcodeDcm(e.target.value)}
-                        className="input-field w-full sm:w-1/2 h-14 px-4 bg-white font-black text-xl border-2 border-slate-200 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all"
-                        required
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-slate-600 uppercase">
-                          {selectedStage === "Lining" ? "Lining" : "Leather"}{" "}
-                          Article *
-                        </label>
-                        <select
-                          value={lotArticle}
-                          onChange={(e) => {
-                            setLotArticle(e.target.value);
-                            setLotColor("");
-                            setLotThickness("");
-                          }}
-                          className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
-                        >
-                          <option value="">-- Select Article --</option>
-                          {lotOptions.article?.map((a) => (
-                            <option key={a} value={a}>
-                              {a}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-slate-600 uppercase">
-                          {selectedStage === "Lining" ? "Lining" : "Leather"}{" "}
-                          Colour *
-                        </label>
-                        <select
-                          value={lotColor}
-                          onChange={(e) => {
-                            setLotColor(e.target.value);
-                            setLotThickness("");
-                          }}
-                          className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none cursor-pointer"
-                        >
-                          <option value="">-- Select Color --</option>
-                          {lotOptions.colour?.map((c) => (
-                            <option key={c} value={c}>
-                              {c}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      {/* Bug #9/#10: Thickness is optional and a free-text input, not a mandatory dropdown */}
-                      <div className="space-y-2">
-                        <label className="text-[11px] font-bold text-slate-600 uppercase flex items-center justify-between">
-                          <span>Thickness</span>
-                          <span className="text-[10px] text-slate-400 font-bold lowercase">
-                            (optional)
-                          </span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 1.2mm, 0.8mm..."
-                          value={lotThickness}
-                          onChange={(e) => setLotThickness(e.target.value)}
-                          className="w-full h-12 px-3 bg-white border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-xs font-bold text-slate-700 outline-none"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Lot Status Indicator — Bug #9: Thickness is optional, so this must not wait on it */}
-                    {lotArticle && lotColor && (
-                      <div
-                        className={`p-4 rounded-xl border flex items-center justify-between ${lotResults.length === 1 && lotResults[0].covers_required !== false ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}
-                      >
-                        <div>
-                          <div className="text-[11px] font-black uppercase tracking-wider text-slate-600 mb-1">
-                            Material Availability
-                          </div>
-                          <div className="text-sm font-bold">
-                            {lotLoading ? (
-                              "Checking..."
-                            ) : lotResults.length === 1 ? (
-                              lotResults[0].covers_required === false ? (
-                                <span className="text-red-600">
-                                  Not enough stock (Available:{" "}
-                                  {lotResults[0].available} {lotResults[0].uom})
-                                </span>
-                              ) : (
-                                <span className="text-emerald-700">
-                                  Available: {lotResults[0].available}{" "}
-                                  {lotResults[0].uom}
-                                </span>
-                              )
-                            ) : (
-                              <span className="text-red-600">
-                                {lotResults.length === 0
-                                  ? "No matching lot found."
-                                  : "Multiple lots found. Refine filters."}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-col gap-3 md:col-span-2">
-                <div className="flex justify-between items-end">
-                  <label
-                    htmlFor="piece-seq-input"
-                    className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5"
-                  >
-                    <Plus className="w-4 h-4 text-emerald-500" /> Piece Numbers
-                    (Sequence) *
-                  </label>
+                <div className="flex gap-2 w-1/4">
                   <button
                     type="button"
-                    onClick={openChecklistModal}
-                    className="text-[10px] font-black uppercase tracking-wider px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                    style={{
-                      background: "linear-gradient(135deg, #c8834a, #e8a06a)",
-                      color: "#fff",
-                    }}
+                    onClick={() => setPieceSeqs("")}
+                    className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
                   >
-                    <ListChecks className="w-3.5 h-3.5" /> Select from Checklist
+                    Clear
                   </button>
                 </div>
-                <p className="text-[10px] text-slate-500 -mt-2">
-                  Enter numbers separated by commas or ranges (e.g. 1, 2, 5-8),
-                  or use the checklist.
-                </p>
-                <div className="flex flex-col sm:flex-row items-stretch gap-4">
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      id="piece-seq-input"
-                      placeholder="e.g. 1, 2, 5-8"
-                      value={pieceSeqs}
-                      onChange={(e) => setPieceSeqs(e.target.value)}
-                      className="input-field w-full h-14 px-4 bg-white font-black text-xl text-emerald-700 border-2 border-slate-200 focus:border-emerald-500 shadow-sm transition-all rounded-xl outline-none"
-                    />
-                  </div>
-                  <div className="flex gap-2 w-1/4">
-                    <button
-                      type="button"
-                      onClick={() => setPieceSeqs("")}
-                      className="flex-1 h-14 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-black text-sm rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
               </div>
-            )}
+            </div>
 
             <div className="flex flex-col gap-2">
               <label
@@ -723,10 +573,7 @@ export default function ManualDoorForm({
               type="submit"
               disabled={
                 isSavingCutting ||
-                checklistSubmitting ||
-                (selectedStage === "Cutting" &&
-                  (lotResults.length !== 1 ||
-                    lotResults[0].covers_required === false))
+                checklistSubmitting
               }
               className="flex-1 h-14 font-black rounded-xl text-base shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
               style={{
@@ -755,6 +602,6 @@ export default function ManualDoorForm({
           </button>
         </div>
       </form>
-      </>
-    )
+    </>
+  )
 }

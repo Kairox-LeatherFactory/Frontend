@@ -45,8 +45,8 @@ export default function SupplierPOPage() {
   const [toast, setToast] = useState(null);
 
   // Load all PO & Supplier data
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const [poRes, supRes, trackRes] = await Promise.all([
         apiGetPOs(token),
@@ -61,7 +61,7 @@ export default function SupplierPOPage() {
       console.error('Failed to load PO data:', err);
       showToast('error', `Failed to load data: ${err.message}`);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -95,20 +95,25 @@ export default function SupplierPOPage() {
     if (!targetPo) return;
     if (targetPo.status === columnId) return;
 
+    // Optimistic UI update to prevent lag/loading screen
+    setPos(prev => prev.map(p => p.id === draggedPoId ? { ...p, status: columnId } : p));
+    const movedId = draggedPoId;
+    setDraggedPoId(null);
+
     setActionLoading(true);
     try {
-      if (columnId === 'pending_approval') await apiSubmitPO(token, targetPo.id);
-      else if (columnId === 'approved') await apiApprovePO(token, targetPo.id);
-      else if (columnId === 'sent') await apiSendPO(token, targetPo.id);
-      else if (columnId === 'confirmed') await apiAcknowledgePO(token, targetPo.id, { channel: 'drag_drop' });
+      if (columnId === 'pending_approval') await apiSubmitPO(token, movedId);
+      else if (columnId === 'approved') await apiApprovePO(token, movedId);
+      else if (columnId === 'sent') await apiSendPO(token, movedId);
+      else if (columnId === 'confirmed') await apiAcknowledgePO(token, movedId, { channel: 'drag_drop' });
       
       showToast('success', `PO status updated to ${columnId.replace('_', ' ')}`);
-      await loadData();
+      await loadData(true); // silent refresh
     } catch (err) {
       showToast('error', `Update failed: ${err.message}`);
+      await loadData(true); // revert on failure
     } finally {
       setActionLoading(false);
-      setDraggedPoId(null);
     }
   };
 

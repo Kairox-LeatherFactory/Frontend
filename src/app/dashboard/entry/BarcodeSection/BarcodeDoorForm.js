@@ -61,8 +61,8 @@ export default function BarcodeDoorForm({
   cuttingBatchPieces,
   barcodePieceResolving,
   barcodePieceValidating,
-  scannedPieceDrawerInfo,
-  setScannedPieceDrawerInfo,
+  scannedPieceStoreInfo,
+  setScannedPieceStoreInfo,
   barcodePieceInput,
   setBarcodePieceInput,
   barcodeBatchPieces,
@@ -353,380 +353,8 @@ export default function BarcodeDoorForm({
             })}
           </div>
 
-          {/* STEP 3A: CUTTING/LINING STAGE FLOW — Bug #10: same dedicated
-                  consumption screen (Verify SKU -> DCM/Article/Colour/Thickness
-                  -> batch-scan pieces -> submit) shared by both, since both are
-                  cut stages requiring material consumption data. */}
-          {barcodeStage === "Cutting" || barcodeStage === "Lining" ? (
-            <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
-              {/* SKU BARCODE GUN INPUT */}
-              <div className="space-y-3">
-                <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
-                  <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan SKU
-                  Barcode *
-                </label>
-                <div className="flex gap-3">
-                  <div className="relative flex-1">
-                    {!barcodeSkuInput && (
-                      <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
-                    )}
-                    <input
-                      ref={skuInputRef}
-                      type="text"
-                      placeholder="Scan SKU Barcode (e.g. ADELE-38, 100123-ADELE-38)..."
-                      value={barcodeSkuInput}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setBarcodeSkuInput(val);
-                        setBarcodeDcmConfirmed(false);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleVerifySkuBarcode(barcodeSkuInput);
-                        }
-                      }}
-                      style={{
-                        paddingLeft: barcodeSkuInput ? "1rem" : "3.25rem",
-                        paddingRight: "3rem",
-                      }}
-                      className="w-full h-14 bg-white font-mono font-bold text-base text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={!barcodeWorker || barcodeSkuVerifying}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setCameraScanTarget("sku")}
-                      disabled={!barcodeWorker}
-                      className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-amber-50 text-[#c8834a] border border-[#c8834a]/30 hover:bg-amber-100 active:scale-95 transition-all cursor-pointer z-10 disabled:opacity-40 disabled:cursor-not-allowed"
-                      title="Scan SKU Barcode with Mobile Camera"
-                    >
-                      <Camera className="w-5 h-5" />
-                    </button>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleVerifySkuBarcode(barcodeSkuInput)}
-                    disabled={
-                      !barcodeWorker ||
-                      !barcodeSkuInput.trim() ||
-                      barcodeSkuVerifying
-                    }
-                    className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
-                  >
-                    {barcodeSkuVerifying ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Check className="w-4 h-4" />
-                    )}
-                    Verify SKU
-                  </button>
-                </div>
-
-                {/* Verified SKU Preview Badge — Bug #7: full breakdown
-                        (Order/Style/Article/Colour/Size/Serial), not just the
-                        raw code string with the serial buried inside it. */}
-                {barcodeSelectedSku && (
-                  <div className="p-3 rounded-xl bg-amber-50/80 border border-[#c8834a]/30 space-y-2 animate-fade-in text-xs">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="font-extrabold text-[#2d1f0e]">
-                          Order #{barcodeSelectedSku.order_number || "N/A"} ·{" "}
-                          {barcodeSelectedSku.style_name ||
-                            barcodeSelectedSku.code}
-                        </span>
-                      </div>
-                      <span className="font-mono text-[11px] font-bold text-[#c8834a]">
-                        {barcodeSelectedSku.code}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1.5 border-t border-[#c8834a]/15 text-[11px] font-bold text-[#4a3a2a]">
-                      {barcodeSelectedSku.article && (
-                        <span>
-                          Article:{" "}
-                          <span className="text-[#2d1f0e]">
-                            {barcodeSelectedSku.article}
-                          </span>
-                        </span>
-                      )}
-                      {barcodeSelectedSku.color_code && (
-                        <span>
-                          Color:{" "}
-                          <span className="text-[#2d1f0e]">
-                            {barcodeSelectedSku.color_code}
-                          </span>
-                        </span>
-                      )}
-                      {barcodeSelectedSku.size && (
-                        <span>
-                          Size:{" "}
-                          <span className="text-[#2d1f0e]">
-                            {barcodeSelectedSku.size}
-                          </span>
-                        </span>
-                      )}
-                      {barcodeSelectedSku.serial && (
-                        <span>
-                          Serial/Qty:{" "}
-                          <span className="text-[#2d1f0e]">
-                            {barcodeSelectedSku.serial}
-                          </span>
-                        </span>
-                      )}
-                      {barcodeSelectedSku.drawer?.code && (
-                        <span className="flex items-center gap-1">
-                          <PackageCheck className="w-3 h-3 text-[#c8834a]" />
-                          Assigned Drawer:{" "}
-                          <span className="font-mono text-[#2d1f0e]">
-                            {barcodeSelectedSku.drawer.code}
-                          </span>
-                          {barcodeSelectedSku.drawer.holding && (
-                            <span className="text-[9px] uppercase tracking-wider text-[#9a7a5a]">
-                              ({barcodeSelectedSku.drawer.holding})
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Total Cut Area (DCM) Field — APPEARS ONLY AFTER SKU IS VERIFIED.
-                  Hidden for Lining: it's not a "measured cut" on the backend,
-                  so no DCM is collected or sent for that stage. */}
-              {barcodeSelectedSku && barcodeStage !== "Lining" && (
-                <div className="space-y-3 animate-fade-in pt-2 border-t border-[#c8834a]/15">
-                  <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
-                    <Scissors className="w-4 h-4 text-[#c8834a]" /> Total Cut
-                    Area (DCM) / Count *
-                  </label>
-                  <div className="flex gap-3">
-                    <input
-                      ref={dcmInputRef}
-                      type="number"
-                      min="1"
-                      placeholder="Enter DCM value or Cut Piece count (e.g. 45)..."
-                      value={barcodeDcm}
-                      onChange={(e) => {
-                        setBarcodeDcm(e.target.value);
-                        setBarcodeDcmConfirmed(false);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && barcodeDcm) {
-                          e.preventDefault();
-                          setBarcodeDcmConfirmed(true);
-                        }
-                      }}
-                      className="input-field flex-1 h-14 px-4 bg-white font-black text-xl text-[#2d1f0e] border-2 border-[#c8834a]/30 focus:border-[#c8834a] shadow-sm rounded-xl outline-none"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setBarcodeDcmConfirmed(true)}
-                      disabled={!barcodeDcm || isNaN(parseInt(barcodeDcm, 10))}
-                      className="h-14 px-6 rounded-xl font-black text-xs text-white bg-[#c8834a] hover:bg-[#b0723e] active:scale-95 transition-all shadow-md cursor-pointer disabled:opacity-40 flex items-center justify-center gap-1.5 shrink-0"
-                    >
-                      <Check className="w-4 h-4" />
-                      Verify DCM
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ORDER DETAILS SUMMARY & 3 MATERIAL SPEC DROPDOWNS.
-                  Lining has no DCM step to confirm, so it unlocks this block
-                  as soon as the SKU is verified; Cutting still waits on the
-                  DCM confirm above. */}
-              {barcodeSelectedSku &&
-                (barcodeStage === "Lining" ||
-                  (barcodeDcmConfirmed && barcodeDcm)) && (
-                  <div className="p-6 rounded-2xl bg-white border-2 border-[#c8834a]/30 shadow-md space-y-5 animate-fade-in">
-                    {/* Order Details Header */}
-                    <div className="p-4 rounded-xl bg-[#faf6f0] border border-[#c8834a]/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-[#c8834a]">
-                          Order Summary
-                        </span>
-                        <h4 className="text-sm font-black text-[#2d1f0e] mt-0.5">
-                          Order #{barcodeSelectedSku.order_number || "100123"} ·{" "}
-                          {barcodeSelectedSku.style_name ||
-                            barcodeSelectedSku.code}
-                        </h4>
-                      </div>
-                      {barcodeStage !== "Lining" && (
-                        <div className="text-right">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                            Total DCM
-                          </span>
-                          <p className="text-lg font-black text-[#c8834a]">
-                            {barcodeDcm} DCM
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* 3 Dropdowns */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                      {/* 1 & 2. Article / Color — hidden for Lining: backend has no
-                        Lining material-lot data yet (confirmed by backend team),
-                        so the dropdowns are always empty there and article gets
-                        derived automatically on their side. Cutting keeps them. */}
-                      {barcodeStage !== "Lining" && (
-                        <>
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider flex items-center justify-between">
-                              <span>
-                                {lotCategory === "LINING"
-                                  ? "Lining"
-                                  : "Leather"}{" "}
-                                Article{barcodeStage === "Cutting" ? " *" : ""}
-                              </span>
-                              {barcodeStage !== "Cutting" && (
-                                <span className="text-[10px] text-slate-400 font-bold lowercase">
-                                  (optional)
-                                </span>
-                              )}
-                            </label>
-                            <select
-                              value={lotArticle}
-                              onChange={(e) => {
-                                setLotArticle(e.target.value);
-                                setLotColor("");
-                                setLotThickness("");
-                              }}
-                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                            >
-                              <option value="">-- Select Article --</option>
-                              {lotOptions.article?.map((a) => (
-                                <option key={a} value={a}>
-                                  {a}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider flex items-center justify-between">
-                              <span>
-                                {lotCategory === "LINING"
-                                  ? "Lining"
-                                  : "Leather"}{" "}
-                                Color{barcodeStage === "Cutting" ? " *" : ""}
-                              </span>
-                              {barcodeStage !== "Cutting" && (
-                                <span className="text-[10px] text-slate-400 font-bold lowercase">
-                                  (optional)
-                                </span>
-                              )}
-                            </label>
-
-                            <select
-                              value={lotColor}
-                              onChange={(e) => {
-                                setLotColor(e.target.value);
-                                setLotThickness("");
-                              }}
-                              className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none cursor-pointer"
-                            >
-                              <option value="">-- Select Color --</option>
-                              {lotOptions.colour?.map((c) => (
-                                <option key={c} value={c}>
-                                  {c}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </>
-                      )}
-                      {/* 3. Thickness */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-black text-[#4a3a2a] uppercase tracking-wider flex items-center justify-between">
-                          <span> Thickness</span>
-                          <span className="text-[10px] text-slate-400 font-bold lowercase">
-                            (optional)
-                          </span>
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 1.2mm, 0.8mm..."
-                          value={lotThickness}
-                          onChange={(e) => setLotThickness(e.target.value)}
-                          className="w-full h-12 px-3 bg-[#faf6f0] font-bold text-xs border border-[#c8834a]/30 rounded-xl focus:outline-none focus:border-[#c8834a]"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Item 5 (per team request): Cutting logs exactly the ONE
-                      piece resolved by Verify SKU above — each piece needs its
-                      own DCM measurement, so there is no "scan more, batch,
-                      submit together under one shared DCM" step anymore. The
-                      piece's own code/article/colour/size/drawer are already
-                      shown in the confirmation card right after Verify SKU. */}
-
-                    {/* Lot Status Indicator — Bug #9: Thickness is optional, so this must not wait on it */}
-                    {lotArticle && lotColor && (
-                      <div
-                        className={`p-4 rounded-xl border flex items-center justify-between ${lotResults.length === 1 && lotResults[0].covers_required !== false ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}
-                      >
-                        <div>
-                          <div className="text-xs font-black uppercase tracking-wider mb-1">
-                            Material Availability
-                          </div>
-                          <div className="text-sm font-bold">
-                            {lotLoading ? (
-                              "Checking..."
-                            ) : lotResults.length === 1 ? (
-                              lotResults[0].covers_required === false ? (
-                                <span className="text-red-600">
-                                  Not enough stock (Available:{" "}
-                                  {lotResults[0].available} {lotResults[0].uom})
-                                </span>
-                              ) : (
-                                <span className="text-emerald-700">
-                                  Available: {lotResults[0].available}{" "}
-                                  {lotResults[0].uom}
-                                </span>
-                              )
-                            ) : (
-                              <span className="text-red-600">
-                                {lotResults.length === 0
-                                  ? "No matching lot found."
-                                  : "Multiple lots found. Refine filters."}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {/* Submit Cutting Button */}
-                    <button
-                      type="button"
-                      onClick={handleBarcodeCuttingSubmit}
-                      disabled={
-                        barcodeSubmitting ||
-                        cuttingBatchPieces.length === 0 ||
-                        ((barcodeStage === "Cutting" ||
-                          barcodeStage === "LEATHER_CUTTING") &&
-                          (!lotArticle || !lotColor))
-                      }
-                      className="w-full h-14 rounded-xl font-black text-sm text-[#0f0a06] shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-40"
-                      style={{
-                        background: "linear-gradient(135deg, #c8834a, #e8a06a)",
-                      }}
-                    >
-                      {barcodeSubmitting ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : (
-                        <Rocket className="w-5 h-5" />
-                      )}
-                      Log {barcodeStage} Event &amp; Mint Traveler Card Barcodes
-                    </button>
-                  </div>
-                )}
-            </div>
-          ) : (
-            /* STEP 3B: PIPELINE STAGES FLOW (Fusing -> Final Finish) */
-            <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
+          {/* STEP 3B: PIPELINE STAGES FLOW (Fusing -> Final Finish) - Now handles all stages including Cutting and Lining */}
+          <div className="space-y-6 pt-4 border-t border-[#c8834a]/15 animate-fade-in">
               <div className="space-y-3">
                 <label className="text-xs font-black uppercase tracking-wider text-[#4a3a2a] flex items-center gap-1.5">
                   <Barcode className="w-4 h-4 text-[#c8834a]" /> Scan Piece
@@ -794,17 +422,17 @@ export default function BarcodeDoorForm({
                   </button>
                 </div>
 
-                {/* Bug #12: assigned drawer for the most recently scanned piece */}
-                {scannedPieceDrawerInfo && (
+                {/* Bug #12: assigned store state for the most recently scanned piece */}
+                {scannedPieceStoreInfo && (
                   <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-50 border border-[#c8834a]/25 text-xs font-bold text-[#7a5a34] w-fit animate-fade-in">
                     <PackageCheck className="w-3.5 h-3.5 text-[#c8834a] shrink-0" />
-                    Assigned Drawer:{" "}
+                    Store Assignment:{" "}
                     <span className="font-mono font-black text-[#4a3a2a]">
-                      {scannedPieceDrawerInfo.code || "—"}
+                      {scannedPieceStoreInfo.code || "—"}
                     </span>
-                    {scannedPieceDrawerInfo.holding && (
+                    {scannedPieceStoreInfo.holding && (
                       <span className="text-[10px] uppercase tracking-wider text-[#9a7a5a]">
-                        ({scannedPieceDrawerInfo.holding})
+                        ({scannedPieceStoreInfo.holding})
                       </span>
                     )}
                   </div>
@@ -823,7 +451,7 @@ export default function BarcodeDoorForm({
                       type="button"
                       onClick={() => {
                         setBarcodeBatchPieces([]);
-                        setScannedPieceDrawerInfo(null);
+                        setScannedPieceStoreInfo(null);
                       }}
                       className="text-xs font-bold text-red-500 hover:underline cursor-pointer"
                     >
@@ -880,7 +508,6 @@ export default function BarcodeDoorForm({
                 </div>
               )}
             </div>
-          )}
           <BarcodeSuccessModal
             barcodeSuccessModal={barcodeSuccessModal}
             setBarcodeSuccessModal={setBarcodeSuccessModal}
