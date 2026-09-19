@@ -38,6 +38,17 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
   useEffect(() => {
     let scanner;
     let isStopped = false;
+    let started = false;
+
+    // Mobile devices sometimes never resolve or reject scanner.start() at
+    // all (camera driver hang, permission dialog dismissed without a clear
+    // signal, etc.) — without a timeout the reader box just sits on its
+    // bg-black placeholder forever with no error and no way to retry.
+    const startTimeout = setTimeout(() => {
+      if (started || isStopped) return;
+      setCameraError("Camera didn't respond. Please try again or type the barcode manually.");
+      if (scanner && scanner.isScanning) scanner.stop().catch(() => {});
+    }, 7000);
 
     // getUserMedia is only exposed by the browser on a secure origin
     // (https:// or localhost). Loaded over plain http:// — e.g. a phone
@@ -129,8 +140,15 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
         });
       };
 
-      startScanner("environment").catch(() => {
-        startScanner("user").catch((err) => {
+      startScanner("environment").then(() => {
+        started = true;
+        clearTimeout(startTimeout);
+      }).catch(() => {
+        startScanner("user").then(() => {
+          started = true;
+          clearTimeout(startTimeout);
+        }).catch((err) => {
+          clearTimeout(startTimeout);
           console.warn("Camera start warning:", err);
           const msg = String(err?.message || err || '');
           if (msg.includes('NotAllowedError') || msg.includes('Permission denied')) {
@@ -141,12 +159,14 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
         });
       });
     }).catch(err => {
+      clearTimeout(startTimeout);
       console.warn("Error loading html5-qrcode:", err);
       setCameraError("Camera scanner module failed to load.");
     });
 
     return () => {
       isStopped = true;
+      clearTimeout(startTimeout);
       if (trackRef.current && torchOn) {
         trackRef.current.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
       }

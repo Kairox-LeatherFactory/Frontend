@@ -1,12 +1,9 @@
 'use client';
-
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link, { useLinkStatus } from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { useData } from '@/context/DataContext';
-
 import {
   Factory,
   LayoutDashboard,
@@ -19,7 +16,6 @@ import {
   X,
   Menu,
   LogOut,
-  TriangleAlert,
   BotMessageSquare,
   ShieldCheck,
   Settings,
@@ -31,7 +27,6 @@ import {
   Waypoints,
   Shirt,
   Boxes,
-  ChevronDown,
   Package,
 } from 'lucide-react';
 
@@ -135,6 +130,9 @@ const NAV_ICONS = {
   '/dashboard/procurement/intake': UploadCloud,
   '/dashboard/procurement/inventory': Layers,
   '/dashboard/procurement/po': ShoppingCart,
+  '/dashboard/procurement/chat': ShoppingCart,
+  '/dashboard/procurement/production': ShoppingCart,
+  '/dashboard/procurement/notifications': ShoppingCart,
 };
 
 const navStagger = {
@@ -184,7 +182,6 @@ function NavPendingBar() {
 
 export default function DashboardLayout({ children }) {
   const { user, logout, ROLES } = useAuth();
-  const { orders } = useData();
 
   const router = useRouter();
   const pathname = usePathname();
@@ -252,20 +249,6 @@ export default function DashboardLayout({ children }) {
   }, [user]);
 
   // --------------------------------------------------
-  // Air freight risk orders
-  // --------------------------------------------------
-
-  const airRiskOrders = useMemo(
-    () =>
-      orders.filter(
-        (o) =>
-          o.freight_mode &&
-          o.freight_mode.includes('RISK')
-      ),
-    [orders]
-  );
-
-  // --------------------------------------------------
   // Navigation links
   // --------------------------------------------------
 
@@ -308,24 +291,24 @@ export default function DashboardLayout({ children }) {
         href: '/dashboard/barcode',
       },
 
-      // // Procurement Suite
-      // {
-      //   name: 'Procurement',
-      //   href: '/dashboard/procurement',
-      //   divider: true,
-      // },
-      // {
-      //   name: 'New Intake',
-      //   href: '/dashboard/procurement/intake',
-      // },
-      // {
-      //   name: 'Inventory Check',
-      //   href: '/dashboard/procurement/inventory',
-      // },
-      // {
-      //   name: 'PO Tracker',
-      //   href: '/dashboard/procurement/po',
-      // },
+      // Procurement Suite
+      {
+        name: 'Procurement',
+        href: '/dashboard/procurement',
+        divider: true,
+      },
+      {
+        name: 'New Intake',
+        href: '/dashboard/procurement/intake',
+      },
+      {
+        name: 'Inventory Check',
+        href: '/dashboard/procurement/inventory',
+      },
+      {
+        name: 'PO Tracker',
+        href: '/dashboard/procurement/po',
+      },
 
       // Admin
       {
@@ -629,76 +612,6 @@ export default function DashboardLayout({ children }) {
             </button>
           </div>
         </motion.header>
-
-        {/* ================================================
-            AIR FREIGHT WARNING
-            ================================================ */}
-
-        <AnimatePresence>
-          {airRiskOrders.length > 0 && (
-            <motion.div
-              key="air-freight-warning"
-              initial={{
-                opacity: 0,
-                height: 0,
-              }}
-              animate={{
-                opacity: 1,
-                height: 'auto',
-              }}
-              exit={{
-                opacity: 0,
-                height: 0,
-              }}
-              transition={{
-                duration: 0.35,
-                ease: [0.22, 1, 0.36, 1],
-              }}
-              className="overflow-hidden border-b border-red-700"
-            >
-              <div className="bg-gradient-to-r from-red-600 to-amber-600 text-white p-4 font-bold text-sm shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <TriangleAlert className="w-6 h-6 animate-pulse flex-shrink-0" />
-
-                  <div>
-                    <p className="text-sm font-black tracking-wide">
-                      AIR FREIGHT PENALTY WARNING
-                      DETECTED!
-                    </p>
-
-                    <p className="text-xs text-red-100 font-medium">
-                      {airRiskOrders
-                        .map(
-                          (o) =>
-                            `${o.client} (${o.style} - ${o.colorway}) is delayed by ${o.delay_days} days!`
-                        )
-                        .join(', ')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-xs font-black uppercase text-center sm:text-right">
-                  Air Mode Triggers Over 2-Day
-                  Delay • Margins Shrink ~35%
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ================================================
-            PAGE CONTENT
-
-            IMPORTANT:
-            No artificial loading state.
-            No MutationObserver.
-            No forced repaint.
-            No display:none.
-            No translateZ hack — `transform-gpu` does the same GPU-layer
-            promotion under a different name and was the original suspect
-            for the mobile stuck-paint bug, so it stays off too.
-            ================================================ */}
-
         <main
           className="flex-1 p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full min-h-screen lg:min-h-0 overflow-y-auto z-0 mx-auto relative"
           style={{ background: '#faf6f0' }}

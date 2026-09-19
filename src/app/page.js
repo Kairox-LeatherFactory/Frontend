@@ -1,11 +1,9 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldCheck,
-  Scissors,
   Layers,
   Eye,
   EyeOff,
@@ -13,7 +11,8 @@ import {
   ArrowRight,
   Loader2,
 } from 'lucide-react';
-import { apiLogin } from '@/lib/api'; 
+import { useLoginMutation } from '@/store/slices/apiSlice';
+
 
 /* ─── Animated Gold Text Component ────────────────── */
 function AnimatedGoldText({ text }) {
@@ -174,7 +173,6 @@ function Preloader({ onComplete }) {
 /* ─── Main Landing Page ───────────────────────────── */
 export default function Home() {
   const { login } = useAuth();
-  const router = useRouter();
   const [mounted, setMounted] = useState(false);
   const [loadingComplete, setLoadingComplete] = useState(false);
 
@@ -188,7 +186,7 @@ export default function Home() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [loginError, setLoginError] = useState('');
-
+const [loginApi]=useLoginMutation();
   useEffect(() => { setMounted(true); }, []);
   if (!mounted) return null;
 
@@ -232,8 +230,12 @@ export default function Home() {
     setIsSubmitting(true);
 
     try {
-      // 1. Centralized apiLogin call (lib/api.js)
-      const data = await apiLogin(username.trim(), password);
+      
+  const data = await loginApi({ 
+  username: username.trim(), 
+  password 
+}).unwrap();
+
 
       const backendRole = (data.role || '').toLowerCase().trim();
 

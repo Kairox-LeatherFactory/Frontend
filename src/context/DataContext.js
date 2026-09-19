@@ -9,9 +9,7 @@ import {
   apiGetEmployees,
   apiGetOperations,
   apiGetEvents,
-  apiProductionScan,
-  apiComputeWageRun,
-} from '@/lib/api';
+  apiProductionScan,} from '@/lib/api';
 
 const DataContext = createContext(null);
 

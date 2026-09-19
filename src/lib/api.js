@@ -896,6 +896,18 @@ export async function apiSendPO(token, poId) {
   return res.json();
 }
 
+/**
+ * MOCK — the whole Procurement module runs on mock data (submissions, BOM,
+ * inventory, POs are all hardcoded), so sending a PO to a real backend
+ * endpoint that doesn't have that fake PO id fails. Fakes the same
+ * shape/delay as a real send without touching the network — swap the two
+ * call sites back to apiSendPO once Procurement is wired to a real backend.
+ */
+export async function mockApiSendPO(token, poId) {
+  await new Promise((r) => setTimeout(r, 600));
+  return { id: poId, status: 'sent', sent_at: new Date().toISOString() };
+}
+
 
 
 // ─── WAGES API ENDPOINTS ──────────────────────────────────────────────────────
@@ -2244,6 +2256,124 @@ export async function apiGetDirectManagerPieceDetail(token, pieceCode) {
     throw new Error(err || `Failed to fetch direct manager piece detail (${res.status})`);
   }
   return res.json();
+}
+export async function apiGetStyleMaterialSpec(token, styleId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to fetch material spec (${res.status})`);
+  return res.json();
+}
+
+export async function apiPutStyleMaterialSpec(token, styleId, lines) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ lines }),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to save material spec (${res.status})`);
+  return res.json();
+}
+
+export async function apiAddStyleMaterialSpecLine(token, styleId, line) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/lines`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(line),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to add material line (${res.status})`);
+  return res.json();
+}
+
+export async function apiPatchStyleMaterialSpecLine(token, styleId, lineId, patch) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/lines/${encodeURIComponent(lineId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to update material line (${res.status})`);
+  return res.json();
+}
+
+export async function apiDeleteStyleMaterialSpecLine(token, styleId, lineId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/lines/${encodeURIComponent(lineId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to remove material line (${res.status})`);
+  return res.json();
+}
+
+export async function apiConfirmStyleMaterialSpec(token, styleId, noAccessories = false) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ no_accessories: !!noAccessories }),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to confirm material spec (${res.status})`);
+  return res.json();
+}
+
+export async function apiCopyStyleMaterialSpec(token, styleId, fromStyleId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/copy-from`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ from_style_id: fromStyleId }),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to copy material spec (${res.status})`);
+  return res.json();
+}
+
+export async function apiGetStyleMaterialRequirement(token, styleId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/requirement`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to fetch requirement check (${res.status})`);
+  return res.json();
+}
+
+export async function apiRecordMaterialIssue(token, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/issues`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to record material issue (${res.status})`);
+  return res.json();
+}
+
+// Thin wrapper over the existing POST /drawers/store-scan — builds the
+// ACCESSORY-part payload, no duplicate fetch/error-handling logic.
+export async function apiIssueAccessoryKit(token, { employee, drawerId, drawerBarcode, pieceId, pieceBarcode, lines } = {}) {
+  const payload = { part: 'ACCESSORY' };
+  if (employee) {
+    if (employee.employee_barcode || employee.barcode) payload.employee_barcode = employee.employee_barcode || employee.barcode;
+    else if (employee.id) payload.employee_id = employee.id;
+  }
+  if (drawerId) payload.drawer_id = drawerId;
+  else if (drawerBarcode) payload.drawer_barcode = drawerBarcode;
+  if (pieceId) payload.piece_id = pieceId;
+  else if (pieceBarcode) payload.piece_barcode = pieceBarcode;
+  if (Array.isArray(lines) && lines.length > 0) payload.lines = lines;
+  return apiStoreDrawerScan(token, payload);
+}
+function parseSpecErrorDetail(detail) {
+  if (!detail) return null;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map((d) => d?.msg || d).join(', ');
+  return null;
+}
+
+async function materialSpecApiError(res, fallback) {
+  let detail;
+  try { detail = (await res.json()).detail; } catch { /* no JSON body */ }
+  const message = parseSpecErrorDetail(detail) || fallback;
+  const err = new Error(message);
+  err.status = res.status;
+  err.detail = detail;
+  return err;
 }
 
 

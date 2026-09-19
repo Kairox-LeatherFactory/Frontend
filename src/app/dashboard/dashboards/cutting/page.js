@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Scissors,
@@ -273,8 +272,7 @@ function initials(name = '') {
 }
 
 function DashboardInner() {
-  const searchParams = useSearchParams();
-  const { token } = useAuth();
+   const { token } = useAuth();
 
   const [activeTab, setActiveTab] = useState('tab-today');
 
@@ -317,17 +315,16 @@ function DashboardInner() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Piece-Level Master Tracker tab's own search — local to that tab, on top
-  // of whatever the universal filter bar already narrowed down to.
+  // Search query for the Piece-Level Master Tracker
   const [pieceSearchQuery, setPieceSearchQuery] = useState('');
 
-  // Sync tab from URL query params
-  useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
-  }, [searchParams]);
+  // // Sync tab from URL query params
+  // useEffect(() => {
+  //   const tabParam = searchParams.get('tab');
+  //   if (tabParam) {
+  //     setActiveTab(tabParam);
+  //   }
+  // }, [searchParams]);
 
   // ── LIVE BACKEND CALL: GET /api/v1/dashboard/cutting ──
   useEffect(() => {

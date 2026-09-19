@@ -1,16 +1,19 @@
 'use client';
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowLeft, Package, AlertTriangle, CheckCircle2,
   AlertCircle, ShoppingCart, TrendingDown, Warehouse,
   ArrowRight, ChevronDown, ChevronUp, FileSpreadsheet,
-  Loader2, X, Upload
+  Loader2, X, Upload, Search, RefreshCw, Layers
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiInventoryPreview, apiInventoryCommit } from '@/lib/api';
+import {
+  apiInventoryPreview, apiInventoryCommit,
+  apiGetInventoryCheck, apiRunInventoryCheck, apiGetInventoryItems, apiGeneratePOs, IDS
+} from '../lib/api';
 
 function InventoryPreviewViewer({ data }) {
   const [showDropped, setShowDropped] = useState(false);
@@ -29,7 +32,6 @@ function InventoryPreviewViewer({ data }) {
     const keptPct = rawCount > 0 ? Math.round((keptCount / rawCount) * 100) : 0;
     
     const formatHeader = (key) => key.replace(/_/g, ' ').toUpperCase();
-    const keptKeys = ['normalized_key', 'description', 'category', 'qty_on_hand', 'uom', 'rate', 'color', 'lots'];
 
     return (
       <div className="space-y-5">
@@ -191,49 +193,12 @@ function InventoryPreviewViewer({ data }) {
     );
   }
 
-  // Fallback if data is not in raw_count format
   return (
     <div className="text-slate-700 bg-slate-50 border border-slate-200 rounded-xl p-4 text-xs font-mono overflow-auto max-h-96 whitespace-pre-wrap">
-      <div className="text-red-500 font-bold mb-2">Unrecognized data format. Raw response:</div>
       {JSON.stringify(data, null, 2)}
     </div>
   );
 }
-
-// ─── MOCK INVENTORY DATA ────────────────────────────────────────────────────────
-// TODO: Replace with GET /api/v1/procurement/inventory-checks
-const MOCK_INVENTORY = [
-  {
-    id: 'INV-001',
-    submission_id: 'SUB-001',
-    client: 'Acne Studios',
-    style: 'Chelsea Boot - Oxford',
-    order_qty: 500,
-    items: [
-      { id: 1, component: 'Upper Leather', material: 'Full Grain Calf — Cognac', unit: 'sq.ft', required: 1250, available: 980, status: 'partial' },
-      { id: 2, component: 'Lining Leather', material: 'Split Grain Lamb', unit: 'sq.ft', required: 900, available: 1200, status: 'sufficient' },
-      { id: 3, component: 'Outsole', material: 'Rubber Compound — Black', unit: 'pairs', required: 500, available: 500, status: 'sufficient' },
-      { id: 4, component: 'Insole Board', material: 'Cellulose Fibre', unit: 'pairs', required: 500, available: 0, status: 'out_of_stock' },
-      { id: 5, component: 'Thread', material: 'Nylon 40s — Brown', unit: 'spools', required: 50, available: 22, status: 'partial' },
-      { id: 6, component: 'Zip Puller', material: 'Antique Brass — 5mm', unit: 'pairs', required: 500, available: 600, status: 'sufficient' },
-      { id: 7, component: 'Toe Stiffener', material: 'Thermoplastic', unit: 'pairs', required: 500, available: 120, status: 'partial' },
-    ],
-  },
-  {
-    id: 'INV-002',
-    submission_id: 'SUB-002',
-    client: 'Zara',
-    style: 'Derby Shoe - Black Brogue',
-    order_qty: 300,
-    items: [
-      { id: 1, component: 'Upper Leather', material: 'Corrected Grain — Black', unit: 'sq.ft', required: 660, available: 0, status: 'out_of_stock' },
-      { id: 2, component: 'Sock Lining', material: 'Genuine Leather — Tan', unit: 'pairs', required: 300, available: 300, status: 'sufficient' },
-      { id: 3, component: 'Leather Outsole', material: 'Vegtan Oak-Bark', unit: 'pairs', required: 300, available: 180, status: 'partial' },
-      { id: 4, component: 'Brass Brogue Cap', material: 'Solid Brass — Burnished', unit: 'pairs', required: 300, available: 0, status: 'out_of_stock' },
-      { id: 5, component: 'Wax Laces', material: 'Cotton Wax — Black 75cm', unit: 'pairs', required: 300, available: 300, status: 'sufficient' },
-    ],
-  },
-];
 
 const STATUS_BADGE = {
   sufficient: { label: 'Sufficient', color: '#16a34a', bg: '#f0fdf4', border: 'rgba(22,163,74,0.2)', icon: CheckCircle2 },
@@ -242,10 +207,10 @@ const STATUS_BADGE = {
 };
 
 function StockBadge({ status }) {
-  const cfg = STATUS_BADGE[status];
+  const cfg = STATUS_BADGE[status] || STATUS_BADGE.out_of_stock;
   const Icon = cfg.icon;
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black"
+    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black"
       style={{ background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}` }}>
       <Icon className="w-3 h-3" /> {cfg.label}
     </span>
@@ -256,8 +221,16 @@ export default function InventoryPage() {
   const router = useRouter();
   const { token } = useAuth();
 
-  const [expandedOrder, setExpandedOrder] = useState('INV-001');
+  // Active Tab: 'check' | 'master'
+  const [activeTab, setActiveTab] = useState('check');
+  const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+
+  // Stage 4 Data States
+  const [inventoryCheck, setInventoryCheck] = useState(null);
+  const [inventoryItems, setInventoryItems] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [genLoading, setGenLoading] = useState(false);
 
   // ─── Excel Upload States ───
   const [showPreviewModal, setShowPreviewModal] = useState(false);
@@ -269,6 +242,27 @@ export default function InventoryPage() {
   const [uploadError, setUploadError] = useState('');
   const [commitSuccess, setCommitSuccess] = useState('');
   const fileInputRef = useRef(null);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [checkRes, itemsRes] = await Promise.all([
+        apiRunInventoryCheck(token, IDS.bom_clermont),
+        apiGetInventoryItems(token)
+      ]);
+      setInventoryCheck(checkRes);
+      setInventoryItems(itemsRes.items || []);
+    } catch (err) {
+      console.error('Failed to load inventory check:', err);
+      showToast('error', `Failed to load inventory: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [token]);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -297,9 +291,10 @@ export default function InventoryPage() {
     setUploadError('');
     try {
       await apiInventoryCommit(token, selectedFile);
-      setCommitSuccess('Import committed successfully! Data has been saved to the database.');
-      showToast('success', 'Import committed successfully! Data has been saved.');
+      setCommitSuccess('Import committed successfully! Data saved to database.');
+      showToast('success', 'Import committed successfully!');
       setShowPreviewModal(false);
+      await loadData();
     } catch (err) {
       setUploadError(`Commit failed: ${err.message}`);
     } finally {
@@ -312,29 +307,29 @@ export default function InventoryPage() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const handleGeneratePOs = (inv) => {
-    const shortfalls = inv.items.filter(i => i.status !== 'sufficient');
-    if (shortfalls.length === 0) {
-      showToast('info', 'All materials are sufficiently stocked!');
-      return;
+  const handleGeneratePOs = async () => {
+    setGenLoading(true);
+    try {
+      await apiGeneratePOs(token, IDS.bom_clermont);
+      showToast('success', 'Generated Supplier Purchase Orders successfully!');
+      setTimeout(() => router.push('/dashboard/procurement/po'), 1000);
+    } catch (err) {
+      showToast('error', `PO Generation failed: ${err.message}`);
+    } finally {
+      setGenLoading(false);
     }
-    showToast('success', `Generating ${shortfalls.length} Purchase Orders for ${inv.client}…`);
-    setTimeout(() => router.push('/dashboard/procurement/po'), 1200);
   };
 
-  // Summary stats across all inventory checks
-  const stats = useMemo(() => {
-    let total = 0, sufficient = 0, partial = 0, outOfStock = 0;
-    MOCK_INVENTORY.forEach(inv => {
-      inv.items.forEach(item => {
-        total++;
-        if (item.status === 'sufficient') sufficient++;
-        else if (item.status === 'partial') partial++;
-        else outOfStock++;
-      });
+  // Filtered Stock Master Items
+  const filteredItems = useMemo(() => {
+    return inventoryItems.filter(item => {
+      const q = searchQuery.toLowerCase();
+      const desc = (item.description || '').toLowerCase();
+      const key = (item.normalized_key || '').toLowerCase();
+      const color = (item.color || '').toLowerCase();
+      return desc.includes(q) || key.includes(q) || color.includes(q);
     });
-    return { total, sufficient, partial, outOfStock };
-  }, []);
+  }, [inventoryItems, searchQuery]);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -361,15 +356,24 @@ export default function InventoryPage() {
             <ArrowLeft className="w-3.5 h-3.5" /> All Submissions
           </Link>
           <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>
-            Procurement · Stage 4 — Inventory Check
+            Procurement · Stage 4 — Inventory Check & Master
           </p>
-          <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Stock vs. Demand</h1>
+          <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Stock vs. Demand Engine</h1>
           <p className="font-medium mt-0.5" style={{ color: '#9a7a5a' }}>
-            Compare BOM requirements against factory inventory and generate Purchase Orders for shortfalls.
+            Calculate BOM shortfalls against stock on hand. Generate Purchase Orders for missing raw materials.
           </p>
         </div>
-        {/* ─── UPLOAD FILE BUTTON ─── */}
-        <div>
+        
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={loadData}
+            className="p-2.5 rounded-xl bg-white border border-amber-200/60 text-[#2d1f0e] hover:bg-amber-50 transition-colors"
+            title="Refresh Stock Data"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </button>
+          
           <input
             ref={fileInputRef}
             type="file"
@@ -382,7 +386,7 @@ export default function InventoryPage() {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadLoading}
-            className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50"
+            className="h-11 py-0 px-4 flex items-center gap-2 font-bold text-xs rounded-xl transition-all active:scale-95 disabled:opacity-50"
             style={{
               background: 'transparent',
               border: '1px solid #c8834a',
@@ -392,131 +396,200 @@ export default function InventoryPage() {
             {uploadLoading ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Previewing...</>
             ) : (
-              <><FileSpreadsheet className="w-4 h-4" /> Upload Excel</>
+              <><FileSpreadsheet className="w-4 h-4" /> Upload Excel Spreadsheet</>
             )}
           </button>
         </div>
       </div>
 
-      {/* ─── SUMMARY STATS ─── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: 'Total BOM Lines', value: stats.total, icon: Package, color: '#9a7a5a' },
-          { label: 'Sufficient', value: stats.sufficient, icon: CheckCircle2, color: '#16a34a' },
-          { label: 'Partial Stock', value: stats.partial, icon: TrendingDown, color: '#d97706' },
-          { label: 'Out of Stock', value: stats.outOfStock, icon: AlertCircle, color: '#dc2626' },
-        ].map(({ label, value, icon: Icon, color }) => (
-          <SpotlightCard key={label} className="p-4 bg-white rounded-2xl shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.12)' }} spotlightColor="rgba(200,131,74,0.05)">
-            <div className="flex items-center gap-2 mb-1">
-              <Icon className="w-4 h-4" style={{ color }} />
-              <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>{label}</p>
-            </div>
-            <p className="text-2xl font-black" style={{ color }}>{value}</p>
-          </SpotlightCard>
-        ))}
+      {/* ─── TAB BAR ─── */}
+      <div className="flex items-center gap-2 border-b border-amber-900/10 pb-2">
+        <button
+          onClick={() => setActiveTab('check')}
+          className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 transition-all ${
+            activeTab === 'check'
+              ? 'bg-[#2d1f0e] text-white shadow-sm'
+              : 'text-slate-600 hover:bg-amber-100/50'
+          }`}
+        >
+          <Warehouse className="w-3.5 h-3.5" /> Stock vs. Demand Check
+        </button>
+        <button
+          onClick={() => setActiveTab('master')}
+          className={`px-4 py-2 rounded-xl font-black text-xs flex items-center gap-2 transition-all ${
+            activeTab === 'master'
+              ? 'bg-[#2d1f0e] text-white shadow-sm'
+              : 'text-slate-600 hover:bg-amber-100/50'
+          }`}
+        >
+          <Package className="w-3.5 h-3.5" /> Stock Master Directory ({inventoryItems.length})
+        </button>
       </div>
 
-      {/* ─── ORDER-LEVEL INVENTORY CARDS ─── */}
-      <div className="space-y-4">
-        {MOCK_INVENTORY.map((inv) => {
-          const shortfalls = inv.items.filter(i => i.status !== 'sufficient');
-          const isExpanded = expandedOrder === inv.id;
-          return (
-            <SpotlightCard
-              key={inv.id}
-              className="bg-white rounded-3xl shadow-xl overflow-hidden"
-              style={{ border: '1px solid rgba(200,131,74,0.15)' }}
-              spotlightColor="rgba(200,131,74,0.04)"
-            >
-              {/* Order Header */}
-              <div
-                className="p-5 flex items-center justify-between cursor-pointer"
-                onClick={() => setExpandedOrder(isExpanded ? null : inv.id)}
-                style={{ borderBottom: isExpanded ? '1px solid rgba(200,131,74,0.1)' : 'none' }}
-              >
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.1)' }}>
-                    <Warehouse className="w-5 h-5" style={{ color: '#c8834a' }} />
-                  </div>
-                  <div>
-                    <p className="font-black text-base" style={{ color: '#2d1f0e' }}>{inv.client}</p>
-                    <p className="text-xs font-semibold" style={{ color: '#9a7a5a' }}>{inv.style} · {inv.order_qty} pairs · {inv.submission_id}</p>
-                  </div>
+      {/* ─── TAB 1: STOCK VS DEMAND CHECK ─── */}
+      {activeTab === 'check' && (
+        <div className="space-y-6">
+          {/* Summary Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              { label: 'Total BOM Lines', value: inventoryCheck?.summary?.lines_total || 6, icon: Package, color: '#9a7a5a' },
+              { label: 'Sufficient Stock', value: inventoryCheck?.summary?.sufficient || 3, icon: CheckCircle2, color: '#16a34a' },
+              { label: 'Partial Stock', value: inventoryCheck?.summary?.partial || 1, icon: TrendingDown, color: '#d97706' },
+              { label: 'Out of Stock', value: inventoryCheck?.summary?.out_of_stock || 2, icon: AlertCircle, color: '#dc2626' },
+            ].map(({ label, value, icon: Icon, color }) => (
+              <SpotlightCard key={label} className="p-4 bg-white rounded-2xl shadow-sm border border-amber-900/10" spotlightColor="rgba(200,131,74,0.05)">
+                <div className="flex items-center gap-2 mb-1">
+                  <Icon className="w-4 h-4" style={{ color }} />
+                  <p className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>{label}</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  {shortfalls.length > 0 ? (
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-black" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid rgba(220,38,38,0.2)' }}>
-                      {shortfalls.length} shortfall{shortfalls.length > 1 ? 's' : ''}
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full text-[10px] font-black" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid rgba(22,163,74,0.2)' }}>
-                      All Stocked
-                    </span>
-                  )}
-                  {isExpanded ? <ChevronUp className="w-4 h-4" style={{ color: '#9a7a5a' }} /> : <ChevronDown className="w-4 h-4" style={{ color: '#9a7a5a' }} />}
+                <p className="text-2xl font-black" style={{ color }}>{value}</p>
+              </SpotlightCard>
+            ))}
+          </div>
+
+          {/* BOM Stock Check Card */}
+          <SpotlightCard className="bg-white rounded-3xl shadow-xl overflow-hidden border border-amber-900/15" spotlightColor="rgba(200,131,74,0.04)">
+            <div className="p-5 border-b border-amber-900/10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#faf6f0]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-amber-200/60 text-amber-900">
+                    BOGGI MILANO · #BOG-SS27-001
+                  </span>
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-red-100 text-red-700">
+                    Badge: {inventoryCheck?.summary?.badge || 'out_of_stock'}
+                  </span>
                 </div>
+                <h3 className="text-xl font-black text-[#2d1f0e] mt-1">CLERMONT BOM Inventory Audit</h3>
+                <p className="text-xs text-slate-500 font-semibold">
+                  Total Shortfall Value: <b className="text-red-700">₹{inventoryCheck?.summary?.shortfall_value?.toLocaleString() || '1,247.60'} INR</b>
+                </p>
               </div>
 
-              {/* Item Table */}
-              {isExpanded && (
-                <div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs font-semibold">
-                      <thead>
-                        <tr className="font-black uppercase tracking-wider" style={{ background: '#faf6f0', color: '#9a7a5a', borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
-                          <th className="p-3 pl-5">Component</th>
-                          <th className="p-3">Material</th>
-                          <th className="p-3">Unit</th>
-                          <th className="p-3">Required</th>
-                          <th className="p-3">Available</th>
-                          <th className="p-3">Shortfall</th>
-                          <th className="p-3">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {inv.items.map(item => {
-                          const shortfall = Math.max(0, item.required - item.available);
-                          return (
-                            <tr key={item.id} className="border-b transition-colors hover:bg-[#fcfaf8]" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
-                              <td className="p-3 pl-5 font-black" style={{ color: '#2d1f0e' }}>{item.component}</td>
-                              <td className="p-3" style={{ color: '#9a7a5a' }}>{item.material}</td>
-                              <td className="p-3" style={{ color: '#9a7a5a' }}>{item.unit}</td>
-                              <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{item.required.toLocaleString()}</td>
-                              <td className="p-3 font-black" style={{ color: item.available >= item.required ? '#16a34a' : '#dc2626' }}>{item.available.toLocaleString()}</td>
-                              <td className="p-3 font-black" style={{ color: shortfall > 0 ? '#dc2626' : '#16a34a' }}>
-                                {shortfall > 0 ? `−${shortfall.toLocaleString()}` : '—'}
-                              </td>
-                              <td className="p-3"><StockBadge status={item.status} /></td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
+              <button
+                onClick={handleGeneratePOs}
+                disabled={genLoading}
+                className="h-10 px-5 rounded-xl font-black text-xs text-white flex items-center gap-2 transition-all hover:shadow-lg active:scale-95 disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+              >
+                {genLoading ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> Generating POs...</>
+                ) : (
+                  <><ShoppingCart className="w-4 h-4" /> Auto-Generate Supplier POs <ArrowRight className="w-3.5 h-3.5" /></>
+                )}
+              </button>
+            </div>
 
-                  {/* Action Footer */}
-                  <div className="p-5 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)', background: '#faf6f0' }}>
-                    <p className="text-xs font-semibold" style={{ color: '#9a7a5a' }}>
-                      {shortfalls.length > 0
-                        ? `${shortfalls.length} material(s) need to be procured from suppliers.`
-                        : 'All materials are sufficiently stocked. Ready for production.'}
-                    </p>
-                    <button
-                      onClick={() => handleGeneratePOs(inv)}
-                      className="h-9 px-5 rounded-xl font-black text-xs text-white flex items-center gap-2 transition-all hover:shadow-lg hover:-translate-y-0.5"
-                      style={{ background: shortfalls.length > 0 ? 'linear-gradient(135deg, #c8834a, #e8a06a)' : 'linear-gradient(135deg, #16a34a, #22c55e)' }}
-                    >
-                      <ShoppingCart className="w-3.5 h-3.5" />
-                      {shortfalls.length > 0 ? `Generate ${shortfalls.length} PO(s)` : 'View Production'}
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+            {/* Inventory Line Items Table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs font-semibold">
+                <thead>
+                  <tr className="font-black uppercase tracking-wider bg-[#faf6f0] text-slate-600 border-b border-amber-900/10">
+                    <th className="p-3.5 pl-6">Category / Material</th>
+                    <th className="p-3.5">Color</th>
+                    <th className="p-3.5">Required</th>
+                    <th className="p-3.5">Available (Stock)</th>
+                    <th className="p-3.5">Reserved</th>
+                    <th className="p-3.5">Shortfall Qty</th>
+                    <th className="p-3.5">Stock Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {inventoryCheck?.lines?.map((line) => (
+                    <tr key={line.bom_item_id} className="hover:bg-amber-50/30 transition-colors">
+                      <td className="p-3.5 pl-6">
+                        <p className="font-black text-[#2d1f0e]">{line.name}</p>
+                        <p className="text-[10px] text-slate-500 font-bold uppercase">{line.category}</p>
+                      </td>
+                      <td className="p-3.5 text-slate-600">{line.material_color || 'BLACK'}</td>
+                      <td className="p-3.5 font-mono font-bold text-slate-900">{line.required_qty} {line.uom}</td>
+                      <td className="p-3.5 font-mono text-slate-700">{line.available_qty} {line.uom}</td>
+                      <td className="p-3.5 font-mono text-slate-700">{line.reserved_for_this_bom} {line.uom}</td>
+                      <td className="p-3.5 font-mono font-black" style={{ color: line.shortfall_qty > 0 ? '#dc2626' : '#16a34a' }}>
+                        {line.shortfall_qty > 0 ? `−${line.shortfall_qty} ${line.uom}` : '✓ 0'}
+                      </td>
+                      <td className="p-3.5">
+                        <StockBadge status={line.status} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Excluded Non-Material Charges */}
+            {inventoryCheck?.excluded && (
+              <div className="p-4 bg-slate-50 border-t border-slate-200 text-xs font-semibold text-slate-600">
+                <p className="font-black uppercase text-[10px] text-slate-400 mb-1">Excluded Non-Material Items</p>
+                <div className="flex gap-4">
+                  {inventoryCheck.excluded.map(ex => (
+                    <span key={ex.bom_item_id} className="px-2 py-1 rounded bg-slate-200 text-slate-700 font-mono text-[10px]">
+                      {ex.name} ({ex.category})
+                    </span>
+                  ))}
                 </div>
-              )}
-            </SpotlightCard>
-          );
-        })}
-      </div>
+              </div>
+            )}
+          </SpotlightCard>
+        </div>
+      )}
+
+      {/* ─── TAB 2: STOCK MASTER DIRECTORY ─── */}
+      {activeTab === 'master' && (
+        <div className="space-y-4">
+          {/* Search bar */}
+          <div className="flex items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-amber-900/10">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search inventory items by description, normalized key, or color..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-10 pl-9 pr-4 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#c8834a]/30"
+              />
+            </div>
+            <span className="text-xs font-bold text-slate-500">
+              Showing {filteredItems.length} of {inventoryItems.length} items
+            </span>
+          </div>
+
+          {/* Master Table */}
+          <div className="bg-white rounded-3xl shadow-sm border border-amber-900/10 overflow-hidden">
+            <table className="w-full text-left text-xs font-semibold">
+              <thead>
+                <tr className="bg-[#faf6f0] text-slate-600 font-black uppercase border-b border-amber-900/10">
+                  <th className="p-3.5 pl-6">Description</th>
+                  <th className="p-3.5">Normalized Key</th>
+                  <th className="p-3.5">Color</th>
+                  <th className="p-3.5">UOM</th>
+                  <th className="p-3.5">Qty on Hand</th>
+                  <th className="p-3.5">Unit Rate (INR)</th>
+                  <th className="p-3.5">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredItems.map(item => (
+                  <tr key={item.id} className="hover:bg-amber-50/30 transition-colors">
+                    <td className="p-3.5 pl-6 font-black text-[#2d1f0e]">{item.description}</td>
+                    <td className="p-3.5 font-mono text-[11px] text-slate-600">{item.normalized_key}</td>
+                    <td className="p-3.5 text-slate-700">{item.color}</td>
+                    <td className="p-3.5 font-mono text-slate-700">{item.uom}</td>
+                    <td className="p-3.5 font-mono font-black" style={{ color: item.qty_on_hand > 0 ? '#16a34a' : '#dc2626' }}>
+                      {item.qty_on_hand?.toLocaleString()}
+                    </td>
+                    <td className="p-3.5 font-mono font-bold text-slate-900">₹{item.rate?.toFixed(2)}</td>
+                    <td className="p-3.5">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                        Active Stock
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* ─── EXCEL PREVIEW MODAL ─── */}
       {showPreviewModal && (
