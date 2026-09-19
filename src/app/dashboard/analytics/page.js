@@ -1,5 +1,4 @@
 'use client';
-
 import { motion } from 'framer-motion';
 import { TrendingUp, Warehouse } from 'lucide-react';
 import { tabFade } from './_lib/constants';

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useEffect, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Scissors,
@@ -28,6 +29,7 @@ import {
   apiGetCuttingEmployeeDetail,
   apiGetCuttingConsumption,
 } from '@/lib/api';
+import CuttingJobSheetTab from './_components/tabs/CuttingJobSheetTab';
 
 // Interactive Monthly Calendar Filter Picker Component
 function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates = [], themeColor = '#2563eb' }) {
@@ -272,7 +274,8 @@ function initials(name = '') {
 }
 
 function DashboardInner() {
-   const { token } = useAuth();
+  const searchParams = useSearchParams();
+  const { token } = useAuth();
 
   const [activeTab, setActiveTab] = useState('tab-today');
 
@@ -315,16 +318,17 @@ function DashboardInner() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Search query for the Piece-Level Master Tracker
+  // Piece-Level Master Tracker tab's own search — local to that tab, on top
+  // of whatever the universal filter bar already narrowed down to.
   const [pieceSearchQuery, setPieceSearchQuery] = useState('');
 
-  // // Sync tab from URL query params
-  // useEffect(() => {
-  //   const tabParam = searchParams.get('tab');
-  //   if (tabParam) {
-  //     setActiveTab(tabParam);
-  //   }
-  // }, [searchParams]);
+  // Sync tab from URL query params
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam) {
+      setActiveTab(tabParam);
+    }
+  }, [searchParams]);
 
   // ── LIVE BACKEND CALL: GET /api/v1/dashboard/cutting ──
   useEffect(() => {
@@ -885,6 +889,7 @@ function DashboardInner() {
           { id: 'tab-inventory', label: '🧵 Leather Stock & Allocation (DCM)' },
           { id: 'tab-cutters', label: '✂️ Cutter Performance' },
           { id: 'tab-pieces', label: '🏷️ Piece-Level Master Tracker' },
+          { id: 'tab-jobsheet', label: '📋 Issue Job Sheet' },
         ].map((tab) => (
           <button
             key={tab.id}

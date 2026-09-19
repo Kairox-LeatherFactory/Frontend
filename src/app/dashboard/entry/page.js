@@ -38,6 +38,7 @@ import OrderNumberModal from "./components/OrderNumberModal";
 import { ExcelPreviewModal, CommitConfirmationModal } from "./components/ImportPreviewModal";
 import { useWorkerVerification } from "./hooks/useWorkerVerification";
 import { useBreakdownImport } from "./hooks/useBreakdownImport";
+import CuttingJobSheetModal from "./components/CuttingJobSheetModal";
 
 const BarcodeDoorSection = dynamic(
   () => import("./BarcodeSection/BarcodeDoorSection"),
@@ -137,6 +138,7 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
   const [lotCategory, setLotCategory] = useState("LEATHER"); // LEATHER or LINING
   const [bucketResult, setBucketResult] = useState(null);
   const [showBucketModal, setShowBucketModal] = useState(false);
+  const [isJobSheetModalOpen, setIsJobSheetModalOpen] = useState(false);
   const [completedStagesMap, setCompletedStagesMap] = useState({});
   const [storeReceiveStatus, setStoreReceiveStatus] = useState("pending"); // 'pending', 'received', 'sended'
 
@@ -527,6 +529,14 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
               {user.replace("_", " ")}
             </span>
           </div>
+          
+          <button
+            type="button"
+            onClick={() => setIsJobSheetModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-[#c8834a] hover:bg-[#b0713b] text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all active:scale-95"
+          >
+            <span role="img" aria-label="scissors">✂️</span> Issue Job Sheet
+          </button>
         </div>
 
         {/* TAB 2: DEDICATED BARCODE GUN SCANNER FLOW (CONTRACT V3.0) */}
@@ -777,6 +787,12 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
           setCameraScanTarget={setCameraScanTarget}
         />
       )}
+
+
+      <CuttingJobSheetModal
+        isOpen={isJobSheetModalOpen}
+        onClose={() => setIsJobSheetModalOpen(false)}
+      />
     </div>
   );
 }

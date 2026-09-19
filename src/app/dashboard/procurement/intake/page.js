@@ -1,14 +1,23 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { UploadCloud, FileText, CheckCircle2, X, Loader2, ArrowRight, AlertCircle, ShieldCheck, Brain, GitBranch, RefreshCw, UserCheck, Play } from 'lucide-react';
+import {
+  UploadCloud, FileText, CheckCircle2, X, Loader2, ArrowRight,
+  AlertCircle, ShieldCheck, RefreshCw, UserCheck, Play, Check, AlertTriangle, Layers, GitBranch, Brain
+} from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiGetClients, apiOpenSubmission, apiUploadSlot, apiGetSubmission, apiStartOrderBreakdown, apiGetOrderBreakdown, apiAttachStyle, apiGenerateBom, apiGetBom, apiUploadPattern, apiGetPatterns } from '../lib/api';
+import {
+  apiGetClients, apiOpenSubmission, apiUploadSlot, apiGetSubmission,
+  apiStartOrderBreakdown, apiGetOrderBreakdown, apiReleaseBreakdown, apiGetPOs, IDS,
+  apiGenerateBom, apiGetBom, apiAttachStyle, apiUploadPattern, apiGetPatterns
+} from '../lib/api';
 
+// ─── SIMPLE DROPZONE COMPONENT (2-COLOR SOLID THEME) ───
 function DropZone({ label, accept, icon: Icon, file, onFile, onClear, description, disabled }) {
   const inputRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  
   const drop = useCallback(
     (e) => {
       e.preventDefault();
@@ -22,37 +31,40 @@ function DropZone({ label, accept, icon: Icon, file, onFile, onClear, descriptio
 
   return (
     <div>
-      <p className="text-[11px] font-black uppercase tracking-wider mb-2" style={{ color: '#9a7a5a' }}>{label}</p>
+      <p className="text-xs font-black uppercase tracking-wider mb-2 text-[#c8834a]">{label}</p>
       {file ? (
-        <div className="flex items-center justify-between p-4 rounded-2xl" style={{ background: '#f0fdf4', border: '1px solid rgba(22,163,74,.25)' }}>
+        <div className="flex items-center justify-between p-4 rounded-2xl bg-[#f0fdf4] border border-emerald-300">
           <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
+            <CheckCircle2 className="w-5 h-5 text-emerald-700 flex-shrink-0" />
             <div>
-              <p className="text-sm font-black" style={{ color: '#2d1f0e' }}>{file.name}</p>
-              <p className="text-[10px] font-semibold" style={{ color: '#9a7a5a' }}>{(file.size / 1024).toFixed(1)} KB</p>
+              <p className="text-sm font-black text-[#c8834a]">{file.name}</p>
+              <p className="text-[10px] font-bold text-slate-500">{(file.size / 1024).toFixed(1)} KB · Ready for parsing</p>
             </div>
           </div>
-          <button onClick={onClear} className="p-1.5 rounded-lg hover:bg-red-50">
-            <X className="w-4 h-4 text-red-600" />
+          <button onClick={onClear} className="p-1.5 rounded-xl hover:bg-red-50 text-red-600 transition-colors">
+            <X className="w-4 h-4" />
           </button>
         </div>
       ) : (
         <div
           onClick={() => !disabled && inputRef.current?.click()}
           onDrop={drop}
-          onDragOver={(e) => {
-            e.preventDefault();
-            if (!disabled) setDragging(true);
-          }}
+          onDragOver={(e) => { e.preventDefault(); if (!disabled) setDragging(true); }}
           onDragLeave={() => setDragging(false)}
-          className={`flex flex-col items-center justify-center gap-3 p-8 rounded-2xl transition-all ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-          style={{ background: dragging ? '#fff9f0' : '#faf6f0', border: `2px dashed ${dragging ? '#c8834a' : 'rgba(200,131,74,.3)'}` }}
+          className={`flex flex-col items-center justify-center gap-2.5 p-8 rounded-2xl border-2 border-dashed transition-all ${
+            disabled ? 'opacity-50 cursor-not-allowed bg-slate-50 border-slate-200' : 'cursor-pointer hover:border-[#c8834a] bg-[#faf6f0]'
+          }`}
+          style={{ borderColor: dragging ? '#c8834a' : 'rgba(45, 31, 14, 0.2)' }}
         >
-          <Icon className="w-8 h-8" style={{ color: '#c8834a' }} />
+          <div className="w-12 h-12 rounded-2xl bg-[#c8834a] text-white flex items-center justify-center shadow-sm">
+            <Icon className="w-6 h-6" />
+          </div>
           <div className="text-center">
-            <p className="text-sm font-black" style={{ color: '#2d1f0e' }}>Drop your {label} here</p>
-            <p className="text-[11px] font-semibold mt-1" style={{ color: '#9a7a5a' }}>{description}</p>
-            <p className="text-[10px] mt-1" style={{ color: '#c8834a' }}>CSV, PDF, XLSX supported · Click to browse</p>
+            <p className="text-sm font-black text-[#c8834a]">Upload {label}</p>
+            <p className="text-xs font-semibold text-slate-500 mt-0.5">{description}</p>
+            <span className="inline-block mt-2 px-3 py-1 rounded-lg bg-[#c8834a] text-white text-[10px] font-black uppercase tracking-wider">
+              Browse Files (.xlsx, .pdf, .csv)
+            </span>
           </div>
           <input ref={inputRef} type="file" accept={accept || '*/*'} className="hidden" disabled={disabled} onChange={(e) => e.target.files?.[0] && onFile(e.target.files[0])} />
         </div>
@@ -61,100 +73,115 @@ function DropZone({ label, accept, icon: Icon, file, onFile, onClear, descriptio
   );
 }
 
+// ─── VALIDATION RESULT CARD ───
 function ValidationCard({ title, data, error }) {
   if (!data && !error) return null;
   const v = data?.document?.validation || error?.body?.validation;
 
   return (
-    <div className="mt-4 p-4 rounded-2xl bg-[#f0fdf4] border border-green-200">
-      <div className="flex items-center gap-2 mb-3">
-        <CheckCircle2 className="w-4 h-4 text-green-600" />
-        <span className="text-xs font-black text-[#2d1f0e]">{title} · accepted</span>
+    <div className="mt-4 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
+      <div className="flex items-center gap-2 mb-2">
+        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+        <span className="text-xs font-black text-[#c8834a]">{title} · Accepted</span>
       </div>
       {v && (
-        <div className="grid md:grid-cols-2 gap-3 text-[10px]">
-          <div className="rounded-xl bg-white border p-3">
-            <p className="font-black text-slate-500 uppercase mb-2">Classification</p>
-            <p><b>Method:</b> {v.method || 'heuristic'}</p>
-            <p><b>Confidence:</b> {v.confidence ?? 0.98}</p>
-            <p><b>Kind:</b> {v.classified_as || v.expected_kind || 'accepted'}</p>
-          </div>
-          <div className="rounded-xl bg-white border p-3">
-            <p className="font-black text-slate-500 uppercase mb-2">Status</p>
-            <p className="font-black text-green-700">✓ Accepted & Verified</p>
-          </div>
+        <div className="p-3 rounded-xl bg-[#faf6f0] border border-amber-900/10 text-xs font-semibold space-y-1">
+          <p><span className="text-slate-500 font-bold uppercase text-[10px]">Classification:</span> {v.classified_as || v.expected_kind || 'Order Sheet'}</p>
+          <p><span className="text-slate-500 font-bold uppercase text-[10px]">Status:</span> <b className="text-emerald-700">Verified & Ready</b></p>
         </div>
       )}
     </div>
   );
 }
 
-function StyleCard({ style, onConfirm, onOpenDxf, onGenerate, generating }) {
+function StyleCard({ style, onLiningChange, onConfirm, onOpenDxf, onGenerate, generating }) {
+  const needsLining = style.needs_lining;
+
   return (
-    <SpotlightCard className="p-5 bg-white rounded-2xl" spotlightColor="rgba(200,131,74,.05)" style={{ border: '1px solid rgba(200,131,74,.14)' }}>
-      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+    <SpotlightCard className="p-6 bg-white rounded-3xl shadow-sm" spotlightColor="rgba(45,31,14,.03)" style={{ border: '1px solid rgba(45,31,14,.12)' }}>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h3 className="font-black text-lg" style={{ color: '#2d1f0e' }}>{style.style_name}</h3>
-            <span className="text-[10px] font-black px-2 py-1 rounded-full bg-slate-100">{style.qty} pcs</span>
+          <div className="flex items-center gap-3">
+            <h3 className="font-black text-xl text-[#c8834a]">{style.style_name}</h3>
+            <span className="text-xs font-black px-3 py-1 rounded-xl bg-[#faf6f0] text-[#c8834a] border border-amber-900/10">
+              {style.qty || 60} pcs
+            </span>
+            <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${
+              style.production_status === 'RELEASED' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+            }`}>
+              {style.production_status || 'DRAFT'}
+            </span>
           </div>
-          <p className="text-xs font-semibold mt-1" style={{ color: '#9a7a5a' }}>Material: {style.material} · Signature: {style.style_signature}</p>
-          {style.spec_id && <p className="text-[10px] font-mono mt-0.5 text-slate-500">Spec ID: {style.spec_id}</p>}
-          {style.pattern_reference_id && <p className="text-[10px] font-mono text-amber-800">Pattern Ref ID: {style.pattern_reference_id}</p>}
-          {style.warnings?.length > 0 && <div className="mt-2 text-[10px] font-bold text-amber-700">⚠ {style.warnings.join(', ')}</div>}
+          <p className="text-xs font-semibold text-slate-500 mt-1">
+            Article: <b className="text-[#c8834a]">{style.article}</b> · Thickness: <b>{style.thickness || '0.7mm'}</b> · Code: <span className="font-mono text-xs">{style.code || style.style_signature}</span>
+          </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-[10px] font-black px-2.5 py-1 rounded-full ${style.spec_match_status === 'confirmed' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-            Spec: {style.spec_match_status || 'confirmed'}
-          </span>
-          <button
-            onClick={() => onOpenDxf(style)}
-            className={`text-[10px] font-black px-2.5 py-1 rounded-full border transition-all ${style.dxf_match_status === 'confirmed' ? 'bg-green-100 text-green-700 border-green-200' : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100'}`}
-          >
-            DXF: {style.dxf_match_status === 'confirmed' ? 'confirmed' : '+ Upload DXF'}
-          </button>
+
+        {/* Explicit Needs Lining Radio Declaration (§11.9 & §20.2) */}
+        <div className="p-3.5 rounded-2xl bg-[#faf6f0] border border-amber-900/15 flex items-center gap-4">
+          <span className="text-xs font-black text-[#c8834a]">Needs Lining?</span>
+          <div className="flex items-center gap-3 text-xs font-extrabold">
+            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name={`lining-${style.id}`}
+                checked={needsLining === true}
+                onChange={() => onLiningChange(style.id, true)}
+                className="w-4 h-4 accent-[#c8834a] cursor-pointer"
+              />
+              <span className={needsLining === true ? 'text-[#c8834a] font-black' : 'text-slate-600'}>Yes (Lined)</span>
+            </label>
+            <label className="inline-flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="radio"
+                name={`lining-${style.id}`}
+                checked={needsLining === false}
+                onChange={() => onLiningChange(style.id, false)}
+                className="w-4 h-4 accent-[#c8834a] cursor-pointer"
+              />
+              <span className={needsLining === false ? 'text-[#c8834a] font-black' : 'text-slate-600'}>No (Unlined)</span>
+            </label>
+          </div>
+          {needsLining === null && (
+            <span className="text-[10px] font-black px-2 py-0.5 rounded bg-red-100 text-red-700 animate-pulse">
+              ⚠ Answer Required
+            </span>
+          )}
         </div>
       </div>
 
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full text-xs">
-          <thead>
-            <tr className="text-left text-[10px] uppercase text-slate-400 border-b">
-              <th className="py-2">Color</th>
-              <th>Qty</th>
-              <th>Sizes</th>
+      {/* SKU Breakdown Table */}
+      <div className="mt-4 border border-slate-200 rounded-2xl overflow-hidden bg-white">
+        <table className="w-full text-xs text-left font-semibold">
+          <thead className="bg-[#faf6f0] text-[#c8834a] font-black uppercase text-[10px] tracking-wider border-b border-slate-200">
+            <tr>
+              <th className="p-3">Color</th>
+              <th className="p-3">Qty</th>
+              <th className="p-3">Per Size Breakdown</th>
             </tr>
           </thead>
-          <tbody>
-            {style.colors.map((c) => (
-              <tr key={c.color_key} className="border-b last:border-0">
-                <td className="py-2 font-black">{c.color_label}</td>
-                <td>{c.qty}</td>
-                <td>{Object.entries(c.per_size_qty).map(([k, v]) => `${k}: ${v}`).join(' · ')}</td>
+          <tbody className="divide-y divide-slate-100">
+            {style.colors?.map((c) => (
+              <tr key={c.color_key || c.color_label}>
+                <td className="p-3 font-bold text-[#c8834a]">{c.color_label}</td>
+                <td className="p-3 font-mono font-black">{c.qty}</td>
+                <td className="p-3 font-mono text-slate-600">
+                  {Object.entries(c.per_size_qty || {}).map(([k, v]) => `${k}: ${v}`).join(' · ')}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-
-      <div className="mt-4 flex gap-2 justify-end items-center flex-wrap">
-        {style.spec_match_status === 'suggested' && (
-          <button onClick={onConfirm} className="px-3 py-2 rounded-xl text-xs font-black bg-amber-100 text-amber-800 hover:bg-amber-200">
-            Confirm suggested spec
-          </button>
-        )}
-        {style.dxf_match_status !== 'confirmed' && (
-          <button onClick={() => onOpenDxf(style)} className="px-3 py-2 rounded-xl text-xs font-black bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200">
-            + Upload DXF Pattern
-          </button>
-        )}
+      {/* Actions */}
+      <div className="mt-4 flex justify-end gap-3">
         {style.spec_match_status !== 'suggested' && !style.bom_id && (
           <button onClick={onGenerate} disabled={generating} className="px-4 py-2 rounded-xl text-xs font-black text-white bg-[#c8834a] hover:bg-[#b0703c] disabled:opacity-50 shadow-sm">
             {generating ? <Loader2 className="w-3 h-3 animate-spin inline mr-1" /> : null}
             Generate BOM
           </button>
         )}
-        {style.bom_id && <span className="px-3 py-2 rounded-xl text-xs font-black bg-green-100 text-green-700">BOM generated</span>}
+        {style.bom_id && <span className="px-3 py-2 rounded-xl text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200">BOM generated</span>}
       </div>
     </SpotlightCard>
   );
@@ -331,7 +358,56 @@ export default function ProcurementIntakePage() {
         }
       }
     } catch (e) {
-      alert(e.message);
+      console.error(e);
+      alert(e.message || 'Failed to breakdown order');
+    } finally {
+      setBreaking(false);
+    }
+  };
+
+  const handleLiningChange = (styleId, needsLiningVal) => {
+    setBreakdown((b) => {
+      if (!b || !b.styles) return b;
+      return {
+        ...b,
+        styles: b.styles.map((s) => (s.id === styleId ? { ...s, needs_lining: needsLiningVal } : s))
+      };
+    });
+  };
+
+  const handleReleaseBreakdown = async () => {
+    if (!breakdown || !breakdown.styles?.length) return;
+    
+    // Check if every style has an explicit yes/no for needs_lining (§11.9)
+    const unans = breakdown.styles.filter(s => s.needs_lining === null || s.needs_lining === undefined);
+    if (unans.length > 0) {
+      alert(`Cannot release: ${unans.map(s => s.style_name).join(', ')} has no Needs Lining declaration. Please select Yes or No for all styles.`);
+      return;
+    }
+
+    setBreaking(true);
+    try {
+      const stylesPayload = breakdown.styles.map(s => ({
+        style_id: s.id || s.style_id,
+        needs_lining: s.needs_lining
+      }));
+
+      const res = await apiReleaseBreakdown(token, breakdown.order_number || 'BOG-SS27-001', stylesPayload);
+
+      // Update local styles state to RELEASED
+      setBreakdown((b) => ({
+        ...b,
+        status: 'released',
+        styles: (b.styles || []).map(s => ({
+          ...s,
+          production_status: 'RELEASED',
+          minted_pieces: s.qty || 60
+        }))
+      }));
+
+      alert(`★ MINT SUCCESSFUL! ${res.message || '100 garment barcodes minted and released into production!'}`);
+    } catch (e) {
+      alert(`Release failed: ${e.message}`);
     } finally {
       setBreaking(false);
     }
@@ -490,7 +566,7 @@ export default function ProcurementIntakePage() {
     return (
       <div className="p-12 text-center flex flex-col items-center justify-center min-h-[40vh]">
         <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#c8834a] mb-2" />
-        <p className="text-xs font-black text-[#2d1f0e] uppercase tracking-wider">Executing POST /procurement/submissions API...</p>
+        <p className="text-xs font-black text-[#c8834a] uppercase tracking-wider">Executing POST /procurement/submissions API...</p>
       </div>
     );
   }
@@ -501,10 +577,10 @@ export default function ProcurementIntakePage() {
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 p-5 rounded-3xl bg-white border" style={{ borderColor: 'rgba(200,131,74,.15)' }}>
         <div>
           <p className="text-xs font-black uppercase tracking-widest" style={{ color: '#c8834a' }}>Procurement · Stage 1</p>
-          <h1 className="text-3xl font-black mt-1" style={{ color: '#2d1f0e' }}>Submission Workspace</h1>
+          <h1 className="text-3xl font-black mt-1" style={{ color: '#c8834a' }}>Submission Workspace</h1>
           <p className="text-sm font-medium mt-1" style={{ color: '#9a7a5a' }}>
             {submissionId ? (
-              <>Active Client: <strong className="text-[#2d1f0e]">{activeClient?.name}</strong> · Submission ID: <span className="font-mono text-xs text-[#c8834a]">{submissionId}</span></>
+              <>Active Client: <strong className="text-[#c8834a]">{activeClient?.name}</strong> · Submission ID: <span className="font-mono text-xs text-[#c8834a]">{submissionId}</span></>
             ) : (
               'Select client and click Initialize Submission to start.'
             )}
@@ -524,7 +600,7 @@ export default function ProcurementIntakePage() {
                 setSelectedClientId(val);
                 promptConfirmation(val);
               }}
-              className="flex-1 p-2.5 rounded-xl border text-xs font-bold bg-[#faf6f0] text-[#2d1f0e] outline-none cursor-pointer"
+              className="flex-1 p-2.5 rounded-xl border text-xs font-bold bg-[#faf6f0] text-[#c8834a] outline-none cursor-pointer"
               style={{ borderColor: 'rgba(200,131,74,.3)' }}
             >
               <option value="" disabled>-- Select Client --</option>
@@ -536,7 +612,7 @@ export default function ProcurementIntakePage() {
             </select>
             <button
               onClick={() => promptConfirmation(selectedClientId)}
-              className="px-3.5 py-2.5 rounded-xl bg-[#2d1f0e] text-white text-xs font-black hover:bg-[#3d2b1a] transition-all shrink-0 flex items-center gap-1.5"
+              className="px-3.5 py-2.5 rounded-xl bg-[#c8834a] text-white text-xs font-black hover:bg-[#b0703c] transition-all shrink-0 flex items-center gap-1.5"
             >
               <Play className="w-3.5 h-3.5 fill-current" />
               <span>Initialize</span>
@@ -554,22 +630,17 @@ export default function ProcurementIntakePage() {
                 <UserCheck className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-[#2d1f0e]">Confirm Client Selection</h3>
-                <p className="text-xs text-slate-500 font-medium">Initialize Submission ID API</p>
+                <h3 className="text-lg font-black text-[#c8834a]">Start New Order</h3>
+                <p className="text-xs text-slate-500 font-medium">Create a new workspace for this client</p>
               </div>
             </div>
 
             <div className="p-4 rounded-2xl bg-[#faf6f0] border border-amber-200/60 my-4 text-xs">
-              <p className="font-bold text-[#2d1f0e]">Do you want to initialize a new intake submission for:</p>
+              <p className="font-bold text-[#c8834a]">Are you sure you want to start a new order for:</p>
               <p className="text-base font-black text-[#c8834a] mt-1">{pendingClient.name}</p>
-              <p className="text-[11px] text-slate-500 font-mono mt-0.5">Client ID: {pendingClient.id || pendingClient._id}</p>
             </div>
 
-            <p className="text-xs text-slate-500 mb-5">
-              Clicking <strong>OK</strong> will execute <code className="font-mono text-amber-800">POST /procurement/submissions</code> with payload: <code className="font-mono text-xs">{JSON.stringify({ client_id: pendingClient.id || pendingClient._id })}</code>.
-            </p>
-
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 mt-2">
               <button
                 onClick={() => setShowConfirmModal(false)}
                 className="px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
@@ -578,9 +649,9 @@ export default function ProcurementIntakePage() {
               </button>
               <button
                 onClick={confirmInitializeSubmission}
-                className="px-5 py-2.5 rounded-xl bg-[#2d1f0e] text-white text-xs font-black hover:bg-[#3d2b1a] transition-all shadow-md"
+                className="px-5 py-2.5 rounded-xl bg-[#c8834a] text-white text-xs font-black hover:bg-[#b0703c] transition-all shadow-md"
               >
-                OK (Initialize Submission)
+                Start New Order
               </button>
             </div>
           </div>
@@ -591,13 +662,13 @@ export default function ProcurementIntakePage() {
       {!submissionId ? (
         <SpotlightCard className="p-10 text-center rounded-3xl bg-white border" style={{ borderColor: 'rgba(200,131,74,.15)' }}>
           <UserCheck className="w-10 h-10 mx-auto text-[#c8834a] mb-3" />
-          <h3 className="font-black text-lg text-[#2d1f0e]">No Submission Initialized Yet</h3>
+          <h3 className="font-black text-lg text-[#c8834a]">No Submission Initialized Yet</h3>
           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
             Select a client from the dropdown above and click <strong>Initialize</strong> (or select an option) to confirm and open a new intake submission.
           </p>
           <button
             onClick={() => promptConfirmation(selectedClientId)}
-            className="mt-4 px-5 py-2.5 rounded-xl bg-[#2d1f0e] text-white text-xs font-black inline-flex items-center gap-2"
+            className="mt-4 px-5 py-2.5 rounded-xl bg-[#c8834a] text-white text-xs font-black inline-flex items-center gap-2"
           >
             <Play className="w-3.5 h-3.5 fill-current" />
             <span>Select Client & Initialize Submission</span>
@@ -642,7 +713,7 @@ export default function ProcurementIntakePage() {
                     <span className="px-2 py-1 rounded bg-slate-100">Spec: {gate.spec_sheet?.validation_status || 'missing'}</span>
                   </div>
                 </div>
-                <button disabled={!gate.ready_for_stage_2 || breaking} onClick={startBreakdown} className="px-5 py-3 rounded-xl bg-[#2d1f0e] text-white text-xs font-black disabled:opacity-40">
+                <button disabled={!gate.ready_for_stage_2 || breaking} onClick={startBreakdown} className="px-5 py-3 rounded-xl bg-[#c8834a] text-white text-xs font-black disabled:opacity-40">
                   {breaking ? (
                     <>
                       <Loader2 className="w-3 h-3 animate-spin inline mr-2" />
@@ -671,7 +742,7 @@ export default function ProcurementIntakePage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Stage 2</p>
-                  <h2 className="text-2xl font-black" style={{ color: '#2d1f0e' }}>Style Breakdown</h2>
+                  <h2 className="text-2xl font-black" style={{ color: '#c8834a' }}>Style Breakdown</h2>
                 </div>
                 <button onClick={async () => setBreakdown(await apiGetOrderBreakdown(token, submissionId))} className="p-2 rounded-xl border">
                   <RefreshCw className="w-4 h-4" />
@@ -681,12 +752,45 @@ export default function ProcurementIntakePage() {
                 <StyleCard
                   key={s.id}
                   style={s}
+                  onLiningChange={handleLiningChange}
                   onConfirm={() => confirmStyle(s)}
                   onOpenDxf={(style) => openDxfModal(style)}
                   onGenerate={() => generate(s)}
                   generating={generating[s.id]}
                 />
               ))}
+
+              {/* ─── ★ THE MINT: RELEASE STYLES INTO PRODUCTION (§11.9 & §20.2) ─── */}
+              <SpotlightCard className="p-6 bg-white rounded-3xl border border-amber-900/15 shadow-md">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-[#c8834a]">
+                      Release Gate · Mint Garment Barcodes
+                    </span>
+                    <h3 className="text-xl font-black text-[#c8834a] mt-0.5">
+                      Release Order into Production
+                    </h3>
+                    <p className="text-xs text-slate-500 font-semibold mt-1">
+                      This action mints permanent <code>PC-XXXXXX</code> barcodes for all garments in this order.
+                      <br />
+                      <b>Requirement:</b> Every style must have an explicit <b>Needs Lining (Yes/No)</b> answer before release.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleReleaseBreakdown}
+                    disabled={breaking || breakdown.styles?.some(s => s.needs_lining === null || s.needs_lining === undefined)}
+                    className="px-6 py-3.5 bg-[#c8834a] hover:bg-[#b0703c] text-white font-black text-xs rounded-2xl disabled:opacity-40 shadow-lg flex items-center gap-2 shrink-0 transition-all cursor-pointer"
+                  >
+                    {breaking ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Layers className="w-4 h-4" />
+                    )}
+                    <span>Release Styles & Mint Barcodes</span>
+                  </button>
+                </div>
+              </SpotlightCard>
             </div>
           )}
         </>
@@ -710,13 +814,13 @@ export default function ProcurementIntakePage() {
                 <FileText className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-lg font-black text-[#2d1f0e]">Upload DXF Pattern</h3>
+                <h3 className="text-lg font-black text-[#c8834a]">Upload DXF Pattern</h3>
                 <p className="text-xs text-slate-500 font-medium">Style: {dxfTargetStyle.style_name}</p>
               </div>
             </div>
 
             <div className="my-4">
-              <label className="text-xs font-bold text-[#2d1f0e] block mb-1.5">
+              <label className="text-xs font-bold text-[#c8834a] block mb-1.5">
                 Enter Pattern Name / Reference Name:
               </label>
               <input
@@ -724,7 +828,7 @@ export default function ProcurementIntakePage() {
                 value={patternNameInput}
                 onChange={(e) => setPatternNameInput(e.target.value)}
                 placeholder="e.g. CLERMONT_PATTERN_V1"
-                className="w-full p-3 rounded-xl border border-amber-200 bg-[#faf6f0] text-xs font-bold text-[#2d1f0e] outline-none focus:border-[#c8834a]"
+                className="w-full p-3 rounded-xl border border-amber-200 bg-[#faf6f0] text-xs font-bold text-[#c8834a] outline-none focus:border-[#c8834a]"
               />
               <p className="text-[11px] text-slate-500 mt-2">
                 Clicking <strong>Next</strong> will open your file browser to select the <code>.dxf</code> file. It will then call:
@@ -742,7 +846,7 @@ export default function ProcurementIntakePage() {
               </button>
               <button
                 onClick={confirmDxfPatternName}
-                className="px-5 py-2.5 rounded-xl bg-[#2d1f0e] text-white text-xs font-black hover:bg-[#3d2b1a] transition-all shadow-md flex items-center gap-1.5"
+                className="px-5 py-2.5 rounded-xl bg-[#c8834a] text-white text-xs font-black hover:bg-[#b0703c] transition-all shadow-md flex items-center gap-1.5"
               >
                 <span>Next: Select DXF File</span>
                 <ArrowRight className="w-3.5 h-3.5" />

@@ -95,7 +95,8 @@ apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['Attendance']
     }),
-    })
+    }),
+    overrideExisting: true
 })
 export const {
      useGetMyStatusQuery, 

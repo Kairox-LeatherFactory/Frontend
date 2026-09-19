@@ -74,55 +74,32 @@ export default function BucketResultModal({
             </div>
           )}
 
-          {/* Sequence Blocked Bucket */}
-          {bucketResult.sequence_blocked && bucketResult.sequence_blocked.length > 0 && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-2">
+          {/* Blocked Bucket */}
+          {bucketResult.blocked && bucketResult.blocked.length > 0 && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4 space-y-3">
               <div className="flex items-center gap-2 font-black text-xs text-red-800 uppercase tracking-wider">
                 <AlertTriangle className="w-4 h-4 text-red-500" />
-                Sequence Blocked ({bucketResult.sequence_blocked.length})
+                Blocked Pieces ({bucketResult.blocked.length})
               </div>
-              <ul className="text-xs text-red-700 font-semibold space-y-1.5 list-disc pl-5">
-                {bucketResult.sequence_blocked.map((msg, i) => {
-                  const pieceStr = typeof msg === "string" ? msg : JSON.stringify(msg);
-                  const reasonObj = bucketResult.blocked?.find((b) => b.piece === pieceStr);
-                  return (
-                    <li key={i}>
-                      <span>{pieceStr}</span>
-                      {reasonObj && (
-                        <div className="text-[10px] text-red-500 font-medium mt-0.5">
-                          {reasonObj.reason}
-                        </div>
+              <div className="space-y-2">
+                {bucketResult.blocked.map((b, i) => (
+                  <div key={i} className="flex flex-col gap-1 p-3 bg-white rounded-xl border border-red-100 shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-xs text-slate-800">{b.piece}</span>
+                      {b.gate && (
+                        <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-black uppercase rounded-md">
+                          {b.gate}
+                        </span>
                       )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {/* Merge Blocked Bucket */}
-          {bucketResult.merge_blocked && bucketResult.merge_blocked.length > 0 && (
-            <div className="bg-orange-50 border border-orange-200 rounded-2xl p-4 space-y-2">
-              <div className="flex items-center gap-2 font-black text-xs text-orange-800 uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4 text-orange-500" />
-                Merge Gate Blocked ({bucketResult.merge_blocked.length})
+                    </div>
+                    {b.reason && (
+                      <p className="text-xs text-red-600 font-medium leading-relaxed">
+                        {b.reason}
+                      </p>
+                    )}
+                  </div>
+                ))}
               </div>
-              <ul className="text-xs text-orange-700 font-semibold space-y-1.5 list-disc pl-5">
-                {bucketResult.merge_blocked.map((msg, i) => {
-                  const pieceStr = typeof msg === "string" ? msg : JSON.stringify(msg);
-                  const reasonObj = bucketResult.blocked?.find((b) => b.piece === pieceStr);
-                  return (
-                    <li key={i}>
-                      <span>{pieceStr}</span>
-                      {reasonObj && (
-                        <div className="text-[10px] text-orange-600 font-medium mt-0.5">
-                          {reasonObj.reason}
-                        </div>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
             </div>
           )}
 

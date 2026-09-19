@@ -8,7 +8,7 @@ import { apiGetProductionTracking, apiTransitionTracking } from '../lib/api';
 
 const rungs = ['awaiting_bom', 'bom_approved', 'inventory_checked', 'po_raised', 'po_confirmed', 'material_ready', 'released_to_production', 'in_production', 'completed'];
 
-export default function ProductionBoard() {
+export default function ProductionBoard() { 
   const { token } = useAuth();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);

@@ -79,6 +79,9 @@ export const apiSlice = createApi({
     productionLogTwoDoor: builder.mutation({
       query: (payload) => ({ url: '/api/v1/production/log', method: 'POST', body: payload })
     }),
+    issueCuttingJobSheet: builder.mutation({
+      query: (payload) => ({ url: '/api/v1/production/cutting/issue', method: 'POST', body: payload })
+    }),
 
     
 
@@ -336,6 +339,7 @@ export const {
   useLazyGetMaterialLotsQuery,
   useProductionCuttingMutation,
   useProductionLogTwoDoorMutation,
+  useIssueCuttingJobSheetMutation,
   useGetDrawerPoolQuery,
   useLazyGetDrawerPoolQuery,
   useStoreDrawerScanMutation,
