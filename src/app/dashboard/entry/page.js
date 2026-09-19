@@ -38,7 +38,6 @@ import OrderNumberModal from "./components/OrderNumberModal";
 import { ExcelPreviewModal, CommitConfirmationModal } from "./components/ImportPreviewModal";
 import { useWorkerVerification } from "./hooks/useWorkerVerification";
 import { useBreakdownImport } from "./hooks/useBreakdownImport";
-import CuttingJobSheetModal from "./components/CuttingJobSheetModal";
 
 const BarcodeDoorSection = dynamic(
   () => import("./BarcodeSection/BarcodeDoorSection"),
@@ -49,6 +48,9 @@ const ManualDoorSection = dynamic(
 const StoreHubSection = dynamic(() => import("./StoreSection/StoreHubSection"));
 const BreakdownReviewBody = dynamic(
   () => import("../imports/BreakdownReviewBody"),
+);
+const CuttingSheetSection = dynamic(
+  () => import("./components/CuttingSheetSection"),
 );
 
 
@@ -138,7 +140,7 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
   const [lotCategory, setLotCategory] = useState("LEATHER"); // LEATHER or LINING
   const [bucketResult, setBucketResult] = useState(null);
   const [showBucketModal, setShowBucketModal] = useState(false);
-  const [isJobSheetModalOpen, setIsJobSheetModalOpen] = useState(false);
+
   const [completedStagesMap, setCompletedStagesMap] = useState({});
   const [storeReceiveStatus, setStoreReceiveStatus] = useState("pending"); // 'pending', 'received', 'sended'
 
@@ -502,9 +504,25 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
           <FileSpreadsheet className="w-4 h-4" />
           Breakdown Review
         </button>
+        <button
+          type="button"
+          onClick={() => handleSetActiveDoor("cutting-sheet")}
+          className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
+          style={{
+            borderColor: activeDoor === "cutting-sheet" ? "#c8834a" : "transparent",
+            color: activeDoor === "cutting-sheet" ? "#c8834a" : "#9a7a5a",
+          }}
+        >
+          <span role="img" aria-label="scissors">✂️</span> Cutting Sheet
+        </button>
       </div>
 
+      {activeDoor === "cutting-sheet" && (
+        <CuttingSheetSection />
+      )}
+
       {/* LOGGING FORM CARD */}
+      {["manual", "barcode", "breakdown"].includes(activeDoor) && (
       <SpotlightCard
         className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl"
         style={{ border: "1px solid rgba(200,131,74,0.15)" }}
@@ -530,13 +548,7 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
             </span>
           </div>
           
-          <button
-            type="button"
-            onClick={() => setIsJobSheetModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-[#c8834a] hover:bg-[#b0713b] text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-sm transition-all active:scale-95"
-          >
-            <span role="img" aria-label="scissors">✂️</span> Issue Job Sheet
-          </button>
+
         </div>
 
         {/* TAB 2: DEDICATED BARCODE GUN SCANNER FLOW (CONTRACT V3.0) */}
@@ -670,38 +682,39 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
                   {breakdownOrders
                     .filter(
                       (o) =>
-                        !breakdownOrderSearch.trim() ||
-                        String(o.order_number || o.order_id || "")
-                          .toLowerCase()
-                          .includes(breakdownOrderSearch.trim().toLowerCase()),
+                        o.order_number
+                          ?.toLowerCase()
+                          .includes(breakdownOrderSearch.toLowerCase()) ||
+                        o.client_name
+                          ?.toLowerCase()
+                          .includes(breakdownOrderSearch.toLowerCase()),
                     )
                     .map((o) => (
-                      <button
-                        key={o.order_id || o.order_number}
-                        type="button"
+                      <div
+                        key={o.order_id}
                         onClick={() =>
-                          setSelectedBreakdownOrder(
-                            o.order_number || o.order_id,
-                          )
+                          setSelectedBreakdownOrder(o.order_number)
                         }
-                        className="text-left p-4 rounded-2xl border bg-white hover:-translate-y-0.5 hover:shadow-md transition-all cursor-pointer"
-                        style={{ borderColor: "rgba(200,131,74,0.2)" }}
+                        className="p-4 bg-white rounded-xl border hover:border-[#c8834a] hover:shadow-md cursor-pointer transition-all group flex flex-col justify-between"
+                        style={{ borderColor: "rgba(200,131,74,0.15)" }}
                       >
-                        <p
-                          className="font-black text-sm"
-                          style={{ color: "#2d1f0e" }}
-                        >
-                          {o.order_number || o.order_id}
-                        </p>
-                        <p
-                          className="text-[11px] font-bold mt-0.5"
-                          style={{ color: "#9a7a5a" }}
-                        >
-                          {o.client || o.styles
-                            ? `${o.styles ?? ""} ${o.styles ? "styles" : ""}`.trim()
-                            : "View breakdown →"}
-                        </p>
-                      </button>
+                        <div className="flex justify-between items-start mb-2">
+                          <span
+                            className="text-xs font-black px-2 py-1 bg-[#faf6f0] rounded-md"
+                            style={{ color: "#c8834a" }}
+                          >
+                            {o.order_number}
+                          </span>
+                        </div>
+                        <div>
+                          <p
+                            className="text-sm font-bold"
+                            style={{ color: "#4a3a2a" }}
+                          >
+                            {o.client_name}
+                          </p>
+                        </div>
+                      </div>
                     ))}
                   {!breakdownOrdersLoading && breakdownOrders.length === 0 && (
                     <p
@@ -716,7 +729,7 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
             </div>
           ))}
       </SpotlightCard>
-
+      )}
             {/* EXCEL IMPORT PREVIEW MODAL */}
       <ExcelPreviewModal
         mounted={mounted}
@@ -788,11 +801,6 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
         />
       )}
 
-
-      <CuttingJobSheetModal
-        isOpen={isJobSheetModalOpen}
-        onClose={() => setIsJobSheetModalOpen(false)}
-      />
     </div>
   );
 }
