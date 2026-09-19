@@ -17,11 +17,13 @@ import {
   useGetMaterialLotsQuery,
 } from '@/store/slices/apiSlice';
 import { useGetOrderBarcodeSkusQuery } from '@/store/slices/progressapiSlice';
+import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
 
 export default function CuttingJobSheetModal({ isOpen, onClose }) {
   // Queries
   const { data: orders = [], isLoading: ordersLoading } = useGetBarcodeOrdersQuery(undefined, { skip: !isOpen });
   const { data: lots = [], isLoading: lotsLoading } = useGetMaterialLotsQuery('category=leather', { skip: !isOpen });
+  const { data: workers = [], isLoading: workersLoading } = useGetEmployeesQuery(undefined, { skip: !isOpen });
   const [issueJobSheet, { isLoading: issuing }] = useIssueCuttingJobSheetMutation();
 
   // State
@@ -29,6 +31,7 @@ export default function CuttingJobSheetModal({ isOpen, onClose }) {
   const [selectedOrderId, setSelectedOrderId] = useState('');
   const [selectedSkuId, setSelectedSkuId] = useState('');
   const [selectedLotId, setSelectedLotId] = useState('');
+  const [selectedWorkerId, setSelectedWorkerId] = useState('');
   const [jobDate, setJobDate] = useState(new Date().toISOString().slice(0, 10));
   const [successMsg, setSuccessMsg] = useState(null);
 
@@ -95,6 +98,7 @@ export default function CuttingJobSheetModal({ isOpen, onClose }) {
       order_id: selectedOrderId,
       sku_id: selectedSkuId,
       lot_id: selectedLotId,
+      worker_id: selectedWorkerId,
       measurements: skins.filter((s) => s !== '' && !isNaN(s) && Number(s) > 0).map(Number),
       total_skins: totalSkins,
       total_sqft: Number(totalSqft),
@@ -126,6 +130,7 @@ export default function CuttingJobSheetModal({ isOpen, onClose }) {
     setSelectedOrderId('');
     setSelectedSkuId('');
     setSelectedLotId('');
+    setSelectedWorkerId('');
     onClose();
   };
 
@@ -169,7 +174,7 @@ export default function CuttingJobSheetModal({ isOpen, onClose }) {
             )}
 
             {/* Selection Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {/* Date Selection */}
               <div className="space-y-2">
                 <label className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
@@ -247,6 +252,27 @@ export default function CuttingJobSheetModal({ isOpen, onClose }) {
                   ))}
                 </select>
                 {lotsLoading && <p className="text-[10px] text-slate-400">Loading lots...</p>}
+              </div>
+
+              {/* Worker Selection */}
+              <div className="space-y-2">
+                <label className="text-[11px] font-black uppercase text-slate-500 tracking-wider">
+                  5. Allocated Worker
+                </label>
+                <select
+                  value={selectedWorkerId}
+                  onChange={(e) => setSelectedWorkerId(e.target.value)}
+                  className="w-full h-12 px-4 bg-slate-50 border-2 border-slate-200 focus:border-[#c8834a] rounded-xl text-sm font-bold text-slate-700 outline-none cursor-pointer"
+                  disabled={workersLoading}
+                >
+                  <option value="">-- Choose Worker --</option>
+                  {workers?.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.name}
+                    </option>
+                  ))}
+                </select>
+                {workersLoading && <p className="text-[10px] text-slate-400">Loading workers...</p>}
               </div>
             </div>
 
@@ -340,7 +366,7 @@ export default function CuttingJobSheetModal({ isOpen, onClose }) {
             <button
               type="button"
               onClick={handleSubmit}
-              disabled={totalSkins === 0 || !selectedOrderId || !selectedSkuId || !selectedLotId || issuing}
+              disabled={totalSkins === 0 || !selectedOrderId || !selectedSkuId || !selectedLotId || !selectedWorkerId || issuing}
               className="w-full sm:w-auto px-8 py-4 bg-gradient-to-r from-[#c8834a] to-[#e8a06a] hover:from-[#b0713b] hover:to-[#c8834a] text-white rounded-2xl font-black text-sm transition-all shadow-[0_8px_20px_-8px_rgba(200,131,74,0.6)] disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2 cursor-pointer"
             >
               <Scissors className="w-4 h-4" />
