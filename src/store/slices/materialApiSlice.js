@@ -98,6 +98,24 @@ export const materialApiSlice = apiSlice.injectEndpoints({
             }),
             invalidatesTags: ['SupplierOrder'],
         }),
+
+        // GET /api/v1/materials/lots/{id}/history
+        getMaterialLotHistory: builder.query({
+            query: (lotId) => `/api/v1/materials/lots/${encodeURIComponent(lotId)}/history`,
+            providesTags: (result, error, id) => [{ type: 'MaterialLot', id }],
+        }),
+
+        // GET /api/v1/materials/leather-by-style
+        getLeatherByStyle: builder.query({
+            query: (params = {}) => `/api/v1/materials/leather-by-style?${new URLSearchParams(params).toString()}`,
+            providesTags: ['MaterialStock'],
+        }),
+
+        // GET /api/v1/materials/pieces/{piece_id}/consumption
+        getPieceConsumption: builder.query({
+            query: (pieceId) => `/api/v1/materials/pieces/${encodeURIComponent(pieceId)}/consumption`,
+            providesTags: (result, error, id) => [{ type: 'MaterialLot', id }],
+        }),
     }),
     overrideExisting: true,
 });
@@ -118,4 +136,8 @@ export const {
     useReceiveMaterialsMutation,
     usePatchSupplierOrderMutation,
     usePatchSupplierOrderSpecMutation,
+    useGetMaterialLotHistoryQuery,
+    useGetLeatherByStyleQuery,
+    useGetPieceConsumptionQuery,
+    useLazyGetPieceConsumptionQuery,
 } = materialApiSlice;

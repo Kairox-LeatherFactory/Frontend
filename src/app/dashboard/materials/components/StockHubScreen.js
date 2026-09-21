@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, CheckCircle2, AlertTriangle, ChevronRight, Truck } from 'lucide-react';
-import { useGetMaterialSpecQuery, useGetMaterialLotsQuery, useLazyGetMaterialLotsQuery, useLazyGetMaterialLotQuery, useLazyGetMaterialsStockQuery }
+import { Search, Loader2, CheckCircle2, AlertTriangle, ChevronRight, Truck, Shirt, ChevronDown } from 'lucide-react';
+import { useGetMaterialSpecQuery, useGetMaterialLotsQuery, useLazyGetMaterialLotsQuery, useLazyGetMaterialLotQuery, useLazyGetMaterialsStockQuery, useGetLeatherByStyleQuery }
     from '@/store/slices/materialApiSlice';
 import { errMsg, Tile, SelectableFilterCombobox, CategoryPicker } from './shared';
 
@@ -19,6 +19,8 @@ export function StockHubScreen({ showToast, canOrder, onOpenOrder, canEdit, canA
     const [loading, setLoading] = useState(false);
     const [lots, setLots] = useState([]);
     const [detailLot, setDetailLot] = useState(null);
+    const [styleOpen, setStyleOpen] = useState(false);
+    const { data: styleData, isLoading: styleLoading } = useGetLeatherByStyleQuery({}, { skip: !styleOpen });
 const { data: spec } = useGetMaterialSpecQuery({ category, subtype }, { skip: !category });
 const { data: lotsRes } = useGetMaterialLotsQuery({ category, subtype: subtype || undefined }, { skip: !category });
 const availableLots = lotsRes?.lots || [];
@@ -194,6 +196,60 @@ const availableLots = lotsRes?.lots || [];
                     </div>
                 );
             })()}
+
+            {/* Leather by Style Section */}
+            <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+                <button onClick={() => setStyleOpen(o => !o)}
+                    className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-50/50 transition-colors">
+                    <span className="font-black text-xs uppercase tracking-wider text-slate-500 flex items-center gap-2">
+                        <Shirt className="w-3.5 h-3.5 text-amber-500" /> Leather Stock by Style
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${styleOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {styleOpen && (
+                    <div className="p-4 border-t" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                        {styleLoading ? (
+                            <div className="flex justify-center py-6">
+                                <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                            </div>
+                        ) : styleData && Array.isArray(styleData) && styleData.length > 0 ? (
+                            <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+                                <table className="w-full text-xs text-left">
+                                    <thead>
+                                        <tr className="font-black uppercase tracking-wider text-[10px]" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
+                                            <th className="p-3">Style</th>
+                                            <th className="p-3">Article</th>
+                                            <th className="p-3">Colour</th>
+                                            <th className="p-3 text-right">Required</th>
+                                            <th className="p-3 text-right">Available</th>
+                                            <th className="p-3 text-right">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.08)' }}>
+                                        {styleData.map((row, i) => (
+                                            <tr key={i} className="hover:bg-[#fcfaf8] transition-colors">
+                                                <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{row.style || '—'}</td>
+                                                <td className="p-3 font-bold" style={{ color: '#9a7a5a' }}>{row.article || '—'}</td>
+                                                <td className="p-3 font-bold" style={{ color: '#9a7a5a' }}>{row.colour || '—'}</td>
+                                                <td className="p-3 text-right font-bold">{row.required ?? '—'}</td>
+                                                <td className="p-3 text-right font-black" style={{ color: '#c8834a' }}>{row.available ?? '—'}</td>
+                                                <td className="p-3 text-right">
+                                                    {row.short_by > 0
+                                                        ? <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-red-50 text-red-600 border border-red-200">Short {row.short_by}</span>
+                                                        : <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200">OK</span>
+                                                    }
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        ) : (
+                            <div className="text-center py-6 text-xs font-bold text-slate-400">No leather-by-style data available.</div>
+                        )}
+                    </div>
+                )}
+            </div>
 
             {detailLot && (
                 <LotDetail lot={detailLot} onClose={() => setDetailLot(null)} showToast={showToast}

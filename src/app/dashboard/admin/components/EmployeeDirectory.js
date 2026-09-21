@@ -1,11 +1,11 @@
 'use client';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users, Search, Filter, Loader2, Barcode, Edit2, Trash2, Save, X } from 'lucide-react';
+import { Users, Search, Filter, Loader2, Barcode, Edit2, Trash2, Save, X, Eye } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { fadeUpItem, rowStagger } from '@/lib/motionVariants';
 import { useAuth } from '@/context/AuthContext';
-import { useUpdateEmployeeMutation, useDeleteEmployeeMutation } from '@/store/slices/adminApiSlice';
+import { useUpdateEmployeeMutation, useDeleteEmployeeMutation, useLazyGetEmployeeQuery } from '@/store/slices/adminApiSlice';
 import { Field, inputCls } from './shared';
 
 export function EmployeeDirectory({ employees, loading, showToast }) {
@@ -20,9 +20,30 @@ export function EmployeeDirectory({ employees, loading, showToast }) {
   const [deleteEmployee] = useDeleteEmployeeMutation();
   const [actionLoading, setActionLoading] = useState(false);
 
+  // View Profile State
+  const [triggerGetEmployee] = useLazyGetEmployeeQuery();
+  const [viewModal, setViewModal] = useState(false);
+  const [profileData, setProfileData] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+
   // Edit State
   const [editModal, setEditModal] = useState(null);
   const [editForm, setEditForm] = useState({});
+
+  const handleViewProfile = async (id) => {
+    setProfileLoading(true);
+    setViewModal(true);
+    setProfileData(null);
+    try {
+      const data = await triggerGetEmployee(id).unwrap();
+      setProfileData(data);
+    } catch (err) {
+      showToast('global', 'error', err.message || 'Failed to fetch profile.');
+      setViewModal(false);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
 
   const handleEditClick = (emp) => {
     setEditForm({
@@ -215,6 +236,14 @@ export function EmployeeDirectory({ employees, loading, showToast }) {
                   {(canEdit || canDelete) && (
                     <td className="p-3 pr-5 text-right">
                       <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleViewProfile(emp.id)}
+                          disabled={actionLoading}
+                          className="p-1.5 rounded-md text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                          title="View Profile"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
                         {canEdit && (
                           <button
                             onClick={() => handleEditClick(emp)}
@@ -303,6 +332,42 @@ export function EmployeeDirectory({ employees, loading, showToast }) {
                   {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
                   Save Changes
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* View Profile Modal */}
+      <AnimatePresence>
+        {viewModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
+            >
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="text-lg font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+                  <Users className="w-5 h-5" style={{ color: '#c8834a' }} /> Worker Profile (GET)
+                </h3>
+                <button onClick={() => setViewModal(false)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 bg-slate-50/50">
+                {profileLoading ? (
+                  <div className="flex justify-center py-10">
+                    <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
+                  </div>
+                ) : profileData ? (
+                  <div className="space-y-3 text-sm">
+                    <pre className="p-3 rounded-xl bg-white border border-slate-200 text-[10px] overflow-auto max-h-64 font-mono">
+                      {JSON.stringify(profileData, null, 2)}
+                    </pre>
+                  </div>
+                ) : null}
               </div>
             </motion.div>
           </div>

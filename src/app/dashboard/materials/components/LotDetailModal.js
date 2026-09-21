@@ -2,13 +2,15 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Lock, Pencil, Loader2, ArrowUpRight, ArrowDownRight, PackagePlus, Trash2 } from 'lucide-react';
-import { usePatchMaterialLotMutation, useAdjustMaterialLotMutation, useRetireMaterialLotMutation }
+import { usePatchMaterialLotMutation, useAdjustMaterialLotMutation, useRetireMaterialLotMutation, useGetMaterialLotHistoryQuery }
  from '@/store/slices/materialApiSlice';
 import { errMsg, Tile } from './shared';
 export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjust, onReceive }) {
    const [patchMaterialLot] = usePatchMaterialLotMutation();
   const [adjustMaterialLot] = useAdjustMaterialLotMutation();
   const [retireMaterialLot] = useRetireMaterialLotMutation();
+  
+  const { data: historyEvents = [], isLoading: historyLoading } = useGetMaterialLotHistoryQuery(lot?.lot_id, { skip: !lot?.lot_id });
 
     const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
@@ -149,6 +151,37 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
               </button>
             )
           )}
+
+          {/* History Section */}
+          <div className="pt-4 border-t mt-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+            <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-3">Lot History (GET)</h4>
+            {historyLoading ? (
+              <div className="flex justify-center p-4">
+                <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#c8834a' }} />
+              </div>
+            ) : historyEvents.length === 0 ? (
+              <div className="text-center text-xs font-bold text-slate-400 p-4">No history events found.</div>
+            ) : (
+              <div className="space-y-2">
+                {historyEvents.map((evt, idx) => (
+                  <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100 flex items-start gap-3 text-xs">
+                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center shrink-0 text-[10px] font-black text-slate-500">
+                      {(evt.event_type || '?').substring(0,2).toUpperCase()}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-bold text-slate-700 flex items-center justify-between">
+                        <span>{evt.event_type}</span>
+                        <span className="text-[10px] text-slate-400">{new Date(evt.timestamp).toLocaleString()}</span>
+                      </div>
+                      {evt.delta && <div className="text-[10px] font-black mt-0.5" style={{ color: '#c8834a' }}>Delta: {evt.delta}</div>}
+                      {evt.reason && <div className="text-slate-500 mt-0.5">{evt.reason}</div>}
+                      {evt.worker_name && <div className="text-[10px] font-bold text-slate-400 mt-0.5">By: {evt.worker_name}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>,

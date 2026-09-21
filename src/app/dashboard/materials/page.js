@@ -7,12 +7,14 @@ import { AddMaterialScreen } from './components/AddMaterialScreen';
 import { StockHubScreen } from './components/StockHubScreen';
 import { ReceivingScreen } from './components/ReceivingScreen';
 import { SupplierOrdersScreen } from './components/SupplierOrdersScreen';
+import { LeatherByStyleScreen } from './components/LeatherByStyleScreen';
 
-import {Package, Lock,Boxes,PackagePlus,Truck } from 'lucide-react';
+import {Package, Lock,Boxes,PackagePlus,Truck,Shirt } from 'lucide-react';
 // ── Page shell ─────────────────────────────────────────────────────────
 const SCREENS = [
   { id: 'hub', label: 'Overview & Alerts', icon: Boxes },
   { id: 'lots', label: 'Lot Directory', icon: Package },
+  { id: 'style', label: 'Leather by Style', icon: Shirt },
   { id: 'intake', label: 'Add Material', icon: PackagePlus, writersOnly: true },
   { id: 'orders', label: 'Supplier Orders', dmOnly: true, icon: Truck },
 ];
@@ -87,6 +89,9 @@ export default function MaterialsPage() {
       {screen === 'lots' && (
         <LotListScreen showToast={showToast} canEdit={isWriter} canAdjust={isDmOnly}
           onReceive={isDmOnly ? (p) => { setReceivePrefill(p); setScreen('intake'); } : null} />
+      )}
+      {screen === 'style' && (
+        <LeatherByStyleScreen showToast={showToast} />
       )}
       {screen === 'intake' && isWriter && (
         <div className="space-y-8">

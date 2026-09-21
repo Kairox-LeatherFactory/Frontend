@@ -9,13 +9,14 @@ import {
   useCloseWageRunMutation,
   useReopenWageRunMutation,
   useRecomputeWageRunMutation,
+  useDeleteWageRunMutation,
   useLazyGetWageRunBreakdownQuery,
   useLazyGetWageLedgerQuery
 } from '@/store/slices/apiSlice';
 
 import {
   Loader2, Activity, Calendar, Search, ChevronRight, RefreshCw, Lock, Unlock,
-  Coins, Package, Scissors, Users,
+  Coins, Package, Scissors, Users, Trash2
 } from 'lucide-react';
 import { Toast, StatusBadge, Money, SearchCombobox } from './shared';
 export default function ComputationView() {
@@ -25,6 +26,7 @@ export default function ComputationView() {
   const [closeWageRunMut] = useCloseWageRunMutation();
   const [reopenWageRunMut] = useReopenWageRunMutation();
   const [recomputeWageRunMut] = useRecomputeWageRunMutation();
+  const [deleteWageRunMut] = useDeleteWageRunMutation();
   const [triggerGetWageRunBreakdown] = useLazyGetWageRunBreakdownQuery();
   const [triggerGetWageLedger] = useLazyGetWageLedgerQuery();
 
@@ -55,7 +57,24 @@ export default function ComputationView() {
   const [runActionId, setRunActionId] = useState('');
   const [isRecomputingStandalone, setIsRecomputingStandalone] = useState(false);
   const [isClosingById, setIsClosingById] = useState(false);
+  const [isDeletingRun, setIsDeletingRun] = useState(false);
   const [showRecomputeAreYouSure, setShowRecomputeAreYouSure] = useState(false); // general "are you sure?" before every recompute attempt
+
+  const handleDeleteRun = async (targetId) => {
+    if (!targetId) { showToast('Enter or select a run to delete.', 'error'); return; }
+    if (!window.confirm(`Are you sure you want to delete run ${targetId}? This will remove empty or aborted runs.`)) return;
+    setIsDeletingRun(true);
+    try {
+      await deleteWageRunMut(targetId).unwrap();
+      showToast(`Payroll run ${targetId} deleted.`, 'success');
+      if ((run?.id || run?.run_id) === targetId) { setRun(null); setBreakdown(null); }
+      setRunActionId('');
+    } catch (e) {
+      showToast(e?.data?.detail || e?.message || 'Failed to delete payroll run', 'error');
+    } finally {
+      setIsDeletingRun(false);
+    }
+  };
 
   const [runActionStyleCode, setRunActionStyleCode] = useState('');
   const [runActionStyleSearching, setRunActionStyleSearching] = useState(false);
@@ -592,6 +611,13 @@ export default function ComputationView() {
             style={{ color: '#a86022', borderColor: 'rgba(200,131,74,0.2)' }}
           >
             <Unlock className="w-4 h-4" /> Reopen to Edit
+          </button>
+          <button
+            onClick={() => handleDeleteRun(runActionId.trim())}
+            disabled={isDeletingRun || !runActionId.trim()}
+            className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-red-50 text-red-600 border border-red-200 shadow-sm hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            {isDeletingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete Run
           </button>
         </div>
       </div>

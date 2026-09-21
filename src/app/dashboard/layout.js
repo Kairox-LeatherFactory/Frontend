@@ -28,6 +28,7 @@ import {
   Shirt,
   Boxes,
   Package,
+  Scissors,
 } from 'lucide-react';
 
 // Raw hide → cut pattern pieces → stitched seam → finished jacket

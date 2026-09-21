@@ -493,39 +493,6 @@ export async function apiReleaseBreakdownStyles(token, orderNumber, styleIds, ne
 }
 
 /**
- * GET /api/v1/drawers/pool — { pool_size, initial_pool_size, free_drawers,
- * occupied_drawers, pieces_waiting_for_drawer, shortfall }.
- */
-export async function apiGetDrawerPool(token) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/pool`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Failed to fetch drawer pool (${res.status})`);
-  return res.json();
-}
-
-/**
- * POST /api/v1/drawers/pool — DM/MD only, one-way. Adds `add` permanent
- * barcoded drawers and drains the waiting list into them (max 1000/call).
- */
-export async function apiGrowDrawerPool(token, add) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/pool`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ add }),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => 'Failed to grow drawer pool');
-    throw new Error(errText || `Failed to grow drawer pool (${res.status})`);
-  }
-  return res.json();
-}
-
-/**
  * POST /api/v1/drawers/allocate-waiting — drains the waiting list into
  * whatever drawers are currently free, without growing the pool.
  */
@@ -2217,14 +2184,14 @@ export async function apiStoreScan(token, scanData) {
 /**
  * POST /api/v1/store/send
  */
-export async function apiStoreSend(token, { piece_ids, destination }) {
+export async function apiStoreSend(token, { piece_ids }) {
   const res = await fetch(API_BASE_URL + '/api/v1/store/send', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: 'Bearer ' + token,
     },
-    body: JSON.stringify({ piece_ids, destination }),
+    body: JSON.stringify({ piece_ids }),
   });
   if (!res.ok) {
     let detail;

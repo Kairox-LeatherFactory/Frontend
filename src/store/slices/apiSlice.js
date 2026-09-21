@@ -82,7 +82,18 @@ export const apiSlice = createApi({
     issueCuttingJobSheet: builder.mutation({
       query: (payload) => ({ url: '/api/v1/production/cutting/issue', method: 'POST', body: payload })
     }),
-
+    reassignProductionEvent: builder.mutation({
+      query: ({ id, employee_code, override_timestamp }) => ({ 
+        url: `/api/v1/production/events/${id}/reassign`, 
+        method: 'PATCH', 
+        body: { employee_code, override_timestamp } 
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: 'Production', id }]
+    }),
+    deleteProductionEvent: builder.mutation({
+      query: (id) => ({ url: `/api/v1/production/events/${id}`, method: 'DELETE' }),
+      invalidatesTags: (result, error, id) => [{ type: 'Production', id }]
+    }),
     
 
     // --- STORE HUB APIs ---
@@ -91,7 +102,7 @@ export const apiSlice = createApi({
       invalidatesTags: ['Store', 'StoreList']
     }),
     storeSend: builder.mutation({
-      query: ({ piece_ids, destination }) => ({ url: '/api/v1/store/send', method: 'POST', body: { piece_ids, destination } }),
+      query: ({ piece_ids }) => ({ url: '/api/v1/store/send', method: 'POST', body: { piece_ids } }),
       invalidatesTags: ['Store', 'StoreList']
     }),
     listStorePieces: builder.query({
@@ -277,6 +288,13 @@ export const apiSlice = createApi({
       }),
       invalidatesTags: ['WageRun', 'WageLedger']
     }),
+    deleteWageRun: builder.mutation({
+      query: (runId) => ({
+        url: `/api/v1/wages/runs/${encodeURIComponent(runId)}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['WageRun', 'WageLedger']
+    }),
     getWageRunBreakdown: builder.query({
       query: (runId) => `/api/v1/wages/runs/${encodeURIComponent(runId)}/breakdown`,
       providesTags: ['WageRun']
@@ -326,6 +344,8 @@ export const {
   useProductionCuttingMutation,
   useProductionLogTwoDoorMutation,
   useIssueCuttingJobSheetMutation,
+  useReassignProductionEventMutation,
+  useDeleteProductionEventMutation,
   useStoreScanMutation,
   useStoreSendMutation,
   useListStorePiecesQuery,
@@ -359,6 +379,7 @@ export const {
   useCloseWageRunMutation,
   useReopenWageRunMutation,
   useRecomputeWageRunMutation,
+  useDeleteWageRunMutation,
   useGetWageRunBreakdownQuery,
   useLazyGetWageRunBreakdownQuery,
   useGetWageRunPiecesQuery,

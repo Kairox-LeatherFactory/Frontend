@@ -16,7 +16,7 @@ import {
   setStorePieceInput as reduxSetStorePieceInput, 
   setStoreCurrentScan as reduxSetStoreCurrentScan, 
   setStoreFilters, 
-  setExpandedDrawer as reduxSetExpandedPiece, 
+  setExpandedPiece as reduxSetExpandedPiece, 
   setPieceLookupInput as reduxSetPieceLookupInput, 
 } from '@/store/slices/storeHubSlice';
 
@@ -182,14 +182,14 @@ export default function StoreHubSection({
     });
   };
 
-  const handleBatchSendPieces = async (destination, explicitPieceIds) => {
+  const handleBatchSendPieces = async (explicitPieceIds) => {
     const sourceIds = explicitPieceIds || Array.from(selectedPieces);
     if (sourceIds.length === 0) return;
     setBatchSending(true);
     try {
-      await storeSend({ piece_ids: sourceIds, destination }).unwrap();
+      await storeSend({ piece_ids: sourceIds }).unwrap();
       
-      setSuccessMsg(`Sent ${sourceIds.length} pieces to ${destination} successfully!`);
+      setSuccessMsg(`Sent ${sourceIds.length} pieces successfully!`);
       setSelectedPieces(new Set());
       await fetchLivePieces();
     } catch (err) {
