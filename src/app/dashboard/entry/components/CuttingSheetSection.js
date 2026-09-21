@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Plus, Copy, Trash2, Scissors, CheckCircle2, AlertCircle, Loader2, Play } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { Plus, Copy, Trash2, Scissors, CheckCircle2, AlertCircle, Loader2, Play, FileSpreadsheet } from 'lucide-react';
 import {
   useGetBarcodeOrdersQuery,
   useIssueCuttingJobSheetMutation,
@@ -20,6 +20,7 @@ const INITIAL_ROW = {
   sizeName: '',
   skuId: '',
   lotId: '',
+  colour: '',
   workerId: '',
   rcNo: '',
   skins: Array(17).fill(''),
@@ -59,7 +60,54 @@ export default function CuttingSheetSection() {
   const ordersList = Array.isArray(orders) ? orders : orders?.items || [];
   const lotsList = Array.isArray(lots) ? lots : lots?.lots || lots?.items || [];
 
-  const [rows, setRows] = useState(Array.from({ length: 8 }, () => createDefaultRow()));
+  // Excel Multi-Sheet Workbook state
+  const [sheets, setSheets] = useState([
+    { id: 'sheet-1', name: 'Sheet 1', rows: Array.from({ length: 8 }, () => createDefaultRow()) }
+  ]);
+  const [activeSheetId, setActiveSheetId] = useState('sheet-1');
+  const activeSheetIdRef = useRef(activeSheetId);
+
+  useEffect(() => {
+    activeSheetIdRef.current = activeSheetId;
+  }, [activeSheetId]);
+
+  const activeSheet = useMemo(() => {
+    return sheets.find(s => s.id === activeSheetId) || sheets[0];
+  }, [sheets, activeSheetId]);
+
+  const rows = activeSheet.rows;
+
+  const setRows = useCallback((updater) => {
+    const currentActiveId = activeSheetIdRef.current;
+    setSheets(prev => prev.map(s => {
+      if (s.id !== currentActiveId) return s;
+      const newRows = typeof updater === 'function' ? updater(s.rows) : updater;
+      return { ...s, rows: newRows };
+    }));
+  }, []);
+
+  const handleAddSheet = useCallback(() => {
+    const newIdx = sheets.length + 1;
+    const newSheet = {
+      id: `sheet-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      name: `Sheet ${newIdx}`,
+      rows: Array.from({ length: 8 }, () => createDefaultRow()),
+    };
+    setSheets(prev => [...prev, newSheet]);
+    setActiveSheetId(newSheet.id);
+  }, [sheets.length]);
+
+  const handleRemoveSheet = useCallback((sheetId, e) => {
+    e.stopPropagation();
+    if (sheets.length === 1) return;
+    setSheets(prev => {
+      const filtered = prev.filter(s => s.id !== sheetId);
+      if (activeSheetId === sheetId) {
+        setActiveSheetId(filtered[0].id);
+      }
+      return filtered;
+    });
+  }, [sheets.length, activeSheetId]);
 
   const handleRowChange = useCallback((id, field, value) => {
     setRows(prev => {
@@ -73,32 +121,45 @@ export default function CuttingSheetSection() {
         newRows[index].skuId = '';
       }
 
-      const cascadeFields = ['date', 'orderId', 'styleName', 'lotId'];
+      const cascadeFields = ['date', 'orderId', 'styleName', 'lotId', 'colour'];
       const currentRow = newRows[index];
 
-      if (cascadeFields.includes(field) && currentRow.orderId && currentRow.styleName && currentRow.lotId) {
-        for (let i = index + 1; i < newRows.length; i++) {
-          const targetRow = newRows[i];
-          const isTargetEmpty = !targetRow.orderId && !targetRow.styleName && !targetRow.lotId;
-          const isTargetMatchingOld =
-            targetRow.orderId === prev[index].orderId &&
-            targetRow.styleName === prev[index].styleName &&
-            targetRow.lotId === prev[index].lotId;
-
-          if (isTargetEmpty || isTargetMatchingOld) {
-            newRows[i] = {
-              ...targetRow,
-              date: currentRow.date,
-              orderId: currentRow.orderId,
-              styleName: currentRow.styleName,
-              lotId: currentRow.lotId
-            };
-            if (field === 'orderId' || field === 'styleName') {
-              newRows[i].sizeName = '';
-              newRows[i].skuId = '';
+      if (cascadeFields.includes(field)) {
+        if (field === 'colour') {
+          for (let i = index + 1; i < newRows.length; i++) {
+            const targetRow = newRows[i];
+            const isTargetEmpty = !targetRow.colour;
+            const isTargetMatchingOld = targetRow.colour === prev[index].colour;
+            if (isTargetEmpty || isTargetMatchingOld) {
+              newRows[i] = { ...targetRow, colour: currentRow.colour };
+            } else {
+              break;
             }
-          } else {
-            break;
+          }
+        } else if (currentRow.orderId && currentRow.styleName && currentRow.lotId) {
+          for (let i = index + 1; i < newRows.length; i++) {
+            const targetRow = newRows[i];
+            const isTargetEmpty = !targetRow.orderId && !targetRow.styleName && !targetRow.lotId;
+            const isTargetMatchingOld =
+              targetRow.orderId === prev[index].orderId &&
+              targetRow.styleName === prev[index].styleName &&
+              targetRow.lotId === prev[index].lotId;
+
+            if (isTargetEmpty || isTargetMatchingOld) {
+              newRows[i] = {
+                ...targetRow,
+                date: currentRow.date,
+                orderId: currentRow.orderId,
+                styleName: currentRow.styleName,
+                lotId: currentRow.lotId
+              };
+              if (field === 'orderId' || field === 'styleName') {
+                newRows[i].sizeName = '';
+                newRows[i].skuId = '';
+              }
+            } else {
+              break;
+            }
           }
         }
       }
@@ -375,6 +436,52 @@ export default function CuttingSheetSection() {
           </table>
         </div>
       </div>
+
+      {/* Excel Bottom Multi-Sheet Navigation Tabs */}
+      <div className="flex-none bg-[#1e293b] border-t border-slate-700 px-4 py-2.5 flex items-center justify-between z-30 shadow-lg">
+        <div className="flex items-center gap-2 overflow-x-auto py-0.5 no-scrollbar">
+          <span className="text-[10px] font-black uppercase text-slate-400 mr-1 tracking-widest hidden sm:inline">
+            Worksheets:
+          </span>
+          {sheets.map((sheet, index) => {
+            const isActive = sheet.id === activeSheetId;
+            return (
+              <div
+                key={sheet.id}
+                onClick={() => setActiveSheetId(sheet.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-black cursor-pointer flex items-center gap-2 transition-all border select-none ${isActive
+                    ? 'bg-[#c8834a] text-white border-[#e0985c] shadow-md scale-105'
+                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
+                  }`}
+              >
+                <FileSpreadsheet className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-amber-400'}`} />
+                <span>{sheet.name}</span>
+                {sheets.length > 1 && (
+                  <button
+                    onClick={(e) => handleRemoveSheet(sheet.id, e)}
+                    className="ml-1 p-0.5 rounded hover:bg-black/20 text-slate-300 hover:text-white"
+                  >
+                    ×
+                  </button>
+                )}
+              </div>
+            );
+          })}
+
+          <button
+            onClick={handleAddSheet}
+            className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-amber-400 hover:bg-[#c8834a] hover:text-white transition-all font-black text-xs flex items-center gap-1 shadow-sm"
+            title="Add a new sheet tab for another style/batch"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Sheet</span>
+          </button>
+        </div>
+
+        <div className="text-right text-[11px] font-bold text-slate-400 hidden sm:block">
+          Active Sheet Skins: <strong className="text-emerald-400 font-mono">{grandTotalSkins}</strong> ({grandTotalSqft} dcm)
+        </div>
+      </div>
     </div>
   );
 }
@@ -423,7 +530,14 @@ const CuttingSheetRow = React.memo(({
 
   const selectedLot = lotsList.find(l => l.lot_id === row.lotId);
   const articleDisplay = selectedLot ? selectedLot.article : '';
-  const colourDisplay = selectedLot ? selectedLot.colour : '';
+
+  const availableColours = useMemo(() => {
+    const colours = lotsList.map(l => l.colour).filter(Boolean);
+    if (selectedLot?.colour && !colours.includes(selectedLot.colour)) {
+      colours.push(selectedLot.colour);
+    }
+    return [...new Set(colours)];
+  }, [lotsList, selectedLot]);
 
   const totalSkins = row.skins.filter((s) => s !== '' && !isNaN(s) && Number(s) > 0).length;
   const totalSqft = row.skins.reduce((acc, curr) => acc + (curr !== '' && !isNaN(curr) ? parseFloat(curr) : 0), 0).toFixed(2);
@@ -496,9 +610,9 @@ const CuttingSheetRow = React.memo(({
           className={cellSelectClass}
         >
           <option value=""></option>
-          {ordersList.map((o) => {
+          {ordersList.map((o, idx) => {
             const oId = o.order_id || o.id;
-            return <option key={oId} value={oId}>{o.order_number || oId}</option>;
+            return <option key={`ord-${oId}-${idx}`} value={oId}>{o.order_number || oId}</option>;
           })}
         </select>
       </td>
@@ -511,8 +625,8 @@ const CuttingSheetRow = React.memo(({
           className={`${cellSelectClass} text-[#166534]`}
         >
           <option value="">{skusLoading ? '...' : ''}</option>
-          {availableStyles.map((sName) => (
-            <option key={sName} value={sName}>{sName}</option>
+          {availableStyles.map((sName, idx) => (
+            <option key={`style-${sName}-${idx}`} value={sName}>{sName}</option>
           ))}
         </select>
       </td>
@@ -526,14 +640,24 @@ const CuttingSheetRow = React.memo(({
           title={articleDisplay}
         >
           <option value="">{articleDisplay ? articleDisplay : ''}</option>
-          {lotsList.map((l) => (
-            <option key={l.lot_id} value={l.lot_id}>{l.article}</option>
+          {lotsList.map((l, idx) => (
+            <option key={`lot-${l.lot_id}-${idx}`} value={l.lot_id}>{l.article}</option>
           ))}
         </select>
       </td>
 
-      <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534] group-focus-within:bg-transparent">
-        {colourDisplay}
+      <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30 group-focus-within:bg-transparent">
+        <select
+          value={row.colour || ''}
+          onChange={(e) => onChange(row.id, 'colour', e.target.value)}
+          disabled={isLocked}
+          className={`${cellSelectClass} text-[#166534] text-center font-bold`}
+        >
+          <option value=""></option>
+          {availableColours.map((col, idx) => (
+            <option key={`col-${col}-${idx}`} value={col}>{col}</option>
+          ))}
+        </select>
       </td>
 
       <td className="p-0 border-r border-slate-300 bg-[#f8fafc] group-focus-within:bg-transparent">
@@ -544,8 +668,8 @@ const CuttingSheetRow = React.memo(({
           className={cellSelectClass}
         >
           <option value=""></option>
-          {workers?.map((w) => (
-            <option key={w.id} value={w.id}>{w.name.toUpperCase()}</option>
+          {workers?.map((w, idx) => (
+            <option key={`work-${w.id || w.employee_id || idx}-${idx}`} value={w.id || w.employee_id}>{w.name ? w.name.toUpperCase() : ''}</option>
           ))}
         </select>
       </td>
