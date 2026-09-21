@@ -1,18 +1,19 @@
 // production logger main file 
 "use client";
-import { useState,useEffect } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { useSelector, useDispatch } from 'react-redux';
-import { 
-  setActiveDoor, setDate, 
-  setMessages, setBarcodeWorker as reduxSetBarcodeWorker, 
-  setBarcodeStage as reduxSetBarcodeStage,setLotDetails 
+import {
+  setActiveDoor, setDate,
+  setMessages, setBarcodeWorker as reduxSetBarcodeWorker,
+  setBarcodeStage as reduxSetBarcodeStage, setLotDetails
 } from '@/store/slices/entrySlice';
 import {
   useLazyBarcodeResolveQuery,
-  useLazyGetBarcodeOrdersQuery
+  useLazyGetBarcodeOrdersQuery,
+  useDeleteProductionEventMutation
 } from "@/store/slices/apiSlice";
 import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
 import {
@@ -58,7 +59,7 @@ export default function ProductionLogEntry() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, token } = useAuth();
- const { data: workers = [] } = useGetEmployeesQuery();
+  const { data: workers = [] } = useGetEmployeesQuery();
   const {
     isReadOnly,
     isFullAccess,
@@ -67,12 +68,14 @@ export default function ProductionLogEntry() {
     isStageAllowedForRole,
   } = useRoleAccess();
 
- 
+
   const [storeSendedSkus, setStoreSendedSkus] = useState([]);
   const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'sku' | 'worker'
-   const dispatch = useDispatch();
+  const dispatch = useDispatch();
   const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
   const [triggerGetBarcodeOrders] = useLazyGetBarcodeOrdersQuery();
+  const [deleteProductionEvent] = useDeleteProductionEventMutation();
+  const [testDeleteId, setTestDeleteId] = useState('');
 
   const date = useSelector(state => state.entry.date);
   const activeDoor = useSelector(state => state.entry.activeDoor);
@@ -103,12 +106,12 @@ export default function ProductionLogEntry() {
   const setErrorMsg = (msg) => dispatch(setMessages({ error: msg }));
   const setBarcodeWorker = (worker) => dispatch(reduxSetBarcodeWorker(worker));
   const setBarcodeStage = (stage) => dispatch(reduxSetBarcodeStage(stage));
-  
+
   const setLotArticle = (val) => dispatch(setLotDetails({ article: val }));
   const setLotColor = (val) => dispatch(setLotDetails({ color: val }));
   const setLotThickness = (val) => dispatch(setLotDetails({ thickness: val }));
   const setLotResults = (val) => dispatch(setLotDetails({ results: val }));
-const [barcodeDcm, setBarcodeDcm] = useState("");
+  const [barcodeDcm, setBarcodeDcm] = useState("");
 
   const {
     barcodeWorkerInput,
@@ -144,7 +147,7 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
   const [completedStagesMap, setCompletedStagesMap] = useState({});
   const [storeReceiveStatus, setStoreReceiveStatus] = useState("pending"); // 'pending', 'received', 'sended'
 
-   const {
+  const {
     fileInputRef,
     uploadLoading,
     showPreviewModal,
@@ -173,7 +176,7 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
   } = useBreakdownImport({ token });
 
   const [mounted, setMounted] = useState(false);
-// const workerInputRef = useRef(null);
+  // const workerInputRef = useRef(null);
 
   // Reset worker verification state when navigating between doors/tabs so each slide requires a fresh scan
   useEffect(() => {
@@ -196,10 +199,10 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
       return next;
     });
   };
-  
+
   useEffect(() => {
     if (activeDoor === "store" && !isFullAccess && !isStoreAccess) {
-    handleSetActiveDoor("manual");
+      handleSetActiveDoor("manual");
     }
   }, [activeDoor, isFullAccess, isStoreAccess]);
 
@@ -293,6 +296,32 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
 
   return (
     <div className="w-full min-w-0 space-y-8 animate-fade-in pb-12">
+      {/* TEMP TEST DELETE API */}
+      <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-4">
+        <span className="font-bold text-rose-800 text-sm">Test Delete API (§0.10):</span>
+        <input
+          type="text"
+          placeholder="Enter event ID (e.g. evt_123)"
+          className="border border-rose-300 rounded-md px-3 py-1 text-sm outline-none w-64"
+          value={testDeleteId}
+          onChange={(e) => setTestDeleteId(e.target.value)}
+        />
+        <button
+          onClick={async () => {
+            if (!testDeleteId) return;
+            try {
+              await deleteProductionEvent(testDeleteId).unwrap();
+              alert("✅ Delete success! Event ID: " + testDeleteId);
+            } catch (err) {
+              alert("❌ Delete failed: " + (err.data?.detail || err.message || "Error"));
+            }
+          }}
+          className="bg-rose-600 text-white px-4 py-1.5 rounded-md text-sm font-bold hover:bg-rose-700"
+        >
+          Fire DELETE
+        </button>
+      </div>
+
       {/* TITLE SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -523,214 +552,214 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
 
       {/* LOGGING FORM CARD */}
       {["manual", "barcode", "breakdown"].includes(activeDoor) && (
-      <SpotlightCard
-        className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl"
-        style={{ border: "1px solid rgba(200,131,74,0.15)" }}
-        spotlightColor="rgba(200,131,74,0.06)"
-      >
-        <div
-          className="p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm"
-          style={{
-            background: "#faf6f0",
-            border: "1px solid rgba(200,131,74,0.25)",
-          }}
+        <SpotlightCard
+          className="p-4 sm:p-8 bg-white shadow-xl space-y-8 rounded-3xl"
+          style={{ border: "1px solid rgba(200,131,74,0.15)" }}
+          spotlightColor="rgba(200,131,74,0.06)"
         >
           <div
-            className="text-xs font-bold flex items-center gap-2"
-            style={{ color: "#4a3a2a" }}
+            className="p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm"
+            style={{
+              background: "#faf6f0",
+              border: "1px solid rgba(200,131,74,0.25)",
+            }}
           >
-            <span>Logged By: </span>
-            <span
-              className="text-white px-2.5 py-1 rounded-lg font-black uppercase tracking-wider text-[11px] shadow-sm"
-              style={{ background: "#c8834a" }}
+            <div
+              className="text-xs font-bold flex items-center gap-2"
+              style={{ color: "#4a3a2a" }}
             >
-              {user.replace("_", " ")}
-            </span>
+              <span>Logged By: </span>
+              <span
+                className="text-white px-2.5 py-1 rounded-lg font-black uppercase tracking-wider text-[11px] shadow-sm"
+                style={{ background: "#c8834a" }}
+              >
+                {user.replace("_", " ")}
+              </span>
+            </div>
+
+
           </div>
-          
 
-        </div>
+          {/* TAB 2: DEDICATED BARCODE GUN SCANNER FLOW (CONTRACT V3.0) */}
+          {activeDoor === "barcode" && (
+            <BarcodeDoorSection
+              setSuccessMsg={setSuccessMsg}
+              setErrorMsg={setErrorMsg}
+              recordStageCompletion={recordStageCompletion}
+              completedStagesMap={completedStagesMap}
+              storeSendedSkus={storeSendedSkus}
+              date={date}
+              barcodeStage={barcodeStage}
+              setBarcodeStage={setBarcodeStage}
+              lotArticle={lotArticle}
+              setLotArticle={setLotArticle}
+              lotColor={lotColor}
+              setLotColor={setLotColor}
+              lotThickness={lotThickness}
+              setLotThickness={setLotThickness}
+              lotOptions={lotOptions}
+              setLotOptions={setLotOptions}
+              lotResults={lotResults}
+              setLotResults={setLotResults}
+              lotLoading={lotLoading}
+              setLotLoading={setLotLoading}
+              lotCategory={lotCategory}
+              setLotCategory={setLotCategory}
+              barcodeDcm={barcodeDcm}
+              setBarcodeDcm={setBarcodeDcm}
+              setBucketResult={setBucketResult}
+              setShowBucketModal={setShowBucketModal}
+              barcodeWorker={barcodeWorker}
+              setBarcodeWorker={setBarcodeWorker}
+              barcodeWorkerInput={barcodeWorkerInput}
+              setBarcodeWorkerInput={setBarcodeWorkerInput}
+              barcodeWorkerChecking={barcodeWorkerChecking}
+              handleVerifyBarcodeWorker={handleVerifyBarcodeWorker}
+              barcodeNotCheckedInModal={barcodeNotCheckedInModal}
+              setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal}
+              workerInputRef={workerInputRef}
+              cameraScanTarget={cameraScanTarget}
+              setCameraScanTarget={setCameraScanTarget}
+            />
+          )}
+          {activeDoor === "manual" && (
+            <ManualDoorSection
+              activeDoor={activeDoor}
+              setSuccessMsg={setSuccessMsg}
+              setErrorMsg={setErrorMsg}
+              recordStageCompletion={recordStageCompletion}
+              date={date}
+              setDate={handleSetDate}
+              storeSendedSkus={storeSendedSkus}
+              storeReceiveStatus={storeReceiveStatus}
+              lotArticle={lotArticle}
+              setLotArticle={setLotArticle}
+              lotColor={lotColor}
+              setLotColor={setLotColor}
+              lotThickness={lotThickness}
+              setLotThickness={setLotThickness}
+              lotOptions={lotOptions}
+              setLotOptions={setLotOptions}
+              lotResults={lotResults}
+              setLotResults={setLotResults}
+              lotLoading={lotLoading}
+              setLotLoading={setLotLoading}
+              setLotCategory={setLotCategory}
+              barcodeDcm={barcodeDcm}
+              setBarcodeDcm={setBarcodeDcm}
+              setBucketResult={setBucketResult}
+              setShowBucketModal={setShowBucketModal}
+              mounted={mounted}
+            />
+          )}
 
-        {/* TAB 2: DEDICATED BARCODE GUN SCANNER FLOW (CONTRACT V3.0) */}
-        {activeDoor === "barcode" && (
-          <BarcodeDoorSection
-            setSuccessMsg={setSuccessMsg}
-            setErrorMsg={setErrorMsg}
-            recordStageCompletion={recordStageCompletion}
-            completedStagesMap={completedStagesMap}
-            storeSendedSkus={storeSendedSkus}
-            date={date}
-            barcodeStage={barcodeStage}
-            setBarcodeStage={setBarcodeStage}
-            lotArticle={lotArticle}
-            setLotArticle={setLotArticle}
-            lotColor={lotColor}
-            setLotColor={setLotColor}
-            lotThickness={lotThickness}
-            setLotThickness={setLotThickness}
-            lotOptions={lotOptions}
-            setLotOptions={setLotOptions}
-            lotResults={lotResults}
-            setLotResults={setLotResults}
-            lotLoading={lotLoading}
-            setLotLoading={setLotLoading}
-            lotCategory={lotCategory}
-            setLotCategory={setLotCategory}
-            barcodeDcm={barcodeDcm}
-            setBarcodeDcm={setBarcodeDcm}
-            setBucketResult={setBucketResult}
-            setShowBucketModal={setShowBucketModal}
-            barcodeWorker={barcodeWorker}
-            setBarcodeWorker={setBarcodeWorker}
-            barcodeWorkerInput={barcodeWorkerInput}
-            setBarcodeWorkerInput={setBarcodeWorkerInput}
-            barcodeWorkerChecking={barcodeWorkerChecking}
-            handleVerifyBarcodeWorker={handleVerifyBarcodeWorker}
-            barcodeNotCheckedInModal={barcodeNotCheckedInModal}
-            setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal}
-            workerInputRef={workerInputRef}
-            cameraScanTarget={cameraScanTarget}
-            setCameraScanTarget={setCameraScanTarget}
-          />
-        )}
-        {activeDoor === "manual" && (
-          <ManualDoorSection
-            activeDoor={activeDoor}
-            setSuccessMsg={setSuccessMsg}
-            setErrorMsg={setErrorMsg}
-            recordStageCompletion={recordStageCompletion}
-            date={date}
-            setDate={handleSetDate}
-            storeSendedSkus={storeSendedSkus}
-            storeReceiveStatus={storeReceiveStatus}
-            lotArticle={lotArticle}
-            setLotArticle={setLotArticle}
-            lotColor={lotColor}
-            setLotColor={setLotColor}
-            lotThickness={lotThickness}
-            setLotThickness={setLotThickness}
-            lotOptions={lotOptions}
-            setLotOptions={setLotOptions}
-            lotResults={lotResults}
-            setLotResults={setLotResults}
-            lotLoading={lotLoading}
-            setLotLoading={setLotLoading}
-            setLotCategory={setLotCategory}
-            barcodeDcm={barcodeDcm}
-            setBarcodeDcm={setBarcodeDcm}
-            setBucketResult={setBucketResult}
-            setShowBucketModal={setShowBucketModal}
-            mounted={mounted}
-          />
-        )}
-
-        {/* Team request: a permanent, browsable Breakdown Review entry
+          {/* Team request: a permanent, browsable Breakdown Review entry
             point — not only the redirect right after a fresh upload — and
             fully inline (no navigation to /dashboard/imports): picking an
             order (or landing here straight from a fresh commit) shows the
             exact same review/release screen right in this tab; "Back"
             just clears the selection and returns to the list below. */}
-        {activeDoor === "breakdown" &&
-          (selectedBreakdownOrder ? (
-            <BreakdownReviewBody
-              initialOrderNumber={selectedBreakdownOrder}
-              onBack={() => setSelectedBreakdownOrder(null)}
-              backLabel="Back to Breakdown Review"
-              onBackToProduction={() => {
-                setSelectedBreakdownOrder(null);
-                setActiveDoor("manual");
-              }}
-            />
-          ) : (
-            <div className="space-y-5 animate-fade-in">
-              <div>
-                <h3
-                  className="text-lg font-black flex items-center gap-2"
-                  style={{ color: "#2d1f0e" }}
-                >
-                  <FileSpreadsheet
-                    className="w-5 h-5"
-                    style={{ color: "#c8834a" }}
-                  />{" "}
-                  Breakdown Review
-                </h3>
-                <p
-                  className="text-xs font-bold mt-1"
-                  style={{ color: "#9a7a5a" }}
-                >
-                  Pick an order to review its DRAFT styles, correct SKU lines,
-                  and release into production.
-                </p>
-              </div>
-              <input
-                type="text"
-                value={breakdownOrderSearch}
-                onChange={(e) => setBreakdownOrderSearch(e.target.value)}
-                placeholder="Search order number…"
-                className="w-full h-12 px-4 bg-[#faf6f0] font-bold text-sm border rounded-xl outline-none focus:border-[#c8834a]"
-                style={{ borderColor: "rgba(200,131,74,0.2)" }}
+          {activeDoor === "breakdown" &&
+            (selectedBreakdownOrder ? (
+              <BreakdownReviewBody
+                initialOrderNumber={selectedBreakdownOrder}
+                onBack={() => setSelectedBreakdownOrder(null)}
+                backLabel="Back to Breakdown Review"
+                onBackToProduction={() => {
+                  setSelectedBreakdownOrder(null);
+                  setActiveDoor("manual");
+                }}
               />
-              {breakdownOrdersLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2
-                    className="w-6 h-6 animate-spin"
-                    style={{ color: "#c8834a" }}
-                  />
+            ) : (
+              <div className="space-y-5 animate-fade-in">
+                <div>
+                  <h3
+                    className="text-lg font-black flex items-center gap-2"
+                    style={{ color: "#2d1f0e" }}
+                  >
+                    <FileSpreadsheet
+                      className="w-5 h-5"
+                      style={{ color: "#c8834a" }}
+                    />{" "}
+                    Breakdown Review
+                  </h3>
+                  <p
+                    className="text-xs font-bold mt-1"
+                    style={{ color: "#9a7a5a" }}
+                  >
+                    Pick an order to review its DRAFT styles, correct SKU lines,
+                    and release into production.
+                  </p>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[28rem] overflow-y-auto pr-1">
-                  {breakdownOrders
-                    .filter(
-                      (o) =>
-                        o.order_number
-                          ?.toLowerCase()
-                          .includes(breakdownOrderSearch.toLowerCase()) ||
-                        o.client_name
-                          ?.toLowerCase()
-                          .includes(breakdownOrderSearch.toLowerCase()),
-                    )
-                    .map((o) => (
-                      <div
-                        key={o.order_id}
-                        onClick={() =>
-                          setSelectedBreakdownOrder(o.order_number)
-                        }
-                        className="p-4 bg-white rounded-xl border hover:border-[#c8834a] hover:shadow-md cursor-pointer transition-all group flex flex-col justify-between"
-                        style={{ borderColor: "rgba(200,131,74,0.15)" }}
+                <input
+                  type="text"
+                  value={breakdownOrderSearch}
+                  onChange={(e) => setBreakdownOrderSearch(e.target.value)}
+                  placeholder="Search order number…"
+                  className="w-full h-12 px-4 bg-[#faf6f0] font-bold text-sm border rounded-xl outline-none focus:border-[#c8834a]"
+                  style={{ borderColor: "rgba(200,131,74,0.2)" }}
+                />
+                {breakdownOrdersLoading ? (
+                  <div className="flex justify-center py-12">
+                    <Loader2
+                      className="w-6 h-6 animate-spin"
+                      style={{ color: "#c8834a" }}
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[28rem] overflow-y-auto pr-1">
+                    {breakdownOrders
+                      .filter(
+                        (o) =>
+                          o.order_number
+                            ?.toLowerCase()
+                            .includes(breakdownOrderSearch.toLowerCase()) ||
+                          o.client_name
+                            ?.toLowerCase()
+                            .includes(breakdownOrderSearch.toLowerCase()),
+                      )
+                      .map((o) => (
+                        <div
+                          key={o.order_id}
+                          onClick={() =>
+                            setSelectedBreakdownOrder(o.order_number)
+                          }
+                          className="p-4 bg-white rounded-xl border hover:border-[#c8834a] hover:shadow-md cursor-pointer transition-all group flex flex-col justify-between"
+                          style={{ borderColor: "rgba(200,131,74,0.15)" }}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <span
+                              className="text-xs font-black px-2 py-1 bg-[#faf6f0] rounded-md"
+                              style={{ color: "#c8834a" }}
+                            >
+                              {o.order_number}
+                            </span>
+                          </div>
+                          <div>
+                            <p
+                              className="text-sm font-bold"
+                              style={{ color: "#4a3a2a" }}
+                            >
+                              {o.client_name}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    {!breakdownOrdersLoading && breakdownOrders.length === 0 && (
+                      <p
+                        className="col-span-full text-center text-xs font-bold py-10"
+                        style={{ color: "#9a7a5a" }}
                       >
-                        <div className="flex justify-between items-start mb-2">
-                          <span
-                            className="text-xs font-black px-2 py-1 bg-[#faf6f0] rounded-md"
-                            style={{ color: "#c8834a" }}
-                          >
-                            {o.order_number}
-                          </span>
-                        </div>
-                        <div>
-                          <p
-                            className="text-sm font-bold"
-                            style={{ color: "#4a3a2a" }}
-                          >
-                            {o.client_name}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  {!breakdownOrdersLoading && breakdownOrders.length === 0 && (
-                    <p
-                      className="col-span-full text-center text-xs font-bold py-10"
-                      style={{ color: "#9a7a5a" }}
-                    >
-                      No orders found.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
-      </SpotlightCard>
+                        No orders found.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+        </SpotlightCard>
       )}
-            {/* EXCEL IMPORT PREVIEW MODAL */}
+      {/* EXCEL IMPORT PREVIEW MODAL */}
       <ExcelPreviewModal
         mounted={mounted}
         showPreviewModal={showPreviewModal}
@@ -757,7 +786,7 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
       />
 
 
-          {/* ORDER NUMBER MODAL */}
+      {/* ORDER NUMBER MODAL */}
       <OrderNumberModal
         mounted={mounted}
         showOrderNumModal={showOrderNumModal}
@@ -771,14 +800,14 @@ const [barcodeDcm, setBarcodeDcm] = useState("");
       />
 
 
-            {/* PARTIAL-ACCEPT BUCKET RESULTS MODAL (Contract v3.0) */}
+      {/* PARTIAL-ACCEPT BUCKET RESULTS MODAL (Contract v3.0) */}
       <BucketResultModal
         mounted={mounted}
         showBucketModal={showBucketModal}
         bucketResult={bucketResult}
         onClose={() => setShowBucketModal(false)}
       />
-   {activeDoor === "store" && (
+      {activeDoor === "store" && (
         <StoreHubSection
           setSuccessMsg={setSuccessMsg}
           setErrorMsg={setErrorMsg}

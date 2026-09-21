@@ -105,6 +105,15 @@ apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['Attendance']
     }),
+
+    // 13. Hard Delete Attendance
+    deleteAttendance: builder.mutation({
+      query: ({ id, reason }) => ({
+        url: `/api/v1/attendance/${id}?reason=${encodeURIComponent(reason)}`,
+        method: 'DELETE'
+      }),
+      invalidatesTags: ['Attendance']
+    }),
     }),
     overrideExisting: true
 })
@@ -123,4 +132,5 @@ export const {
   useProxyCheckInMutation,
   useProxyCheckOutMutation,
   useUpdateAttendanceMutation,
+  useDeleteAttendanceMutation,
 }=attendanceApiSlice

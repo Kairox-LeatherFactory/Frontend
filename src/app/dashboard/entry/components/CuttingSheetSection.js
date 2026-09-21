@@ -39,11 +39,11 @@ export default function CuttingSheetSection() {
   const { data: orders = [], isLoading: ordersLoading } = useGetBarcodeOrdersQuery();
   const { data: lots = [], isLoading: lotsLoading } = useGetMaterialLotsQuery('category=leather');
   const { data: rosterResponse, isLoading: workersLoading } = useGetAttendanceTodayQuery();
-  
+
   const workers = useMemo(() => {
     const data = rosterResponse?.items || rosterResponse?.data || rosterResponse || [];
     const arr = Array.isArray(data) ? data : (data?.employee_id ? [data] : []);
-    
+
     return arr.map(r => {
       // If it's a nested employee object
       if (r.employee) return r.employee;
@@ -80,7 +80,7 @@ export default function CuttingSheetSection() {
         for (let i = index + 1; i < newRows.length; i++) {
           const targetRow = newRows[i];
           const isTargetEmpty = !targetRow.orderId && !targetRow.styleName && !targetRow.lotId;
-          const isTargetMatchingOld = 
+          const isTargetMatchingOld =
             targetRow.orderId === prev[index].orderId &&
             targetRow.styleName === prev[index].styleName &&
             targetRow.lotId === prev[index].lotId;
@@ -124,9 +124,9 @@ export default function CuttingSheetSection() {
       newRows.splice(index + 1, 0, createDefaultRow({ date: '' }));
       return newRows;
     });
-    
+
     // Auto-focus the new row's date or order dropdown slightly after render
-    setTimeout(() => {}, 50);
+    setTimeout(() => { }, 50);
   }, []);
 
   const duplicateRow = useCallback((index) => {
@@ -236,10 +236,10 @@ export default function CuttingSheetSection() {
       if (!r.orderId) return;
       if (!totals[r.orderId]) {
         const orderInfo = ordersList.find(o => (o.id || o.order_id) === r.orderId);
-        totals[r.orderId] = { 
+        totals[r.orderId] = {
           name: orderInfo ? (orderInfo.order_number || orderInfo.id) : r.orderId,
-          skins: 0, 
-          sqft: 0 
+          skins: 0,
+          sqft: 0
         };
       }
       const s = r.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).length;

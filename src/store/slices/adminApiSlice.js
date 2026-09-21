@@ -10,6 +10,10 @@ export const adminApiSlice = apiSlice.injectEndpoints({
       query: () => '/api/v1/employees',
       providesTags: ['Employees'],
     }),
+    getEmployee: builder.query({
+      query: (id) => `/api/v1/employees/${id}`,
+      providesTags: (result, error, id) => [{ type: 'Employees', id }],
+    }),
     createUser: builder.mutation({
       query: (payload) => ({
         url: '/api/v1/users',
@@ -56,6 +60,8 @@ export const adminApiSlice = apiSlice.injectEndpoints({
 export const {
   useGetUsersQuery,
   useGetEmployeesQuery,
+  useGetEmployeeQuery,
+  useLazyGetEmployeeQuery,
   useCreateUserMutation,
   useCreateEmployeeMutation,
   usePatchEmployeeBarcodeMutation,
