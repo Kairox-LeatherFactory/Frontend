@@ -26,6 +26,7 @@ import {
   Barcode,
   Loader2,
   Store,
+  ShieldAlert,
 } from "lucide-react";
 import SpotlightCard from "@/components/SpotlightCard";
 import {
@@ -52,6 +53,9 @@ const BreakdownReviewBody = dynamic(
 );
 const CuttingSheetSection = dynamic(
   () => import("./components/CuttingSheetSection"),
+);
+const InspectionSection = dynamic(
+  () => import("./components/InspectionSection"),
 );
 
 
@@ -544,10 +548,26 @@ export default function ProductionLogEntry() {
         >
           <span role="img" aria-label="scissors">✂️</span> Cutting Sheet
         </button>
+        <button
+          type="button"
+          onClick={() => handleSetActiveDoor("inspection")}
+          className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
+          style={{
+            borderColor: activeDoor === "inspection" ? "#c8834a" : "transparent",
+            color: activeDoor === "inspection" ? "#c8834a" : "#9a7a5a",
+          }}
+        >
+          <ShieldAlert className="w-4 h-4" />
+          Quality Inspection
+        </button>
       </div>
 
       {activeDoor === "cutting-sheet" && (
         <CuttingSheetSection />
+      )}
+
+      {activeDoor === "inspection" && (
+        <InspectionSection />
       )}
 
       {/* LOGGING FORM CARD */}
