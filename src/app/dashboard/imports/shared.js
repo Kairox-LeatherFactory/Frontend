@@ -18,8 +18,8 @@ export function Toast({ msg, type }) {
 
 export function StatusBadge({ status }) {
   const map = {
-    DRAFT: { bg: '#fffbeb', color: '#a86022', border: '#fde68a', text: 'DRAFT' },
-    RELEASED: { bg: '#f0fdf4', color: '#10b981', border: '#bbf7d0', text: 'RELEASED' },
+    DRAFT: { bg: '#fffbeb', color: '#a86022', border: '#fde68a', text: 'PENDING' },
+    RELEASED: { bg: '#f0fdf4', color: '#10b981', border: '#bbf7d0', text: 'APPROVED' },
     CANCELLED: { bg: '#f5f5f5', color: '#888', border: '#e2e2e2', text: 'CANCELLED' },
   };
   const s = map[status] || map.DRAFT;

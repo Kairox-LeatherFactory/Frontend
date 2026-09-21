@@ -18,7 +18,7 @@ import { EmployeeDirectory } from './components/EmployeeDirectory';
 export default function AdminDashboard() {
   const { user} = useAuth();
 
-  const isHRAdmin = user === 'hr' || user === 'direct_manager';
+  const isHRAdmin = user === 'hr' || user === 'direct_manager' || user === 'managing_director';
   const [toast, setToast] = useState(null);
   const { data: users = [], isLoading: usersLoading } = useGetUsersQuery();
 const { data: employees = [], isLoading: empLoading } = useGetEmployeesQuery();
@@ -122,7 +122,7 @@ const loading = usersLoading || empLoading;
   refreshUsers={()=>{}} 
   showToast={showToast} 
 />
-<EmployeeDirectory employees={employees} loading={loading} />
+<EmployeeDirectory employees={employees} loading={loading} showToast={showToast} />
 
 </motion.div>
 

@@ -95,6 +95,16 @@ apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['Attendance']
     }),
+
+    // 12. Correct Attendance / Re-allocate (PATCH)
+    updateAttendance: builder.mutation({
+      query: ({ id, ...patch }) => ({
+        url: `/api/v1/attendance/${id}`,
+        method: 'PATCH',
+        body: patch
+      }),
+      invalidatesTags: ['Attendance']
+    }),
     }),
     overrideExisting: true
 })
@@ -112,4 +122,5 @@ export const {
   useAddEmployeeMutation,
   useProxyCheckInMutation,
   useProxyCheckOutMutation,
+  useUpdateAttendanceMutation,
 }=attendanceApiSlice

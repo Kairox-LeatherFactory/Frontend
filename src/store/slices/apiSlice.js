@@ -15,7 +15,7 @@ export const apiSlice = createApi({
     },
   }),
   tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece', 
-    'Drawer', 'DrawerPool', 'DrawerList', 
+    'Store', 'StoreList', 
     'AccessorySpec', 'AccessoryRequirement',
     'WageOrder', 'WageStyle', 'WageRate', 'WageRun', 
     'WageLedger','MaterialLot', 'MaterialSpec', 'MaterialStock', 'SupplierOrder','Users','Employees',
@@ -86,40 +86,28 @@ export const apiSlice = createApi({
     
 
     // --- STORE HUB APIs ---
-    getDrawerPool: builder.query({
-      query: () => '/api/v1/drawers/pool',
-      providesTags: ['DrawerPool']
+    storeScan: builder.mutation({
+      query: (scanData) => ({ url: '/api/v1/store/scan', method: 'POST', body: scanData }),
+      invalidatesTags: ['Store', 'StoreList']
     }),
-    storeDrawerScan: builder.mutation({
-      query: (drawerData) => ({ url: '/api/v1/drawers/store-scan', method: 'POST', body: drawerData }),
-      invalidatesTags: ['Drawer', 'DrawerList']
+    storeSend: builder.mutation({
+      query: ({ piece_ids, destination }) => ({ url: '/api/v1/store/send', method: 'POST', body: { piece_ids, destination } }),
+      invalidatesTags: ['Store', 'StoreList']
     }),
-    sendDrawers: builder.mutation({
-      query: ({ drawer_ids, destination }) => ({ url: '/api/v1/drawers/send', method: 'POST', body: { drawer_ids, destination } }),
-      invalidatesTags: ['Drawer', 'DrawerPool', 'DrawerList']
-    }),
-    receiveDrawer: builder.mutation({
-      query: ({ drawerId, transition }) => ({ url: `/api/v1/drawers/${encodeURIComponent(drawerId)}/receive`, method: 'POST', body: { transition } }),
-      invalidatesTags: ['Drawer', 'DrawerList']
-    }),
-    listDrawers: builder.query({
+    listStorePieces: builder.query({
       query: (params = {}) => {
         const qs = new URLSearchParams();
         qs.append('limit', params.limit || 500);
         if (params.code) qs.append('code', params.code);
-        if (params.seq_from) qs.append('seq_from', params.seq_from);
-        if (params.seq_to) qs.append('seq_to', params.seq_to);
         if (params.state) qs.append('state', params.state);
         if (params.offset) qs.append('offset', params.offset);
-        if (params.has_piece !== undefined) qs.append('has_piece', params.has_piece);
-        if (params.sendable !== undefined) qs.append('sendable', params.sendable);
-        return `/api/v1/drawers?${qs.toString()}`;
+        return `/api/v1/store/pieces?${qs.toString()}`;
       },
-      providesTags: ['DrawerList']
+      providesTags: ['StoreList']
     }),
-    getDrawer: builder.query({
-      query: (drawerId) => `/api/v1/drawers/${encodeURIComponent(drawerId)}`,
-      providesTags: (result, error, id) => [{ type: 'Drawer', id }]
+    getStorePiece: builder.query({
+      query: (pieceCode) => `/api/v1/store/pieces/${encodeURIComponent(pieceCode)}`,
+      providesTags: (result, error, id) => [{ type: 'Store', id }]
     }),
 
     // --- ACCESSORY APIs ---
@@ -192,18 +180,16 @@ export const apiSlice = createApi({
           if (payload.employee.employee_barcode || payload.employee.barcode) body.employee_barcode = payload.employee.employee_barcode || payload.employee.barcode;
           else if (payload.employee.id) body.employee_id = payload.employee.id;
         }
-        if (payload.drawerId) body.drawer_id = payload.drawerId;
-        else if (payload.drawerBarcode) body.drawer_barcode = payload.drawerBarcode;
         if (payload.pieceId) body.piece_id = payload.pieceId;
         else if (payload.pieceBarcode) body.piece_barcode = payload.pieceBarcode;
         if (Array.isArray(payload.lines) && payload.lines.length > 0) body.lines = payload.lines;
         return {
-          url: '/api/v1/drawers/store-scan',
+          url: '/api/v1/store/scan',
           method: 'POST',
           body
         };
       },
-      invalidatesTags: ['Drawer', 'DrawerList', 'AccessoryRequirement']
+      invalidatesTags: ['Store', 'StoreList', 'AccessoryRequirement']
     }),
     createSupplierOrder: builder.mutation({
       query: (orderData) => ({
@@ -340,15 +326,12 @@ export const {
   useProductionCuttingMutation,
   useProductionLogTwoDoorMutation,
   useIssueCuttingJobSheetMutation,
-  useGetDrawerPoolQuery,
-  useLazyGetDrawerPoolQuery,
-  useStoreDrawerScanMutation,
-  useSendDrawersMutation,
-  useReceiveDrawerMutation,
-  useListDrawersQuery,
-  useLazyListDrawersQuery,
-  useGetDrawerQuery,
-  useLazyGetDrawerQuery,
+  useStoreScanMutation,
+  useStoreSendMutation,
+  useListStorePiecesQuery,
+  useLazyListStorePiecesQuery,
+  useGetStorePieceQuery,
+  useLazyGetStorePieceQuery,
   useGetStyleMaterialSpecQuery,
   useLazyGetStyleMaterialSpecQuery,
   usePutStyleMaterialSpecMutation,

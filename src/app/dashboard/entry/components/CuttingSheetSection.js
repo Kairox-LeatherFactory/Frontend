@@ -8,7 +8,7 @@ import {
   useGetMaterialLotsQuery,
 } from '@/store/slices/apiSlice';
 import { useGetOrderBarcodeSkusQuery } from '@/store/slices/progressapiSlice';
-import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
+import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -38,7 +38,22 @@ const createDefaultRow = (overrides = {}) => ({
 export default function CuttingSheetSection() {
   const { data: orders = [], isLoading: ordersLoading } = useGetBarcodeOrdersQuery();
   const { data: lots = [], isLoading: lotsLoading } = useGetMaterialLotsQuery('category=leather');
-  const { data: workers = [], isLoading: workersLoading } = useGetEmployeesQuery();
+  const { data: rosterResponse, isLoading: workersLoading } = useGetAttendanceTodayQuery();
+  
+  const workers = useMemo(() => {
+    const data = rosterResponse?.items || rosterResponse?.data || rosterResponse || [];
+    const arr = Array.isArray(data) ? data : (data?.employee_id ? [data] : []);
+    
+    return arr.map(r => {
+      // If it's a nested employee object
+      if (r.employee) return r.employee;
+      // If it's flat roster record
+      if (r.employee_id) return { id: r.employee_id, name: r.name || r.employee_name || r.first_name || 'Unknown' };
+      if (r.id) return { id: r.id, name: r.name || r.employee_name || 'Unknown' };
+      return null;
+    }).filter(Boolean);
+  }, [rosterResponse]);
+
   const [issueJobSheet] = useIssueCuttingJobSheetMutation();
 
   const ordersList = Array.isArray(orders) ? orders : orders?.items || [];

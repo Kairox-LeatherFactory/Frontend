@@ -1,10 +1,10 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
+import { useGetAttendanceTodayQuery, useUpdateAttendanceMutation } from '@/store/slices/attendanceApiSlice';
 import {
   CheckCircle2, AlertTriangle, AlertCircle, Activity,
   ChevronLeft, ChevronRight, Lock, Users, Search,
-  CalendarDays, X, Camera,
+  CalendarDays, X, Camera, Edit2, Loader2, Save
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -265,9 +265,52 @@ export function EmployeesListView({ workers = [] }) {
   );
 }
 
-export function AttendanceHistoryView() {
+export function AttendanceHistoryView({ workers = [], userRole }) {
   const { data: rosterDataRaw = [], isLoading: loading } = useGetAttendanceTodayQuery();
   const history = useMemo(() => normalizeRosterArray(rosterDataRaw), [rosterDataRaw]);
+  
+  const [updateAttendance] = useUpdateAttendanceMutation();
+  const [editModal, setEditModal] = useState(null);
+  const [editForm, setEditForm] = useState({ employee_id: '', reason: '' });
+  const [actionLoading, setActionLoading] = useState(false);
+  const [alert, setAlert] = useState(null);
+
+  const showAlert = (type, message) => {
+    setAlert({ type, message });
+    if (type === 'success') setTimeout(() => setAlert(null), 5000);
+  };
+
+  const handleEditClick = (row) => {
+    setEditForm({ employee_id: row.employee_id, reason: '' });
+    setEditModal(row);
+  };
+
+  const handleSaveCorrection = async () => {
+    if (!editForm.employee_id) {
+      showAlert('warning', 'Please select the correct worker.');
+      return;
+    }
+    if (!editForm.reason.trim()) {
+      showAlert('warning', 'Reason is required for correction (e.g. "Card swapped").');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await updateAttendance({
+        id: editModal.id,
+        employee_id: editForm.employee_id,
+        reason: editForm.reason
+      }).unwrap();
+      
+      showAlert('success', 'Attendance and production events reassigned successfully.');
+      setEditModal(null);
+    } catch (err) {
+      showAlert('error', err.message || 'Failed to reassign attendance.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -286,6 +329,7 @@ export function AttendanceHistoryView() {
                 <th className="p-3 font-black uppercase tracking-wider text-slate-400">Check Out</th>
                 <th className="p-3 font-black uppercase tracking-wider text-slate-400">Source</th>
                 <th className="p-3 font-black uppercase tracking-wider text-slate-400">Status</th>
+                <th className="p-3 font-black uppercase tracking-wider text-slate-400 text-right pr-5">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -299,12 +343,99 @@ export function AttendanceHistoryView() {
                   <td className="p-3">
                     <Badge label={row.status || 'Active'} type={row.status?.toLowerCase() === 'late' ? 'late' : row.status?.toLowerCase() === 'short' ? 'short' : 'active'} />
                   </td>
+                  <td className="p-3 text-right pr-5">
+                    <button
+                      onClick={() => handleEditClick(row)}
+                      className="p-1.5 rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                      title="Correct / Reassign Worker"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </SpotlightCard>
+
+      <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
+
+      {/* Reassign Worker Modal */}
+      <AnimatePresence>
+        {editModal && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
+            >
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-black text-rose-700 flex items-center gap-2">
+                    <AlertTriangle className="w-5 h-5" /> Reassign Attendance
+                  </h3>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">
+                    Transfers all wages & production events
+                  </p>
+                </div>
+                <button onClick={() => setEditModal(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-full transition-colors self-start">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="p-5 space-y-4 bg-slate-50/50">
+                <div className="p-3 bg-red-50 border border-red-100 rounded-xl mb-2">
+                  <p className="text-[11px] font-bold text-red-700">
+                    You are reassigning the attendance and all production events recorded by <span className="font-black underline">{editModal.name}</span> today. 
+                  </p>
+                </div>
+                
+                <div>
+                  <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Correct Worker (Who actually worked)</label>
+                  <select
+                    className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a]"
+                    value={editForm.employee_id}
+                    onChange={e => setEditForm({ ...editForm, employee_id: e.target.value })}
+                  >
+                    <option value="" disabled>Select the correct worker</option>
+                    {workers.map(w => (
+                      <option key={w.id} value={w.id}>{w.name} ({w.employee_barcode || String(w.id).slice(0,6)})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Reason for correction *</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Card swapped by mistake at gate"
+                    className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a]"
+                    value={editForm.reason}
+                    onChange={e => setEditForm({ ...editForm, reason: e.target.value })}
+                  />
+                </div>
+              </div>
+              
+              <div className="p-5 bg-white border-t border-slate-100 flex gap-3">
+                <button onClick={() => setEditModal(null)} className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveCorrection}
+                  disabled={actionLoading}
+                  className="flex-1 py-3 px-4 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ background: 'linear-gradient(135deg, #e11d48, #be123c)' }}
+                >
+                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Confirm Transfer
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

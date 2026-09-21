@@ -123,14 +123,14 @@ if (!hasMounted) {
     ) : activeTab === 'employees' ? (
       isSecurity ? <EmployeesListView workers={workers} /> : <LockedView title="Restricted" description="Access denied" />
     ) : activeTab === 'history' ? (
-      isSecurity ? <AttendanceHistoryView /> : <LockedView title="Restricted" description="Access denied" />
+      isSecurity ? <AttendanceHistoryView workers={workers} userRole={user} /> : <LockedView title="Restricted" description="Access denied" />
     ) : activeTab === 'proxy' ? (
       (isSupervisor || isSecurity)
         ? <FloorCommandView workers={workers} onWorkerAdded={refreshWorkers} isSecurity={isSecurity} />
         : <LockedView title="Authorization Required" description="Floor Command is restricted." />
     ) : activeTab === 'admin' ? (
       (isManager && !isSecurity)
-        ? <OperationsHRView />
+        ? <OperationsHRView workers={workers} />
         : <LockedView title="Direct Manager Authorization Required" description="Operations & HR is restricted to Direct Managers only." />
     ) : (
       <LockedView title="Loading State" description="Preparing module..." />
