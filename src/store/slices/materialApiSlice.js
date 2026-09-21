@@ -139,4 +139,5 @@ export const {
     useGetMaterialLotHistoryQuery,
     useGetLeatherByStyleQuery,
     useGetPieceConsumptionQuery,
+    useLazyGetPieceConsumptionQuery,
 } = materialApiSlice;

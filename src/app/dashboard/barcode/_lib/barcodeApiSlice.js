@@ -44,27 +44,26 @@ export const barcodeApi = createApi({
     }),
 
     // ────────────────────────────────────────────────────────────────────
-    // DEPRECATED: GET /api/v1/drawers — drawer system removed (store migration)
-    // listDrawers: builder.query({
-    //   query: ({ state, seqFrom, seqTo } = {}) => {
-    //     const params = new URLSearchParams();
-    //     params.set('limit', '500');
-    //     if (state && state !== 'ALL') params.set('state', state);
-    //     if (seqFrom) params.set('seq_from', parseInt(seqFrom, 10));
-    //     if (seqTo) params.set('seq_to', parseInt(seqTo, 10));
-    //     return `/api/v1/drawers?${params.toString()}`;
-    //   },
-    //   transformResponse: (response) => {
-    //     if (response && Array.isArray(response.items)) {
-    //       return { items: response.items, total: response.total ?? response.items.length };
-    //     }
-    //     if (Array.isArray(response)) {
-    //       return { items: response, total: response.length };
-    //     }
-    //     return { items: [], total: 0 };
-    //   },
-    //   providesTags: ['Drawers'],
-    // }),
+    listDrawers: builder.query({
+      query: ({ state, seqFrom, seqTo } = {}) => {
+        const params = new URLSearchParams();
+        params.set('limit', '500');
+        if (state && state !== 'ALL') params.set('state', state);
+        if (seqFrom) params.set('seq_from', parseInt(seqFrom, 10));
+        if (seqTo) params.set('seq_to', parseInt(seqTo, 10));
+        return `/api/v1/drawers?${params.toString()}`;
+      },
+      transformResponse: (response) => {
+        if (response && Array.isArray(response.items)) {
+          return { items: response.items, total: response.total ?? response.items.length };
+        }
+        if (Array.isArray(response)) {
+          return { items: response, total: response.length };
+        }
+        return { items: [], total: 0 };
+      },
+      providesTags: ['Drawers'],
+    }),
     // ────────────────────────────────────────────────────────────────────
 
     // ────────────────────────────────────────────────────────────────────
@@ -146,7 +145,7 @@ export const barcodeApi = createApi({
 
 export const {
   useGetEmployeesQuery,
-  // useListDrawersQuery, // DEPRECATED: drawer system removed (store migration)
+  useListDrawersQuery,
   useGetBarcodeMaterialsQuery,
   useGetBarcodeOrdersQuery,
   useGetOrderMetaQuery,

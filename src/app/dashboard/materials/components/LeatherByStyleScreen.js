@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Shirt, Search, Loader2 } from 'lucide-react';
 import { useGetLeatherByStyleQuery } from '@/store/slices/materialApiSlice';
 import { useGetWageStylesQuery } from '@/store/slices/apiSlice';
+import { PieceConsumptionLookup } from './PieceConsumptionLookup';
 
 export function LeatherByStyleScreen({ showToast }) {
     const [styleSearch, setStyleSearch] = useState('');
@@ -96,6 +97,8 @@ export function LeatherByStyleScreen({ showToast }) {
                     </div>
                 )}
             </div>
+
+            <PieceConsumptionLookup showToast={showToast} />
         </div>
     );
 }
