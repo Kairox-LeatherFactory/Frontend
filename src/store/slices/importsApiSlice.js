@@ -6,10 +6,6 @@ export const importsApiSlice = apiSlice.injectEndpoints({
       query: (orderNumber) => `/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}`,
       providesTags: (result, error, arg) => [{ type: 'Breakdown', id: arg }],
     }),
-    getDrawerPool: builder.query({
-      query: () => '/api/v1/drawers/pool',
-      providesTags: ['DrawerPool'],
-    }),
     patchBreakdownSku: builder.mutation({
       query: ({ skuId, ...payload }) => ({
         url: `/api/v1/imports/breakdown/skus/${encodeURIComponent(skuId)}`,
@@ -35,8 +31,8 @@ export const importsApiSlice = apiSlice.injectEndpoints({
       invalidatesTags: (result, error, { orderNumber }) => [{ type: 'Breakdown', id: orderNumber }],
     }),
     releaseBreakdownStyles: builder.mutation({
-      query: ({ orderNumber, styleIds, growDrawerPool = false, needsLining }) => {
-        const payload = { style_ids: styleIds, grow_drawer_pool: growDrawerPool };
+      query: ({ orderNumber, styleIds, needsLining }) => {
+        const payload = { style_ids: styleIds };
         if (needsLining !== undefined) payload.needs_lining = needsLining;
         return {
           url: `/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}/release`,
@@ -45,22 +41,7 @@ export const importsApiSlice = apiSlice.injectEndpoints({
         };
       },
       
-      invalidatesTags: (result, error, { orderNumber }) => [{ type: 'Breakdown', id: orderNumber }, 'DrawerPool'],
-    }),
-    growDrawerPool: builder.mutation({
-      query: ({ add }) => ({
-        url: '/api/v1/drawers/pool',
-        method: 'POST',
-        body: { add },
-      }),
-      invalidatesTags: ['DrawerPool'],
-    }),
-    allocateWaitingDrawers: builder.mutation({
-      query: () => ({
-        url: '/api/v1/drawers/allocate-waiting',
-        method: 'POST',
-      }),
-      invalidatesTags: ['DrawerPool'],
+      invalidatesTags: (result, error, { orderNumber }) => [{ type: 'Breakdown', id: orderNumber }],
     }),
   }),
   overrideExisting: true,
@@ -68,11 +49,8 @@ export const importsApiSlice = apiSlice.injectEndpoints({
 
 export const {
   useGetBreakdownQuery,
-  useGetDrawerPoolQuery,
   usePatchBreakdownSkuMutation,
   useDeleteBreakdownSkuMutation,
   useCancelBreakdownStylesMutation,
   useReleaseBreakdownStylesMutation,
-  useGrowDrawerPoolMutation,
-  useAllocateWaitingDrawersMutation,
 } = importsApiSlice;

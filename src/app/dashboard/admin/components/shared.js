@@ -4,11 +4,12 @@ import { createPortal } from 'react-dom';
 import { ChevronDown, Barcode, Printer, X,ShieldCheck } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 // ─── Shared styled input ─────────────────────────────────────────────────────
-export function Field({ label, children }) {
+export function Field({ label, children, hint }) {
   return (
     <div>
       <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>{label}</label>
       {children}
+      {hint && <p className="text-[10px] font-semibold mt-1" style={{ color: '#b89070' }}>{hint}</p>}
     </div>
   );
 }

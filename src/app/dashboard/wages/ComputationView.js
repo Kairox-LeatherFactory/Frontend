@@ -28,6 +28,7 @@ export default function ComputationView() {
   const [triggerGetWageRunBreakdown] = useLazyGetWageRunBreakdownQuery();
   const [triggerGetWageLedger] = useLazyGetWageLedgerQuery();
 
+  const [runKind, setRunKind] = useState('piece'); // 'piece' | 'monthly'
   const [scopeType, setScopeType] = useState('factory'); // 'factory' | 'order' | 'style'
   const [orderNumber, setOrderNumber] = useState('');
   const [styleCode, setStyleCode] = useState('');
@@ -112,11 +113,12 @@ export default function ComputationView() {
       console.error(e);
     }
   };
- const handleCompute = async () => {
+  const handleCompute = async () => {
     setIsComputing(true);
     setBreakdown(null);
     try {
       const runData = await computeWageRunMut({
+        run_kind: runKind,
         period_start: startDate,
         period_end: endDate,
         freeze: false,
@@ -271,6 +273,24 @@ export default function ComputationView() {
           <Activity className="w-6 h-6" style={{ color: '#c8834a' }} /> Engine Configuration
         </h3>
 
+        {/* Run Kind Picker */}
+        <div className="flex gap-2 mb-4 relative z-10">
+          {[
+            { id: 'piece', label: 'Piece Rate Run' },
+            { id: 'monthly', label: 'Monthly Salary Run' },
+          ].map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => { setRunKind(opt.id); if (opt.id === 'piece' && scopeType === 'factory') setScopeType('style'); }}
+              className={`px-5 py-2.5 rounded-full font-black text-xs uppercase tracking-widest transition-all cursor-pointer border ${runKind === opt.id ? 'text-white shadow-md' : 'bg-white text-slate-500'}`}
+              style={runKind === opt.id ? { background: '#c8834a', borderColor: '#c8834a' } : { borderColor: 'rgba(200,131,74,0.2)' }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
         {/* Scope picker — Order and Style are mutually exclusive (backend 422s both) */}
         <div className="flex gap-2 mb-6 relative z-10">
           {[
@@ -358,16 +378,22 @@ export default function ComputationView() {
           )}
         </div>
 
-        {scopeType !== 'factory' && (
+        {scopeType !== 'factory' && runKind === 'piece' && (
           <p className="text-[10px] font-bold mt-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 w-fit">
-            Scoped runs pay PIECE-RATE work only — monthly-salary staff are not included (they&apos;d otherwise get paid again on the next scoped run).
+            Scoped runs pay PIECE-RATE work only — monthly-salary staff are not included.
+          </p>
+        )}
+        
+        {runKind === 'monthly' && (
+          <p className="text-[10px] font-bold mt-3 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 w-fit">
+            Monthly runs pay salaried staff. If an Order/Style is selected, it acts as a "reference label" only.
           </p>
         )}
 
         <div className="mt-8 flex justify-end relative z-10 pt-6" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
           <button
             onClick={handleCompute}
-            disabled={isComputing || (scopeType === 'order' && !orderNumber) || (scopeType === 'style' && !styleCode)}
+            disabled={isComputing || (scopeType === 'order' && !orderNumber) || (scopeType === 'style' && !styleCode) || (runKind === 'piece' && scopeType === 'factory')}
             className="h-14 px-10 rounded-full font-black text-sm text-white shadow-xl transition-all hover:shadow-orange-500/30 hover:-translate-y-1 active:scale-95 disabled:opacity-50 flex items-center gap-3"
             style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
           >
@@ -462,9 +488,19 @@ export default function ComputationView() {
                       style={{ borderColor: 'rgba(200,131,74,0.15)' }}
                     >
                       <div className="min-w-0">
-                        <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
-                          {r.scope_order_number || r.scope_style_code || 'Whole Factory'}
-                        </p>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          {r.run_kind === 'monthly' ? (
+                            <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-sm">Monthly</span>
+                          ) : (
+                            <span className="text-[9px] font-black uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-sm">Piece</span>
+                          )}
+                          <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
+                            {r.run_kind === 'monthly' && !r.scope_order_number && !r.scope_style_code ? 'Monthly Salary' : (r.scope_order_number || r.scope_style_code || 'Whole Factory')}
+                          </p>
+                          {r.scope_is_label && (
+                            <span className="text-[9px] font-bold uppercase text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-sm bg-slate-50">Ref Only</span>
+                          )}
+                        </div>
                         <p className="text-[10px] font-bold text-slate-400">{r.period_start} → {r.period_end}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -506,9 +542,19 @@ export default function ComputationView() {
                 style={{ borderColor: 'rgba(200,131,74,0.15)' }}
               >
                 <div className="min-w-0">
-                  <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
-                    {r.scope_order_number || r.scope_style_code || 'Whole Factory'}
-                  </p>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    {r.run_kind === 'monthly' ? (
+                      <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-sm">Monthly</span>
+                    ) : (
+                      <span className="text-[9px] font-black uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-sm">Piece</span>
+                    )}
+                    <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
+                      {r.run_kind === 'monthly' && !r.scope_order_number && !r.scope_style_code ? 'Monthly Salary' : (r.scope_order_number || r.scope_style_code || 'Whole Factory')}
+                    </p>
+                    {r.scope_is_label && (
+                      <span className="text-[9px] font-bold uppercase text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-sm bg-slate-50">Ref Only</span>
+                    )}
+                  </div>
                   <p className="text-[10px] font-bold text-slate-400">{r.period_start} → {r.period_end}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">

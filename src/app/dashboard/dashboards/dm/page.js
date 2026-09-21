@@ -48,9 +48,10 @@ import {
   apiGetDirectManagerPieceDetail,
   apiGetEmployees,
   apiGetStoreTraceability,
-  apiListDrawers,
-  apiSendDrawers,
-  apiReceiveDrawer,
+  // ─── DEPRECATED: Drawer system removed (store migration) ───
+  // apiListDrawers,
+  // apiSendDrawers,
+  // apiReceiveDrawer,
   apiGetAttendanceConfig,
 } from '@/lib/api';
 
@@ -515,23 +516,22 @@ export default function DirectManagerDashboard() {
     fetchDashboard();
   }, [token]);
 
-  // ── LIVE BACKEND CALL: GET /api/v1/drawers (only while the Drawers tab is open) ──
-  const fetchDrawers = async () => {
-    if (!token) return;
-    setDrawersLoading(true);
-    try {
-      const data = await apiListDrawers(token, { has_piece: true, limit: 200 });
-      setRealDrawers(Array.isArray(data?.items) ? data.items : []);
-    } catch (err) {
-      console.warn('Drawer list fetch notice:', err.message);
-    } finally {
-      setDrawersLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === 'tab-drawers') fetchDrawers();
-  }, [token, activeTab]);
+  // ─── DEPRECATED: Drawer fetch removed (store migration) ───
+  // const fetchDrawers = async () => {
+  //   if (!token) return;
+  //   setDrawersLoading(true);
+  //   try {
+  //     const data = await apiListDrawers(token, { has_piece: true, limit: 200 });
+  //     setRealDrawers(Array.isArray(data?.items) ? data.items : []);
+  //   } catch (err) {
+  //     console.warn('Drawer list fetch notice:', err.message);
+  //   } finally {
+  //     setDrawersLoading(false);
+  //   }
+  // };
+  // useEffect(() => {
+  //   if (activeTab === 'tab-drawers') fetchDrawers();
+  // }, [token, activeTab]);
 
   // ── LIVE BACKEND CALL: GET /api/v1/dashboard/store/traceability ──
   // Loaded once the dashboard has a token (not gated to the Piece
@@ -980,29 +980,29 @@ export default function DirectManagerDashboard() {
     triggerToast('📥 Factory Master Production CSV Exported Successfully');
   };
 
-  // ── Drawer actions ──
-  const handleConfirmDrawerAction = async () => {
-    if (!selectedDrawer) return;
-    setDrawerActionBusy(true);
-    try {
-      if (drawerActionType === 'send') {
-        const result = await apiSendDrawers(token, {
-          drawer_ids: [selectedDrawer.drawer_id],
-          destination: drawerDestination,
-        });
-        triggerToast(result.message || `Sent ${result.count_sent ?? 0}/${result.requested ?? 1} drawer(s) to ${drawerDestination}`);
-      } else {
-        const result = await apiReceiveDrawer(token, selectedDrawer.drawer_id, 'RECEIVED');
-        triggerToast(`Drawer ${result.drawer_code || selectedDrawer.code} → ${result.state || 'RECEIVED'}`);
-      }
-      setShowDrawerActionModal(false);
-      fetchDrawers();
-    } catch (err) {
-      triggerToast(`⚠️ ${err.message}`);
-    } finally {
-      setDrawerActionBusy(false);
-    }
-  };
+  // ─── DEPRECATED: Drawer send/receive removed (store migration) ───
+  // const handleConfirmDrawerAction = async () => {
+  //   if (!selectedDrawer) return;
+  //   setDrawerActionBusy(true);
+  //   try {
+  //     if (drawerActionType === 'send') {
+  //       const result = await apiSendDrawers(token, {
+  //         drawer_ids: [selectedDrawer.drawer_id],
+  //         destination: drawerDestination,
+  //       });
+  //       triggerToast(result.message || `Sent ${result.count_sent ?? 0}/${result.requested ?? 1} drawer(s) to ${drawerDestination}`);
+  //     } else {
+  //       const result = await apiReceiveDrawer(token, selectedDrawer.drawer_id, 'RECEIVED');
+  //       triggerToast(`Drawer ${result.drawer_code || selectedDrawer.code} → ${result.state || 'RECEIVED'}`);
+  //     }
+  //     setShowDrawerActionModal(false);
+  //     fetchDrawers();
+  //   } catch (err) {
+  //     triggerToast(`⚠️ ${err.message}`);
+  //   } finally {
+  //     setDrawerActionBusy(false);
+  //   }
+  // };
 
   // ─── DEPARTMENT PERFORMANCE — real departments[] rows. Reads target/
   // completed/pending/achievement_pct off each row, computing pending as

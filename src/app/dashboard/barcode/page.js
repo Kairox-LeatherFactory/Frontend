@@ -44,7 +44,8 @@ import ToastStack from './_components/ToastStack';
 import ResolveBarcodeWidget from './_components/ResolveBarcodeWidget';
 import StyleRegistryPanel from './_components/style/StyleRegistryPanel';
 import EmployeeGenerationTab from './_components/EmployeeGenerationTab';
-import DrawerGenerationTab from './_components/DrawerGenerationTab';
+// ─── DEPRECATED: Drawer generation removed (store migration) ───
+// import DrawerGenerationTab from './_components/DrawerGenerationTab';
 import MaterialGenerationTab from './_components/MaterialGenerationTab';
 import PrintTab from './_components/PrintTab';
 import HistoryTab from './_components/HistoryTab';
@@ -792,8 +793,8 @@ export default function BarcodeManagementPage() {
             />
           )}
 
-          {/* Drawer / Bucket Batch Generation Tab */}
-          {activeTab === 'generation' && category === 'bucket' && (
+          {/* DEPRECATED: Drawer/Bucket Generation Tab removed (store migration) */}
+          {/* activeTab === 'generation' && category === 'bucket' && (
             <DrawerGenerationTab
               drawers={drawerDirectory}
               drawersLoading={drawerLoading}
@@ -814,7 +815,7 @@ export default function BarcodeManagementPage() {
               seqTo={drawerSeqTo}
               setSeqTo={(v) => dispatch(setDrawerSeqTo(v))}
             />
-          )}
+          ) */}
 
           {/* Material Batch Generation & Operations Tab */}
           {activeTab === 'generation' && category === 'material' && (

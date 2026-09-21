@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Camera, X, AlertTriangle, ChevronDown, Zap, ZapOff, Sun } from 'lucide-react';
 
 // Mobile camera barcode scanner — a shared modal used by all three doors
-// (Barcode Gun's SKU/piece scan, Store Hub's drawer/piece scan, and the
+// (Barcode Gun's SKU/piece scan, Store Hub's piece scan, and the
 // shared Worker Verify step). Each caller renders its own instance, gated by
 // its own relevant `cameraScanTarget` value, since the onScan callback needs
 // to reach into that caller's own local state — a single shared instance in

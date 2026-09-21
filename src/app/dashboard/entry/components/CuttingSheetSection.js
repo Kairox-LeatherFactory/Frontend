@@ -8,7 +8,7 @@ import {
   useGetMaterialLotsQuery,
 } from '@/store/slices/apiSlice';
 import { useGetOrderBarcodeSkusQuery } from '@/store/slices/progressapiSlice';
-import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
+import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -38,7 +38,22 @@ const createDefaultRow = (overrides = {}) => ({
 export default function CuttingSheetSection() {
   const { data: orders = [], isLoading: ordersLoading } = useGetBarcodeOrdersQuery();
   const { data: lots = [], isLoading: lotsLoading } = useGetMaterialLotsQuery('category=leather');
-  const { data: workers = [], isLoading: workersLoading } = useGetEmployeesQuery();
+  const { data: rosterResponse, isLoading: workersLoading } = useGetAttendanceTodayQuery();
+  
+  const workers = useMemo(() => {
+    const data = rosterResponse?.items || rosterResponse?.data || rosterResponse || [];
+    const arr = Array.isArray(data) ? data : (data?.employee_id ? [data] : []);
+    
+    return arr.map(r => {
+      // If it's a nested employee object
+      if (r.employee) return r.employee;
+      // If it's flat roster record
+      if (r.employee_id) return { id: r.employee_id, name: r.name || r.employee_name || r.first_name || 'Unknown' };
+      if (r.id) return { id: r.id, name: r.name || r.employee_name || 'Unknown' };
+      return null;
+    }).filter(Boolean);
+  }, [rosterResponse]);
+
   const [issueJobSheet] = useIssueCuttingJobSheetMutation();
 
   const ordersList = Array.isArray(orders) ? orders : orders?.items || [];
@@ -201,7 +216,6 @@ export default function CuttingSheetSection() {
   const grandTotalSkins = rows.reduce((sum, r) => sum + r.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).length, 0);
   const grandTotalSqft = rows.reduce((sum, r) => sum + r.skins.reduce((acc, curr) => acc + (curr !== '' && !isNaN(curr) ? parseFloat(curr) : 0), 0), 0).toFixed(2);
 
-  // Calculate dynamic Serial Numbers (resets to 1 after an empty row)
   const sNoArray = useMemo(() => {
     let currentSNo = 0;
     return rows.map((row) => {
@@ -215,6 +229,26 @@ export default function CuttingSheetSection() {
       }
     });
   }, [rows]);
+
+  const orderTotals = useMemo(() => {
+    const totals = {};
+    rows.forEach(r => {
+      if (!r.orderId) return;
+      if (!totals[r.orderId]) {
+        const orderInfo = ordersList.find(o => (o.id || o.order_id) === r.orderId);
+        totals[r.orderId] = { 
+          name: orderInfo ? (orderInfo.order_number || orderInfo.id) : r.orderId,
+          skins: 0, 
+          sqft: 0 
+        };
+      }
+      const s = r.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).length;
+      const a = r.skins.reduce((acc, curr) => acc + (curr !== '' && !isNaN(curr) ? parseFloat(curr) : 0), 0);
+      totals[r.orderId].skins += s;
+      totals[r.orderId].sqft += a;
+    });
+    return totals;
+  }, [rows, ordersList]);
 
   return (
     <div className="flex flex-col h-full bg-[#f8f9fa] overflow-hidden animate-fade-in text-xs">
@@ -311,6 +345,20 @@ export default function CuttingSheetSection() {
               ))}
             </tbody>
             <tfoot>
+              {Object.entries(orderTotals).map(([orderId, data]) => (
+                <tr key={orderId} className="bg-[#1e293b] text-white font-black border-b border-slate-600">
+                  <td colSpan={26} className="p-2 text-right border-r border-slate-600 tracking-widest text-[11px] text-slate-300">
+                    {data.name} TOTAL
+                  </td>
+                  <td className="p-2 text-center border-r border-slate-600 bg-[#334155] text-amber-400 text-sm">
+                    {data.skins}
+                  </td>
+                  <td className="p-2 text-center border-r border-slate-600 bg-[#334155] text-amber-400 text-sm">
+                    {data.sqft.toFixed(2)}
+                  </td>
+                  <td className="p-2 bg-[#334155] sticky right-0 z-20 shadow-[-4px_0_10px_rgba(0,0,0,0.1)]"></td>
+                </tr>
+              ))}
               <tr className="bg-[#475569] text-white font-black">
                 <td colSpan={26} className="p-2 text-right border-r border-slate-500 tracking-widest text-[13px]">
                   GRAND TOTAL

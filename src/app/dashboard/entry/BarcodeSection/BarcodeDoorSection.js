@@ -401,10 +401,14 @@ export default function BarcodeDoorSection({
 
         }
 
-        // Filter out blockers that are irrelevant for the pipeline piece scan.
-        // The backend adds a 'screen_context' / 'consumption' blocker for LEATHER_CUTTING
-        // because it expects the cut screen, but we will send LEATHER_CUT in the submit payload.
-        const realBlockers = (pieceState?.blockers || []).filter(
+        // Filter blockers: skill/role/designation are handled by the auto-stage
+        // logic above. consumption/screen_context mean "use the Cutting screen",
+        // not a hard scan rejection — show a specific hint for that.
+        const allBlockers = pieceState?.blockers || [];
+        const consumptionBlocked = allBlockers.some(
+          (b) => b.gate === "consumption" || b.gate === "screen_context",
+        );
+        const realBlockers = allBlockers.filter(
           (b) =>
             b.gate !== "consumption" &&
             b.gate !== "screen_context" &&
@@ -412,6 +416,21 @@ export default function BarcodeDoorSection({
             b.gate !== "role" &&
             b.gate !== "designation",
         );
+
+        // If the only reason it can't log is that it requires a cut-screen
+        // (consumption gate), tell the user to use the Cutting Sheet instead.
+        if (
+          !(barcodeStage === "Lining" || targetStage === "Lining") &&
+          pieceState?.ready_to_log === false &&
+          consumptionBlocked &&
+          realBlockers.length === 0
+        ) {
+          setErrorMsg(
+            `⚠️ This piece needs to be logged from the Cutting Sheet — it requires material consumption data (DCM) to be recorded first.`,
+          );
+          setBarcodePieceInput("");
+          return;
+        }
 
         if (
           !(barcodeStage === "Lining" || targetStage === "Lining") &&
@@ -423,6 +442,7 @@ export default function BarcodeDoorSection({
           setBarcodePieceInput("");
           return;
         }
+
 
         // Use stages[] from piece-state to enforce the pipeline gate (Bug #6)
         // Allow Lining to bypass this gate so lining cuts can be scanned
@@ -525,18 +545,7 @@ export default function BarcodeDoorSection({
       if (loggedCodes.length > 0 || reworkCodes.length > 0)
         advanceToNextPipelineStage();
 
-      const hasBlockedItems =
-        result?.sequence_blocked?.length > 0 ||
-        result?.merge_blocked?.length > 0 ||
-        (Array.isArray(result?.blocked) &&
-          result.blocked.filter((b) => {
-            const r = (b?.reason || "").toLowerCase();
-            return (
-              !r.includes("skill") &&
-              !r.includes("designation") &&
-              !r.includes("assigned")
-            );
-          }).length > 0);
+      const hasBlockedItems = result?.blocked?.length > 0;
 
       // Bug fix (parity with ManualDoorSection): `logged`/`rework` only say a
       // piece is RECORDED at this stage — a rescan of a piece already logged

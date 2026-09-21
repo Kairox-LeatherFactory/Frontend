@@ -28,7 +28,7 @@ export const barcodeApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Employees', 'Drawers', 'Materials', 'BarcodeOrders', 'OrderMeta', 'OrderBarcodes'],
+  tagTypes: ['Employees', /* 'Drawers' — DEPRECATED: drawer system removed (store migration) */ 'Materials', 'BarcodeOrders', 'OrderMeta', 'OrderBarcodes'],
   endpoints: (builder) => ({
     // ────────────────────────────────────────────────────────────────────
     // 1. GET /api/v1/employees
@@ -44,29 +44,28 @@ export const barcodeApi = createApi({
     }),
 
     // ────────────────────────────────────────────────────────────────────
-    // 2. GET /api/v1/drawers
-    // Replaces: drawerDirectory, drawerTotal, drawerLoading, drawerError, drawerReloadKey
+    // DEPRECATED: GET /api/v1/drawers — drawer system removed (store migration)
+    // listDrawers: builder.query({
+    //   query: ({ state, seqFrom, seqTo } = {}) => {
+    //     const params = new URLSearchParams();
+    //     params.set('limit', '500');
+    //     if (state && state !== 'ALL') params.set('state', state);
+    //     if (seqFrom) params.set('seq_from', parseInt(seqFrom, 10));
+    //     if (seqTo) params.set('seq_to', parseInt(seqTo, 10));
+    //     return `/api/v1/drawers?${params.toString()}`;
+    //   },
+    //   transformResponse: (response) => {
+    //     if (response && Array.isArray(response.items)) {
+    //       return { items: response.items, total: response.total ?? response.items.length };
+    //     }
+    //     if (Array.isArray(response)) {
+    //       return { items: response, total: response.length };
+    //     }
+    //     return { items: [], total: 0 };
+    //   },
+    //   providesTags: ['Drawers'],
+    // }),
     // ────────────────────────────────────────────────────────────────────
-    listDrawers: builder.query({
-      query: ({ state, seqFrom, seqTo } = {}) => {
-        const params = new URLSearchParams();
-        params.set('limit', '500');
-        if (state && state !== 'ALL') params.set('state', state);
-        if (seqFrom) params.set('seq_from', parseInt(seqFrom, 10));
-        if (seqTo) params.set('seq_to', parseInt(seqTo, 10));
-        return `/api/v1/drawers?${params.toString()}`;
-      },
-      transformResponse: (response) => {
-        if (response && Array.isArray(response.items)) {
-          return { items: response.items, total: response.total ?? response.items.length };
-        }
-        if (Array.isArray(response)) {
-          return { items: response, total: response.length };
-        }
-        return { items: [], total: 0 };
-      },
-      providesTags: ['Drawers'],
-    }),
 
     // ────────────────────────────────────────────────────────────────────
     // 3. GET /api/v1/barcode/materials
@@ -147,7 +146,7 @@ export const barcodeApi = createApi({
 
 export const {
   useGetEmployeesQuery,
-  useListDrawersQuery,
+  // useListDrawersQuery, // DEPRECATED: drawer system removed (store migration)
   useGetBarcodeMaterialsQuery,
   useGetBarcodeOrdersQuery,
   useGetOrderMetaQuery,

@@ -6,7 +6,7 @@ import { Users, Loader2, ShieldCheck } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { fadeUpItem } from '@/lib/motionVariants';
 import { Field, inputCls, AdminSelect} from './shared';
-import { apiCreateUser } from '@/lib/api';
+
 import { useCreateUserMutation } from '@/store/slices/adminApiSlice';
 export function CreateUserForm({onSuccess, toast, showToast }) {
   // 1. STATE VARIABLES
@@ -44,7 +44,6 @@ const [createUser] = useCreateUserMutation();
         await createUser(payload).unwrap();
         showToast('user', 'success', `User account login for "${name}" created successfully.`);
         setUserForm({ name: '', phone: '', email: '', role: '', password: '', employee_id: '' });
-        await refreshUsers();
       } catch (err) {
         showToast('user', 'error', err.message || 'Failed to create user login.');
       } finally {
@@ -113,6 +112,16 @@ const [createUser] = useCreateUserMutation();
                     value={userForm.email}
                     placeholder="e.g. priya@factory.local"
                     onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
+                </Field>
+              </div>
+
+              <div className="sm:col-span-2">
+                <Field label="Link to Employee Record (Optional)" hint="Employee ID — links this login to a payroll worker record">
+                  <input type="number" className={inputCls}
+                    value={userForm.employee_id}
+                    placeholder="e.g. 42 (from Factory Workers Directory)"
+                    min="1"
+                    onChange={e => setUserForm({ ...userForm, employee_id: e.target.value })} />
                 </Field>
               </div>
             </div>

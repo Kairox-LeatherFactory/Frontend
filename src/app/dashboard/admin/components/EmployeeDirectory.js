@@ -1,13 +1,74 @@
 'use client';
 import { useState } from 'react';
-import { motion } from 'framer-motion';
-import { Users, Search, Filter, Loader2, Barcode } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Users, Search, Filter, Loader2, Barcode, Edit2, Trash2, Save, X } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { fadeUpItem, rowStagger } from '@/lib/motionVariants';
+import { useAuth } from '@/context/AuthContext';
+import { useUpdateEmployeeMutation, useDeleteEmployeeMutation } from '@/store/slices/adminApiSlice';
+import { Field, inputCls } from './shared';
 
-export function EmployeeDirectory({ employees, loading }) {
+export function EmployeeDirectory({ employees, loading, showToast }) {
+  const { user } = useAuth();
+  const canSeeSalary = user === 'hr' || user === 'direct_manager' || user === 'managing_director';
+  const canEdit = user === 'hr' || user === 'direct_manager' || user === 'managing_director';
+  const canDelete = user === 'direct_manager' || user === 'managing_director';
   const [search, setSearch] = useState('');
-  const [wageFilter, setWageFilter] = useState('all'); // 'all', 'daily', 'monthly'
+  const [wageFilter, setWageFilter] = useState('all'); // 'all', 'piece_rate', 'monthly'
+
+  const [updateEmployee] = useUpdateEmployeeMutation();
+  const [deleteEmployee] = useDeleteEmployeeMutation();
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // Edit State
+  const [editModal, setEditModal] = useState(null);
+  const [editForm, setEditForm] = useState({});
+
+  const handleEditClick = (emp) => {
+    setEditForm({
+      id: emp.id,
+      name: emp.name || '',
+      designation: emp.designation || '',
+      wage_type: emp.wage_type || 'piece_rate',
+      daily_rate: emp.daily_rate || '',
+      phone: emp.phone || ''
+    });
+    setEditModal(emp.id);
+  };
+
+  const handleSaveEdit = async () => {
+    setActionLoading(true);
+    try {
+      const payload = {
+        id: editForm.id,
+        name: editForm.name,
+        designation: editForm.designation,
+        wage_type: editForm.wage_type,
+        phone: editForm.phone || null,
+        daily_rate: editForm.wage_type === 'piece_rate' && editForm.daily_rate ? parseFloat(editForm.daily_rate) : null,
+      };
+      await updateEmployee(payload).unwrap();
+      showToast('global', 'success', `Employee ${editForm.name} updated successfully.`);
+      setEditModal(null);
+    } catch (err) {
+      showToast('global', 'error', err.message || 'Failed to update employee.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDelete = async (id, name) => {
+    if (!confirm(`CAUTION: Are you sure you want to delete ${name}? This will retire their barcode, but their history is preserved. This cannot be undone.`)) return;
+    setActionLoading(true);
+    try {
+      await deleteEmployee(id).unwrap();
+      showToast('global', 'success', `Employee ${name} deleted successfully.`);
+    } catch (err) {
+      showToast('global', 'error', err.message || 'Failed to delete employee.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = !search || 
@@ -70,9 +131,10 @@ export function EmployeeDirectory({ employees, loading }) {
                 <th className="p-3 pl-5">Worker Name</th>
                 <th className="p-3">Designation</th>
                 <th className="p-3">Wage Type</th>
-                <th className="p-3">Daily Rate</th>
+                {canSeeSalary && <th className="p-3">Daily Rate</th>}
                 <th className="p-3">Phone</th>
                 <th className="p-3">Barcode Tag</th>
+                {(canEdit || canDelete) && <th className="p-3 pr-5 text-right">Actions</th>}
               </tr>
             </thead>
             <motion.tbody variants={rowStagger} initial="hidden" animate="show">
@@ -84,17 +146,29 @@ export function EmployeeDirectory({ employees, loading }) {
                   </td>
                 </tr>
               ) : filteredEmployees.map(emp => (
-                <motion.tr key={emp.id} variants={fadeUpItem} className="border-b hover:bg-[#fcfaf8] transition-colors text-xs" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
+                <motion.tr
+                  key={emp.id}
+                  variants={fadeUpItem}
+                  className="border-b hover:bg-[#fcfaf8] transition-colors text-xs"
+                  style={{ borderColor: 'rgba(200,131,74,0.07)', opacity: emp.is_active === false ? 0.5 : 1 }}
+                >
                   
                   {/* Name & ID */}
                   <td className="p-3 pl-5">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
-                        style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
+                      <div
+                        className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
+                        style={{ background: emp.is_active === false ? '#9ca3af' : 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                      >
                         {(emp.name || '?')[0].toUpperCase()}
                       </div>
                       <div>
-                        <span className="font-black block" style={{ color: '#2d1f0e' }}>{emp.name}</span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black" style={{ color: '#2d1f0e' }}>{emp.name}</span>
+                          {emp.is_active === false && (
+                            <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded bg-slate-200 text-slate-500">Inactive</span>
+                          )}
+                        </div>
                         <span className="text-[10px] text-slate-400 font-mono">ID: #{emp.id}</span>
                       </div>
                     </div>
@@ -117,10 +191,12 @@ export function EmployeeDirectory({ employees, loading }) {
                     </span>
                   </td>
 
-                  {/* Daily Rate */}
-                  <td className="p-3 font-mono font-bold" style={{ color: '#2d1f0e' }}>
-                    {emp.daily_rate ? `₹${emp.daily_rate}` : '—'}
-                  </td>
+                  {/* Daily Rate — HR / DM / MD only */}
+                  {canSeeSalary && (
+                    <td className="p-3 font-mono font-bold" style={{ color: '#2d1f0e' }}>
+                      {emp.daily_rate ? `₹${emp.daily_rate}` : '—'}
+                    </td>
+                  )}
 
                   {/* Phone */}
                   <td className="p-3 font-mono text-slate-600 font-bold">
@@ -135,12 +211,103 @@ export function EmployeeDirectory({ employees, loading }) {
                     </div>
                   </td>
 
+                  {/* Actions */}
+                  {(canEdit || canDelete) && (
+                    <td className="p-3 pr-5 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {canEdit && (
+                          <button
+                            onClick={() => handleEditClick(emp)}
+                            disabled={actionLoading}
+                            className="p-1.5 rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors disabled:opacity-50"
+                            title="Edit Employee"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDelete(emp.id, emp.name)}
+                            disabled={actionLoading || emp.is_active === false}
+                            className="p-1.5 rounded-md text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors disabled:opacity-50"
+                            title="Delete Employee"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  )}
+
                 </motion.tr>
               ))}
             </motion.tbody>
           </table>
         </div>
       )}
+
+      {/* Edit Employee Modal */}
+      <AnimatePresence>
+        {editModal && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden"
+            >
+              <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+                <h3 className="text-lg font-black text-[#2d1f0e] flex items-center gap-2">
+                  <Edit2 className="w-5 h-5 text-[#c8834a]" /> Edit Employee
+                </h3>
+                <button onClick={() => setEditModal(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-full transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <Field label="Worker Name">
+                  <input type="text" className={inputCls} value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+                </Field>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Designation">
+                    <input type="text" className={inputCls} value={editForm.designation} onChange={e => setEditForm({ ...editForm, designation: e.target.value })} />
+                  </Field>
+                  <Field label="Phone">
+                    <input type="text" className={inputCls} value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Wage Type">
+                    <select className={inputCls} value={editForm.wage_type} onChange={e => setEditForm({ ...editForm, wage_type: e.target.value })}>
+                      <option value="piece_rate">Daily Wage</option>
+                      <option value="monthly">Monthly</option>
+                    </select>
+                  </Field>
+                  {editForm.wage_type === 'piece_rate' && (
+                    <Field label="Daily Rate (₹)">
+                      <input type="number" className={inputCls} value={editForm.daily_rate} onChange={e => setEditForm({ ...editForm, daily_rate: e.target.value })} />
+                    </Field>
+                  )}
+                </div>
+              </div>
+              <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setEditModal(null)} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-200 transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={actionLoading}
+                  className="px-5 py-2.5 rounded-xl font-black text-white flex items-center gap-2 shadow-lg hover:-translate-y-0.5 transition-all active:translate-y-0 disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, #c8834a, #a86022)' }}
+                >
+                  {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  Save Changes
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </SpotlightCard>
   );
 }

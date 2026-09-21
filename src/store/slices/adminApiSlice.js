@@ -34,6 +34,21 @@ export const adminApiSlice = apiSlice.injectEndpoints({
       }),
       invalidatesTags: ['Employees'],
     }),
+    updateEmployee: builder.mutation({
+      query: ({ id, ...patch }) => ({
+        url: `/api/v1/employees/${id}`,
+        method: 'PATCH',
+        body: patch,
+      }),
+      invalidatesTags: ['Employees'],
+    }),
+    deleteEmployee: builder.mutation({
+      query: (id) => ({
+        url: `/api/v1/employees/${id}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Employees'],
+    }),
   }),
   overrideExisting: true,
 });
@@ -44,4 +59,6 @@ export const {
   useCreateUserMutation,
   useCreateEmployeeMutation,
   usePatchEmployeeBarcodeMutation,
+  useUpdateEmployeeMutation,
+  useDeleteEmployeeMutation,
 } = adminApiSlice;

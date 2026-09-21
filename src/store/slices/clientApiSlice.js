@@ -4,7 +4,7 @@ export const entryApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     // --- CLIENTS & ORDERS ---
     getClients: builder.query({
-      query: () => '/api/v1/clients',
+      query: (includeInactive = true) => `/api/v1/clients${includeInactive ? '?include_inactive=true' : ''}`,
       providesTags: ['Clients'],
     }),
     
@@ -12,6 +12,15 @@ export const entryApiSlice = apiSlice.injectEndpoints({
       query: (payload) => ({
         url: '/api/v1/clients',
         method: 'POST',
+        body: payload,
+      }),
+      invalidatesTags: ['Clients'],
+    }),
+
+    updateClient: builder.mutation({
+      query: ({ id, ...payload }) => ({
+        url: `/api/v1/clients/${encodeURIComponent(id)}`,
+        method: 'PATCH',
         body: payload,
       }),
       invalidatesTags: ['Clients'],
@@ -69,6 +78,7 @@ export const entryApiSlice = apiSlice.injectEndpoints({
 export const {
   useGetClientsQuery,
   useCreateClientMutation,
+  useUpdateClientMutation,
   useGetClientOrdersQuery,
   useAddClientOrderMutation,
   useGetOperationsQuery,

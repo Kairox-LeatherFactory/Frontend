@@ -87,7 +87,10 @@ export default function LedgerView({ isActive }) {
   const grouped = useMemo(() => {
     const groups = new Map();
     runs.forEach((r) => {
-      const key = r.scope_order_number || r.scope_style_code || 'Whole Factory';
+      let key = r.scope_order_number || r.scope_style_code || 'Whole Factory';
+      if (r.run_kind === 'monthly') {
+        key = 'Monthly Salary Runs';
+      }
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(r);
     });
@@ -151,7 +154,7 @@ export default function LedgerView({ isActive }) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(employeeRows.length ? employeeRows : [{ Info: 'No data' }]), 'Per Employee');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pieceRows.length ? pieceRows : [{ Info: 'No data' }]), 'Per Piece');
 
-    const scopeName = (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
+    const scopeName = selectedRun.run_kind === 'monthly' ? 'Monthly_Salary' : (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
     XLSX.writeFile(wb, `Payroll_${scopeName}_${selectedRun.period_start}_to_${selectedRun.period_end}.xlsx`);
   };
 
@@ -200,7 +203,7 @@ export default function LedgerView({ isActive }) {
     }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ Info: 'No matching rows' }]), sheetName);
-    const scopeName = (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
+    const scopeName = selectedRun.run_kind === 'monthly' ? 'Monthly_Salary' : (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
     XLSX.writeFile(wb, `Payroll_${scopeName}_${sheetName.replace(/\s+/g, '_')}_filtered.xlsx`);
   };
 
@@ -287,6 +290,11 @@ export default function LedgerView({ isActive }) {
                     </div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Pay Cycle</p>
                     <h4 className="font-black text-sm" style={{ color: '#2d1f0e' }}>{run.period_start} <span className="opacity-40 px-1">to</span> {run.period_end}</h4>
+                    {run.scope_is_label && (run.scope_order_number || run.scope_style_code) && (
+                      <p className="text-[10px] font-bold text-slate-500 mt-1.5 truncate border border-slate-200 bg-slate-50 px-2 py-0.5 rounded-md w-fit">
+                        Ref: {run.scope_order_number || run.scope_style_code}
+                      </p>
+                    )}
                     <p
                       className="font-mono text-[9px] font-bold text-slate-300 mt-1 truncate"
                       title={run.run_id}
@@ -316,8 +324,15 @@ export default function LedgerView({ isActive }) {
             <div className="p-6 sm:p-8 pb-4 bg-white relative shrink-0">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>{selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole Factory'}</h3>
+                  <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>
+                    {selectedRun.run_kind === 'monthly' ? 'Monthly Salary Run' : (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole Factory')}
+                  </h3>
                   <div className="flex gap-3 mt-2 flex-wrap items-center">
+                    {selectedRun.scope_is_label && (selectedRun.scope_order_number || selectedRun.scope_style_code) && (
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md">
+                        Ref: {selectedRun.scope_order_number || selectedRun.scope_style_code}
+                      </span>
+                    )}
                     <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md">{selectedRun.period_start} to {selectedRun.period_end}</span>
                     <StatusBadge status={selectedRun.status} />
                     {/* Team asked "where do I get a run id" for Run Actions

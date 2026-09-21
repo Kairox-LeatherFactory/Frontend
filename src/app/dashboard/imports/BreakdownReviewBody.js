@@ -1,17 +1,13 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { Toast, StatusBadge, SkuRow } from './shared';
 
 import { 
   useGetBreakdownQuery, 
-  useGetDrawerPoolQuery,
   useCancelBreakdownStylesMutation,
-  useReleaseBreakdownStylesMutation,
-  useGrowDrawerPoolMutation,
-  useAllocateWaitingDrawersMutation
+  useReleaseBreakdownStylesMutation
 } from '@/store/slices/importsApiSlice';
 import { StyleAccessoriesPanel } from '../entry/AccessorySection/AccessoriesSpec';
 import {
@@ -35,9 +31,7 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
   const [releaseResult, setReleaseResult] = useState(null);
   const [toastMsg, setToastMsg] = useState(null);
   const [toastType, setToastType] = useState('success');
-  const [growAmount, setGrowAmount] = useState('');
-  const [growing, setGrowing] = useState(false);
-  const [allocating, setAllocating] = useState(false);
+
 
   // Release now needs a needs_lining answer up front — one boolean for the
   // whole batch being released, asked via a popup rather than guessed.
@@ -52,11 +46,8 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
     skip: !activeOrderNumber 
   });
   
-  const { data: drawerPool, isLoading: poolLoading } = useGetDrawerPoolQuery();
   const [cancelBreakdownStyles] = useCancelBreakdownStylesMutation();
   const [releaseBreakdownStyles] = useReleaseBreakdownStylesMutation();
-  const [growDrawerPoolMutation] = useGrowDrawerPoolMutation();
-  const [allocateWaitingDrawers] = useAllocateWaitingDrawersMutation();
 
   const handleSearch = () => {
     const v = orderNumberInput.trim();
@@ -89,13 +80,19 @@ export default function BreakdownReviewBody({ initialOrderNumber = '', onBack, b
     setShowLiningPrompt(false);
     setReleasing(true);
     try {
-    const result = await releaseBreakdownStyles({ orderNumber: activeOrderNumber, styleIds: selectedStyleIds, needsLining }).unwrap();
+      const result = await releaseBreakdownStyles({ orderNumber: activeOrderNumber, styleIds: selectedStyleIds, needsLining }).unwrap();
 
       setReleaseResult(result);
       showToast(result.message || 'Styles released to production.', 'success');
       setSelectedStyleIds([]);
     } catch (e) {
-      showToast(e.message || 'Release failed.', 'error');
+      // If the backend returns 422/409 with a rejected array, show it in the modal!
+      if (e.data && e.data.rejected && e.data.rejected.length > 0) {
+        setReleaseResult(e.data);
+        showToast(e.data.message || 'Release blocked by errors.', 'error');
+      } else {
+        showToast(e.message || e.data?.detail || 'Release failed.', 'error');
+      }
     } finally {
       setReleasing(false);
     }
@@ -115,32 +112,7 @@ const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, sty
     }
   };
 
-  const handleGrowPool = async () => {
-    const add = parseInt(growAmount, 10);
-    if (!add || add < 1) return;
-    setGrowing(true);
-    try {
-    const result = await growDrawerPoolMutation({ add }).unwrap();
-      showToast(`Added ${result.added} drawers. Pool is now ${result.pool_size}.`, 'success');
-      setGrowAmount('');
-    } catch (e) {
-      showToast(e.message || 'Failed to grow drawer pool.', 'error');
-    } finally {
-      setGrowing(false);
-    }
-  };
 
-  const handleAllocateWaiting = async () => {
-    setAllocating(true);
-    try {
-    const result = await allocateWaitingDrawers().unwrap();
-      showToast(`Allocated ${result.allocated} piece(s) into free drawers. ${result.still_waiting} still waiting.`, 'success');
-    } catch (e) {
-      showToast(e.message || 'Allocation failed.', 'error');
-    } finally {
-      setAllocating(false);
-    }
-  };
 
   if (!token) {
     return (
@@ -173,7 +145,7 @@ const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, sty
         )}
         <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Breakdown Review &amp; Release</h1>
         <p className="font-medium mt-1 text-sm" style={{ color: '#9a7a5a' }}>
-          Uploaded styles land here as DRAFT — nothing is barcoded or drawer-merged until you release them.
+          Uploaded styles land here as PENDING — nothing is barcoded until you approve and release them.
         </p>
       </div>
 
@@ -196,40 +168,7 @@ const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, sty
         </button>
       </div>
 
-      {/* ── Drawer Pool status ── */}
-      <div className="bg-white p-5 rounded-3xl shadow-sm border flex flex-wrap items-center gap-4 justify-between" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'rgba(200,131,74,0.1)' }}>
-            <Boxes className="w-5 h-5" style={{ color: '#c8834a' }} />
-          </div>
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#9a7a5a' }}>Drawer Pool</p>
-            {poolLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" style={{ color: '#c8834a' }} />
-            ) : drawerPool ? (
-              <p className="text-sm font-bold" style={{ color: '#2d1f0e' }}>
-                {drawerPool.free_drawers} free / {drawerPool.pool_size} total
-                {drawerPool.pieces_waiting_for_drawer > 0 && (
-                  <span className="text-rose-600 ml-2">· {drawerPool.pieces_waiting_for_drawer} pieces waiting</span>
-                )}
-              </p>
-            ) : <p className="text-sm font-bold text-slate-400">—</p>}
-          </div>
-        </div>
-        {canRelease && (
-          <div className="flex items-center gap-2">
-            {drawerPool?.pieces_waiting_for_drawer > 0 && (
-              <button onClick={handleAllocateWaiting} disabled={allocating} className="h-10 px-4 rounded-xl font-black text-[11px] uppercase bg-white border shadow-sm flex items-center gap-1.5 disabled:opacity-50" style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}>
-                {allocating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />} Allocate Waiting
-              </button>
-            )}
-            <input type="number" min="1" placeholder="Add N drawers" value={growAmount} onChange={(e) => setGrowAmount(e.target.value)} className="w-32 h-10 px-3 bg-slate-50 rounded-xl font-bold text-xs outline-none border" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
-            <button onClick={handleGrowPool} disabled={growing || !growAmount} className="h-10 px-4 rounded-xl font-black text-[11px] uppercase text-white disabled:opacity-50" style={{ background: '#c8834a' }}>
-              {growing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Grow Pool'}
-            </button>
-          </div>
-        )}
-      </div>
+
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm">{error}</div>
@@ -246,7 +185,7 @@ const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, sty
             <div>
               <h2 className="font-black text-xl" style={{ color: '#2d1f0e' }}>PO {breakdown.order_number}</h2>
               <p className="text-xs font-bold mt-1" style={{ color: '#9a7a5a' }}>
-                {breakdown.totals?.styles} styles ({breakdown.totals?.styles_draft} draft, {breakdown.totals?.styles_released} released) · {breakdown.totals?.qty_ordered} pcs ordered · {breakdown.totals?.minted_pieces} pieces minted
+                {breakdown.totals?.styles} styles ({breakdown.totals?.styles_draft} pending, {breakdown.totals?.styles_released} approved) · {breakdown.totals?.qty_ordered} pcs ordered · {breakdown.totals?.minted_pieces} pieces minted
               </p>
             </div>
             {canRelease && draftStyles.length > 0 && (

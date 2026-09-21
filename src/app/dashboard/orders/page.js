@@ -7,16 +7,17 @@ import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { staggerContainer, fadeUpItem } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
-import { useGetClientsQuery, useCreateClientMutation } from '@/store/slices/clientApiSlice';
+import { useGetClientsQuery, useCreateClientMutation, useUpdateClientMutation } from '@/store/slices/clientApiSlice';
 
 export default function OrdersTreeBrowser() {
   const { data: clientsData = [], isLoading: apiLoading } = useGetClientsQuery();
   const [createClient] = useCreateClientMutation();
+  const [updateClient] = useUpdateClientMutation();
   const { user } = useAuth();
   
   // Transform data to match original format
   const clients = useMemo(() => 
-    clientsData.map(c => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—' })), 
+    clientsData.map(c => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—', code: c.code, order_id: c.order_id, is_active: c.is_active !== false })), 
   [clientsData]);
 
   // Local state for dynamically created clients (fallback if no API)
@@ -210,8 +211,33 @@ export default function OrdersTreeBrowser() {
                         <div className="p-2.5 rounded-xl" style={{ background: 'rgba(200,131,74,0.1)' }}>
                           <Building2 className="w-5 h-5" style={{ color: '#c8834a' }} />
                         </div>
-                        <div className="min-w-0">
-                          <h4 className="text-sm font-black leading-tight truncate" style={{ color: '#2d1f0e' }}>{client.name}</h4>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex justify-between items-start gap-2">
+                            <h4 className="text-sm font-black leading-tight truncate" style={{ color: '#2d1f0e' }}>{client.name}</h4>
+                            
+                            {/* Deactivation Toggle */}
+                            {user === 'direct_manager' && client.id && !client.id.startsWith('cli_') ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateClient({ id: client.id, is_active: !client.is_active })
+                                    .unwrap()
+                                    .then(() => setSuccessMsg(`Client ${client.name} ${!client.is_active ? 'activated' : 'deactivated'}!`))
+                                    .catch((err) => setToastErrorMsg(err.message || 'Failed to update client'));
+                                }}
+                                title={client.is_active ? "Deactivate Client" : "Activate Client"}
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded border transition-all cursor-pointer shrink-0 ${client.is_active ? 'bg-emerald-50 text-emerald-600 border-emerald-200 hover:bg-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100'}`}
+                              >
+                                {client.is_active ? 'Active' : 'Inactive'}
+                              </button>
+                            ) : (
+                              !client.is_active && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-rose-50 text-rose-600 border-rose-200 shrink-0">
+                                  Inactive
+                                </span>
+                              )
+                            )}
+                          </div>
                           {/* 👈 முழுமையான ஆர்டர் ID (Full Order ID) ஐ இங்கே காண்பித்தல் */}
                           <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5 text-slate-500 break-all">
                             Order ID: {client.order_id || client.id || '—'}
