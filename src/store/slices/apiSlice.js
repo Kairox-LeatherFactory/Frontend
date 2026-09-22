@@ -5,15 +5,9 @@ export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({
     baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || '',
-    prepareHeaders: (headers, { getState, endpoint }) => {
-      if (endpoint === 'login') {
-        return headers;
-      }
-      const tokenFromState = getState().auth?.token;
-      const tokenFromStorage = typeof window !== 'undefined'
-        ? (localStorage.getItem('kairox_token') || localStorage.getItem('token') || localStorage.getItem('access_token'))
-        : null;
-      const token = tokenFromState || tokenFromStorage;
+    prepareHeaders: (headers, { getState }) => {
+    
+      const token = getState().auth?.token || localStorage.getItem('kairox_token');
       if (token) {
         headers.set('Authorization', `Bearer ${token}`);
       }
