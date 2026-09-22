@@ -9,7 +9,8 @@ import {
   useUpdateCuttingSheetMutation,
   useApproveCuttingRowMutation,
   useReopenCuttingRowMutation,
-  useGetWageStylesQuery
+  useGetClientStylesQuery,
+  useGetStyleMaterialSpecQuery
 } from '@/store/slices/apiSlice';
 
 const toast = {
@@ -23,20 +24,32 @@ export default function CuttingSheetSection() {
   const { data: lots = [], isLoading: lotsLoading } = useGetMaterialLotsQuery('category=leather');
   const lotsList = Array.isArray(lots) ? lots : lots?.lots || lots?.items || [];
 
-  const { data: stylesData = [], isLoading: stylesLoading } = useGetWageStylesQuery();
+  const { data: stylesData = [], isLoading: stylesLoading } = useGetClientStylesQuery();
   const stylesList = Array.isArray(stylesData) ? stylesData : stylesData?.items || [];
 
-  const availableColours = useMemo(() => {
-    return [...new Set(lotsList.map(l => l.colour).filter(Boolean))];
-  }, [lotsList]);
-
-  const [generateRows, { isLoading: isGenerating }] = useGenerateCuttingRowsMutation();
-
-  // Top bar state
   const [workDate, setWorkDate] = useState(new Date().toISOString().slice(0, 10));
   const [styleId, setStyleId] = useState('');
   const [colour, setColour] = useState('');
-  const [materialLotId, setMaterialLotId] = useState('');
+  const [selectedArticle, setSelectedArticle] = useState('');
+
+  const { data: specData } = useGetStyleMaterialSpecQuery(styleId, { skip: !styleId });
+
+  const leatherLines = useMemo(() => {
+    return (specData?.lines || []).filter(l => l.category === 'LEATHER');
+  }, [specData]);
+
+  const availableArticles = useMemo(() => {
+    if (!styleId) return [...new Set(lotsList.map(l => l.article).filter(Boolean))];
+    return [...new Set(leatherLines.map(l => l.article).filter(Boolean))];
+  }, [styleId, leatherLines, lotsList]);
+
+  const availableColours = useMemo(() => {
+    // Temporarily using colours from the lots API as requested
+    if (lots?.options?.colour) return lots.options.colour;
+    return [...new Set(lotsList.map(l => l.colour).filter(Boolean))];
+  }, [lotsList, lots]);
+
+  const [generateRows, { isLoading: isGenerating }] = useGenerateCuttingRowsMutation();
 
   // Grid state
   const [rows, setRows] = useState([]);
@@ -47,10 +60,11 @@ export default function CuttingSheetSection() {
       return;
     }
     try {
+      const matchingLot = lotsList.find(l => l.article === selectedArticle && l.colour === colour);
       const payload = {
         style_id: styleId,
         colour: colour || undefined,
-        material_lot_id: materialLotId || undefined,
+        material_lot_id: matchingLot ? matchingLot.lot_id : undefined,
         work_date: workDate || undefined,
         allocate: true,
         limit: 200
@@ -125,9 +139,21 @@ export default function CuttingSheetSection() {
             >
               <option value="">-- Style * --</option>
               {stylesList.map((s, idx) => {
-                const sId = s.style_code || s.style_id || s.id;
-                return <option key={`style-${sId}-${idx}`} value={sId}>{s.style_name || sId}</option>;
+                const sId = s.style_id || s.style_code || s.id;
+                return <option key={`style-${sId}-${idx}`} value={sId}>{s.style_name || s.name || sId}</option>;
               })}
+            </select>
+            <select
+              value={selectedArticle}
+              onChange={(e) => setSelectedArticle(e.target.value)}
+              className="px-3 py-2 w-40 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
+            >
+              <option value="">-- Article --</option>
+              {availableArticles.map((a, idx) => (
+                <option key={`art-${a}-${idx}`} value={a}>
+                  {a}
+                </option>
+              ))}
             </select>
             <select
               value={colour}
@@ -137,18 +163,6 @@ export default function CuttingSheetSection() {
               <option value="">-- Colour --</option>
               {availableColours.map((c, idx) => (
                 <option key={`col-${c}-${idx}`} value={c}>{c}</option>
-              ))}
-            </select>
-            <select
-              value={materialLotId}
-              onChange={(e) => setMaterialLotId(e.target.value)}
-              className="px-3 py-2 w-40 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
-            >
-              <option value="">-- Any Lot --</option>
-              {lotsList.map((l, idx) => (
-                <option key={`lot-${l.lot_id}-${idx}`} value={l.lot_id}>
-                  {l.article} {l.colour ? `(${l.colour})` : ''} - {l.lot_id}
-                </option>
               ))}
             </select>
             <button
