@@ -74,11 +74,11 @@ export default function CuttingSheetSection() {
       return;
     }
     try {
-      const matchingLot = lotsList.find(l => l.article === selectedArticle && l.colour === colour);
+      const matchingLot = lotsList.find(l => l.article === selectedArticle && (l.colour === colour || l.color === colour));
       const payload = {
         style_id: styleId,
         colour: colour || undefined,
-        material_lot_id: matchingLot ? matchingLot.lot_id : undefined,
+        material_lot_id: matchingLot ? (matchingLot.lot_id || matchingLot.id) : undefined,
         work_date: workDate || undefined,
         allocate: true,
         limit: 200
@@ -93,7 +93,14 @@ export default function CuttingSheetSection() {
         }
       }
     } catch (err) {
-      toast.error(err?.data?.message || 'Failed to generate rows');
+      console.error('Failed to generate rows:', err);
+      const errorMsg =
+        (typeof err?.data?.detail === 'string' && err.data.detail) ||
+        (Array.isArray(err?.data?.detail) && err.data.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ')) ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to generate rows';
+      toast.error(errorMsg);
     }
   };
 
