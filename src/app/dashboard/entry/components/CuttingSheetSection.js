@@ -24,7 +24,6 @@ export default function CuttingSheetSection() {
   // -- Lazy queries: fire only when dropdown is focused/opened --
   const [fetchLots, { data: lots }] = useLazyGetMaterialLotsQuery();
   const lotsList = Array.isArray(lots) ? lots : lots?.lots || lots?.items || [];
-
   const [fetchStyles, { data: stylesData }] = useLazyGetClientStylesQuery();
   const stylesList = Array.isArray(stylesData) ? stylesData : stylesData?.items || [];
 
