@@ -381,6 +381,7 @@ export const {
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
   useUpdateCuttingSheetMutation,
+  useUpdateCuttingRowMutation,
   useApproveCuttingRowMutation,
   useReopenCuttingRowMutation,
   useReassignProductionEventMutation,
