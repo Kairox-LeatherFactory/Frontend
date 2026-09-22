@@ -51,7 +51,7 @@ export default function InspectionSection({ onGoBack }) {
   // --------------------------------------------------
   const [pieceBarcode, setPieceBarcode] = useState("");
   const [foundAtStage, setFoundAtStage] = useState(PRODUCTION_STAGES[0]);
-  const [verdict, setVerdict] = useState("PASS"); // "PASS" | "REJECT"
+  const [verdict, setVerdict] = useState("REJECT"); // "REJECT" (Pass removed)
   const [defectType, setDefectType] = useState("WORKMANSHIP"); // "WORKMANSHIP" | "PRODUCT_DAMAGE"
   const [action, setAction] = useState("REDO"); // "REDO" | "FIX"
   const [returnToStage, setReturnToStage] = useState(PRODUCTION_STAGES[0]);
@@ -425,40 +425,9 @@ export default function InspectionSection({ onGoBack }) {
               </div>
             </div>
 
-            {/* ROW 2: VERDICT SELECTOR (PASS vs REJECT) */}
-            <div>
-              <label className="block text-xs font-black uppercase text-slate-600 mb-2">
-                Inspection Verdict <span className="text-rose-500">*</span>
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setVerdict("PASS")}
-                  className={`py-3 px-4 rounded-2xl font-black text-sm border-2 flex items-center justify-center gap-2 transition-all cursor-pointer ${verdict === "PASS"
-                      ? "bg-emerald-600 text-white border-emerald-700 shadow-lg shadow-emerald-600/20"
-                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                    }`}
-                >
-                  <CheckCircle2 className="w-5 h-5" /> PASS
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setVerdict("REJECT")}
-                  className={`py-3 px-4 rounded-2xl font-black text-sm border-2 flex items-center justify-center gap-2 transition-all cursor-pointer ${verdict === "REJECT"
-                      ? "bg-gradient-to-r from-red-700 via-rose-700 to-red-800 text-white border-red-900/40 shadow-lg shadow-red-900/30"
-                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                    }`}
-                >
-                  <XCircle className="w-5 h-5" /> REJECT
-                </button>
-              </div>
-            </div>
-
             {/* REJECTION REWORK DETAILS SECTION */}
-            {verdict === "REJECT" && (
-              <div className="bg-red-50/40 border border-red-200/80 rounded-2xl p-5 space-y-5 animate-fade-in">
-                {/* DEFECT TYPE DROPDOWN (DYNAMIC FORM DRIVER) */}
+            <div className="bg-red-50/40 border border-red-200/80 rounded-2xl p-5 space-y-5 animate-fade-in">
+              {/* DEFECT TYPE DROPDOWN (DYNAMIC FORM DRIVER) */}
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-700 mb-1.5">
                     Defect Type <span className="text-red-600">*</span>
@@ -688,24 +657,16 @@ export default function InspectionSection({ onGoBack }) {
                   />
                 </div>
               </div>
-            )}
 
             {/* SUBMIT BUTTON */}
             <button
               type="submit"
               disabled={isSubmitting}
-              className={`w-full py-3.5 px-6 rounded-2xl font-black text-sm text-white shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${verdict === "PASS"
-                  ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
-                  : "bg-gradient-to-r from-red-700 via-rose-700 to-red-800 hover:from-red-800 hover:to-red-900 shadow-red-900/30 border border-red-900/40"
-                }`}
+              className="w-full py-3.5 px-6 rounded-2xl font-black text-sm text-white shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 bg-gradient-to-r from-red-700 via-rose-700 to-red-800 hover:from-red-800 hover:to-red-900 shadow-red-900/30 border border-red-900/40"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" /> Submitting...
-                </>
-              ) : verdict === "PASS" ? (
-                <>
-                  <CheckCircle2 className="w-5 h-5" /> Submit PASS Record
                 </>
               ) : (
                 <>

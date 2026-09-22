@@ -1,320 +1,84 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { Plus, Copy, Trash2, Scissors, CheckCircle2, AlertCircle, Loader2, Play, FileSpreadsheet } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { Scissors, CheckCircle2, AlertCircle, Loader2, FileSpreadsheet, LockOpen, Check } from 'lucide-react';
 import {
-  useGetBarcodeOrdersQuery,
-  useIssueCuttingJobSheetMutation,
   useGetMaterialLotsQuery,
+  useGenerateCuttingRowsMutation,
+  useCreateCuttingSheetMutation,
+  useUpdateCuttingSheetMutation,
+  useApproveCuttingRowMutation,
+  useReopenCuttingRowMutation,
+  useGetWageStylesQuery
 } from '@/store/slices/apiSlice';
-import { useGetOrderBarcodeSkusQuery } from '@/store/slices/progressapiSlice';
-import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
-
-const INITIAL_ROW = {
-  id: '',
-  date: '',
-  orderId: '',
-  styleName: '',
-  sizeName: '',
-  skuId: '',
-  lotId: '',
-  colour: '',
-  workerId: '',
-  rcNo: '',
-  skins: Array(17).fill(''),
-  status: 'draft',
-  barcode: null,
-  errorMsg: null,
+const toast = {
+  success: (msg) => console.log('SUCCESS:', msg),
+  error: (msg) => window.alert('ERROR: ' + msg),
+  warning: (msg) => console.warn('WARNING:', msg)
 };
 
-const createDefaultRow = (overrides = {}) => ({
-  ...INITIAL_ROW,
-  id: generateId(),
-  date: new Date().toISOString().slice(0, 10),
-  ...overrides
-});
 
 export default function CuttingSheetSection() {
-  const { data: orders = [], isLoading: ordersLoading } = useGetBarcodeOrdersQuery();
   const { data: lots = [], isLoading: lotsLoading } = useGetMaterialLotsQuery('category=leather');
-  const { data: rosterResponse, isLoading: workersLoading } = useGetAttendanceTodayQuery();
-
-  const workers = useMemo(() => {
-    const data = rosterResponse?.items || rosterResponse?.data || rosterResponse || [];
-    const arr = Array.isArray(data) ? data : (data?.employee_id ? [data] : []);
-
-    return arr.map(r => {
-      // If it's a nested employee object
-      if (r.employee) return r.employee;
-      // If it's flat roster record
-      if (r.employee_id) return { id: r.employee_id, name: r.name || r.employee_name || r.first_name || 'Unknown' };
-      if (r.id) return { id: r.id, name: r.name || r.employee_name || 'Unknown' };
-      return null;
-    }).filter(Boolean);
-  }, [rosterResponse]);
-
-  const [issueJobSheet] = useIssueCuttingJobSheetMutation();
-
-  const ordersList = Array.isArray(orders) ? orders : orders?.items || [];
   const lotsList = Array.isArray(lots) ? lots : lots?.lots || lots?.items || [];
 
-  // Excel Multi-Sheet Workbook state
-  const [sheets, setSheets] = useState([
-    { id: 'sheet-1', name: 'Sheet 1', rows: Array.from({ length: 8 }, () => createDefaultRow()) }
-  ]);
-  const [activeSheetId, setActiveSheetId] = useState('sheet-1');
-  const activeSheetIdRef = useRef(activeSheetId);
+  const { data: stylesData = [], isLoading: stylesLoading } = useGetWageStylesQuery();
+  const stylesList = Array.isArray(stylesData) ? stylesData : stylesData?.items || [];
 
-  useEffect(() => {
-    activeSheetIdRef.current = activeSheetId;
-  }, [activeSheetId]);
+  const availableColours = useMemo(() => {
+    return [...new Set(lotsList.map(l => l.colour).filter(Boolean))];
+  }, [lotsList]);
 
-  const activeSheet = useMemo(() => {
-    return sheets.find(s => s.id === activeSheetId) || sheets[0];
-  }, [sheets, activeSheetId]);
+  const [generateRows, { isLoading: isGenerating }] = useGenerateCuttingRowsMutation();
 
-  const rows = activeSheet.rows;
+  // Top bar state
+  const [workDate, setWorkDate] = useState(new Date().toISOString().slice(0, 10));
+  const [styleId, setStyleId] = useState('');
+  const [colour, setColour] = useState('');
+  const [materialLotId, setMaterialLotId] = useState('');
 
-  const setRows = useCallback((updater) => {
-    const currentActiveId = activeSheetIdRef.current;
-    setSheets(prev => prev.map(s => {
-      if (s.id !== currentActiveId) return s;
-      const newRows = typeof updater === 'function' ? updater(s.rows) : updater;
-      return { ...s, rows: newRows };
-    }));
-  }, []);
+  // Grid state
+  const [rows, setRows] = useState([]);
 
-  const handleAddSheet = useCallback(() => {
-    const newIdx = sheets.length + 1;
-    const newSheet = {
-      id: `sheet-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      name: `Sheet ${newIdx}`,
-      rows: Array.from({ length: 8 }, () => createDefaultRow()),
-    };
-    setSheets(prev => [...prev, newSheet]);
-    setActiveSheetId(newSheet.id);
-  }, [sheets.length]);
+  const handleGenerate = async () => {
+    if (!styleId) {
+      toast.error('Style ID is required');
+      return;
+    }
+    try {
+      const payload = {
+        style_id: styleId,
+        colour: colour || undefined,
+        material_lot_id: materialLotId || undefined,
+        work_date: workDate || undefined,
+        allocate: true,
+        limit: 200
+      };
 
-  const handleRemoveSheet = useCallback((sheetId, e) => {
-    e.stopPropagation();
-    if (sheets.length === 1) return;
-    setSheets(prev => {
-      const filtered = prev.filter(s => s.id !== sheetId);
-      if (activeSheetId === sheetId) {
-        setActiveSheetId(filtered[0].id);
-      }
-      return filtered;
-    });
-  }, [sheets.length, activeSheetId]);
-
-  const handleRowChange = useCallback((id, field, value) => {
-    setRows(prev => {
-      const index = prev.findIndex(r => r.id === id);
-      if (index === -1) return prev;
-
-      const newRows = [...prev];
-      newRows[index] = { ...newRows[index], [field]: value };
-
-      if (field === 'styleName' || field === 'sizeName') {
-        newRows[index].skuId = '';
-      }
-
-      const cascadeFields = ['date', 'orderId', 'styleName', 'lotId', 'colour'];
-      const currentRow = newRows[index];
-
-      if (cascadeFields.includes(field)) {
-        if (field === 'colour') {
-          for (let i = index + 1; i < newRows.length; i++) {
-            const targetRow = newRows[i];
-            const isTargetEmpty = !targetRow.colour;
-            const isTargetMatchingOld = targetRow.colour === prev[index].colour;
-            if (isTargetEmpty || isTargetMatchingOld) {
-              newRows[i] = { ...targetRow, colour: currentRow.colour };
-            } else {
-              break;
-            }
-          }
-        } else if (currentRow.orderId && currentRow.styleName && currentRow.lotId) {
-          for (let i = index + 1; i < newRows.length; i++) {
-            const targetRow = newRows[i];
-            const isTargetEmpty = !targetRow.orderId && !targetRow.styleName && !targetRow.lotId;
-            const isTargetMatchingOld =
-              targetRow.orderId === prev[index].orderId &&
-              targetRow.styleName === prev[index].styleName &&
-              targetRow.lotId === prev[index].lotId;
-
-            if (isTargetEmpty || isTargetMatchingOld) {
-              newRows[i] = {
-                ...targetRow,
-                date: currentRow.date,
-                orderId: currentRow.orderId,
-                styleName: currentRow.styleName,
-                lotId: currentRow.lotId
-              };
-              if (field === 'orderId' || field === 'styleName') {
-                newRows[i].sizeName = '';
-                newRows[i].skuId = '';
-              }
-            } else {
-              break;
-            }
-          }
+      const res = await generateRows(payload).unwrap();
+      if (res.rows && Array.isArray(res.rows)) {
+        setRows(prev => [...prev, ...res.rows]);
+        toast.success(`Generated ${res.created || res.rows.length} rows successfully`);
+        if (res.warnings && res.warnings.length > 0) {
+          res.warnings.forEach(w => toast.warning(w));
         }
       }
-      return newRows;
-    });
-  }, []);
-
-  const handleSkinChange = useCallback((id, skinIndex, value) => {
-    setRows(prev =>
-      prev.map(r => {
-        if (r.id !== id) return r;
-        const newSkins = [...r.skins];
-        newSkins[skinIndex] = value;
-        return { ...r, skins: newSkins };
-      })
-    );
-  }, []);
-
-  const insertRowBelow = useCallback((index) => {
-    setRows(prev => {
-      const newRows = [...prev];
-      // Insert a completely fresh blank row (no date copied) to act as a pure separator
-      newRows.splice(index + 1, 0, createDefaultRow({ date: '' }));
-      return newRows;
-    });
-
-    // Auto-focus the new row's date or order dropdown slightly after render
-    setTimeout(() => { }, 50);
-  }, []);
-
-  const duplicateRow = useCallback((index) => {
-    setRows(prev => {
-      const rowToCopy = prev[index];
-      const newRow = {
-        ...rowToCopy,
-        id: generateId(),
-        status: 'draft',
-        barcode: null,
-        errorMsg: null,
-        skins: Array(17).fill(''),
-      };
-      const newRows = [...prev];
-      newRows.splice(index + 1, 0, newRow);
-      return newRows;
-    });
-  }, []);
-
-  const deleteRow = useCallback((id) => {
-    setRows(prev => {
-      if (prev.length === 1) return prev;
-      return prev.filter(r => r.id !== id);
-    });
-  }, []);
-
-  const clearIssued = () => {
-    const remaining = rows.filter(r => r.status !== 'success');
-    if (remaining.length === 0) {
-      setRows(Array.from({ length: 8 }, () => createDefaultRow()));
-    } else {
-      setRows(remaining);
-    }
-  };
-
-  const isRowValid = (r) => {
-    const totalSkins = r.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).length;
-    return r.orderId && r.skuId && r.lotId && r.workerId && totalSkins > 0 && r.status === 'draft';
-  };
-
-  const getValidRows = () => rows.filter(isRowValid);
-
-  const processRowIssue = async (rowId) => {
-    const row = rows.find(r => r.id === rowId);
-    if (!row || !isRowValid(row)) return;
-
-    setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: 'loading' } : r));
-
-    const totalSkins = row.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).length;
-    const totalSqft = row.skins.reduce((acc, curr) => acc + (curr !== '' && !isNaN(curr) ? parseFloat(curr) : 0), 0).toFixed(2);
-
-    const payload = {
-      order_id: row.orderId,
-      sku_id: row.skuId,
-      lot_id: row.lotId,
-      worker_id: row.workerId,
-      rc_no: row.rcNo || undefined,
-      measurements: row.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).map(Number),
-      total_skins: totalSkins,
-      total_sqft: Number(totalSqft),
-      date: row.date || new Date().toISOString().slice(0, 10),
-    };
-
-    try {
-      const res = await issueJobSheet(payload).unwrap();
-      setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: 'success', barcode: res.barcode_id || 'ISSUED' } : r));
     } catch (err) {
-      setRows(prev => prev.map(r => r.id === row.id ? { ...r, status: 'error', errorMsg: err?.data?.message || 'Failed' } : r));
+      toast.error(err?.data?.message || 'Failed to generate rows');
     }
   };
 
-  const handleBulkIssue = async () => {
-    const validRows = getValidRows();
-    if (validRows.length === 0) return;
-    for (const row of validRows) {
-      await processRowIssue(row.id);
-    }
-  };
+  const updateRowInState = useCallback((updatedRow) => {
+    setRows(prev => prev.map(r => r.id === updatedRow.id ? updatedRow : r));
+  }, []);
 
-  const handleSingleIssue = useCallback((rowId) => {
-    processRowIssue(rowId);
-  }, [rows]); // Need rows in dependency to get latest state for the specific row
-
-  const validCount = getValidRows().length;
-  const isAnyLoading = rows.some(r => r.status === 'loading');
-
-  const grandTotalSkins = rows.reduce((sum, r) => sum + r.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).length, 0);
-  const grandTotalSqft = rows.reduce((sum, r) => sum + r.skins.reduce((acc, curr) => acc + (curr !== '' && !isNaN(curr) ? parseFloat(curr) : 0), 0), 0).toFixed(2);
-
-  const sNoArray = useMemo(() => {
-    let currentSNo = 0;
-    return rows.map((row) => {
-      const isEmpty = !row.orderId && !row.styleName && !row.lotId && !row.date && !row.workerId;
-      if (isEmpty) {
-        currentSNo = 0; // reset for the next group
-        return '';
-      } else {
-        currentSNo += 1;
-        return currentSNo;
-      }
-    });
-  }, [rows]);
-
-  const orderTotals = useMemo(() => {
-    const totals = {};
-    rows.forEach(r => {
-      if (!r.orderId) return;
-      if (!totals[r.orderId]) {
-        const orderInfo = ordersList.find(o => (o.id || o.order_id) === r.orderId);
-        totals[r.orderId] = {
-          name: orderInfo ? (orderInfo.order_number || orderInfo.id) : r.orderId,
-          skins: 0,
-          sqft: 0
-        };
-      }
-      const s = r.skins.filter(s => s !== '' && !isNaN(s) && Number(s) > 0).length;
-      const a = r.skins.reduce((acc, curr) => acc + (curr !== '' && !isNaN(curr) ? parseFloat(curr) : 0), 0);
-      totals[r.orderId].skins += s;
-      totals[r.orderId].sqft += a;
-    });
-    return totals;
-  }, [rows, ordersList]);
+  const grandTotalSkins = rows.reduce((sum, r) => sum + (r.sheets?.length || 0), 0);
+  const grandTotalSqft = rows.reduce((sum, r) => sum + (r.sheets?.reduce((acc, s) => acc + (parseFloat(s.dcm) || 0), 0) || 0), 0).toFixed(2);
 
   return (
     <div className="flex flex-col h-full bg-[#f8f9fa] overflow-hidden animate-fade-in text-xs">
       <style>{`
-        /* Hide number arrows for a cleaner Excel feel */
         input[type="number"]::-webkit-inner-spin-button,
         input[type="number"]::-webkit-outer-spin-button {
           -webkit-appearance: none;
@@ -323,9 +87,8 @@ export default function CuttingSheetSection() {
         input[type="number"] {
           -moz-appearance: textfield;
         }
-        /* Active Row Highlight using focus-within */
         tr.excel-row:focus-within {
-          background-color: #fefce8 !important; /* light yellow */
+          background-color: #fefce8 !important;
           box-shadow: inset 0 0 0 2px #c8834a;
           position: relative;
           z-index: 30;
@@ -335,30 +98,68 @@ export default function CuttingSheetSection() {
         }
       `}</style>
 
-      {/* Header */}
-      <div className="flex-none bg-white border-b px-4 py-3 flex items-center justify-between z-40 shadow-sm relative">
-        <div>
-          <h2 className="text-lg font-black text-[#1e293b] flex items-center gap-2 tracking-tight">
-            <span className="bg-[#c8834a]/10 p-1.5 rounded-lg text-[#c8834a]"><Scissors className="w-4 h-4" /></span>
-            PTE Cutting Grid
-          </h2>
-          <p className="text-[10px] text-slate-400 font-bold mt-1">Use Arrow Keys to navigate cells. The active row highlights automatically.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={clearIssued}
-            className="px-3 py-1.5 font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors"
-          >
-            Clear Issued
-          </button>
-          <button
-            onClick={handleBulkIssue}
-            disabled={validCount === 0 || isAnyLoading}
-            className="flex items-center gap-2 px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-black transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isAnyLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-            Approve All Valid Rows ({validCount})
-          </button>
+      {/* Header & Generator Bar */}
+      <div className="flex-none bg-white border-b z-40 shadow-sm relative">
+        <div className="px-4 py-3 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 className="text-lg font-black text-[#1e293b] flex items-center gap-2 tracking-tight">
+              <span className="bg-[#c8834a]/10 p-1.5 rounded-lg text-[#c8834a]"><Scissors className="w-4 h-4" /></span>
+              PTE Cutting Grid
+            </h2>
+            <p className="text-[10px] text-slate-400 font-bold mt-1">
+              Use Generate to create rows. Cells save automatically on blur.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200 shadow-inner overflow-x-auto">
+            <input
+              type="date"
+              value={workDate}
+              onChange={(e) => setWorkDate(e.target.value)}
+              className="px-3 py-2 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all"
+            />
+            <select
+              value={styleId}
+              onChange={(e) => setStyleId(e.target.value)}
+              className="px-3 py-2 w-32 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
+            >
+              <option value="">-- Style * --</option>
+              {stylesList.map((s, idx) => {
+                const sId = s.style_code || s.style_id || s.id;
+                return <option key={`style-${sId}-${idx}`} value={sId}>{s.style_name || sId}</option>;
+              })}
+            </select>
+            <select
+              value={colour}
+              onChange={(e) => setColour(e.target.value)}
+              className="px-3 py-2 w-28 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all"
+            >
+              <option value="">-- Colour --</option>
+              {availableColours.map((c, idx) => (
+                <option key={`col-${c}-${idx}`} value={c}>{c}</option>
+              ))}
+            </select>
+            <select
+              value={materialLotId}
+              onChange={(e) => setMaterialLotId(e.target.value)}
+              className="px-3 py-2 w-40 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
+            >
+              <option value="">-- Any Lot --</option>
+              {lotsList.map((l, idx) => (
+                <option key={`lot-${l.lot_id}-${idx}`} value={l.lot_id}>
+                  {l.article} {l.colour ? `(${l.colour})` : ''} - {l.lot_id}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating || !styleId}
+              className="flex items-center gap-2 px-6 py-2 bg-[#1e293b] hover:bg-[#0f172a] text-white rounded-lg font-black text-xs transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+            >
+              {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+              Generate
+            </button>
+          </div>
         </div>
       </div>
 
@@ -386,334 +187,178 @@ export default function CuttingSheetSection() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => (
-                <CuttingSheetRow
-                  key={row.id}
-                  index={index}
-                  sNo={sNoArray[index]}
-                  row={row}
-                  ordersList={ordersList}
-                  lotsList={lotsList}
-                  workers={workers}
-                  onChange={handleRowChange}
-                  onSkinChange={handleSkinChange}
-                  onAddBelow={insertRowBelow}
-                  onDuplicate={duplicateRow}
-                  onDelete={deleteRow}
-                  onSingleIssue={() => handleSingleIssue(row.id)}
-                  isValid={isRowValid(row)}
-                />
-              ))}
+              {rows.length === 0 ? (
+                <tr>
+                  <td colSpan={29} className="p-12 text-center text-slate-400 font-bold bg-slate-50">
+                    No rows generated yet. Use the top bar to generate rows.
+                  </td>
+                </tr>
+              ) : (
+                rows.map((row, index) => (
+                  <CuttingSheetRow
+                    key={row.id}
+                    index={index}
+                    sNo={index + 1}
+                    row={row}
+                    updateRowInState={updateRowInState}
+                  />
+                ))
+              )}
             </tbody>
-            <tfoot>
-              {Object.entries(orderTotals).map(([orderId, data]) => (
-                <tr key={orderId} className="bg-[#1e293b] text-white font-black border-b border-slate-600">
-                  <td colSpan={26} className="p-2 text-right border-r border-slate-600 tracking-widest text-[11px] text-slate-300">
-                    {data.name} TOTAL
+            {rows.length > 0 && (
+              <tfoot>
+                <tr className="bg-[#475569] text-white font-black">
+                  <td colSpan={26} className="p-2 text-right border-r border-slate-500 tracking-widest text-[13px]">
+                    GRAND TOTAL
                   </td>
-                  <td className="p-2 text-center border-r border-slate-600 bg-[#334155] text-amber-400 text-sm">
-                    {data.skins}
+                  <td className="p-2 text-center border-r border-slate-500 bg-[#334155] text-emerald-400 text-sm">
+                    {grandTotalSkins}
                   </td>
-                  <td className="p-2 text-center border-r border-slate-600 bg-[#334155] text-amber-400 text-sm">
-                    {data.sqft.toFixed(2)}
+                  <td className="p-2 text-center border-r border-slate-500 bg-[#334155] text-emerald-400 text-sm">
+                    {grandTotalSqft}
                   </td>
                   <td className="p-2 bg-[#334155] sticky right-0 z-20 shadow-[-4px_0_10px_rgba(0,0,0,0.1)]"></td>
                 </tr>
-              ))}
-              <tr className="bg-[#475569] text-white font-black">
-                <td colSpan={26} className="p-2 text-right border-r border-slate-500 tracking-widest text-[13px]">
-                  GRAND TOTAL
-                </td>
-                <td className="p-2 text-center border-r border-slate-500 bg-[#334155] text-emerald-400 text-sm">
-                  {grandTotalSkins}
-                </td>
-                <td className="p-2 text-center border-r border-slate-500 bg-[#334155] text-emerald-400 text-sm">
-                  {grandTotalSqft}
-                </td>
-                <td className="p-2 bg-[#334155] sticky right-0 z-20 shadow-[-4px_0_10px_rgba(0,0,0,0.1)]"></td>
-              </tr>
-            </tfoot>
+              </tfoot>
+            )}
           </table>
-        </div>
-      </div>
-
-      {/* Excel Bottom Multi-Sheet Navigation Tabs */}
-      <div className="flex-none bg-[#1e293b] border-t border-slate-700 px-4 py-2.5 flex items-center justify-between z-30 shadow-lg">
-        <div className="flex items-center gap-2 overflow-x-auto py-0.5 no-scrollbar">
-          <span className="text-[10px] font-black uppercase text-slate-400 mr-1 tracking-widest hidden sm:inline">
-            Worksheets:
-          </span>
-          {sheets.map((sheet, index) => {
-            const isActive = sheet.id === activeSheetId;
-            return (
-              <div
-                key={sheet.id}
-                onClick={() => setActiveSheetId(sheet.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-black cursor-pointer flex items-center gap-2 transition-all border select-none ${isActive
-                    ? 'bg-[#c8834a] text-white border-[#e0985c] shadow-md scale-105'
-                    : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white'
-                  }`}
-              >
-                <FileSpreadsheet className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-amber-400'}`} />
-                <span>{sheet.name}</span>
-                {sheets.length > 1 && (
-                  <button
-                    onClick={(e) => handleRemoveSheet(sheet.id, e)}
-                    className="ml-1 p-0.5 rounded hover:bg-black/20 text-slate-300 hover:text-white"
-                  >
-                    ×
-                  </button>
-                )}
-              </div>
-            );
-          })}
-
-          <button
-            onClick={handleAddSheet}
-            className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-amber-400 hover:bg-[#c8834a] hover:text-white transition-all font-black text-xs flex items-center gap-1 shadow-sm"
-            title="Add a new sheet tab for another style/batch"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Add Sheet</span>
-          </button>
-        </div>
-
-        <div className="text-right text-[11px] font-bold text-slate-400 hidden sm:block">
-          Active Sheet Skins: <strong className="text-emerald-400 font-mono">{grandTotalSkins}</strong> ({grandTotalSqft} dcm)
         </div>
       </div>
     </div>
   );
 }
 
-const CuttingSheetRow = React.memo(({
-  index,
-  sNo,
-  row,
-  ordersList,
-  lotsList,
-  workers,
-  onChange,
-  onSkinChange,
-  onAddBelow,
-  onDuplicate,
-  onDelete,
-  onSingleIssue,
-  isValid
-}) => {
-  const { data: skusData = [], isFetching: skusLoading } = useGetOrderBarcodeSkusQuery(row.orderId, {
-    skip: !row.orderId,
-  });
-  const skusList = Array.isArray(skusData) ? skusData : skusData?.items || [];
+const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
+  const [createSheet] = useCreateCuttingSheetMutation();
+  const [updateSheet] = useUpdateCuttingSheetMutation();
+  const [approveRow, { isLoading: isApproving }] = useApproveCuttingRowMutation();
+  const [reopenRow, { isLoading: isReopening }] = useReopenCuttingRowMutation();
 
-  const availableStyles = useMemo(() => {
-    const styles = skusList.map(s => s.style_name || s.style).filter(Boolean);
-    return [...new Set(styles)];
-  }, [skusList]);
+  const [localCells, setLocalCells] = useState({});
+  const [loadingCells, setLoadingCells] = useState({});
 
-  const availableSizes = useMemo(() => {
-    if (!row.styleName) return [];
-    return skusList
-      .filter(s => (s.style_name || s.style) === row.styleName)
-      .map(s => s.size)
-      .filter(Boolean);
-  }, [skusList, row.styleName]);
+  const isLocked = row.status === 'APPROVED' || row.status === 'ISSUED';
+  const sheets = row.sheets || [];
 
-  useEffect(() => {
-    if (row.styleName && row.sizeName && !row.skuId) {
-      const match = skusList.find(s => (s.style_name || s.style) === row.styleName && s.size === row.sizeName);
-      if (match) {
-        onChange(row.id, 'skuId', match.sku_id || match.style_id || match.id);
-      }
+  const handleCellBlur = async (sheetIndex, value) => {
+    const numValue = parseFloat(value);
+    const existingSheet = sheets[sheetIndex];
+
+    if (!value || isNaN(numValue) || numValue <= 0) {
+      if (!existingSheet) return;
+      // User cleared an existing sheet - normally requires DELETE /sheets/{id}
+      toast.warning('Cannot delete sheets via grid yet.');
+      return;
     }
-  }, [row.styleName, row.sizeName, skusList, row.skuId, row.id, onChange]);
 
-  const selectedLot = lotsList.find(l => l.lot_id === row.lotId);
-  const articleDisplay = selectedLot ? selectedLot.article : '';
+    if (existingSheet && existingSheet.dcm === numValue) return; // No change
 
-  const availableColours = useMemo(() => {
-    const colours = lotsList.map(l => l.colour).filter(Boolean);
-    if (selectedLot?.colour && !colours.includes(selectedLot.colour)) {
-      colours.push(selectedLot.colour);
-    }
-    return [...new Set(colours)];
-  }, [lotsList, selectedLot]);
-
-  const totalSkins = row.skins.filter((s) => s !== '' && !isNaN(s) && Number(s) > 0).length;
-  const totalSqft = row.skins.reduce((acc, curr) => acc + (curr !== '' && !isNaN(curr) ? parseFloat(curr) : 0), 0).toFixed(2);
-
-  let rowClass = "excel-row hover:bg-slate-50 transition-colors border-b border-slate-200 group relative";
-  if (row.status === 'success') rowClass = "excel-row bg-emerald-50 hover:bg-emerald-100 border-b border-emerald-200 group relative";
-  else if (row.status === 'error') rowClass = "excel-row bg-red-50 hover:bg-red-100 border-b border-red-200 group relative";
-
-  const isLocked = row.status === 'loading' || row.status === 'success';
-
-  const cellInputClass = "w-full h-9 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all";
-  const cellSelectClass = "w-full h-9 font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all truncate px-1 appearance-none cursor-pointer";
-
-  // Arrow Key Navigation handler
-  const handleGridKeyDown = (e, currentSkinIndex) => {
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
-      e.preventDefault();
-      let r = index;
-      let c = currentSkinIndex;
-      if (e.key === 'ArrowUp') r -= 1;
-      if (e.key === 'ArrowDown') r += 1;
-      if (e.key === 'ArrowLeft') c -= 1;
-      if (e.key === 'ArrowRight') c += 1;
-
-      const target = document.querySelector(`input[data-row="${r}"][data-col="${c}"]`);
-      if (target) {
-        target.focus();
-        target.select();
-      }
-    } else if (e.key === 'Enter' || e.key === 'Tab') {
-      e.preventDefault();
-      let target;
-      if (e.shiftKey && e.key === 'Tab') {
-        target = document.querySelector(`input[data-row="${index}"][data-col="${currentSkinIndex - 1}"]`);
+    setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
+    try {
+      if (existingSheet) {
+        const res = await updateSheet({ id: row.id, sheet_id: existingSheet.id, payload: { dcm: numValue } }).unwrap();
+        updateRowInState(res.row || res);
+        toast.success(`Sheet updated to ${numValue} dcm`);
       } else {
-        target = document.querySelector(`input[data-row="${index}"][data-col="${currentSkinIndex + 1}"]`);
-        if (!target && e.key === 'Enter') {
-          // Wrap around to next row if pressing Enter at the end of skins
-          target = document.querySelector(`input[data-row="${index + 1}"][data-col="0"]`);
-        }
+        const res = await createSheet({ id: row.id, payload: { dcm: numValue } }).unwrap();
+        updateRowInState(res.row || res);
+        toast.success(`Sheet created: ${numValue} dcm`);
       }
-      if (target) {
-        target.focus();
-        target.select();
-      }
+    } catch (err) {
+      toast.error(err?.data?.message || 'Failed to save sheet');
+      setLocalCells(prev => ({ ...prev, [sheetIndex]: existingSheet ? existingSheet.dcm : '' }));
+    } finally {
+      setLoadingCells(prev => ({ ...prev, [sheetIndex]: false }));
     }
   };
+
+  const handleApprove = async () => {
+    try {
+      const res = await approveRow(row.id).unwrap();
+      updateRowInState(res.row || res);
+      toast.success(res.message || 'Row Approved successfully');
+    } catch (err) {
+      toast.error(err?.data?.message || 'Failed to approve row');
+    }
+  };
+
+  const handleReopen = async () => {
+    const reason = window.prompt("Reason for reopening this row?");
+    if (!reason) return;
+    try {
+      const res = await reopenRow({ id: row.id, reason }).unwrap();
+      updateRowInState(res.row || res);
+      toast.success('Row Reopened successfully');
+    } catch (err) {
+      toast.error(err?.data?.message || 'Failed to reopen row');
+    }
+  };
+
+  const cellInputClass = "w-full h-9 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all";
+
+  const totalSkins = sheets.length;
+  const totalSqft = sheets.reduce((acc, curr) => acc + (parseFloat(curr.dcm) || 0), 0).toFixed(2);
+
+  let rowClass = "excel-row transition-colors border-b border-slate-200 group relative bg-white hover:bg-slate-50";
+  if (row.status === 'APPROVED' || row.status === 'ISSUED') {
+    rowClass = "excel-row bg-emerald-50 hover:bg-emerald-100 border-b border-emerald-200 group relative";
+  }
 
   return (
     <tr className={rowClass}>
       <td className="p-0 sticky left-0 z-10 border-r border-slate-300 bg-slate-100 group-focus-within:bg-yellow-100 text-center font-bold text-slate-500">
         <span>{sNo}</span>
       </td>
-
-      <td className="p-0 sticky left-10 z-10 border-r border-slate-300 bg-white group-focus-within:bg-[#fefce8]">
-        <input
-          type="date"
-          value={row.date}
-          onChange={(e) => onChange(row.id, 'date', e.target.value)}
-          disabled={isLocked}
-          className={`${cellInputClass} px-2`}
-        />
+      <td className="p-2 sticky left-10 z-10 border-r border-slate-300 bg-white group-focus-within:bg-[#fefce8] text-center font-bold text-slate-700">
+        {row.work_date || row.date || ''}
+      </td>
+      <td className="p-2 border-r border-slate-300 bg-[#e2e8f0]/30 text-center font-bold text-slate-700">
+        {row.order_number || row.order_id || ''}
+      </td>
+      <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
+        {row.style_name || row.style_id || ''}
+      </td>
+      <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
+        {row.article || ''}
+      </td>
+      <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
+        {row.colour || ''}
+      </td>
+      <td className="p-2 border-r border-slate-300 bg-[#f8fafc] text-center font-bold text-slate-700">
+        {row.name || ''}
+      </td>
+      <td className="p-2 border-r border-slate-300 bg-white text-center font-bold text-slate-800">
+        {row.size || row.size_name || ''}
+      </td>
+      <td className="p-2 border-r border-slate-300 bg-white text-center font-bold text-blue-800">
+        {row.rc_no || ''}
       </td>
 
-      <td className="p-0 border-r border-slate-300 bg-[#e2e8f0]/30 group-focus-within:bg-transparent">
-        <select
-          value={row.orderId}
-          onChange={(e) => onChange(row.id, 'orderId', e.target.value)}
-          disabled={isLocked}
-          className={cellSelectClass}
-        >
-          <option value=""></option>
-          {ordersList.map((o, idx) => {
-            const oId = o.order_id || o.id;
-            return <option key={`ord-${oId}-${idx}`} value={oId}>{o.order_number || oId}</option>;
-          })}
-        </select>
-      </td>
+      {/* 17 Sheet Cells */}
+      {Array(17).fill(0).map((_, i) => {
+        const sheet = sheets[i];
+        const displayValue = localCells[i] !== undefined ? localCells[i] : (sheet ? sheet.dcm : '');
+        const isSaving = loadingCells[i];
 
-      <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30 group-focus-within:bg-transparent">
-        <select
-          value={row.styleName}
-          onChange={(e) => onChange(row.id, 'styleName', e.target.value)}
-          disabled={isLocked || !row.orderId}
-          className={`${cellSelectClass} text-[#166534]`}
-        >
-          <option value="">{skusLoading ? '...' : ''}</option>
-          {availableStyles.map((sName, idx) => (
-            <option key={`style-${sName}-${idx}`} value={sName}>{sName}</option>
-          ))}
-        </select>
-      </td>
-
-      <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30 relative group/lot group-focus-within:bg-transparent">
-        <select
-          value={row.lotId}
-          onChange={(e) => onChange(row.id, 'lotId', e.target.value)}
-          disabled={isLocked}
-          className={`${cellSelectClass} text-[#166534]`}
-          title={articleDisplay}
-        >
-          <option value="">{articleDisplay ? articleDisplay : ''}</option>
-          {lotsList.map((l, idx) => (
-            <option key={`lot-${l.lot_id}-${idx}`} value={l.lot_id}>{l.article}</option>
-          ))}
-        </select>
-      </td>
-
-      <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30 group-focus-within:bg-transparent">
-        <select
-          value={row.colour || ''}
-          onChange={(e) => onChange(row.id, 'colour', e.target.value)}
-          disabled={isLocked}
-          className={`${cellSelectClass} text-[#166534] text-center font-bold`}
-        >
-          <option value=""></option>
-          {availableColours.map((col, idx) => (
-            <option key={`col-${col}-${idx}`} value={col}>{col}</option>
-          ))}
-        </select>
-      </td>
-
-      <td className="p-0 border-r border-slate-300 bg-[#f8fafc] group-focus-within:bg-transparent">
-        <select
-          value={row.workerId}
-          onChange={(e) => onChange(row.id, 'workerId', e.target.value)}
-          disabled={isLocked}
-          className={cellSelectClass}
-        >
-          <option value=""></option>
-          {workers?.map((w, idx) => (
-            <option key={`work-${w.id || w.employee_id || idx}-${idx}`} value={w.id || w.employee_id}>{w.name ? w.name.toUpperCase() : ''}</option>
-          ))}
-        </select>
-      </td>
-
-      <td className="p-0 border-r border-slate-300 bg-white group-focus-within:bg-transparent">
-        <select
-          data-col="sizeName"
-          value={row.sizeName}
-          onChange={(e) => onChange(row.id, 'sizeName', e.target.value)}
-          disabled={isLocked || !row.styleName}
-          className={`${cellSelectClass} text-center`}
-        >
-          <option value=""></option>
-          {availableSizes.map((sz) => (
-            <option key={sz} value={sz}>{sz}</option>
-          ))}
-        </select>
-      </td>
-
-      <td className="p-0 border-r border-slate-300 bg-white group-focus-within:bg-transparent">
-        <input
-          type="text"
-          value={row.rcNo}
-          onChange={(e) => onChange(row.id, 'rcNo', e.target.value)}
-          disabled={isLocked}
-          className={`${cellInputClass} text-blue-800`}
-        />
-      </td>
-
-      {row.skins.map((skin, i) => (
-        <td key={i} className="p-0 border-r border-slate-200 bg-white group-focus-within:bg-transparent">
-          <input
-            data-row={index}
-            data-col={i}
-            type="number"
-            step="0.01"
-            value={skin}
-            onChange={(e) => onSkinChange(row.id, i, e.target.value)}
-            disabled={isLocked}
-            onKeyDown={(e) => handleGridKeyDown(e, i)}
-            className={`${cellInputClass} w-16 focus:bg-white`}
-          />
-        </td>
-      ))}
+        return (
+          <td key={i} className="p-0 border-r border-slate-200 bg-white group-focus-within:bg-transparent relative">
+            <input
+              type="number"
+              step="0.01"
+              value={displayValue}
+              onChange={(e) => setLocalCells(prev => ({ ...prev, [i]: e.target.value }))}
+              onBlur={(e) => handleCellBlur(i, e.target.value)}
+              disabled={isLocked || isSaving}
+              className={`${cellInputClass} w-16 focus:bg-white ${isSaving ? 'opacity-50' : ''}`}
+            />
+            {isSaving && (
+              <div className="absolute inset-0 flex items-center justify-center bg-white/50 pointer-events-none">
+                <Loader2 className="w-3 h-3 animate-spin text-[#c8834a]" />
+              </div>
+            )}
+          </td>
+        );
+      })}
 
       <td className="p-0 border-r border-slate-300 bg-slate-100 text-center font-black text-slate-700 group-focus-within:bg-[#fefce8]">
         {totalSkins > 0 ? totalSkins : ''}
@@ -722,55 +367,25 @@ const CuttingSheetRow = React.memo(({
         {totalSqft > 0 ? totalSqft : ''}
       </td>
 
-      {/* Static Action Column with Inline Approve */}
-      <td className="p-1 border-r border-slate-300 sticky right-0 z-20 bg-white group-focus-within:bg-[#fefce8] shadow-[-4px_0_10px_rgba(0,0,0,0.05)] text-center">
-        {row.status === 'success' ? (
-          <span className="text-[10px] font-black text-emerald-700 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded shadow-sm break-keep">{row.barcode}</span>
-        ) : row.status === 'error' ? (
-          <span className="text-[10px] font-bold text-red-600 flex flex-col items-center leading-tight">
-            <AlertCircle className="w-4 h-4 mb-0.5" />
-            Failed
-          </span>
-        ) : row.status === 'loading' ? (
-          <Loader2 className="w-5 h-5 animate-spin text-[#c8834a] mx-auto" />
-        ) : isValid ? (
+      <td className="p-2 border-r border-slate-300 sticky right-0 z-20 bg-white group-focus-within:bg-[#fefce8] shadow-[-4px_0_10px_rgba(0,0,0,0.05)] text-center">
+        {isLocked ? (
           <button
-            onClick={onSingleIssue}
-            className="flex items-center justify-center gap-1 w-full py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded font-black text-[10px] uppercase shadow-sm transition-transform active:scale-95"
+            onClick={handleReopen}
+            disabled={isReopening}
+            className="flex items-center justify-center gap-1 w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded font-black text-[10px] uppercase shadow-sm transition-transform active:scale-95 border border-amber-300"
           >
-            <Play className="w-3 h-3 fill-current" /> Issue
+            {isReopening ? <Loader2 className="w-3 h-3 animate-spin" /> : <LockOpen className="w-3 h-3" />}
+            Reopen
           </button>
         ) : (
-          <span className="text-[10px] text-slate-300 font-bold uppercase cursor-not-allowed">Incomplete</span>
-        )}
-
-        {/* Floating Actions on Hover (Crud) */}
-        {!isLocked && (
-          <div className="absolute right-full top-0 bottom-0 flex items-center opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-l from-slate-100 via-slate-100 to-transparent pl-4 pr-1 z-10 pointer-events-none">
-            <div className="pointer-events-auto flex items-center">
-              <button
-                onClick={() => onAddBelow(index)}
-                title="Add Row Below"
-                className="p-1 text-slate-400 hover:text-emerald-600 hover:bg-emerald-100 rounded mr-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => onDuplicate(index)}
-                title="Copy Cell"
-                className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded mr-1"
-              >
-                <Copy className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => onDelete(row.id)}
-                title="Delete Row"
-                className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-100 rounded"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          </div>
+          <button
+            onClick={handleApprove}
+            disabled={isApproving || totalSkins === 0}
+            className="flex items-center justify-center gap-1 w-full py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded font-black text-[10px] uppercase shadow-sm transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isApproving ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+            Approve
+          </button>
         )}
       </td>
     </tr>
