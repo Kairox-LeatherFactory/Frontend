@@ -39,9 +39,10 @@ export default function CuttingSheetSection() {
   }, [specData]);
 
   const availableArticles = useMemo(() => {
-    if (!styleId) return [...new Set(lotsList.map(l => l.article).filter(Boolean))];
-    return [...new Set(leatherLines.map(l => l.article).filter(Boolean))];
-  }, [styleId, leatherLines, lotsList]);
+    // Temporarily using articles from the lots API as requested
+    if (lots?.options?.article) return lots.options.article;
+    return [...new Set(lotsList.map(l => l.article).filter(Boolean))];
+  }, [lotsList, lots]);
 
   const availableColours = useMemo(() => {
     // Temporarily using colours from the lots API as requested
