@@ -82,6 +82,21 @@ export const apiSlice = createApi({
     issueCuttingJobSheet: builder.mutation({
       query: (payload) => ({ url: '/api/v1/production/cutting/issue', method: 'POST', body: payload })
     }),
+    generateCuttingRows: builder.mutation({
+      query: (payload) => ({ url: '/api/v1/cutting/rows/generate', method: 'POST', body: payload })
+    }),
+    createCuttingSheet: builder.mutation({
+      query: ({ id, payload }) => ({ url: `/api/v1/cutting/rows/${id}/sheets`, method: 'POST', body: payload })
+    }),
+    updateCuttingSheet: builder.mutation({
+      query: ({ id, sheet_id, payload }) => ({ url: `/api/v1/cutting/rows/${id}/sheets/${sheet_id}`, method: 'PATCH', body: payload })
+    }),
+    approveCuttingRow: builder.mutation({
+      query: (id) => ({ url: `/api/v1/cutting/rows/${id}/approve`, method: 'POST' })
+    }),
+    reopenCuttingRow: builder.mutation({
+      query: ({ id, reason }) => ({ url: `/api/v1/cutting/rows/${id}/reopen?reason=${encodeURIComponent(reason)}`, method: 'POST' })
+    }),
     reassignProductionEvent: builder.mutation({
       query: ({ id, employee_code, override_timestamp }) => ({ 
         url: `/api/v1/production/events/${id}/reassign`, 
@@ -344,6 +359,11 @@ export const {
   useProductionCuttingMutation,
   useProductionLogTwoDoorMutation,
   useIssueCuttingJobSheetMutation,
+  useGenerateCuttingRowsMutation,
+  useCreateCuttingSheetMutation,
+  useUpdateCuttingSheetMutation,
+  useApproveCuttingRowMutation,
+  useReopenCuttingRowMutation,
   useReassignProductionEventMutation,
   useDeleteProductionEventMutation,
   useStoreScanMutation,

@@ -15,7 +15,8 @@ import {
   FileText,
   Loader2,
   Sparkles,
-  ClipboardList
+  ClipboardList,
+  Camera
 } from "lucide-react";
 import {
   useCreateInspectionMutation,
@@ -28,6 +29,7 @@ import {
 } from "@/store/slices/inspectionApiSlice";
 import { useGetEmployeesQuery } from "@/store/slices/adminApiSlice";
 import { useGetOperationsQuery } from "@/store/slices/clientApiSlice";
+import { CameraScannerModal } from "../shared";
 
 const PRODUCTION_STAGES = [
   "LEATHER_CUTTING",
@@ -49,16 +51,19 @@ export default function InspectionSection({ onGoBack }) {
   // --------------------------------------------------
   const [pieceBarcode, setPieceBarcode] = useState("");
   const [foundAtStage, setFoundAtStage] = useState(PRODUCTION_STAGES[0]);
-  const [verdict, setVerdict] = useState("PASS"); // "PASS" | "REJECT"
+  const [verdict, setVerdict] = useState("REJECT"); // "REJECT" (Pass removed)
   const [defectType, setDefectType] = useState("WORKMANSHIP"); // "WORKMANSHIP" | "PRODUCT_DAMAGE"
   const [action, setAction] = useState("REDO"); // "REDO" | "FIX"
   const [returnToStage, setReturnToStage] = useState(PRODUCTION_STAGES[0]);
   const [responsibleEmpId, setResponsibleEmpId] = useState("");
+  const [responsibleEmpInput, setResponsibleEmpInput] = useState("");
+  const [responsibleEmpObj, setResponsibleEmpObj] = useState(null);
   const [responsibleStage, setResponsibleStage] = useState(PRODUCTION_STAGES[0]);
   const [reason, setReason] = useState("");
 
   const [formSuccess, setFormSuccess] = useState("");
   const [formError, setFormError] = useState("");
+  const [cameraScanTarget, setCameraScanTarget] = useState(null);
 
   // RTK Queries & Mutations for Raise Form
   const { data: workers = [] } = useGetEmployeesQuery();
@@ -249,11 +254,10 @@ export default function InspectionSection({ onGoBack }) {
         <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl self-start md:self-auto overflow-x-auto max-w-full">
           <button
             onClick={() => setActiveTab("raise")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              activeTab === "raise"
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === "raise"
                 ? "bg-white text-amber-800 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
-            }`}
+              }`}
           >
             <ShieldAlert className="w-3.5 h-3.5" />
             Raise Inspection
@@ -261,11 +265,10 @@ export default function InspectionSection({ onGoBack }) {
 
           <button
             onClick={() => setActiveTab("dm-queue")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap relative ${
-              activeTab === "dm-queue"
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap relative ${activeTab === "dm-queue"
                 ? "bg-white text-amber-800 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
-            }`}
+              }`}
           >
             <ClipboardList className="w-3.5 h-3.5" />
             DM / MD Queue
@@ -278,11 +281,10 @@ export default function InspectionSection({ onGoBack }) {
 
           <button
             onClick={() => setActiveTab("responsibility")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              activeTab === "responsibility"
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === "responsibility"
                 ? "bg-white text-amber-800 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
-            }`}
+              }`}
           >
             <User className="w-3.5 h-3.5" />
             Worker Responsibility
@@ -290,11 +292,10 @@ export default function InspectionSection({ onGoBack }) {
 
           <button
             onClick={() => setActiveTab("history")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              activeTab === "history"
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === "history"
                 ? "bg-white text-amber-800 shadow-sm"
                 : "text-slate-600 hover:text-slate-900"
-            }`}
+              }`}
           >
             <History className="w-3.5 h-3.5" />
             Piece History
@@ -313,6 +314,47 @@ export default function InspectionSection({ onGoBack }) {
               New Floor Inspection Record
             </h3>
           </div>
+
+          {cameraScanTarget === "worker" && (
+            <CameraScannerModal
+              title="Scan Worker Barcode"
+              onClose={() => setCameraScanTarget(null)}
+              onScan={(scannedCode) => {
+                const cleanCode = String(scannedCode || "")
+                  .replace(/[\r\n]+/g, "")
+                  .trim();
+                if (!cleanCode) return;
+                const q = cleanCode.toLowerCase();
+                const worker = workers.find((w) => 
+                  String(w.id || "").toLowerCase() === q || 
+                  String(w.employee_id || "").toLowerCase() === q ||
+                  String(w.employee_barcode || "").toLowerCase() === q
+                );
+                if (worker) {
+                  setResponsibleEmpObj(worker);
+                  setResponsibleEmpId(worker.id || worker.employee_id);
+                  setFormError("");
+                } else {
+                  setFormError("Worker ID not found in active roster.");
+                }
+                setCameraScanTarget(null);
+              }}
+            />
+          )}
+
+          {cameraScanTarget === "piece" && (
+            <CameraScannerModal
+              title="Scan Piece Barcode"
+              onClose={() => setCameraScanTarget(null)}
+              onScan={(scannedCode) => {
+                const cleanCode = String(scannedCode || "").replace(/[\r\n]+/g, "").trim();
+                if (!cleanCode) return;
+                setPieceBarcode(cleanCode);
+                handleLookupPiece(cleanCode);
+                setCameraScanTarget(null);
+              }}
+            />
+          )}
 
           {formSuccess && (
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-sm font-bold flex items-center gap-3 animate-fade-in">
@@ -345,8 +387,18 @@ export default function InspectionSection({ onGoBack }) {
                     className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:border-amber-500 outline-none transition-all pr-10"
                     required
                   />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setCameraScanTarget("piece");
+                    }}
+                    className="md:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-amber-100 text-amber-700 rounded-lg"
+                  >
+                    <Camera className="w-5 h-5" />
+                  </button>
                   {isPieceStateLoading && (
-                    <Loader2 className="w-4 h-4 animate-spin text-amber-600 absolute right-3 top-3" />
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-600 absolute right-12 top-3" />
                   )}
                 </div>
               </div>
@@ -373,42 +425,9 @@ export default function InspectionSection({ onGoBack }) {
               </div>
             </div>
 
-            {/* ROW 2: VERDICT SELECTOR (PASS vs REJECT) */}
-            <div>
-              <label className="block text-xs font-black uppercase text-slate-600 mb-2">
-                Inspection Verdict <span className="text-rose-500">*</span>
-              </label>
-              <div className="grid grid-cols-2 gap-4">
-                <button
-                  type="button"
-                  onClick={() => setVerdict("PASS")}
-                  className={`py-3 px-4 rounded-2xl font-black text-sm border-2 flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                    verdict === "PASS"
-                      ? "bg-emerald-600 text-white border-emerald-700 shadow-lg shadow-emerald-600/20"
-                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                  }`}
-                >
-                  <CheckCircle2 className="w-5 h-5" /> PASS
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setVerdict("REJECT")}
-                  className={`py-3 px-4 rounded-2xl font-black text-sm border-2 flex items-center justify-center gap-2 transition-all cursor-pointer ${
-                    verdict === "REJECT"
-                      ? "bg-gradient-to-r from-red-700 via-rose-700 to-red-800 text-white border-red-900/40 shadow-lg shadow-red-900/30"
-                      : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                  }`}
-                >
-                  <XCircle className="w-5 h-5" /> REJECT
-                </button>
-              </div>
-            </div>
-
             {/* REJECTION REWORK DETAILS SECTION */}
-            {verdict === "REJECT" && (
-              <div className="bg-red-50/40 border border-red-200/80 rounded-2xl p-5 space-y-5 animate-fade-in">
-                {/* DEFECT TYPE DROPDOWN (DYNAMIC FORM DRIVER) */}
+            <div className="bg-red-50/40 border border-red-200/80 rounded-2xl p-5 space-y-5 animate-fade-in">
+              {/* DEFECT TYPE DROPDOWN (DYNAMIC FORM DRIVER) */}
                 <div>
                   <label className="block text-xs font-black uppercase text-slate-700 mb-1.5">
                     Defect Type <span className="text-red-600">*</span>
@@ -426,23 +445,124 @@ export default function InspectionSection({ onGoBack }) {
                 {/* DYNAMIC FORM 1: WORKMANSHIP (OPERATOR + STAGE) */}
                 {defectType === "WORKMANSHIP" && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-xl border border-red-200 shadow-sm animate-fade-in">
-                    <div>
-                      <label className="block text-xs font-black uppercase text-slate-700 mb-1">
+                    <div className="space-y-3">
+                      <label className="block text-xs font-black uppercase text-slate-700">
                         Responsible Employee <span className="text-red-600">*</span>
                       </label>
-                      <select
-                        value={responsibleEmpId}
-                        onChange={(e) => setResponsibleEmpId(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:border-red-600 outline-none"
-                        required={defectType === "WORKMANSHIP"}
-                      >
-                        <option value="">-- Choose Operator --</option>
-                        {workers.map((w) => (
-                          <option key={w.id || w.employee_id} value={w.id || w.employee_id}>
-                            {w.name ? w.name.toUpperCase() : w.employee_id}
-                          </option>
-                        ))}
-                      </select>
+                      
+                      {!responsibleEmpObj ? (
+                        <div className="space-y-3">
+                          <div className="relative">
+                            <input
+                              type="text"
+                              placeholder="Scan or type Worker ID..."
+                              value={responsibleEmpInput}
+                              onChange={(e) => setResponsibleEmpInput(e.target.value)}
+                              className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:border-amber-500 outline-none transition-all pr-10"
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  const query = responsibleEmpInput.trim();
+                                  const cleanCode = query;
+                                  const q = cleanCode.toLowerCase();
+                                  const w = workers.find((w) => 
+                                    String(w.id || "").toLowerCase() === q || 
+                                    String(w.employee_id || "").toLowerCase() === q ||
+                                    String(w.employee_barcode || "").toLowerCase() === q
+                                  );
+                                  if (w) {
+                                    setResponsibleEmpObj(w);
+                                    setResponsibleEmpId(w.id || w.employee_id);
+                                    setFormError("");
+                                  } else {
+                                    setFormError("Worker ID not found in active roster.");
+                                  }
+                                }
+                              }}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setCameraScanTarget("worker")}
+                              className="md:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-amber-100 text-amber-700 rounded-lg"
+                            >
+                              <Camera className="w-5 h-5" />
+                            </button>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const query = responsibleEmpInput.trim();
+                              const q = query.toLowerCase();
+                              const w = workers.find((w) => 
+                                String(w.id) === query || 
+                                String(w.employee_id || "").toLowerCase() === q ||
+                                String(w.employee_barcode || "").toLowerCase() === q
+                              );
+                              if (w) {
+                                setResponsibleEmpObj(w);
+                                setResponsibleEmpId(w.id || w.employee_id);
+                                setFormError("");
+                              } else {
+                                setFormError("Worker ID not found in active roster.");
+                              }
+                            }}
+                            disabled={!responsibleEmpInput.trim()}
+                            className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                          >
+                            <Check className="w-4 h-4" /> Verify Worker ID
+                          </button>
+
+                          <div className="flex flex-col gap-1.5 text-xs text-slate-500 font-medium pt-2">
+                            <span>Or select active worker:</span>
+                            <select
+                              value={responsibleEmpId}
+                              onChange={(e) => {
+                                const w = workers.find(worker => (worker.id || worker.employee_id) === e.target.value);
+                                if (w) {
+                                  setResponsibleEmpObj(w);
+                                  setResponsibleEmpId(w.id || w.employee_id);
+                                }
+                              }}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:bg-white focus:border-red-600 outline-none"
+                            >
+                              <option value="">-- Choose Operator --</option>
+                              {workers.map((w) => (
+                                <option key={w.id || w.employee_id} value={w.id || w.employee_id}>
+                                  {w.name ? w.name.toUpperCase() : w.employee_id}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-between gap-3 animate-fade-in">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-amber-200 flex items-center justify-center text-amber-800 font-black text-lg shadow-sm">
+                              {responsibleEmpObj.name ? responsibleEmpObj.name[0] : "W"}
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-black text-slate-800 leading-tight">
+                                {responsibleEmpObj.name}
+                              </h4>
+                              <p className="text-[10px] text-slate-500 font-medium mt-0.5">
+                                ID: <strong className="font-mono">{responsibleEmpObj.employee_id || responsibleEmpObj.id}</strong>
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setResponsibleEmpObj(null);
+                              setResponsibleEmpId("");
+                              setResponsibleEmpInput("");
+                            }}
+                            className="text-[10px] font-bold text-slate-500 hover:text-slate-800 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg shadow-sm transition-all shrink-0"
+                          >
+                            Change
+                          </button>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -510,15 +630,14 @@ export default function InspectionSection({ onGoBack }) {
                       onChange={(e) => setReturnToStage(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-800 focus:border-red-600 outline-none"
                     >
-                      {isOperationsLoading ? (
-                        <option value="">Loading stages...</option>
-                      ) : (
-                        operations.map((op) => (
-                          <option key={op.code} value={op.code}>
-                            {op.label}
+                      {completedStages.map((stg) => {
+                        const label = operations.find(o => o.code === stg)?.label || stg;
+                        return (
+                          <option key={stg} value={stg}>
+                            {label}
                           </option>
-                        ))
-                      )}
+                        );
+                      })}
                     </select>
                   </div>
                 </div>
@@ -538,25 +657,16 @@ export default function InspectionSection({ onGoBack }) {
                   />
                 </div>
               </div>
-            )}
 
             {/* SUBMIT BUTTON */}
             <button
               type="submit"
               disabled={isSubmitting}
-              className={`w-full py-3.5 px-6 rounded-2xl font-black text-sm text-white shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                verdict === "PASS"
-                  ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
-                  : "bg-gradient-to-r from-red-700 via-rose-700 to-red-800 hover:from-red-800 hover:to-red-900 shadow-red-900/30 border border-red-900/40"
-              }`}
+              className="w-full py-3.5 px-6 rounded-2xl font-black text-sm text-white shadow-xl transition-all cursor-pointer flex items-center justify-center gap-2 bg-gradient-to-r from-red-700 via-rose-700 to-red-800 hover:from-red-800 hover:to-red-900 shadow-red-900/30 border border-red-900/40"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-5 h-5 animate-spin" /> Submitting...
-                </>
-              ) : verdict === "PASS" ? (
-                <>
-                  <CheckCircle2 className="w-5 h-5" /> Submit PASS Record
                 </>
               ) : (
                 <>
@@ -587,11 +697,10 @@ export default function InspectionSection({ onGoBack }) {
                 <button
                   key={st}
                   onClick={() => setQueueFilter(st === "ALL" ? "" : st)}
-                  className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${
-                    (queueFilter === "" && st === "ALL") || queueFilter === st
+                  className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${(queueFilter === "" && st === "ALL") || queueFilter === st
                       ? "bg-white text-slate-800 shadow-sm"
                       : "text-slate-500 hover:text-slate-800"
-                  }`}
+                    }`}
                 >
                   {st}
                 </button>
@@ -629,11 +738,10 @@ export default function InspectionSection({ onGoBack }) {
                         </span>
 
                         <span
-                          className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase border ${
-                            isWorkmanship
+                          className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase border ${isWorkmanship
                               ? "bg-rose-50 text-rose-700 border-rose-200"
                               : "bg-blue-50 text-blue-700 border-blue-200"
-                          }`}
+                            }`}
                         >
                           {item.defect_type || "WORKMANSHIP"}
                         </span>
@@ -700,10 +808,10 @@ export default function InspectionSection({ onGoBack }) {
       {activeTab === "responsibility" && (
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md space-y-6">
           <div className="border-b border-slate-100 pb-4">
-              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                <User className="w-5 h-5 text-amber-600" />
-                Worker Responsibility
-              </h3>
+            <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+              <User className="w-5 h-5 text-amber-600" />
+              Worker Responsibility
+            </h3>
           </div>
 
           {isRespLoading ? (
@@ -749,10 +857,10 @@ export default function InspectionSection({ onGoBack }) {
       {activeTab === "history" && (
         <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md space-y-6">
           <div className="border-b border-slate-100 pb-4">
-              <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
-                <History className="w-5 h-5 text-amber-600" />
-                Piece History
-              </h3>
+            <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+              <History className="w-5 h-5 text-amber-600" />
+              Piece History
+            </h3>
           </div>
 
           <div className="flex gap-3 max-w-xl">
@@ -850,11 +958,10 @@ export default function InspectionSection({ onGoBack }) {
                 type="button"
                 onClick={handleConfirmAction}
                 disabled={isApproving || isDeclining}
-                className={`px-5 py-2 rounded-xl text-xs font-black text-white shadow-lg transition-all cursor-pointer flex items-center gap-2 ${
-                  actionModalType === "approve"
+                className={`px-5 py-2 rounded-xl text-xs font-black text-white shadow-lg transition-all cursor-pointer flex items-center gap-2 ${actionModalType === "approve"
                     ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
                     : "bg-rose-600 hover:bg-rose-700 shadow-rose-600/20"
-                }`}
+                  }`}
               >
                 {(isApproving || isDeclining) && <Loader2 className="w-4 h-4 animate-spin" />}
                 Confirm {actionModalType === "approve" ? "Approve" : "Decline"}
