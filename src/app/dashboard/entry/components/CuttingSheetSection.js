@@ -3,14 +3,14 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Scissors, CheckCircle2, AlertCircle, Loader2, FileSpreadsheet, LockOpen, Check } from 'lucide-react';
 import {
-  useGetMaterialLotsQuery,
+  useLazyGetMaterialLotsQuery,
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
   useUpdateCuttingSheetMutation,
   useApproveCuttingRowMutation,
   useReopenCuttingRowMutation,
-  useGetClientStylesQuery,
-  useGetStyleMaterialSpecQuery
+  useLazyGetClientStylesQuery,
+  useLazyGetStyleMaterialSpecQuery
 } from '@/store/slices/apiSlice';
 
 const toast = {
@@ -21,10 +21,11 @@ const toast = {
 
 
 export default function CuttingSheetSection() {
-  const { data: lots = [], isLoading: lotsLoading } = useGetMaterialLotsQuery('category=leather');
+  // -- Lazy queries: fire only when dropdown is focused/opened --
+  const [fetchLots, { data: lots }] = useLazyGetMaterialLotsQuery();
   const lotsList = Array.isArray(lots) ? lots : lots?.lots || lots?.items || [];
 
-  const { data: stylesData = [], isLoading: stylesLoading } = useGetClientStylesQuery();
+  const [fetchStyles, { data: stylesData }] = useLazyGetClientStylesQuery();
   const stylesList = Array.isArray(stylesData) ? stylesData : stylesData?.items || [];
 
   const [workDate, setWorkDate] = useState(new Date().toISOString().slice(0, 10));
@@ -32,7 +33,13 @@ export default function CuttingSheetSection() {
   const [colour, setColour] = useState('');
   const [selectedArticle, setSelectedArticle] = useState('');
 
-  const { data: specData } = useGetStyleMaterialSpecQuery(styleId, { skip: !styleId });
+  // Material spec: fires only when a style is selected
+  const [fetchSpec, { data: specData }] = useLazyGetStyleMaterialSpecQuery();
+
+  // When styleId changes, fetch the spec
+  useEffect(() => {
+    if (styleId) fetchSpec(styleId);
+  }, [styleId, fetchSpec]);
 
   const leatherLines = useMemo(() => {
     const lines = Array.isArray(specData) ? specData : specData?.lines || [];
@@ -134,7 +141,8 @@ export default function CuttingSheetSection() {
             />
             <select
               value={styleId}
-              onChange={(e) => setStyleId(e.target.value)}
+              onChange={(e) => { setStyleId(e.target.value); setSelectedArticle(''); setColour(''); }}
+              onFocus={() => fetchStyles()}
               className="px-3 py-2 w-32 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
             >
               <option value="">-- Style * --</option>
@@ -146,6 +154,7 @@ export default function CuttingSheetSection() {
             <select
               value={selectedArticle}
               onChange={(e) => setSelectedArticle(e.target.value)}
+              onFocus={() => !styleId && fetchLots('category=leather')}
               className="px-3 py-2 w-40 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
             >
               <option value="">-- Article --</option>
@@ -158,6 +167,7 @@ export default function CuttingSheetSection() {
             <select
               value={colour}
               onChange={(e) => setColour(e.target.value)}
+              onFocus={() => !styleId && fetchLots('category=leather')}
               className="px-3 py-2 w-28 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all"
             >
               <option value="">-- Colour --</option>

@@ -41,21 +41,31 @@ import { ExcelPreviewModal, CommitConfirmationModal } from "./components/ImportP
 import { useWorkerVerification } from "./hooks/useWorkerVerification";
 import { useBreakdownImport } from "./hooks/useBreakdownImport";
 
+const Loader = () => <div className="flex items-center justify-center h-full py-20"><div className="w-6 h-6 border-2 border-[#c8834a] border-t-transparent rounded-full animate-spin" /></div>;
+
 const BarcodeDoorSection = dynamic(
   () => import("./BarcodeSection/BarcodeDoorSection"),
+  { ssr: false, loading: () => <Loader /> }
 );
 const ManualDoorSection = dynamic(
   () => import("./ManualSection/ManualDoorSection"),
+  { ssr: false, loading: () => <Loader /> }
 );
-const StoreHubSection = dynamic(() => import("./StoreSection/StoreHubSection"));
+const StoreHubSection = dynamic(
+  () => import("./StoreSection/StoreHubSection"),
+  { ssr: false, loading: () => <Loader /> }
+);
 const BreakdownReviewBody = dynamic(
   () => import("../imports/BreakdownReviewBody"),
+  { ssr: false, loading: () => <Loader /> }
 );
 const CuttingSheetSection = dynamic(
   () => import("./components/CuttingSheetSection"),
+  { ssr: false, loading: () => <Loader /> }
 );
 const InspectionSection = dynamic(
   () => import("./components/InspectionSection"),
+  { ssr: false, loading: () => <Loader /> }
 );
 
 
@@ -63,7 +73,8 @@ export default function ProductionLogEntry() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, token } = useAuth();
-  const { data: workers = [] } = useGetEmployeesQuery();
+  const { data: employeesData } = useGetEmployeesQuery();
+  const workers = Array.isArray(employeesData) ? employeesData : (employeesData?.items || []);
   const {
     isReadOnly,
     isFullAccess,
