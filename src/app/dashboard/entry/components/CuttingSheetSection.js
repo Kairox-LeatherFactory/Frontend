@@ -47,14 +47,21 @@ export default function CuttingSheetSection() {
   }, [specData]);
 
   const availableArticles = useMemo(() => {
-    if (!styleId) return [...new Set(lotsList.map(l => l.article).filter(Boolean))];
-    return [...new Set(leatherLines.map(l => l.article).filter(Boolean))];
-  }, [styleId, leatherLines, lotsList]);
+    const lotArticles = lotsList.map(l => l.article).filter(Boolean);
+    const specArticles = leatherLines.map(l => l.article).filter(Boolean);
+    return [...new Set([...lotArticles, ...specArticles])];
+  }, [leatherLines, lotsList]);
 
   const availableColours = useMemo(() => {
-    if (!styleId) return [...new Set(lotsList.map(l => l.colour).filter(Boolean))];
-    return [...new Set(leatherLines.map(l => l.colour).filter(Boolean))];
-  }, [styleId, leatherLines, lotsList]);
+    const lotColours = lotsList.flatMap(l => {
+      const c = l.colour || l.color || l.colours || l.colors || [];
+      return Array.isArray(c) ? c : [c];
+    }).filter(Boolean);
+
+    const specColours = leatherLines.map(l => l.colour || l.color).filter(Boolean);
+
+    return [...new Set([...lotColours, ...specColours])];
+  }, [leatherLines, lotsList]);
 
   const [generateRows, { isLoading: isGenerating }] = useGenerateCuttingRowsMutation();
 
@@ -147,14 +154,15 @@ export default function CuttingSheetSection() {
             >
               <option value="">-- Style * --</option>
               {stylesList.map((s, idx) => {
-                const sId = s.style_id || s.style_code || s.id;
-                return <option key={`style-${sId}-${idx}`} value={sId}>{s.style_name || s.name || sId}</option>;
+                const sId = s.id || s.style_id || s.style_code;
+                const label = s.style_code ? `${s.style_code} ${s.style_name ? `- ${s.style_name}` : ''}` : (s.style_name || s.name || sId);
+                return <option key={`style-${sId}-${idx}`} value={sId}>{label}</option>;
               })}
             </select>
             <select
               value={selectedArticle}
               onChange={(e) => setSelectedArticle(e.target.value)}
-              onFocus={() => !styleId && fetchLots('category=leather')}
+              onFocus={() => fetchLots({ category: 'leather' })}
               className="px-3 py-2 w-40 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
             >
               <option value="">-- Article --</option>
@@ -167,7 +175,7 @@ export default function CuttingSheetSection() {
             <select
               value={colour}
               onChange={(e) => setColour(e.target.value)}
-              onFocus={() => !styleId && fetchLots('category=leather')}
+              onFocus={() => fetchLots({ category: 'leather' })}
               className="px-3 py-2 w-28 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all"
             >
               <option value="">-- Colour --</option>

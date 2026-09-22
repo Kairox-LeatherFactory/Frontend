@@ -5,32 +5,38 @@ export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({
     baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || '',
-    prepareHeaders: (headers, { getState }) => {
-    
-      const token = getState().auth?.token || localStorage.getItem('kairox_token');
+    prepareHeaders: (headers, { getState, endpoint }) => {
+      if (endpoint === 'login') {
+        return headers;
+      }
+      const tokenFromState = getState().auth?.token;
+      const tokenFromStorage = typeof window !== 'undefined'
+        ? (localStorage.getItem('kairox_token') || localStorage.getItem('token') || localStorage.getItem('access_token'))
+        : null;
+      const token = tokenFromState || tokenFromStorage;
       if (token) {
-        headers.set('authorization', `Bearer ${token}`);
+        headers.set('Authorization', `Bearer ${token}`);
       }
       return headers;
     },
   }),
-  tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece', 
-    'Store', 'StoreList', 
+  tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece',
+    'Store', 'StoreList',
     'AccessorySpec', 'AccessoryRequirement',
-    'WageOrder', 'WageStyle', 'WageRate', 'WageRun', 
-    'WageLedger','MaterialLot', 'MaterialSpec', 'MaterialStock', 'SupplierOrder','Users','Employees',
-    'Breakdown', 'Clients', 'ClientOrders', 'Operations', 'Events','Inspections','Production','ClientStyle'
-], // Caching Labels
-  
+    'WageOrder', 'WageStyle', 'WageRate', 'WageRun',
+    'WageLedger', 'MaterialLot', 'MaterialSpec', 'MaterialStock', 'SupplierOrder', 'Users', 'Employees',
+    'Breakdown', 'Clients', 'ClientOrders', 'Operations', 'Events', 'Inspections', 'Production', 'ClientStyle'
+  ], // Caching Labels
+
   endpoints: (builder) => ({
-    login:builder.mutation({
-    query: (credentials) => ({
+    login: builder.mutation({
+      query: (credentials) => ({
         url: '/api/v1/auth/login',
         method: 'POST',
         body: credentials,
       }),
     }),
-    
+
     // --- BARCODE APIs ---
     barcodeResolve: builder.query({
       query: (code) => `/api/v1/barcode/resolve?code=${encodeURIComponent(code)}`
@@ -52,7 +58,7 @@ export const apiSlice = createApi({
       query: () => '/api/v1/production/skus',
       providesTags: ['SKU']
     }),
-      getSkuPieces: builder.query({
+    getSkuPieces: builder.query({
       query: (arg) => {
         const skuId = typeof arg === 'object' ? arg.skuId : arg;
         const operationId = typeof arg === 'object' ? arg.operationId : null;
@@ -98,10 +104,10 @@ export const apiSlice = createApi({
       query: ({ id, reason }) => ({ url: `/api/v1/cutting/rows/${id}/reopen?reason=${encodeURIComponent(reason)}`, method: 'POST' })
     }),
     reassignProductionEvent: builder.mutation({
-      query: ({ id, employee_code, override_timestamp }) => ({ 
-        url: `/api/v1/production/events/${id}/reassign`, 
-        method: 'PATCH', 
-        body: { employee_code, override_timestamp } 
+      query: ({ id, employee_code, override_timestamp }) => ({
+        url: `/api/v1/production/events/${id}/reassign`,
+        method: 'PATCH',
+        body: { employee_code, override_timestamp }
       }),
       invalidatesTags: (result, error, { id }) => [{ type: 'Production', id }]
     }),
@@ -109,7 +115,7 @@ export const apiSlice = createApi({
       query: (id) => ({ url: `/api/v1/production/events/${id}`, method: 'DELETE' }),
       invalidatesTags: (result, error, id) => [{ type: 'Production', id }]
     }),
-    
+
 
     // --- STORE HUB APIs ---
     storeScan: builder.mutation({
@@ -224,10 +230,10 @@ export const apiSlice = createApi({
         body: orderData
       })
     }),
- // ==========================================
+    // ==========================================
     // WAGES APIs (Piece Rates, Run Engine, Ledger)
     // ==========================================
-    
+
     // ─── 1. PIECE RATES & STYLES ───
     getWageOrders: builder.query({
       query: (params = {}) => {
@@ -261,7 +267,7 @@ export const apiSlice = createApi({
       providesTags: ['WageRate']
     }),
     getRateHistory: builder.query({
-      query: ({ styleCode, operationCode }) => 
+      query: ({ styleCode, operationCode }) =>
         `/api/v1/wages/rate-history?style_code=${encodeURIComponent(styleCode)}&operation_code=${encodeURIComponent(operationCode)}`,
       providesTags: ['WageRate']
     }),
@@ -350,11 +356,11 @@ export const apiSlice = createApi({
         return `/api/v1/wages/ledger${qs.toString() ? `?${qs.toString()}` : ''}`;
       }
     }),
-})
+  })
 });
 
 // React Hooks auto-generated!
-export const { 
+export const {
   useLoginMutation,
   useBarcodeResolveQuery,
   useLazyBarcodeResolveQuery,
@@ -396,7 +402,7 @@ export const {
   useRecordMaterialIssueMutation,
   useIssueAccessoryKitMutation,
   useCreateSupplierOrderMutation,
-    useGetWageOrdersQuery,
+  useGetWageOrdersQuery,
   useLazyGetWageOrdersQuery,
   useGetWageStylesQuery,
   useLazyGetWageStylesQuery,

@@ -15,7 +15,7 @@ import {
   useLazyGetBarcodeOrdersQuery,
   useDeleteProductionEventMutation
 } from "@/store/slices/apiSlice";
-import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
+import { useGetEmployeesQuery, useLazyGetEmployeesQuery } from '@/store/slices/adminApiSlice';
 import {
   Lock,
   CheckCircle2,
@@ -73,7 +73,7 @@ export default function ProductionLogEntry() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user, token } = useAuth();
-  const { data: employeesData } = useGetEmployeesQuery();
+  const [fetchEmployees, { data: employeesData }] = useLazyGetEmployeesQuery();
   const workers = Array.isArray(employeesData) ? employeesData : (employeesData?.items || []);
   const {
     isReadOnly,
@@ -216,10 +216,17 @@ export default function ProductionLogEntry() {
   };
 
   useEffect(() => {
-    if (activeDoor === "store" && !isFullAccess && !isStoreAccess) {
-      handleSetActiveDoor("manual");
+    if (activeDoor === 'store' && !isFullAccess && !isStoreAccess) {
+      handleSetActiveDoor('manual');
     }
   }, [activeDoor, isFullAccess, isStoreAccess]);
+
+  // Fetch employees only when a tab that needs worker data is opened
+  useEffect(() => {
+    if (activeDoor === 'manual' || activeDoor === 'barcode' || activeDoor === 'inspection') {
+      fetchEmployees();
+    }
+  }, [activeDoor]);
 
   useEffect(() => {
     setMounted(true);

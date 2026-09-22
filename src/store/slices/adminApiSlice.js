@@ -60,6 +60,7 @@ export const adminApiSlice = apiSlice.injectEndpoints({
 export const {
   useGetUsersQuery,
   useGetEmployeesQuery,
+  useLazyGetEmployeesQuery,
   useGetEmployeeQuery,
   useLazyGetEmployeeQuery,
   useCreateUserMutation,
