@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Scissors, CheckCircle2, AlertCircle, Loader2, FileSpreadsheet, LockOpen, Check } from 'lucide-react';
+import { Scissors, Loader2, FileSpreadsheet, LockOpen, Check } from 'lucide-react';
 import {
   useLazyGetMaterialLotsQuery,
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
   useUpdateCuttingSheetMutation,
+  useUpdateCuttingRowMutation,
   useApproveCuttingRowMutation,
   useReopenCuttingRowMutation,
   useLazyGetClientStylesQuery,
@@ -234,7 +235,7 @@ export default function CuttingSheetSection() {
               ) : (
                 rows.map((row, index) => (
                   <CuttingSheetRow
-                    key={row.id}
+                    key={row.row_id || row.id || index}
                     index={index}
                     sNo={index + 1}
                     row={row}
@@ -269,6 +270,7 @@ export default function CuttingSheetSection() {
 const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
+  const [updateRowMutation] = useUpdateCuttingRowMutation();
   const [approveRow, { isLoading: isApproving }] = useApproveCuttingRowMutation();
   const [reopenRow, { isLoading: isReopening }] = useReopenCuttingRowMutation();
 
@@ -294,11 +296,11 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
     setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
     try {
       if (existingSheet) {
-        const res = await updateSheet({ id: row.id, sheet_id: existingSheet.id, payload: { dcm: numValue } }).unwrap();
+        const res = await updateSheet({ row_id: row.row_id || row.id, sheet_id: existingSheet.id, payload: { dcm: numValue } }).unwrap();
         updateRowInState(res.row || res);
         toast.success(`Sheet updated to ${numValue} dcm`);
       } else {
-        const res = await createSheet({ id: row.id, payload: { dcm: numValue } }).unwrap();
+        const res = await createSheet({ row_id: row.row_id || row.id, payload: { dcm: numValue } }).unwrap();
         updateRowInState(res.row || res);
         toast.success(`Sheet created: ${numValue} dcm`);
       }
@@ -310,9 +312,25 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
     }
   };
 
+  const handleRowCellBlur = async (field, value) => {
+    if (isLocked) return;
+    const trimmed = value.trim();
+    if (trimmed === (row[field] || '')) return; // No change
+
+    try {
+      const res = await updateRowMutation({ row_id: row.row_id || row.id, payload: { [field]: trimmed } }).unwrap();
+      updateRowInState(res.row || res);
+      toast.success(`${field} updated`);
+    } catch (err) {
+      toast.error(err?.data?.message || `Failed to update ${field}`);
+      // The input will keep the failed typed value unless we force reset, but since it's uncontrolled defaultValue it might stay.
+      // Re-rendering happens on updateRowInState if success.
+    }
+  };
+
   const handleApprove = async () => {
     try {
-      const res = await approveRow(row.id).unwrap();
+      const res = await approveRow(row.row_id || row.id).unwrap();
       updateRowInState(res.row || res);
       toast.success(res.message || 'Row Approved successfully');
     } catch (err) {
@@ -324,7 +342,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
     const reason = window.prompt("Reason for reopening this row?");
     if (!reason) return;
     try {
-      const res = await reopenRow({ id: row.id, reason }).unwrap();
+      const res = await reopenRow({ row_id: row.row_id || row.id, reason }).unwrap();
       updateRowInState(res.row || res);
       toast.success('Row Reopened successfully');
     } catch (err) {
@@ -347,8 +365,14 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
       <td className="p-0 sticky left-0 z-10 border-r border-slate-300 bg-slate-100 group-focus-within:bg-yellow-100 text-center font-bold text-slate-500">
         <span>{sNo}</span>
       </td>
-      <td className="p-2 sticky left-10 z-10 border-r border-slate-300 bg-white group-focus-within:bg-[#fefce8] text-center font-bold text-slate-700">
-        {row.work_date || row.date || ''}
+      <td className="p-0 sticky left-10 z-10 border-r border-slate-300 bg-white group-focus-within:bg-[#fefce8]">
+        <input 
+          type="date"
+          defaultValue={row.work_date || row.date || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('work_date', e.target.value)}
+          className="w-full h-9 px-1 text-center font-bold text-slate-700 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
       <td className="p-2 border-r border-slate-300 bg-[#e2e8f0]/30 text-center font-bold text-slate-700">
         {row.order_number || row.order_id || ''}
@@ -356,20 +380,44 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
       <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
         {row.style_name || row.style_id || ''}
       </td>
-      <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
-        {row.article || ''}
+      <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30">
+        <input 
+          type="text"
+          defaultValue={row.article || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('article', e.target.value)}
+          className="w-full h-9 text-center font-bold text-[#166534] bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
-      <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
-        {row.colour || ''}
+      <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30">
+        <input 
+          type="text"
+          defaultValue={row.colour || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('colour', e.target.value)}
+          className="w-full h-9 text-center font-bold text-[#166534] bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
       <td className="p-2 border-r border-slate-300 bg-[#f8fafc] text-center font-bold text-slate-700">
         {row.name || ''}
       </td>
-      <td className="p-2 border-r border-slate-300 bg-white text-center font-bold text-slate-800">
-        {row.size || row.size_name || ''}
+      <td className="p-0 border-r border-slate-300 bg-white">
+        <input 
+          type="text"
+          defaultValue={row.size || row.size_name || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('size', e.target.value)}
+          className="w-full h-9 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
-      <td className="p-2 border-r border-slate-300 bg-white text-center font-bold text-blue-800">
-        {row.rc_no || ''}
+      <td className="p-0 border-r border-slate-300 bg-white">
+        <input 
+          type="text"
+          defaultValue={row.rc_no || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('rc_no', e.target.value)}
+          className="w-full h-9 text-center font-bold text-blue-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
 
       {/* 17 Sheet Cells */}

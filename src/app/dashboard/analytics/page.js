@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { TrendingUp, Warehouse } from 'lucide-react';
 import { tabFade } from './_lib/constants';
 import OrdersExplorer from './_components/OrdersExplorer';
+import { DataProvider } from '@/context/DataContext';
 
 /**
  * AnalyticsDashboard Component
@@ -90,7 +91,9 @@ export default function AnalyticsDashboard() {
         </div>
 
         {/* Master Orders Explorer Component */}
-        <OrdersExplorer />
+        <DataProvider>
+          <OrdersExplorer />
+        </DataProvider>
       </motion.div>
     </div>
   );

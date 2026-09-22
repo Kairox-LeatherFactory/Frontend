@@ -91,16 +91,19 @@ export const apiSlice = createApi({
       })
     }),
     createCuttingSheet: builder.mutation({
-      query: ({ id, payload }) => ({ url: `/api/v1/cutting/rows/${id}/sheets`, method: 'POST', body: payload })
+      query: ({ row_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}/sheets`, method: 'POST', body: payload })
     }),
     updateCuttingSheet: builder.mutation({
-      query: ({ id, sheet_id, payload }) => ({ url: `/api/v1/cutting/rows/${id}/sheets/${sheet_id}`, method: 'PATCH', body: payload })
+      query: ({ row_id, sheet_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}/sheets/${sheet_id}`, method: 'PATCH', body: payload })
+    }),
+    updateCuttingRow: builder.mutation({
+      query: ({ row_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}`, method: 'PATCH', body: payload })
     }),
     approveCuttingRow: builder.mutation({
-      query: (id) => ({ url: `/api/v1/cutting/rows/${id}/approve`, method: 'POST' })
+      query: (row_id) => ({ url: `/api/v1/cutting/rows/${row_id}/approve`, method: 'POST' })
     }),
     reopenCuttingRow: builder.mutation({
-      query: ({ id, reason }) => ({ url: `/api/v1/cutting/rows/${id}/reopen?reason=${encodeURIComponent(reason)}`, method: 'POST' })
+      query: ({ row_id, reason }) => ({ url: `/api/v1/cutting/rows/${row_id}/reopen?reason=${encodeURIComponent(reason)}`, method: 'POST' })
     }),
     reassignProductionEvent: builder.mutation({
       query: ({ id, employee_code, override_timestamp }) => ({
