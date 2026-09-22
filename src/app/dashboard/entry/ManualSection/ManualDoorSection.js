@@ -60,7 +60,8 @@ export default function ManualDoorSection({
   mounted,
 }) {
 // Workers — already in adminApiSlice
-const { data: workers = [] } = useGetEmployeesQuery();
+  const { data: employeesData } = useGetEmployeesQuery();
+  const workers = Array.isArray(employeesData) ? employeesData : (employeesData?.items || []);
 
 // Operations — clientApiSlice (already created)
 const { data: operations = [] } = useGetOperationsQuery();

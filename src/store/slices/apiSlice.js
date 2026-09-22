@@ -239,11 +239,22 @@ export const apiSlice = createApi({
       providesTags: ['WageOrder']
     }),
     getWageStyles: builder.query({
-      query: (params = {}) => {
-        const qs = new URLSearchParams(params);
+      query: (params) => {
+        const qs = new URLSearchParams();
+        if (params?.order_number) qs.append('order_number', params.order_number);
+        if (params?.client_id) qs.append('client_id', params.client_id);
+        if (params?.unpriced_only !== undefined) qs.append('unpriced_only', params.unpriced_only);
+        if (params?.on) qs.append('on', params.on);
         return `/api/v1/wages/styles${qs.toString() ? `?${qs.toString()}` : ''}`;
       },
       providesTags: ['WageStyle']
+    }),
+    getClientStyles: builder.query({
+      query: (params = {}) => {
+        const qs = new URLSearchParams(params);
+        return `/api/v1/clients/styles${qs.toString() ? `?${qs.toString()}` : ''}`;
+      },
+      providesTags: ['ClientStyle']
     }),
     getRateSheet: builder.query({
       query: (styleCode) => `/api/v1/wages/rate-sheet?style_code=${encodeURIComponent(styleCode)}`,
@@ -389,6 +400,8 @@ export const {
   useLazyGetWageOrdersQuery,
   useGetWageStylesQuery,
   useLazyGetWageStylesQuery,
+  useGetClientStylesQuery,
+  useLazyGetClientStylesQuery,
   useGetRateSheetQuery,
   useLazyGetRateSheetQuery,
   useGetRateHistoryQuery,

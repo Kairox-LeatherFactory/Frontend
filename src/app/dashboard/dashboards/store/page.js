@@ -49,8 +49,8 @@ import { useAuth } from '@/context/AuthContext';
 import { useData } from '@/context/DataContext';
 import {
   apiGetStoreDashboard,
-  apiGetStoreDrawerDetail,
-  apiGetStoreDrawerMovement,
+  // apiGetStoreDrawerDetail,
+  // apiGetStoreDrawerMovement,
 } from '@/lib/api';
 
 // Badge shown wherever the live backend has no data for a field yet
@@ -446,9 +446,10 @@ function StoreDashboardContent() {
     setSelectedDrawerModal(drawer);
     if (!token || !drawer?.drawer_id) return;
     try {
+      // The drawer endpoints have been removed, mocking this for now to prevent compilation errors
       const [detail, movement] = await Promise.allSettled([
-        apiGetStoreDrawerDetail(token, drawer.drawer_id),
-        apiGetStoreDrawerMovement(token, drawer.drawer_id),
+        Promise.resolve({ status: 'fulfilled', value: null }), // apiGetStoreDrawerDetail(token, drawer.drawer_id),
+        Promise.resolve({ status: 'fulfilled', value: null }), // apiGetStoreDrawerMovement(token, drawer.drawer_id),
       ]);
       if (detail.status === 'fulfilled' && detail.value) {
         setSelectedDrawerModal((prev) => ({ ...prev, ...detail.value }));
