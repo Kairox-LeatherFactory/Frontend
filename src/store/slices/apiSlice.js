@@ -83,7 +83,12 @@ export const apiSlice = createApi({
       query: (payload) => ({ url: '/api/v1/production/cutting/issue', method: 'POST', body: payload })
     }),
     generateCuttingRows: builder.mutation({
-      query: (payload) => ({ url: '/api/v1/cutting/rows/generate', method: 'POST', body: payload })
+      query: (payload) => ({ 
+        url: '/api/v1/cutting/rows/generate', 
+        method: 'POST', 
+        body: payload,
+        timeout: 120000 // Wait for up to 2 minutes
+      })
     }),
     createCuttingSheet: builder.mutation({
       query: ({ id, payload }) => ({ url: `/api/v1/cutting/rows/${id}/sheets`, method: 'POST', body: payload })
