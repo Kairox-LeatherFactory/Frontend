@@ -19,7 +19,7 @@ export const apiSlice = createApi({
     'AccessorySpec', 'AccessoryRequirement',
     'WageOrder', 'WageStyle', 'WageRate', 'WageRun', 
     'WageLedger','MaterialLot', 'MaterialSpec', 'MaterialStock', 'SupplierOrder','Users','Employees',
-    'Breakdown', 'Clients', 'ClientOrders', 'Operations', 'Events'
+    'Breakdown', 'Clients', 'ClientOrders', 'Operations', 'Events','Inspections','Production'
 ], // Caching Labels
   
   endpoints: (builder) => ({

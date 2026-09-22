@@ -757,7 +757,7 @@ const CuttingSheetRow = React.memo(({
               </button>
               <button
                 onClick={() => onDuplicate(index)}
-                title="Duplicate Row"
+                title="Copy Cell"
                 className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded mr-1"
               >
                 <Copy className="w-3.5 h-3.5" />
