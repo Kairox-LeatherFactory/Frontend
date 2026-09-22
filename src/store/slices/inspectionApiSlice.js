@@ -1,6 +1,7 @@
 import { apiSlice } from './apiSlice';
 
 export const inspectionApiSlice = apiSlice.injectEndpoints({
+  overrideExisting: true,
   endpoints: (builder) => ({
     // POST /api/v1/inspections
     createInspection: builder.mutation({
