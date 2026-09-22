@@ -35,20 +35,19 @@ export default function CuttingSheetSection() {
   const { data: specData } = useGetStyleMaterialSpecQuery(styleId, { skip: !styleId });
 
   const leatherLines = useMemo(() => {
-    return (specData?.lines || []).filter(l => l.category === 'LEATHER');
+    const lines = Array.isArray(specData) ? specData : specData?.lines || [];
+    return lines.filter(l => l.category === 'LEATHER');
   }, [specData]);
 
   const availableArticles = useMemo(() => {
-    // Temporarily using articles from the lots API as requested
-    if (lots?.options?.article) return lots.options.article;
-    return [...new Set(lotsList.map(l => l.article).filter(Boolean))];
-  }, [lotsList, lots]);
+    if (!styleId) return [...new Set(lotsList.map(l => l.article).filter(Boolean))];
+    return [...new Set(leatherLines.map(l => l.article).filter(Boolean))];
+  }, [styleId, leatherLines, lotsList]);
 
   const availableColours = useMemo(() => {
-    // Temporarily using colours from the lots API as requested
-    if (lots?.options?.colour) return lots.options.colour;
-    return [...new Set(lotsList.map(l => l.colour).filter(Boolean))];
-  }, [lotsList, lots]);
+    if (!styleId) return [...new Set(lotsList.map(l => l.colour).filter(Boolean))];
+    return [...new Set(leatherLines.map(l => l.colour).filter(Boolean))];
+  }, [styleId, leatherLines, lotsList]);
 
   const [generateRows, { isLoading: isGenerating }] = useGenerateCuttingRowsMutation();
 
