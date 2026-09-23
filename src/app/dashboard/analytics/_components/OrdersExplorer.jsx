@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Activity } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
-import { useData } from '@/context/DataContext';
 import {
   apiGetAnalyticsExplore,
   apiGetOrderTree,
@@ -29,8 +28,6 @@ import HierarchyViewer from './HierarchyViewer';
  */
 export default function OrdersExplorer() {
   const { token } = useAuth();
-  const { orders: realOrders } = useData();
-  const orders = useMemo(() => realOrders || [], [realOrders]);
 
   const [exploreData, setExploreData] = useState(null);
   const [loadingExplore, setLoadingExplore] = useState(true);
@@ -84,7 +81,7 @@ export default function OrdersExplorer() {
 
   // Computes filtered orders for the search match counter
   const filteredOrders = useMemo(() => {
-    const dataList = orders || [];
+    const dataList = exploreData?.clients || [];
     const q = searchQuery.trim().toLowerCase();
     if (!q) return dataList;
 
@@ -110,7 +107,7 @@ export default function OrdersExplorer() {
         return null;
       })
       .filter(Boolean);
-  }, [orders, searchQuery]);
+  }, [exploreData, searchQuery]);
 
   // Formats and prioritizes order groups according to search queries
   const orderGroups = useMemo(() => {
@@ -129,28 +126,6 @@ export default function OrdersExplorer() {
           });
         });
       });
-    } else if (orders && orders.length > 0) {
-      const mapGroups = {};
-      orders.forEach((styleOrder) => {
-        const poNum =
-          styleOrder?.po_number ||
-          styleOrder?.order_number ||
-          styleOrder?.id ||
-          'ORD-101';
-        const clientName = styleOrder?.client || styleOrder?.client_name || 'Client';
-        const orderName = `${clientName} (PO: ${poNum})`;
-
-        if (!mapGroups[orderName]) {
-          mapGroups[orderName] = {
-            id: orderName,
-            rawId: styleOrder?.id || styleOrder?.order_id || poNum,
-            client: clientName,
-            po: poNum,
-            styles: styleOrder.styles || [],
-          };
-        }
-      });
-      groups = Object.values(mapGroups);
     }
 
     const q = searchQuery.trim().toLowerCase();
@@ -175,7 +150,7 @@ export default function OrdersExplorer() {
       if (!matchA && matchB) return 1;
       return 0;
     });
-  }, [orders, exploreData, searchQuery]);
+  }, [exploreData, searchQuery]);
 
   /**
    * Toggles expansion of an order group node and lazily loads its order tree from the server.
