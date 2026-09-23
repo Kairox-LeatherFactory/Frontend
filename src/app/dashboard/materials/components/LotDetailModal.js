@@ -131,8 +131,15 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
           )}
 
           {lot.is_active && canAdjust && onReceive && (
-            <button onClick={() => onReceive(lot)} className="w-full h-9 rounded-xl font-black text-[10px] uppercase text-white flex items-center justify-center gap-1.5" style={{ background: '#c8834a' }}>
-              <PackagePlus className="w-3.5 h-3.5" /> Receive More Stock
+            <button
+              onClick={() => {
+                onClose();
+                onReceive(lot);
+              }}
+              className="w-full h-11 rounded-2xl font-black text-xs uppercase text-white shadow-md shadow-amber-900/10 flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-[0.99]"
+              style={{ background: '#c8834a' }}
+            >
+              <PackagePlus className="w-4 h-4" /> Receive More Stock
             </button>
           )}
 

@@ -63,16 +63,22 @@ export default function CuttingSheetSection() {
     return [...new Set([...lotColours, ...specColours])];
   }, [leatherLines, lotsList]);
 
-  const [generateRows, { isLoading: isGenerating }] = useGenerateCuttingRowsMutation();
+  const [generateRows] = useGenerateCuttingRowsMutation();
 
   // Grid state
   const [rows, setRows] = useState([]);
+  const [isLooping, setIsLooping] = useState(false);
 
   const handleGenerate = async () => {
     if (!styleId) {
       toast.error('Style ID is required');
       return;
     }
+
+    setIsLooping(true);
+    let keepGenerating = true;
+    let totalGenerated = 0;
+
     try {
       const matchingLot = lotsList.find(l => l.article === selectedArticle && (l.colour === colour || l.color === colour));
       const payload = {
@@ -81,16 +87,43 @@ export default function CuttingSheetSection() {
         material_lot_id: matchingLot ? (matchingLot.lot_id || matchingLot.id) : undefined,
         work_date: workDate || undefined,
         allocate: true,
-        limit: 200
+        limit: 10
       };
 
-      const res = await generateRows(payload).unwrap();
-      if (res.rows && Array.isArray(res.rows)) {
-        setRows(prev => [...prev, ...res.rows]);
-        toast.success(`Generated ${res.created || res.rows.length} rows successfully`);
-        if (res.warnings && res.warnings.length > 0) {
-          res.warnings.forEach(w => toast.warning(w));
+      let lastMessage = '';
+
+      while (keepGenerating) {
+        const res = await generateRows(payload).unwrap();
+        
+        if (res.message) lastMessage = res.message;
+        else if (res.detail) lastMessage = res.detail;
+        
+        if (res.rows && Array.isArray(res.rows) && res.rows.length > 0) {
+          setRows(prev => [...prev, ...res.rows]);
+          const createdThisBatch = res.created || res.rows.length;
+          totalGenerated += createdThisBatch;
+
+          if (res.warnings && res.warnings.length > 0) {
+            res.warnings.forEach(w => toast.warning(w));
+          }
+
+          // If the backend returns less than what we asked for, it means it's done
+          if (createdThisBatch < 10) {
+            keepGenerating = false;
+          } else {
+            // Wait 1 second before requesting the next batch
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } else {
+          // No more rows created, we are done
+          keepGenerating = false;
         }
+      }
+      
+      if (totalGenerated > 0) {
+        toast.success(`Generated a total of ${totalGenerated} rows successfully`);
+      } else {
+        toast.success(lastMessage || 'No new rows to generate.');
       }
     } catch (err) {
       console.error('Failed to generate rows:', err);
@@ -101,11 +134,17 @@ export default function CuttingSheetSection() {
         err?.message ||
         'Failed to generate rows';
       toast.error(errorMsg);
+    } finally {
+      setIsLooping(false);
     }
   };
 
   const updateRowInState = useCallback((updatedRow) => {
-    setRows(prev => prev.map(r => r.id === updatedRow.id ? updatedRow : r));
+    setRows(prev => prev.map(r => {
+      const rId = r.row_id || r.id;
+      const uId = updatedRow.row_id || updatedRow.id;
+      return rId === uId ? updatedRow : r;
+    }));
   }, []);
 
   const grandTotalSkins = rows.reduce((sum, r) => sum + (r.sheets?.length || 0), 0);
@@ -162,7 +201,7 @@ export default function CuttingSheetSection() {
               <option value="">-- Style * --</option>
               {stylesList.map((s, idx) => {
                 const sId = s.id || s.style_id || s.style_code;
-                const label = s.style_code ? `${s.style_code} ${s.style_name ? `- ${s.style_name}` : ''}` : (s.style_name || s.name || sId);
+                const label = s.style_name || s.name || s.style_code || sId;
                 return <option key={`style-${sId}-${idx}`} value={sId}>{label}</option>;
               })}
             </select>
@@ -192,11 +231,11 @@ export default function CuttingSheetSection() {
             </select>
             <button
               onClick={handleGenerate}
-              disabled={isGenerating || !styleId}
+              disabled={isLooping || !styleId}
               className="flex items-center gap-2 px-6 py-2 bg-[#1e293b] hover:bg-[#0f172a] text-white rounded-lg font-black text-xs transition-all shadow-sm active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
             >
-              {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-              Generate
+              {isLooping ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+              {isLooping ? 'Generating...' : 'Generate'}
             </button>
           </div>
         </div>
@@ -240,6 +279,7 @@ export default function CuttingSheetSection() {
                     sNo={index + 1}
                     row={row}
                     updateRowInState={updateRowInState}
+                    stylesList={stylesList}
                   />
                 ))
               )}
@@ -267,7 +307,7 @@ export default function CuttingSheetSection() {
   );
 }
 
-const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
+const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList }) => {
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
   const [updateRowMutation] = useUpdateCuttingRowMutation();
@@ -360,13 +400,16 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
     rowClass = "excel-row bg-emerald-50 hover:bg-emerald-100 border-b border-emerald-200 group relative";
   }
 
+  const matchingStyle = stylesList?.find(s => s.id === row.style_id || s.style_id === row.style_id || s.style_code === row.style_id);
+  const displayStyleName = row.style_name || matchingStyle?.style_name || matchingStyle?.name || matchingStyle?.style_code || row.style_id || '';
+
   return (
     <tr className={rowClass}>
       <td className="p-0 sticky left-0 z-10 border-r border-slate-300 bg-slate-100 group-focus-within:bg-yellow-100 text-center font-bold text-slate-500">
         <span>{sNo}</span>
       </td>
       <td className="p-0 sticky left-10 z-10 border-r border-slate-300 bg-white group-focus-within:bg-[#fefce8]">
-        <input 
+        <input
           type="date"
           defaultValue={row.work_date || row.date || ''}
           disabled={isLocked}
@@ -378,10 +421,10 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
         {row.order_number || row.order_id || ''}
       </td>
       <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
-        {row.style_name || row.style_id || ''}
+        {displayStyleName}
       </td>
       <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30">
-        <input 
+        <input
           type="text"
           defaultValue={row.article || ''}
           disabled={isLocked}
@@ -390,7 +433,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
         />
       </td>
       <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30">
-        <input 
+        <input
           type="text"
           defaultValue={row.colour || ''}
           disabled={isLocked}
@@ -402,7 +445,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
         {row.name || ''}
       </td>
       <td className="p-0 border-r border-slate-300 bg-white">
-        <input 
+        <input
           type="text"
           defaultValue={row.size || row.size_name || ''}
           disabled={isLocked}
@@ -411,7 +454,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
         />
       </td>
       <td className="p-0 border-r border-slate-300 bg-white">
-        <input 
+        <input
           type="text"
           defaultValue={row.rc_no || ''}
           disabled={isLocked}
