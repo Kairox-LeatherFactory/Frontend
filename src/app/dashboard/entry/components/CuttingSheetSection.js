@@ -90,8 +90,13 @@ export default function CuttingSheetSection() {
         limit: 10
       };
 
+      let lastMessage = '';
+
       while (keepGenerating) {
         const res = await generateRows(payload).unwrap();
+        
+        if (res.message) lastMessage = res.message;
+        else if (res.detail) lastMessage = res.detail;
         
         if (res.rows && Array.isArray(res.rows) && res.rows.length > 0) {
           setRows(prev => [...prev, ...res.rows]);
@@ -118,7 +123,7 @@ export default function CuttingSheetSection() {
       if (totalGenerated > 0) {
         toast.success(`Generated a total of ${totalGenerated} rows successfully`);
       } else {
-        toast.success('No new rows to generate.');
+        toast.success(lastMessage || 'No new rows to generate.');
       }
     } catch (err) {
       console.error('Failed to generate rows:', err);
