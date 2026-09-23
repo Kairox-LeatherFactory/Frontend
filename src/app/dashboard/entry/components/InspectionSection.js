@@ -66,7 +66,8 @@ export default function InspectionSection({ onGoBack }) {
   const [cameraScanTarget, setCameraScanTarget] = useState(null);
 
   // RTK Queries & Mutations for Raise Form
-  const { data: workers = [] } = useGetEmployeesQuery();
+  const { data: employeesData } = useGetEmployeesQuery();
+  const workers = Array.isArray(employeesData) ? employeesData : (employeesData?.items || []);
   const { data: operations = [], isLoading: isOperationsLoading } = useGetOperationsQuery();
   const [triggerGetPieceState, { data: pieceState, isLoading: isPieceStateLoading }] = useLazyGetPieceStateQuery();
   const [createInspection, { isLoading: isSubmitting }] = useCreateInspectionMutation();

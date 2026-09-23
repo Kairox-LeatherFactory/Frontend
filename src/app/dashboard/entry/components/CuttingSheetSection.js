@@ -1,16 +1,17 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { Scissors, CheckCircle2, AlertCircle, Loader2, FileSpreadsheet, LockOpen, Check } from 'lucide-react';
+import { Scissors, Loader2, FileSpreadsheet, LockOpen, Check } from 'lucide-react';
 import {
-  useGetMaterialLotsQuery,
+  useLazyGetMaterialLotsQuery,
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
   useUpdateCuttingSheetMutation,
+  useUpdateCuttingRowMutation,
   useApproveCuttingRowMutation,
   useReopenCuttingRowMutation,
-  useGetClientStylesQuery,
-  useGetStyleMaterialSpecQuery
+  useLazyGetClientStylesQuery,
+  useLazyGetStyleMaterialSpecQuery
 } from '@/store/slices/apiSlice';
 
 const toast = {
@@ -21,10 +22,10 @@ const toast = {
 
 
 export default function CuttingSheetSection() {
-  const { data: lots = [], isLoading: lotsLoading } = useGetMaterialLotsQuery('category=leather');
+  // -- Lazy queries: fire only when dropdown is focused/opened --
+  const [fetchLots, { data: lots }] = useLazyGetMaterialLotsQuery();
   const lotsList = Array.isArray(lots) ? lots : lots?.lots || lots?.items || [];
-
-  const { data: stylesData = [], isLoading: stylesLoading } = useGetClientStylesQuery();
+  const [fetchStyles, { data: stylesData }] = useLazyGetClientStylesQuery();
   const stylesList = Array.isArray(stylesData) ? stylesData : stylesData?.items || [];
 
   const [workDate, setWorkDate] = useState(new Date().toISOString().slice(0, 10));
@@ -32,22 +33,35 @@ export default function CuttingSheetSection() {
   const [colour, setColour] = useState('');
   const [selectedArticle, setSelectedArticle] = useState('');
 
-  const { data: specData } = useGetStyleMaterialSpecQuery(styleId, { skip: !styleId });
+  // Material spec: fires only when a style is selected
+  const [fetchSpec, { data: specData }] = useLazyGetStyleMaterialSpecQuery();
+
+  // When styleId changes, fetch the spec
+  useEffect(() => {
+    if (styleId) fetchSpec(styleId);
+  }, [styleId, fetchSpec]);
 
   const leatherLines = useMemo(() => {
-    return (specData?.lines || []).filter(l => l.category === 'LEATHER');
+    const lines = Array.isArray(specData) ? specData : specData?.lines || [];
+    return lines.filter(l => l.category === 'LEATHER');
   }, [specData]);
 
   const availableArticles = useMemo(() => {
-    if (!styleId) return [...new Set(lotsList.map(l => l.article).filter(Boolean))];
-    return [...new Set(leatherLines.map(l => l.article).filter(Boolean))];
-  }, [styleId, leatherLines, lotsList]);
+    const lotArticles = lotsList.map(l => l.article).filter(Boolean);
+    const specArticles = leatherLines.map(l => l.article).filter(Boolean);
+    return [...new Set([...lotArticles, ...specArticles])];
+  }, [leatherLines, lotsList]);
 
   const availableColours = useMemo(() => {
-    // Temporarily using colours from the lots API as requested
-    if (lots?.options?.colour) return lots.options.colour;
-    return [...new Set(lotsList.map(l => l.colour).filter(Boolean))];
-  }, [lotsList, lots]);
+    const lotColours = lotsList.flatMap(l => {
+      const c = l.colour || l.color || l.colours || l.colors || [];
+      return Array.isArray(c) ? c : [c];
+    }).filter(Boolean);
+
+    const specColours = leatherLines.map(l => l.colour || l.color).filter(Boolean);
+
+    return [...new Set([...lotColours, ...specColours])];
+  }, [leatherLines, lotsList]);
 
   const [generateRows, { isLoading: isGenerating }] = useGenerateCuttingRowsMutation();
 
@@ -60,11 +74,11 @@ export default function CuttingSheetSection() {
       return;
     }
     try {
-      const matchingLot = lotsList.find(l => l.article === selectedArticle && l.colour === colour);
+      const matchingLot = lotsList.find(l => l.article === selectedArticle && (l.colour === colour || l.color === colour));
       const payload = {
         style_id: styleId,
         colour: colour || undefined,
-        material_lot_id: matchingLot ? matchingLot.lot_id : undefined,
+        material_lot_id: matchingLot ? (matchingLot.lot_id || matchingLot.id) : undefined,
         work_date: workDate || undefined,
         allocate: true,
         limit: 200
@@ -79,7 +93,14 @@ export default function CuttingSheetSection() {
         }
       }
     } catch (err) {
-      toast.error(err?.data?.message || 'Failed to generate rows');
+      console.error('Failed to generate rows:', err);
+      const errorMsg =
+        (typeof err?.data?.detail === 'string' && err.data.detail) ||
+        (Array.isArray(err?.data?.detail) && err.data.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ')) ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to generate rows';
+      toast.error(errorMsg);
     }
   };
 
@@ -134,18 +155,21 @@ export default function CuttingSheetSection() {
             />
             <select
               value={styleId}
-              onChange={(e) => setStyleId(e.target.value)}
+              onChange={(e) => { setStyleId(e.target.value); setSelectedArticle(''); setColour(''); }}
+              onFocus={() => fetchStyles()}
               className="px-3 py-2 w-32 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
             >
               <option value="">-- Style * --</option>
               {stylesList.map((s, idx) => {
-                const sId = s.style_id || s.style_code || s.id;
-                return <option key={`style-${sId}-${idx}`} value={sId}>{s.style_name || s.name || sId}</option>;
+                const sId = s.id || s.style_id || s.style_code;
+                const label = s.style_code ? `${s.style_code} ${s.style_name ? `- ${s.style_name}` : ''}` : (s.style_name || s.name || sId);
+                return <option key={`style-${sId}-${idx}`} value={sId}>{label}</option>;
               })}
             </select>
             <select
               value={selectedArticle}
               onChange={(e) => setSelectedArticle(e.target.value)}
+              onFocus={() => fetchLots({ category: 'leather' })}
               className="px-3 py-2 w-40 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
             >
               <option value="">-- Article --</option>
@@ -158,6 +182,7 @@ export default function CuttingSheetSection() {
             <select
               value={colour}
               onChange={(e) => setColour(e.target.value)}
+              onFocus={() => fetchLots({ category: 'leather' })}
               className="px-3 py-2 w-28 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all"
             >
               <option value="">-- Colour --</option>
@@ -210,7 +235,7 @@ export default function CuttingSheetSection() {
               ) : (
                 rows.map((row, index) => (
                   <CuttingSheetRow
-                    key={row.id}
+                    key={row.row_id || row.id || index}
                     index={index}
                     sNo={index + 1}
                     row={row}
@@ -245,6 +270,7 @@ export default function CuttingSheetSection() {
 const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
+  const [updateRowMutation] = useUpdateCuttingRowMutation();
   const [approveRow, { isLoading: isApproving }] = useApproveCuttingRowMutation();
   const [reopenRow, { isLoading: isReopening }] = useReopenCuttingRowMutation();
 
@@ -270,11 +296,11 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
     setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
     try {
       if (existingSheet) {
-        const res = await updateSheet({ id: row.id, sheet_id: existingSheet.id, payload: { dcm: numValue } }).unwrap();
+        const res = await updateSheet({ row_id: row.row_id || row.id, sheet_id: existingSheet.id, payload: { dcm: numValue } }).unwrap();
         updateRowInState(res.row || res);
         toast.success(`Sheet updated to ${numValue} dcm`);
       } else {
-        const res = await createSheet({ id: row.id, payload: { dcm: numValue } }).unwrap();
+        const res = await createSheet({ row_id: row.row_id || row.id, payload: { dcm: numValue } }).unwrap();
         updateRowInState(res.row || res);
         toast.success(`Sheet created: ${numValue} dcm`);
       }
@@ -286,9 +312,25 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
     }
   };
 
+  const handleRowCellBlur = async (field, value) => {
+    if (isLocked) return;
+    const trimmed = value.trim();
+    if (trimmed === (row[field] || '')) return; // No change
+
+    try {
+      const res = await updateRowMutation({ row_id: row.row_id || row.id, payload: { [field]: trimmed } }).unwrap();
+      updateRowInState(res.row || res);
+      toast.success(`${field} updated`);
+    } catch (err) {
+      toast.error(err?.data?.message || `Failed to update ${field}`);
+      // The input will keep the failed typed value unless we force reset, but since it's uncontrolled defaultValue it might stay.
+      // Re-rendering happens on updateRowInState if success.
+    }
+  };
+
   const handleApprove = async () => {
     try {
-      const res = await approveRow(row.id).unwrap();
+      const res = await approveRow(row.row_id || row.id).unwrap();
       updateRowInState(res.row || res);
       toast.success(res.message || 'Row Approved successfully');
     } catch (err) {
@@ -300,7 +342,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
     const reason = window.prompt("Reason for reopening this row?");
     if (!reason) return;
     try {
-      const res = await reopenRow({ id: row.id, reason }).unwrap();
+      const res = await reopenRow({ row_id: row.row_id || row.id, reason }).unwrap();
       updateRowInState(res.row || res);
       toast.success('Row Reopened successfully');
     } catch (err) {
@@ -323,8 +365,14 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
       <td className="p-0 sticky left-0 z-10 border-r border-slate-300 bg-slate-100 group-focus-within:bg-yellow-100 text-center font-bold text-slate-500">
         <span>{sNo}</span>
       </td>
-      <td className="p-2 sticky left-10 z-10 border-r border-slate-300 bg-white group-focus-within:bg-[#fefce8] text-center font-bold text-slate-700">
-        {row.work_date || row.date || ''}
+      <td className="p-0 sticky left-10 z-10 border-r border-slate-300 bg-white group-focus-within:bg-[#fefce8]">
+        <input 
+          type="date"
+          defaultValue={row.work_date || row.date || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('work_date', e.target.value)}
+          className="w-full h-9 px-1 text-center font-bold text-slate-700 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
       <td className="p-2 border-r border-slate-300 bg-[#e2e8f0]/30 text-center font-bold text-slate-700">
         {row.order_number || row.order_id || ''}
@@ -332,20 +380,44 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
       <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
         {row.style_name || row.style_id || ''}
       </td>
-      <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
-        {row.article || ''}
+      <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30">
+        <input 
+          type="text"
+          defaultValue={row.article || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('article', e.target.value)}
+          className="w-full h-9 text-center font-bold text-[#166534] bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
-      <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
-        {row.colour || ''}
+      <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30">
+        <input 
+          type="text"
+          defaultValue={row.colour || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('colour', e.target.value)}
+          className="w-full h-9 text-center font-bold text-[#166534] bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
       <td className="p-2 border-r border-slate-300 bg-[#f8fafc] text-center font-bold text-slate-700">
         {row.name || ''}
       </td>
-      <td className="p-2 border-r border-slate-300 bg-white text-center font-bold text-slate-800">
-        {row.size || row.size_name || ''}
+      <td className="p-0 border-r border-slate-300 bg-white">
+        <input 
+          type="text"
+          defaultValue={row.size || row.size_name || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('size', e.target.value)}
+          className="w-full h-9 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
-      <td className="p-2 border-r border-slate-300 bg-white text-center font-bold text-blue-800">
-        {row.rc_no || ''}
+      <td className="p-0 border-r border-slate-300 bg-white">
+        <input 
+          type="text"
+          defaultValue={row.rc_no || ''}
+          disabled={isLocked}
+          onBlur={(e) => handleRowCellBlur('rc_no', e.target.value)}
+          className="w-full h-9 text-center font-bold text-blue-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+        />
       </td>
 
       {/* 17 Sheet Cells */}

@@ -9,28 +9,28 @@ export const apiSlice = createApi({
     
       const token = getState().auth?.token || localStorage.getItem('kairox_token');
       if (token) {
-        headers.set('authorization', `Bearer ${token}`);
+        headers.set('Authorization', `Bearer ${token}`);
       }
       return headers;
     },
   }),
-  tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece', 
-    'Store', 'StoreList', 
+  tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece',
+    'Store', 'StoreList',
     'AccessorySpec', 'AccessoryRequirement',
-    'WageOrder', 'WageStyle', 'WageRate', 'WageRun', 
-    'WageLedger','MaterialLot', 'MaterialSpec', 'MaterialStock', 'SupplierOrder','Users','Employees',
-    'Breakdown', 'Clients', 'ClientOrders', 'Operations', 'Events','Inspections','Production'
-], // Caching Labels
-  
+    'WageOrder', 'WageStyle', 'WageRate', 'WageRun',
+    'WageLedger', 'MaterialLot', 'MaterialSpec', 'MaterialStock', 'SupplierOrder', 'Users', 'Employees',
+    'Breakdown', 'Clients', 'ClientOrders', 'Operations', 'Events', 'Inspections', 'Production', 'ClientStyle'
+  ], // Caching Labels
+
   endpoints: (builder) => ({
-    login:builder.mutation({
-    query: (credentials) => ({
+    login: builder.mutation({
+      query: (credentials) => ({
         url: '/api/v1/auth/login',
         method: 'POST',
         body: credentials,
       }),
     }),
-    
+
     // --- BARCODE APIs ---
     barcodeResolve: builder.query({
       query: (code) => `/api/v1/barcode/resolve?code=${encodeURIComponent(code)}`
@@ -52,7 +52,7 @@ export const apiSlice = createApi({
       query: () => '/api/v1/production/skus',
       providesTags: ['SKU']
     }),
-      getSkuPieces: builder.query({
+    getSkuPieces: builder.query({
       query: (arg) => {
         const skuId = typeof arg === 'object' ? arg.skuId : arg;
         const operationId = typeof arg === 'object' ? arg.operationId : null;
@@ -83,25 +83,33 @@ export const apiSlice = createApi({
       query: (payload) => ({ url: '/api/v1/production/cutting/issue', method: 'POST', body: payload })
     }),
     generateCuttingRows: builder.mutation({
-      query: (payload) => ({ url: '/api/v1/cutting/rows/generate', method: 'POST', body: payload })
+      query: (payload) => ({ 
+        url: '/api/v1/cutting/rows/generate', 
+        method: 'POST', 
+        body: payload,
+        timeout: 120000 // Wait for up to 2 minutes
+      })
     }),
     createCuttingSheet: builder.mutation({
-      query: ({ id, payload }) => ({ url: `/api/v1/cutting/rows/${id}/sheets`, method: 'POST', body: payload })
+      query: ({ row_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}/sheets`, method: 'POST', body: payload })
     }),
     updateCuttingSheet: builder.mutation({
-      query: ({ id, sheet_id, payload }) => ({ url: `/api/v1/cutting/rows/${id}/sheets/${sheet_id}`, method: 'PATCH', body: payload })
+      query: ({ row_id, sheet_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}/sheets/${sheet_id}`, method: 'PATCH', body: payload })
+    }),
+    updateCuttingRow: builder.mutation({
+      query: ({ row_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}`, method: 'PATCH', body: payload })
     }),
     approveCuttingRow: builder.mutation({
-      query: (id) => ({ url: `/api/v1/cutting/rows/${id}/approve`, method: 'POST' })
+      query: (row_id) => ({ url: `/api/v1/cutting/rows/${row_id}/approve`, method: 'POST' })
     }),
     reopenCuttingRow: builder.mutation({
-      query: ({ id, reason }) => ({ url: `/api/v1/cutting/rows/${id}/reopen?reason=${encodeURIComponent(reason)}`, method: 'POST' })
+      query: ({ row_id, reason }) => ({ url: `/api/v1/cutting/rows/${row_id}/reopen?reason=${encodeURIComponent(reason)}`, method: 'POST' })
     }),
     reassignProductionEvent: builder.mutation({
-      query: ({ id, employee_code, override_timestamp }) => ({ 
-        url: `/api/v1/production/events/${id}/reassign`, 
-        method: 'PATCH', 
-        body: { employee_code, override_timestamp } 
+      query: ({ id, employee_code, override_timestamp }) => ({
+        url: `/api/v1/production/events/${id}/reassign`,
+        method: 'PATCH',
+        body: { employee_code, override_timestamp }
       }),
       invalidatesTags: (result, error, { id }) => [{ type: 'Production', id }]
     }),
@@ -109,7 +117,7 @@ export const apiSlice = createApi({
       query: (id) => ({ url: `/api/v1/production/events/${id}`, method: 'DELETE' }),
       invalidatesTags: (result, error, id) => [{ type: 'Production', id }]
     }),
-    
+
 
     // --- STORE HUB APIs ---
     storeScan: builder.mutation({
@@ -224,10 +232,10 @@ export const apiSlice = createApi({
         body: orderData
       })
     }),
- // ==========================================
+    // ==========================================
     // WAGES APIs (Piece Rates, Run Engine, Ledger)
     // ==========================================
-    
+
     // ─── 1. PIECE RATES & STYLES ───
     getWageOrders: builder.query({
       query: (params = {}) => {
@@ -261,7 +269,7 @@ export const apiSlice = createApi({
       providesTags: ['WageRate']
     }),
     getRateHistory: builder.query({
-      query: ({ styleCode, operationCode }) => 
+      query: ({ styleCode, operationCode }) =>
         `/api/v1/wages/rate-history?style_code=${encodeURIComponent(styleCode)}&operation_code=${encodeURIComponent(operationCode)}`,
       providesTags: ['WageRate']
     }),
@@ -350,11 +358,11 @@ export const apiSlice = createApi({
         return `/api/v1/wages/ledger${qs.toString() ? `?${qs.toString()}` : ''}`;
       }
     }),
-})
+  })
 });
 
 // React Hooks auto-generated!
-export const { 
+export const {
   useLoginMutation,
   useBarcodeResolveQuery,
   useLazyBarcodeResolveQuery,
@@ -373,6 +381,7 @@ export const {
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
   useUpdateCuttingSheetMutation,
+  useUpdateCuttingRowMutation,
   useApproveCuttingRowMutation,
   useReopenCuttingRowMutation,
   useReassignProductionEventMutation,
@@ -396,7 +405,7 @@ export const {
   useRecordMaterialIssueMutation,
   useIssueAccessoryKitMutation,
   useCreateSupplierOrderMutation,
-    useGetWageOrdersQuery,
+  useGetWageOrdersQuery,
   useLazyGetWageOrdersQuery,
   useGetWageStylesQuery,
   useLazyGetWageStylesQuery,
