@@ -140,7 +140,11 @@ export default function CuttingSheetSection() {
   };
 
   const updateRowInState = useCallback((updatedRow) => {
-    setRows(prev => prev.map(r => r.id === updatedRow.id ? updatedRow : r));
+    setRows(prev => prev.map(r => {
+      const rId = r.row_id || r.id;
+      const uId = updatedRow.row_id || updatedRow.id;
+      return rId === uId ? updatedRow : r;
+    }));
   }, []);
 
   const grandTotalSkins = rows.reduce((sum, r) => sum + (r.sheets?.length || 0), 0);
@@ -396,8 +400,8 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
     rowClass = "excel-row bg-emerald-50 hover:bg-emerald-100 border-b border-emerald-200 group relative";
   }
 
-  const matchingStyle = stylesList?.find(s => s.id === row.style_id || s.style_code === row.style_id);
-  const displayStyleName = row.style_name || matchingStyle?.style_name || matchingStyle?.style_code || row.style_id || '';
+  const matchingStyle = stylesList?.find(s => s.id === row.style_id || s.style_id === row.style_id || s.style_code === row.style_id);
+  const displayStyleName = row.style_name || matchingStyle?.style_name || matchingStyle?.name || matchingStyle?.style_code || row.style_id || '';
 
   return (
     <tr className={rowClass}>
