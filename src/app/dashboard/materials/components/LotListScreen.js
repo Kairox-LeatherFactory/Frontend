@@ -95,15 +95,15 @@ const availableLots = lotsRes?.lots || [];
           {spec.filters.map((f) => (
             <SelectableFilterCombobox
               key={f}
-              placeholder={`Filter ${f[0].toUpperCase() + f.slice(1)}…`}
+              placeholder={`Search ${f === 'thickness' ? 'Thickness' : f === 'size' ? 'Size' : f[0].toUpperCase() + f.slice(1)}…`}
               value={filters[f] || ''}
               onChange={(val) => setFilters((p) => ({ ...p, [f]: val }))}
               options={getFilterOptions(f)}
               className="bg-white"
             />
           ))}
-          <button onClick={load} className="h-9 px-4 rounded-lg font-black text-[10px] uppercase text-white flex items-center gap-1.5 ml-auto" style={{ background: '#c8834a' }}>
-            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Refine'}
+          <button onClick={load} className="h-9 px-4 rounded-xl font-black text-xs uppercase text-white flex items-center gap-1.5 ml-auto shadow-xs hover:brightness-105 active:scale-[0.98] transition-all" style={{ background: '#c8834a' }}>
+            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Search / Filter
           </button>
         </div>
       )}
@@ -111,26 +111,51 @@ const availableLots = lotsRes?.lots || [];
       <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b text-left text-[10px] font-black uppercase tracking-wider text-slate-400" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-              <th className="p-3">Barcode</th><th className="p-3">Article</th><th className="p-3">Colour</th><th className="p-3">Spec</th>
-              <th className="p-3 text-right">On Hand</th><th className="p-3 text-right">Reserved</th><th className="p-3 text-right">Available</th><th className="p-3"></th>
+            <tr className="border-b text-left text-[11px] font-black uppercase tracking-wider text-slate-500 bg-slate-50/60" style={{ borderColor: 'rgba(200,131,74,0.12)' }}>
+              <th className="p-3.5">Barcode</th>
+              <th className="p-3.5">Material</th>
+              <th className="p-3.5">Colour</th>
+              <th className="p-3.5">Thickness / Size</th>
+              <th className="p-3.5 text-right">In Factory</th>
+              <th className="p-3.5 text-right">Reserved</th>
+              <th className="p-3.5 text-right">Ready to Use</th>
+              <th className="p-3.5"></th>
             </tr>
           </thead>
           <tbody className="divide-y" style={{ borderColor: 'rgba(200,131,74,0.08)' }}>
             {lots.map((l) => (
-              <tr key={l.lot_id} onClick={() => openDetail(l.lot_id)} className={`cursor-pointer hover:bg-amber-50/40 ${selectedId === l.lot_id ? 'bg-amber-50/60' : ''}`}>
-                <td className="p-3 font-mono font-bold text-slate-500">{l.barcode}</td>
-                <td className="p-3 font-black text-slate-800">{l.article}</td>
-                <td className="p-3 text-slate-600">{l.colour}</td>
-                <td className="p-3 text-slate-500">{l.thickness || l.size || '—'}</td>
-                <td className="p-3 text-right font-bold">{l.on_hand.toFixed(1)}</td>
-                <td className="p-3 text-right font-bold text-amber-600">{l.reserved.toFixed(1)}</td>
-                <td className={`p-3 text-right font-black ${l.available === 0 ? 'text-red-500' : 'text-emerald-600'}`}>{l.available.toFixed(1)} {l.uom}</td>
-                <td className="p-3"><ChevronRight className="w-4 h-4 text-slate-300" /></td>
+              <tr key={l.lot_id} onClick={() => openDetail(l.lot_id)} className={`cursor-pointer hover:bg-amber-50/40 transition-colors ${selectedId === l.lot_id ? 'bg-amber-50/60' : ''}`}>
+                <td className="p-3.5 font-mono font-bold text-slate-500 flex items-center gap-1.5">
+                  {l.barcode}
+                  {l.last_used_for_sku && (
+                    <span className="text-[9px] font-black text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded uppercase">Last Used</span>
+                  )}
+                </td>
+                <td className="p-3.5 font-black text-slate-800">{l.article}</td>
+                <td className="p-3.5 text-slate-600 font-bold">{l.colour}</td>
+                <td className="p-3.5 text-slate-500 font-medium">{l.thickness || l.size || '—'}</td>
+                <td className="p-3.5 text-right font-bold text-slate-700">{l.on_hand.toFixed(1)} {l.uom}</td>
+                <td className="p-3.5 text-right font-bold text-amber-600">{l.reserved > 0 ? `${l.reserved.toFixed(1)} ${l.uom}` : '0'}</td>
+                <td className="p-3.5 text-right">
+                  {l.available === 0 ? (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-black uppercase text-red-700 bg-red-50 border border-red-200">
+                      Out of Stock
+                    </span>
+                  ) : (
+                    <span className="font-black text-emerald-600 text-xs">
+                      {l.available.toFixed(1)} {l.uom}
+                    </span>
+                  )}
+                </td>
+                <td className="p-3.5 text-right"><ChevronRight className="w-4 h-4 text-slate-300 inline" /></td>
               </tr>
             ))}
             {lots.length === 0 && !loading && (
-              <tr><td colSpan={8} className="p-6 text-center text-xs font-bold text-slate-400">No lots match. Available:0 rows are shown normally here, not hidden.</td></tr>
+              <tr>
+                <td colSpan={8} className="p-8 text-center text-xs font-bold text-slate-400">
+                  No materials found matching your filters.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

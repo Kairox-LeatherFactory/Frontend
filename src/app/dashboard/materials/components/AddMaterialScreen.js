@@ -166,14 +166,20 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
+      const formattedAttrs = { ...attrs };
+      // Format quantity attribute as number if present
+      if (spec?.quantity_field && formattedAttrs[spec.quantity_field] !== undefined) {
+        formattedAttrs[spec.quantity_field] = Number(formattedAttrs[spec.quantity_field]) || formattedAttrs[spec.quantity_field];
+      }
+
       const res = await createMaterialLot({
         category,
-        subtype: subtype || undefined,
+        subtype: subtype || null,
         article: article.trim(),
         colour: colour.trim(),
-        attributes: attrs,
-        supplier_id: supplierId || undefined,
-        supplier_name: supplierName || undefined,
+        attributes: formattedAttrs,
+        supplier_id: supplierId || null,
+        supplier_name: supplierName || null,
       }).unwrap();
 
       const lotBarcode = res.lot_barcode || res.barcode || 'LOT-CREATED';

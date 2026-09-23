@@ -79,14 +79,14 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
         <div className="p-5 space-y-4 overflow-y-auto">
           {!lot.is_active && (
             <div className="p-3 rounded-xl bg-slate-100 border border-slate-300 text-xs font-black text-slate-500 flex items-center gap-2">
-              <Lock className="w-4 h-4" /> RETIRED — read-only. Barcode no longer scans; cut history is preserved.
+              <Lock className="w-4 h-4" /> RETIRED / DEACTIVATED — Read-only. Barcode no longer scans; cut history is preserved.
             </div>
           )}
 
           <div className="flex flex-wrap gap-2">
-            <Tile label="On Hand" value={lot.on_hand} uom={lot.uom} />
+            <Tile label="In Factory" value={lot.on_hand} uom={lot.uom} />
             <Tile label="Reserved" value={lot.reserved} uom={lot.uom} />
-            <Tile label="Available" value={lot.available} uom={lot.uom} primary />
+            <Tile label="Ready to Use" value={lot.available} uom={lot.uom} primary />
           </div>
 
           <div className="text-xs font-bold text-slate-500">
@@ -96,19 +96,19 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
           {lot.is_active && canEdit && (
             <div className="p-3 rounded-xl bg-slate-50 border space-y-2" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Identity</span>
-                {!editing && <button onClick={() => setEditing(true)} className="text-[10px] font-black uppercase flex items-center gap-1" style={{ color: '#c8834a' }}><Pencil className="w-3 h-3" /> Edit</button>}
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Material Details & Supplier</span>
+                {!editing && <button onClick={() => setEditing(true)} className="text-[10px] font-black uppercase flex items-center gap-1" style={{ color: '#c8834a' }}><Pencil className="w-3 h-3" /> Edit Details</button>}
               </div>
               {editing ? (
                 <>
                   {(lot.editable_fields || []).map((f) => (
                     <div key={f} className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-slate-400 w-20 shrink-0 capitalize">{f.replace('_', ' ')}</span>
-                      <input value={form[f] ?? ''} onChange={(e) => setForm((p) => ({ ...p, [f]: e.target.value }))} className="flex-1 h-8 px-2 border rounded-lg text-xs font-bold" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+                      <span className="text-[10px] font-bold text-slate-400 w-24 shrink-0 capitalize">{f.replace('_', ' ')}</span>
+                      <input value={form[f] ?? ''} onChange={(e) => setForm((p) => ({ ...p, [f]: e.target.value }))} className="flex-1 h-8 px-2 border rounded-lg text-xs font-bold bg-white" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
                     </div>
                   ))}
                   <div className="flex gap-2 pt-1">
-                    <button onClick={handleSave} disabled={saving} className="h-8 px-4 rounded-lg font-black text-[10px] uppercase text-white disabled:opacity-50" style={{ background: '#c8834a' }}>{saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}</button>
+                    <button onClick={handleSave} disabled={saving} className="h-8 px-4 rounded-lg font-black text-[10px] uppercase text-white disabled:opacity-50" style={{ background: '#c8834a' }}>{saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save Details'}</button>
                     <button onClick={() => setEditing(false)} className="h-8 px-4 rounded-lg font-black text-[10px] uppercase text-slate-500 bg-slate-100">Cancel</button>
                   </div>
                 </>
@@ -119,14 +119,17 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
           )}
 
           {lot.is_active && canAdjust && (
-            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
-              <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">Adjust Stock — not a total, a movement</span>
-              <div className="flex items-center gap-2">
-                <input type="number" placeholder="Amount" value={delta} onChange={(e) => setDelta(e.target.value)} className="w-24 h-8 px-2 border rounded-lg text-xs font-bold" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
-                <button onClick={() => handleAdjust(1)} disabled={adjusting || !delta || !reason.trim()} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white bg-emerald-500 disabled:opacity-40 flex items-center gap-1"><ArrowUpRight className="w-3.5 h-3.5" /> Add</button>
-                <button onClick={() => handleAdjust(-1)} disabled={adjusting || !delta || !reason.trim()} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white bg-red-500 disabled:opacity-40 flex items-center gap-1"><ArrowDownRight className="w-3.5 h-3.5" /> Remove</button>
+            <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-2.5">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block">Stock Correction (+ / − Movement)</span>
+                <p className="text-[10px] text-slate-500 font-medium">Record a manual addition or removal with a required reason.</p>
               </div>
-              <input placeholder="Reason (required, 3–300 chars)…" value={reason} onChange={(e) => setReason(e.target.value)} className="w-full h-8 px-2 border rounded-lg text-xs font-bold" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+              <div className="flex items-center gap-2">
+                <input type="number" step="any" placeholder="Amount" value={delta} onChange={(e) => setDelta(e.target.value)} className="w-28 h-8 px-2.5 border rounded-lg text-xs font-bold bg-white" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
+                <button onClick={() => handleAdjust(1)} disabled={adjusting || !delta || !reason.trim()} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 flex items-center gap-1"><ArrowUpRight className="w-3.5 h-3.5" /> + Add</button>
+                <button onClick={() => handleAdjust(-1)} disabled={adjusting || !delta || !reason.trim()} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 flex items-center gap-1"><ArrowDownRight className="w-3.5 h-3.5" /> − Remove</button>
+              </div>
+              <input placeholder="Reason (required: count error, damaged hide, etc.)…" value={reason} onChange={(e) => setReason(e.target.value)} className="w-full h-8 px-2.5 border rounded-lg text-xs font-bold bg-white" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
             </div>
           )}
 
@@ -139,35 +142,35 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
               className="w-full h-11 rounded-2xl font-black text-xs uppercase text-white shadow-md shadow-amber-900/10 flex items-center justify-center gap-2 transition-all hover:brightness-105 active:scale-[0.99]"
               style={{ background: '#c8834a' }}
             >
-              <PackagePlus className="w-4 h-4" /> Receive More Stock
+              <PackagePlus className="w-4 h-4" /> Receive More Stock / Top-up
             </button>
           )}
 
           {lot.is_active && canAdjust && (
             confirmRetire ? (
-              <div className="p-3 rounded-xl bg-red-50 border border-red-200 space-y-2">
-                <p className="text-xs font-bold text-red-700">Retire this lot? Its barcode stops scanning; cut history stays. This is not a delete.</p>
+              <div className="p-3.5 rounded-2xl bg-red-50 border border-red-200 space-y-2">
+                <p className="text-xs font-bold text-red-700">Retire this lot? Its barcode will be deactivated, but cutting and consumption history will be preserved.</p>
                 <div className="flex gap-2">
-                  <button onClick={handleRetire} disabled={retiring} className="h-8 px-4 rounded-lg font-black text-[10px] uppercase text-white bg-red-600 disabled:opacity-50">{retiring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Confirm Retire'}</button>
+                  <button onClick={handleRetire} disabled={retiring} className="h-8 px-4 rounded-lg font-black text-[10px] uppercase text-white bg-red-600 disabled:opacity-50">{retiring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Yes, Retire Lot'}</button>
                   <button onClick={() => setConfirmRetire(false)} className="h-8 px-4 rounded-lg font-black text-[10px] uppercase text-slate-500 bg-slate-100">Cancel</button>
                 </div>
               </div>
             ) : (
-              <button onClick={() => setConfirmRetire(true)} className="w-full h-9 rounded-xl font-black text-[10px] uppercase text-red-600 bg-red-50 border border-red-200 flex items-center justify-center gap-1.5">
-                <Trash2 className="w-3.5 h-3.5" /> Retire Lot
+              <button onClick={() => setConfirmRetire(true)} className="w-full h-9 rounded-xl font-black text-[10px] uppercase text-red-600 bg-red-50 border border-red-200 hover:bg-red-100/80 transition-colors flex items-center justify-center gap-1.5">
+                <Trash2 className="w-3.5 h-3.5" /> Deactivate / Retire Lot
               </button>
             )
           )}
 
           {/* History Section */}
           <div className="pt-4 border-t mt-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-            <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-3">Lot History (GET)</h4>
+            <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-3">Stock Movement Ledger</h4>
             {historyLoading ? (
               <div className="flex justify-center p-4">
                 <Loader2 className="w-5 h-5 animate-spin" style={{ color: '#c8834a' }} />
               </div>
             ) : historyEvents.length === 0 ? (
-              <div className="text-center text-xs font-bold text-slate-400 p-4">No history events found.</div>
+              <div className="text-center text-xs font-bold text-slate-400 p-4">No movement events recorded yet.</div>
             ) : (
               <div className="space-y-2">
                 {historyEvents.map((evt, idx) => (
@@ -180,7 +183,7 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
                         <span>{evt.event_type}</span>
                         <span className="text-[10px] text-slate-400">{new Date(evt.timestamp).toLocaleString()}</span>
                       </div>
-                      {evt.delta && <div className="text-[10px] font-black mt-0.5" style={{ color: '#c8834a' }}>Delta: {evt.delta}</div>}
+                      {evt.delta && <div className="text-[10px] font-black mt-0.5" style={{ color: '#c8834a' }}>Movement: {evt.delta > 0 ? `+${evt.delta}` : evt.delta}</div>}
                       {evt.reason && <div className="text-slate-500 mt-0.5">{evt.reason}</div>}
                       {evt.worker_name && <div className="text-[10px] font-bold text-slate-400 mt-0.5">By: {evt.worker_name}</div>}
                     </div>

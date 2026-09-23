@@ -14,7 +14,7 @@ import {Package, Lock,Boxes,PackagePlus,Truck,Shirt } from 'lucide-react';
 const SCREENS = [
   { id: 'hub', label: 'Overview & Alerts', icon: Boxes },
   { id: 'lots', label: 'Lot Directory', icon: Package },
-  { id: 'style', label: 'Leather by Style', icon: Shirt },
+  { id: 'style', label: 'Style Recipe (BOM)', icon: Shirt },
   { id: 'intake', label: 'Add Material', icon: PackagePlus, writersOnly: true },
   { id: 'orders', label: 'Supplier Orders', dmOnly: true, icon: Truck },
 ];
@@ -91,7 +91,7 @@ export default function MaterialsPage() {
           onReceive={isWriter ? (p) => { setReceivePrefill(p); setScreen('intake'); } : null} />
       )}
       {screen === 'style' && (
-        <LeatherByStyleScreen showToast={showToast} />
+        <LeatherByStyleScreen showToast={showToast} onOpenOrder={isDmOnly ? (p) => { setOrderPrefill(p); setScreen('orders'); } : null} />
       )}
       {screen === 'intake' && isWriter && (
         <div className="space-y-8">

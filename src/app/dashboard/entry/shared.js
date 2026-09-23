@@ -76,10 +76,14 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
       // and mobile lighting conditions remain bright and sharp.
       const buildConfig = (facingMode) => ({
         fps: 15,
-        qrbox: (viewfinderWidth, viewfinderHeight) => ({
-          width: Math.min(320, Math.floor(viewfinderWidth * 0.88)),
-          height: Math.min(200, Math.floor(viewfinderHeight * 0.65))
-        }),
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const w = Math.floor(viewfinderWidth * 0.88);
+          const h = Math.floor(viewfinderHeight * 0.65);
+          return {
+            width: Math.max(50, Math.min(320, w || 250)),
+            height: Math.max(50, Math.min(200, h || 200))
+          };
+        },
         formatsToSupport: [
           Html5QrcodeSupportedFormats.CODE_128,
           Html5QrcodeSupportedFormats.CODE_39,
