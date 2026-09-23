@@ -118,7 +118,7 @@ export default function CuttingSheetSection() {
       if (totalGenerated > 0) {
         toast.success(`Generated a total of ${totalGenerated} rows successfully`);
       } else {
-        toast.info('No new rows to generate.');
+        toast.success('No new rows to generate.');
       }
     } catch (err) {
       console.error('Failed to generate rows:', err);
