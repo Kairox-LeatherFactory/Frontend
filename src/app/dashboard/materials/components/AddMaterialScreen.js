@@ -33,6 +33,7 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
   // Sheet-wise DCM Entry state for new leather lots
   const [sheets, setSheets] = useState([]);
   const [currentSheetDcm, setCurrentSheetDcm] = useState('');
+  const [totalSheetsCount, setTotalSheetsCount] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -575,21 +576,38 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
             </div>
           )}
 
-          {/* Total DCM simple field right above Create Lot button */}
+          {/* Side-by-side: Total Sheets & Total DCM */}
           {isLeather && (
-            <div>
-              <label className="text-xs font-black text-slate-700 block mb-1.5">
-                Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
-              </label>
-              <input
-                type="number"
-                step="any"
-                placeholder="Enter total DCM (e.g. 1000)"
-                value={attrs.dcm ?? ''}
-                onChange={(e) => setAttrs((p) => ({ ...p, dcm: e.target.value }))}
-                className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                style={{ borderColor: 'rgba(200,131,74,0.3)' }}
-              />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-black text-slate-700 block mb-1.5">
+                  Total Sheets <span className="font-semibold text-slate-500">(Sheet Count) *</span>
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  placeholder="e.g. 8"
+                  value={totalSheetsCount !== '' ? totalSheetsCount : (sheets.length > 0 ? String(sheets.length) : '')}
+                  onChange={(e) => setTotalSheetsCount(e.target.value)}
+                  className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-slate-700 block mb-1.5">
+                  Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="e.g. 1000"
+                  value={attrs.dcm ?? ''}
+                  onChange={(e) => setAttrs((p) => ({ ...p, dcm: e.target.value }))}
+                  className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                />
+              </div>
             </div>
           )}
 
