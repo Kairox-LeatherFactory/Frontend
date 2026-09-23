@@ -270,6 +270,7 @@ export default function CuttingSheetSection() {
                     sNo={index + 1}
                     row={row}
                     updateRowInState={updateRowInState}
+                    stylesList={stylesList}
                   />
                 ))
               )}
@@ -297,7 +298,7 @@ export default function CuttingSheetSection() {
   );
 }
 
-const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
+const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList }) => {
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
   const [updateRowMutation] = useUpdateCuttingRowMutation();
@@ -390,6 +391,9 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
     rowClass = "excel-row bg-emerald-50 hover:bg-emerald-100 border-b border-emerald-200 group relative";
   }
 
+  const matchingStyle = stylesList?.find(s => s.id === row.style_id || s.style_code === row.style_id);
+  const displayStyleName = row.style_name || matchingStyle?.style_name || matchingStyle?.style_code || row.style_id || '';
+
   return (
     <tr className={rowClass}>
       <td className="p-0 sticky left-0 z-10 border-r border-slate-300 bg-slate-100 group-focus-within:bg-yellow-100 text-center font-bold text-slate-500">
@@ -408,7 +412,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState }) => {
         {row.order_number || row.order_id || ''}
       </td>
       <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
-        {row.style_name || row.style_id || ''}
+        {displayStyleName}
       </td>
       <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30">
         <input
