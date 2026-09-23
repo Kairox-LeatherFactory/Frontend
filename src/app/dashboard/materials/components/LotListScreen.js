@@ -139,7 +139,23 @@ const availableLots = lotsRes?.lots || [];
       {detailLot && (
         <LotDetail lot={detailLot} onClose={() => setDetailLot(null)} showToast={showToast}
           canEdit={canEdit} canAdjust={canAdjust}
-          onReceive={onReceive ? (lot) => { onReceive({ lotId: lot.lot_id, article: lot.article }); } : null}
+          onReceive={onReceive ? (lot) => {
+            setDetailLot(null);
+            onReceive({
+              lotId: lot.lot_id,
+              barcode: lot.barcode,
+              article: lot.article,
+              colour: lot.colour,
+              supplierId: lot.supplier_id || lot.supplier_name,
+              supplierName: lot.supplier_name,
+              category: lot.category,
+              uom: lot.uom,
+              thickness: lot.thickness,
+              size: lot.size,
+              on_hand: lot.on_hand,
+              available: lot.available,
+            });
+          } : null}
           onChanged={() => { load(); openDetail(detailLot.lot_id); }} />
       )}
     </div>
