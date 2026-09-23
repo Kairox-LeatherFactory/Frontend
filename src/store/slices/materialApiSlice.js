@@ -79,9 +79,19 @@ export const materialApiSlice = apiSlice.injectEndpoints({
             invalidatesTags: ['MaterialLot', 'MaterialStock'],
         }),
 
+        // POST /api/v1/suppliers/orders
+        createSupplierOrder: builder.mutation({
+            query: (orderData) => ({
+                url: '/api/v1/suppliers/orders',
+                method: 'POST',
+                body: orderData,
+            }),
+            invalidatesTags: ['SupplierOrder'],
+        }),
+
         // PATCH /api/v1/suppliers/orders/{id}
         patchSupplierOrder: builder.mutation({
-            query: ({ orderId, status = 'ARRIVED' }) => ({
+            query: ({ orderId, status = 'arrived' }) => ({
                 url: `/api/v1/suppliers/orders/${encodeURIComponent(orderId)}`,
                 method: 'PATCH',
                 body: { status },
@@ -134,6 +144,7 @@ export const {
     useAdjustMaterialLotMutation,
     useRetireMaterialLotMutation,
     useReceiveMaterialsMutation,
+    useCreateSupplierOrderMutation,
     usePatchSupplierOrderMutation,
     usePatchSupplierOrderSpecMutation,
     useGetMaterialLotHistoryQuery,

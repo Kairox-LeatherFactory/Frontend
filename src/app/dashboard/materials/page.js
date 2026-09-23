@@ -14,7 +14,7 @@ import {Package, Lock,Boxes,PackagePlus,Truck,Shirt } from 'lucide-react';
 const SCREENS = [
   { id: 'hub', label: 'Overview & Alerts', icon: Boxes },
   { id: 'lots', label: 'Lot Directory', icon: Package },
-  { id: 'style', label: 'Leather by Style', icon: Shirt },
+  { id: 'style', label: 'Style Recipe (BOM)', icon: Shirt },
   { id: 'intake', label: 'Add Material', icon: PackagePlus, writersOnly: true },
   { id: 'orders', label: 'Supplier Orders', dmOnly: true, icon: Truck },
 ];
@@ -84,29 +84,23 @@ export default function MaterialsPage() {
       {screen === 'hub' && (
         <StockHubScreen showToast={showToast} canOrder={isDmOnly} canEdit={isWriter} canAdjust={isDmOnly}
           onOpenOrder={(prefill) => { setOrderPrefill(prefill); setScreen('orders'); }}
-          onReceive={isDmOnly ? (p) => { setReceivePrefill(p); setScreen('intake'); } : null} />
+          onReceive={isWriter ? (p) => { setReceivePrefill(p); setScreen('intake'); } : null} />
       )}
       {screen === 'lots' && (
         <LotListScreen showToast={showToast} canEdit={isWriter} canAdjust={isDmOnly}
-          onReceive={isDmOnly ? (p) => { setReceivePrefill(p); setScreen('intake'); } : null} />
+          onReceive={isWriter ? (p) => { setReceivePrefill(p); setScreen('intake'); } : null} />
       )}
       {screen === 'style' && (
-        <LeatherByStyleScreen showToast={showToast} />
+        <LeatherByStyleScreen showToast={showToast} onOpenOrder={isDmOnly ? (p) => { setOrderPrefill(p); setScreen('orders'); } : null} />
       )}
       {screen === 'intake' && isWriter && (
         <div className="space-y-8">
-          {/* Team call: this is one physical event on the floor — material
-              arrived. DM/MD check first whether it tops up a lot that
-              already exists (Receiving); only if nothing matches does it
-              become a brand-new spec (Add Material) below. */}
-          {isDmOnly && (
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 px-1">Step 1 — Receive Against an Existing Lot</div>
-              <ReceivingScreen showToast={showToast} prefill={receivePrefill} />
-            </div>
-          )}
           <div>
-            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 px-1">{isDmOnly ? 'Step 2 — ' : ''}No Matching Lot? Add a New Material</div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 px-1">Step 1 — Receive Against an Existing Lot</div>
+            <ReceivingScreen showToast={showToast} prefill={receivePrefill} />
+          </div>
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 px-1">Step 2 — No Matching Lot? Add a New Material</div>
             <AddMaterialScreen showToast={showToast}
               onDuplicate={(p) => { setReceivePrefill(p); window.scrollTo({ top: 0, behavior: 'smooth' }); showToast('Already exists — Receiving above is pre-filled with it.', 'success'); }} />
           </div>

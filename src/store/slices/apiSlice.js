@@ -82,28 +82,52 @@ export const apiSlice = createApi({
     issueCuttingJobSheet: builder.mutation({
       query: (payload) => ({ url: '/api/v1/production/cutting/issue', method: 'POST', body: payload })
     }),
+    getCuttingGrid: builder.query({
+      query: ({ style_id, colour, work_date, date } = {}) => {
+        const qs = new URLSearchParams();
+        if (style_id) qs.append('style_id', style_id);
+        if (colour) qs.append('colour', colour);
+        if (work_date) qs.append('work_date', work_date);
+        else if (date) qs.append('date', date);
+        return `/api/v1/cutting/grid?${qs.toString()}`;
+      },
+      providesTags: ['CuttingGrid']
+    }),
     generateCuttingRows: builder.mutation({
       query: (payload) => ({ 
         url: '/api/v1/cutting/rows/generate', 
         method: 'POST', 
         body: payload,
         timeout: 120000 // Wait for up to 2 minutes
-      })
+      }),
+      invalidatesTags: ['CuttingGrid']
+    }),
+    getCuttingSheet: builder.query({
+      query: ({ row_id, sheet_id }) => `/api/v1/cutting/rows/${row_id}/sheets/${sheet_id}`,
+      providesTags: ['CuttingGrid']
     }),
     createCuttingSheet: builder.mutation({
-      query: ({ row_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}/sheets`, method: 'POST', body: payload })
+      query: ({ row_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}/sheets`, method: 'POST', body: payload }),
+      invalidatesTags: ['CuttingGrid']
     }),
     updateCuttingSheet: builder.mutation({
-      query: ({ row_id, sheet_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}/sheets/${sheet_id}`, method: 'PATCH', body: payload })
+      query: ({ row_id, sheet_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}/sheets/${sheet_id}`, method: 'PATCH', body: payload }),
+      invalidatesTags: ['CuttingGrid']
     }),
     updateCuttingRow: builder.mutation({
-      query: ({ row_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}`, method: 'PATCH', body: payload })
+      query: ({ row_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}`, method: 'PATCH', body: payload }),
+      invalidatesTags: ['CuttingGrid']
     }),
     approveCuttingRow: builder.mutation({
-      query: (row_id) => ({ url: `/api/v1/cutting/rows/${row_id}/approve`, method: 'POST' })
+      query: (row_id) => ({ url: `/api/v1/cutting/rows/${row_id}/approve`, method: 'POST' }),
+      invalidatesTags: ['CuttingGrid']
     }),
     reopenCuttingRow: builder.mutation({
-      query: ({ row_id, reason }) => ({ url: `/api/v1/cutting/rows/${row_id}/reopen?reason=${encodeURIComponent(reason)}`, method: 'POST' })
+      query: ({ row_id, reason }) => ({ 
+        url: `/api/v1/cutting/rows/${row_id}/reopen?reason=${encodeURIComponent(reason || '')}`, 
+        method: 'POST' 
+      }),
+      invalidatesTags: ['CuttingGrid']
     }),
     reassignProductionEvent: builder.mutation({
       query: ({ id, employee_code, override_timestamp }) => ({
@@ -184,15 +208,15 @@ export const apiSlice = createApi({
       query: ({ styleId, noAccessories }) => ({
         url: `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/confirm`,
         method: 'POST',
-        body: { no_accessories_declared: !!noAccessories }
+        body: { no_accessories: !!noAccessories, no_accessories_declared: !!noAccessories }
       }),
       invalidatesTags: (_result, _error, { styleId }) => [{ type: 'AccessorySpec', id: styleId }]
     }),
     copyStyleMaterialSpec: builder.mutation({
-      query: ({ styleId, fromStyleId }) => ({
+      query: ({ styleId, sourceStyleId, fromStyleId, includeSkuOverrides = false }) => ({
         url: `/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/copy-from`,
         method: 'POST',
-        body: { from_style_id: fromStyleId }
+        body: { source_style_id: sourceStyleId || fromStyleId, from_style_id: sourceStyleId || fromStyleId, include_sku_overrides: includeSkuOverrides }
       }),
       invalidatesTags: (_result, _error, { styleId }) => [{ type: 'AccessorySpec', id: styleId }]
     }),
@@ -378,6 +402,10 @@ export const {
   useProductionCuttingMutation,
   useProductionLogTwoDoorMutation,
   useIssueCuttingJobSheetMutation,
+  useGetCuttingGridQuery,
+  useLazyGetCuttingGridQuery,
+  useGetCuttingSheetQuery,
+  useLazyGetCuttingSheetQuery,
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
   useUpdateCuttingSheetMutation,
