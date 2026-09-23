@@ -81,7 +81,7 @@ export default function CuttingSheetSection() {
         material_lot_id: matchingLot ? (matchingLot.lot_id || matchingLot.id) : undefined,
         work_date: workDate || undefined,
         allocate: true,
-        limit: 200
+        limit: 10
       };
 
       const res = await generateRows(payload).unwrap();
