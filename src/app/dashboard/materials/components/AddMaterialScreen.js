@@ -575,6 +575,24 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
             </div>
           )}
 
+          {/* Total DCM simple field right above Create Lot button */}
+          {isLeather && (
+            <div>
+              <label className="text-xs font-black text-slate-700 block mb-1.5">
+                Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
+              </label>
+              <input
+                type="number"
+                step="any"
+                placeholder="Enter total DCM (e.g. 1000)"
+                value={attrs.dcm ?? ''}
+                onChange={(e) => setAttrs((p) => ({ ...p, dcm: e.target.value }))}
+                className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+              />
+            </div>
+          )}
+
           {spec.required_to_add.length === 0 && (
             <p className="text-[11px] font-bold text-amber-600">This category/subtype combination isn&apos;t configured yet — submit is blocked.</p>
           )}
@@ -590,7 +608,7 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
             ) : (
               <PackagePlus className="w-4 h-4" />
             )}
-            Create Lot {sheets.length > 0 ? `(${sheets.length} Sheets)` : ''}
+            Create Lot {targetDcm > 0 ? `(${targetDcm} DCM${sheets.length > 0 ? ` · ${sheets.length} Sheets` : ''})` : ''}
           </button>
         </div>
       )}
