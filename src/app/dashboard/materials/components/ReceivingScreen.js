@@ -129,22 +129,32 @@ export function ReceivingScreen({ showToast, prefill }) {
     };
 
     const submit = async (approveMismatch = false) => {
-        const finalApprovedQty = Number(totalDcm) || Number(approvedQty) || totalSheetsDcm;
+        const appNum = Number(approvedQty) || (totalSheetsDcm > 0 ? totalSheetsDcm : 0);
+        const rejNum = Number(rejectedQty) || 0;
+        const totalNum = Number(totalDcm) || (appNum + rejNum);
+
         if (!lotId) {
             showToast?.('Please select or specify a target lot.', 'error');
             return;
         }
-        if (!finalApprovedQty || finalApprovedQty <= 0) {
+        if (appNum === 0 && rejNum === 0 && totalNum === 0) {
             showToast?.('Please enter a valid quantity.', 'error');
             return;
         }
 
         setSubmitting(true);
         try {
+            const computedSheetCount = sheets.length > 0
+                ? sheets.length
+                : (totalSheetsCount ? parseInt(totalSheetsCount, 10) : 0);
+
             const payload = {
                 lot_id: lotId,
-                approved_qty: finalApprovedQty,
-                rejected_qty: Number(rejectedQty) || 0,
+                // approved_qty: appNum,
+                // rejected_qty: rejNum,
+                total_qty: totalNum,
+                sheet_count: computedSheetCount,
+                sheets: sheets.map((s) => ({ dcm: Number(s.dcm), note: s.note || null })),
             };
             if (supplierOrderId) payload.supplier_order_id = supplierOrderId;
             if (reserveFor) payload.reserve_for_required = Number(reserveFor);
@@ -548,13 +558,12 @@ export function ReceivingScreen({ showToast, prefill }) {
 
                             <div className="w-full h-2.5 rounded-full bg-slate-200 overflow-hidden">
                                 <div
-                                    className={`h-full transition-all duration-300 ${
-                                        isMatching
+                                    className={`h-full transition-all duration-300 ${isMatching
                                             ? 'bg-emerald-500'
                                             : isOver
-                                            ? 'bg-red-500'
-                                            : 'bg-amber-600'
-                                    }`}
+                                                ? 'bg-red-500'
+                                                : 'bg-amber-600'
+                                        }`}
                                     style={{ width: `${progressPercent}%` }}
                                 />
                             </div>
