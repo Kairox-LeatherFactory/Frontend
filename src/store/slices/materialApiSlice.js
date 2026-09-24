@@ -151,11 +151,16 @@ export const materialApiSlice = apiSlice.injectEndpoints({
 
         // POST /api/v1/materials/lots/{lot_id}/sheets
         createLotSheet: builder.mutation({
-            query: ({ lotId, ...sheetData }) => ({
-                url: `/api/v1/materials/lots/${encodeURIComponent(lotId)}/sheets`,
-                method: 'POST',
-                body: sheetData,
-            }),
+            query: ({ lotId, sheets, ...sheetData }) => {
+                const bodyPayload = sheets 
+                    ? { sheets } 
+                    : (sheetData.dcm !== undefined ? { sheets: [{ dcm: Number(sheetData.dcm), note: sheetData.note || null }] } : sheetData);
+                return {
+                    url: `/api/v1/materials/lots/${encodeURIComponent(lotId)}/sheets`,
+                    method: 'POST',
+                    body: bodyPayload,
+                };
+            },
             invalidatesTags: (result, error, { lotId }) => [{ type: 'MaterialLot', id: lotId }, 'MaterialStock'],
         }),
 
