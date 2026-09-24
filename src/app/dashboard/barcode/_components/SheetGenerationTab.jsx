@@ -128,19 +128,14 @@ export default function SheetGenerationTab({
     });
   }, [orders]);
 
-  // Lot dropdown options, e.g. "GOAT SUEDE — D.BLUE (12099.5 dcm)"
+  // Lot dropdown options — label is just article + colour, e.g. "GOAT SUEDE D.BLUE"
   const lotOptions = useMemo(() => {
     return (lots || []).map((l) => {
-      const qty = l.available ?? l.remaining ?? l.on_hand;
-      const sheetCount = l.sheets_balance ?? l.sheets_arrived;
-      const sheetPart = sheetCount !== undefined && sheetCount !== null ? ` · ${sheetCount} sheets` : '';
-      const qtyPart = qty !== undefined && qty !== null ? ` (${qty} ${l.uom || 'dcm'}${sheetPart})` : '';
       const id = l.lot_id || l.id;
-      const barcodePart = l.barcode ? `${l.barcode} · ` : '';
-      const suggestedPart = suggestedLotId && id === suggestedLotId ? ' ★ Suggested' : '';
+      const suggestedPart = suggestedLotId && id === suggestedLotId ? ' ★' : '';
       return {
         value: id,
-        label: `${barcodePart}${l.article || 'LOT'} — ${l.colour || '-'}${qtyPart}${suggestedPart}`,
+        label: `${[l.article, l.colour].filter(Boolean).join(' ') || 'LOT'}${suggestedPart}`,
       };
     });
   }, [lots, suggestedLotId]);
