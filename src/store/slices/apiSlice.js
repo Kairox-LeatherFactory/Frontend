@@ -36,7 +36,10 @@ export const apiSlice = createApi({
       query: (code) => `/api/v1/barcode/resolve?code=${encodeURIComponent(code)}`
     }),
     getBarcodeOrders: builder.query({
-      query: () => '/api/v1/barcode/orders'
+      query: () => '/api/v1/barcode/orders',
+      // Endpoint is paginated: { items, total, limit, offset, count, has_more }
+      transformResponse: (response) =>
+        Array.isArray(response) ? response : Array.isArray(response?.items) ? response.items : []
     }),
     getPieceState: builder.query({
       query: (params) => {

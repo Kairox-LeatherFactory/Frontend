@@ -106,9 +106,29 @@ export const barcodeApi = createApi({
     // 4. GET /api/v1/barcode/orders
     // Replaces: orders, ordersLoading, ordersError
     // ────────────────────────────────────────────────────────────────────
+    // Response shape (paginated):
+    //   { items: [{ order_id, order_number, client_name, minted,
+    //     first_generated_at, last_generated_at }], total, limit, offset,
+    //   count, has_more }
+    // Walks every page (while has_more) and returns the flat items array.
     getBarcodeOrders: builder.query({
-      query: () => '/api/v1/barcode/orders',
-      transformResponse: (response) => Array.isArray(response) ? response : [],
+      async queryFn(_arg, _queryApi, _extraOptions, fetchWithBQ) {
+        const limit = 50;
+        const all = [];
+        let offset = 0;
+        // Hard cap on pages as a guard against a backend that never clears has_more
+        for (let page = 0; page < 100; page += 1) {
+          const result = await fetchWithBQ(`/api/v1/barcode/orders?limit=${limit}&offset=${offset}`);
+          if (result.error) return { error: result.error };
+          const res = result.data;
+          if (Array.isArray(res)) return { data: res };
+          const items = Array.isArray(res?.items) ? res.items : [];
+          all.push(...items);
+          if (!res?.has_more || items.length === 0) break;
+          offset += items.length;
+        }
+        return { data: all };
+      },
       providesTags: ['BarcodeOrders'],
     }),
 
