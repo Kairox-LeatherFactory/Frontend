@@ -28,7 +28,7 @@ export const barcodeApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Employees', /* 'Drawers' — DEPRECATED: drawer system removed (store migration) */ 'Materials', 'BarcodeOrders', 'OrderMeta', 'OrderBarcodes'],
+  tagTypes: ['Employees', /* 'Drawers' — DEPRECATED: drawer system removed (store migration) */ 'Materials', 'BarcodeOrders', 'OrderMeta', 'OrderBarcodes', 'LeatherLots', 'LotSheets'],
   endpoints: (builder) => ({
     // ────────────────────────────────────────────────────────────────────
     // 1. GET /api/v1/employees
@@ -150,6 +150,30 @@ export const barcodeApi = createApi({
       },
       providesTags: (_result, _error, arg) => [{ type: 'OrderBarcodes', id: arg.orderId }],
     }),
+
+    // ────────────────────────────────────────────────────────────────────
+    // 7. GET /api/v1/materials/lots?category=LEATHER
+    // Leather lots offered in the Sheet Barcode generator
+    // ────────────────────────────────────────────────────────────────────
+    getLeatherLots: builder.query({
+      query: () => '/api/v1/materials/lots?category=LEATHER',
+      transformResponse: (response) => {
+        if (Array.isArray(response)) return response;
+        if (Array.isArray(response?.lots)) return response.lots;
+        if (Array.isArray(response?.items)) return response.items;
+        return [];
+      },
+      providesTags: ['LeatherLots'],
+    }),
+
+    // ────────────────────────────────────────────────────────────────────
+    // 8. GET /api/v1/materials/lots/:lotId/sheets
+    // Individual leather sheets of a lot — each sheet's `code` is its barcode
+    // ────────────────────────────────────────────────────────────────────
+    getLotSheets: builder.query({
+      query: (lotId) => `/api/v1/materials/lots/${encodeURIComponent(lotId)}/sheets`,
+      providesTags: (_result, _error, lotId) => [{ type: 'LotSheets', id: lotId }],
+    }),
   }),
 });
 
@@ -159,4 +183,6 @@ export const {
   useGetBarcodeOrdersQuery,
   useGetOrderMetaQuery,
   useGetOrderBarcodesQuery,
+  useGetLeatherLotsQuery,
+  useGetLotSheetsQuery,
 } = barcodeApi;

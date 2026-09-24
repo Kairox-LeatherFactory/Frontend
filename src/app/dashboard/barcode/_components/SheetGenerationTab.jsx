@@ -3,7 +3,7 @@ import { useState, useMemo } from 'react';
 import { Layers, Plus, Printer, Send, Trash2, CheckCircle2, RotateCcw, Search, Barcode as BarcodeIcon, Sparkles, Loader2 } from 'lucide-react';
 import { BRAND, inputCls, fieldStyle } from '../_lib/constants';
 import { statusBadgeClass } from '../_lib/helpers';
-import { useGetBarcodeOrdersQuery, useGetOrderMetaQuery } from '../_lib/barcodeApiSlice';
+import { useGetBarcodeOrdersQuery, useGetOrderMetaQuery, useGetLeatherLotsQuery, useGetLotSheetsQuery } from '../_lib/barcodeApiSlice';
 import BarcodeCanvas from './BarcodeCanvas';
 import ScreenSafeSelect from './ScreenSafeSelect';
 
@@ -35,7 +35,10 @@ const DEFAULT_COLORS = [
  * Dedicated interactive generator for cutting and production sheet barcodes.
  * 
  * FEATURES:
- * - Direct minting form: Order (dropdown from /api/v1/barcode/orders) and Color.
+ * - Minting form: Order (/api/v1/barcode/orders) → Lot (/api/v1/materials/lots)
+ *   → Color. Choosing a lot loads its sheets from
+ *   /api/v1/materials/lots/:lotId/sheets; each sheet's `code` (e.g. LS-000005)
+ *   is used as the barcode value.
  * - Live preview of barcode codes to be generated.
  * - Stores minted sheet barcodes into Redux store + batch history.
  * - Printable on physical 98mm × 65.5mm sheet sticker labels (8 per A4 sheet).
@@ -61,9 +64,41 @@ export default function SheetGenerationTab({
   const orders = propOrders && propOrders.length > 0 ? propOrders : fetchedOrders;
   const ordersError = ordersErrorObj?.data?.detail || ordersErrorObj?.error || null;
 
-  // Form input state: ONLY Order and Color
+  // Form input state: Order → Lot → Color
   const [selectedOrderId, setSelectedOrderId] = useState('');
+  const [selectedLotId, setSelectedLotId] = useState('');
   const [color, setColor] = useState('');
+  // Sheets are selected by default; this tracks the ones the user unticked
+  const [excludedSheetCodes, setExcludedSheetCodes] = useState(new Set());
+
+  // Leather lots roster
+  const {
+    data: lots = [],
+    isLoading: lotsLoading,
+    error: lotsErrorObj,
+  } = useGetLeatherLotsQuery(undefined, { skip: token === false });
+  const lotsError = lotsErrorObj?.data?.detail || lotsErrorObj?.error || null;
+
+  // Sheets of the selected lot — each sheet's `code` is the barcode to mint
+  const {
+    data: lotSheetsData,
+    isFetching: sheetsLoading,
+    error: sheetsErrorObj,
+  } = useGetLotSheetsQuery(selectedLotId, { skip: !selectedLotId });
+  // A 404 just means the lot has no sheets registered yet — show the empty state, not an error
+  const sheetsError = sheetsErrorObj?.status === 404
+    ? null
+    : sheetsErrorObj?.data?.detail || sheetsErrorObj?.error || null;
+  const lotSheets = useMemo(
+    () => (selectedLotId && Array.isArray(lotSheetsData?.sheets) ? lotSheetsData.sheets : []),
+    [selectedLotId, lotSheetsData]
+  );
+
+  const generatedCodes = useMemo(
+    () => new Set((sheetGenerated || []).map((s) => s.pieceCode)),
+    [sheetGenerated]
+  );
+
 
   // Fetch order meta (SKUs and colors) for the selected order
   const {
@@ -91,9 +126,31 @@ export default function SheetGenerationTab({
     });
   }, [orders]);
 
-  // Dynamic & standard color dropdown options (prioritizing selected order's SKU colors)
+  // Lot dropdown options, e.g. "GOAT SUEDE — D.BLUE (12099.5 dcm)"
+  const lotOptions = useMemo(() => {
+    return (lots || []).map((l) => {
+      const qty = l.available ?? l.remaining ?? l.on_hand;
+      const sheetCount = l.sheets_balance ?? l.sheets_arrived;
+      const sheetPart = sheetCount !== undefined && sheetCount !== null ? ` · ${sheetCount} sheets` : '';
+      const qtyPart = qty !== undefined && qty !== null ? ` (${qty} ${l.uom || 'dcm'}${sheetPart})` : '';
+      return {
+        value: l.lot_id || l.id,
+        label: `${l.article || 'LOT'} — ${l.colour || '-'}${qtyPart}`,
+      };
+    });
+  }, [lots]);
+
+  const selectedLot = useMemo(
+    () => (lots || []).find((l) => (l.lot_id || l.id) === selectedLotId),
+    [lots, selectedLotId]
+  );
+
+  // Dynamic & standard color dropdown options (prioritizing selected lot & order's SKU colors)
   const colorOptions = useMemo(() => {
     const set = new Set();
+    // 0. Selected lot colour first
+    if (lotSheetsData?.colour) set.add(lotSheetsData.colour.toUpperCase());
+    if (selectedLot?.colour) set.add(selectedLot.colour.toUpperCase());
     // 1. Order-specific SKU colors first
     const skus = Array.isArray(orderMeta?.skuOptions) ? orderMeta.skuOptions : [];
     skus.forEach((s) => {
@@ -111,60 +168,70 @@ export default function SheetGenerationTab({
       if (s.color) set.add(s.color.toUpperCase());
     });
     return Array.from(set).filter(Boolean).sort().map((c) => ({ value: c, label: c }));
-  }, [orderMeta, materials, sheetGenerated]);
+  }, [orderMeta, materials, sheetGenerated, lotSheetsData, selectedLot]);
 
   // Search & Selection state
   const [search, setSearch] = useState('');
   const [selectedCodes, setSelectedCodes] = useState(new Set());
 
-  // Preview generated code
-  const previewCode = useMemo(() => {
-    const ordNum = selectedOrder?.order_number || selectedOrderId;
-    const ord = ordNum ? ordNum.trim().toUpperCase().replace(/[^a-zA-Z0-9_-]/g, '') : 'ORDER';
-    const col = color.trim() ? color.trim().toUpperCase().replace(/[^a-zA-Z0-9_-]/g, '') : 'COLOR';
-    const existing = sheetGenerated.filter(
-      (s) => (s.orderId?.toUpperCase() === ord || s.orderNumber?.toUpperCase() === ord) && s.color?.toUpperCase() === col
-    ).length;
-    const seq = existing + 1;
-    return `SHT-${ord}-${col}-${String(seq).padStart(3, '0')}`;
-  }, [selectedOrder, selectedOrderId, color, sheetGenerated]);
+  // Sheets that will be minted: selected and not already generated
+  const pendingSheets = useMemo(
+    () => lotSheets.filter((sh) => !excludedSheetCodes.has(sh.code) && !generatedCodes.has(sh.code)),
+    [lotSheets, excludedSheetCodes, generatedCodes]
+  );
 
-  // Form submission handler
+  const toggleSheet = (code) => {
+    setExcludedSheetCodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
+
+  // Preview generated code(s) — the lot sheet codes themselves
+  const previewCode = useMemo(() => {
+    if (!selectedLotId) return 'Select a lot';
+    if (pendingSheets.length === 0) return 'No sheets selected';
+    const shown = pendingSheets.slice(0, 3).map((sh) => sh.code).join(', ');
+    return pendingSheets.length > 3 ? `${shown} +${pendingSheets.length - 3} more` : shown;
+  }, [selectedLotId, pendingSheets]);
+
+  // Form submission handler — one barcode per selected lot sheet, using sheet.code
   const handleGenerate = (e) => {
     e.preventDefault();
     const ord = (selectedOrder?.order_number || selectedOrderId || '').trim();
     const col = color.trim().toUpperCase();
-    if (!ord || !col) return;
-
-    const cleanOrd = ord.toUpperCase().replace(/[^a-zA-Z0-9_-]/g, '');
-    const cleanCol = col.replace(/[^a-zA-Z0-9_-]/g, '');
-    const existing = sheetGenerated.filter(
-      (s) => (s.orderId?.toUpperCase() === cleanOrd || s.orderNumber?.toUpperCase() === cleanOrd) && s.color?.toUpperCase() === cleanCol
-    ).length;
-    const seq = existing + 1;
-    const seqStr = String(seq).padStart(3, '0');
-    const code = `SHT-${cleanOrd}-${cleanCol}-${seqStr}`;
+    if (!ord || !selectedLotId || !col || pendingSheets.length === 0) return;
 
     const clientName = selectedOrder?.client_name || ord;
+    const article = lotSheetsData?.article || selectedLot?.article || '';
+    const uom = lotSheetsData?.uom || 'dcm';
+    const batchNo = `SHT-${Date.now().toString().slice(-6)}`;
+    const createdDate = new Date().toLocaleString();
 
-    const record = {
-      pieceCode: code,
+    const records = pendingSheets.map((sh, idx) => ({
+      pieceCode: sh.code,
+      sheetId: sh.sheet_id,
+      lotId: selectedLotId,
       orderId: ord,
       orderNumber: ord,
       client: clientName,
-      style: `Sheet #${seq}`,
+      article,
+      style: article ? `${article} · ${sh.dcm} ${uom}` : `Sheet ${sh.code}`,
       color: col,
-      size: `${col} Sheet`,
-      serial: seq,
-      serialStr: seqStr,
-      batchNo: `SHT-${Date.now().toString().slice(-6)}`,
-      createdDate: new Date().toLocaleString(),
+      size: `${sh.dcm} ${uom}`,
+      dcm: sh.dcm,
+      serial: idx + 1,
+      serialStr: String(idx + 1).padStart(3, '0'),
+      batchNo,
+      createdDate,
       generatedBy: operatorLabel || 'OPERATOR',
       printStatus: 'PENDING',
       printCount: 0,
-    };
+    }));
 
-    onGenerateSheets([record]);
+    onGenerateSheets(records);
   };
 
   // Filter generated sheets
@@ -210,11 +277,11 @@ export default function SheetGenerationTab({
           <h3 className="text-lg font-black" style={{ color: BRAND.text }}>Generate Sheet Barcodes</h3>
         </div>
         <p className="text-xs" style={{ color: BRAND.textMuted }}>
-          Select the Order and Color to mint a scannable sheet barcode.
+          Select the Order, then the Lot, then the Color. Each leather sheet in the lot is minted with its sheet code as the barcode.
         </p>
 
         <form onSubmit={handleGenerate} className="space-y-4 pt-2">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>
                 Production Order
@@ -230,10 +297,38 @@ export default function SheetGenerationTab({
                   value={selectedOrderId}
                   onChange={(val) => {
                     setSelectedOrderId(val);
+                    setSelectedLotId('');
                     setColor('');
                   }}
                   placeholder="-- Select an order --"
                   options={orderOptions}
+                />
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wide mb-1.5" style={{ color: BRAND.textMuted }}>
+                Lot
+              </label>
+              {lotsLoading && lots.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm py-2.5" style={{ color: BRAND.textMuted }}>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading lots…
+                </div>
+              ) : lotsError && lots.length === 0 ? (
+                <p className="text-sm" style={{ color: '#b91c1c' }}>{String(lotsError)}</p>
+              ) : (
+                <ScreenSafeSelect
+                  value={selectedLotId}
+                  onChange={(val) => {
+                    setSelectedLotId(val);
+                    setExcludedSheetCodes(new Set());
+                    // Auto-fill Color from the chosen lot's colour
+                    const lot = lots.find((l) => (l.lot_id || l.id) === val);
+                    setColor(lot?.colour ? lot.colour.toUpperCase() : '');
+                  }}
+                  placeholder={selectedOrderId ? '-- Select Lot --' : 'Select an order first'}
+                  options={lotOptions}
+                  disabled={!selectedOrderId}
                 />
               )}
             </div>
@@ -251,6 +346,72 @@ export default function SheetGenerationTab({
             </div>
           </div>
 
+          {/* Sheets in the selected lot — their codes become the barcodes */}
+          {selectedLotId && (
+            <div className="rounded-xl p-3 space-y-2" style={{ background: BRAND.bg, border: '1px solid rgba(200,131,74,0.2)' }}>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <p className="text-xs font-bold" style={{ color: BRAND.text }}>
+                  Lot Sheets{lotSheetsData ? ` — ${lotSheetsData.article || ''} ${lotSheetsData.colour || ''} (${lotSheets.length})` : ''}
+                </p>
+                {lotSheets.length > 0 && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setExcludedSheetCodes(new Set())}
+                      className="btn-warm-secondary !min-h-0 !py-1 !px-2.5 text-[11px]"
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExcludedSheetCodes(new Set(lotSheets.map((sh) => sh.code)))}
+                      className="btn-warm-secondary !min-h-0 !py-1 !px-2.5 text-[11px]"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+              </div>
+              {sheetsLoading ? (
+                <div className="flex items-center gap-2 text-xs py-2" style={{ color: BRAND.textMuted }}>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Loading sheets…
+                </div>
+              ) : sheetsError ? (
+                <p className="text-xs" style={{ color: '#b91c1c' }}>{String(sheetsError)}</p>
+              ) : lotSheets.length === 0 ? (
+                <p className="text-xs py-2" style={{ color: BRAND.textMuted }}>No sheets registered for this lot.</p>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 max-h-56 overflow-y-auto">
+                  {lotSheets.map((sh) => {
+                    const minted = generatedCodes.has(sh.code);
+                    const checked = minted || !excludedSheetCodes.has(sh.code);
+                    return (
+                      <label
+                        key={sh.sheet_id || sh.code}
+                        className={`flex items-center gap-2 rounded-lg px-2.5 py-2 text-xs ${minted ? 'opacity-60 cursor-default' : 'cursor-pointer'}`}
+                        style={{ background: '#fff', border: `1px solid ${checked && !minted ? BRAND.accent : 'rgba(200,131,74,0.2)'}` }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={minted}
+                          onChange={() => toggleSheet(sh.code)}
+                          className="w-3.5 h-3.5 accent-[#c8834a]"
+                        />
+                        <span className="min-w-0">
+                          <span className="block font-mono font-bold truncate" style={{ color: '#5a3518' }}>{sh.code}</span>
+                          <span className="block text-[10px] text-gray-500 truncate">
+                            {sh.dcm} {lotSheetsData?.uom || 'dcm'} • {minted ? 'MINTED' : sh.status}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Barcode Preview & Submit Button */}
           <div className="flex items-center justify-between flex-wrap gap-4 pt-2 border-t" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
             <div className="text-xs space-y-0.5">
@@ -262,10 +423,10 @@ export default function SheetGenerationTab({
 
             <button
               type="submit"
-              disabled={!selectedOrderId || !color.trim()}
+              disabled={!selectedOrderId || !selectedLotId || !color.trim() || pendingSheets.length === 0}
               className="btn-warm-primary !min-h-0 !py-2.5 !px-5 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Sparkles className="w-4 h-4" /> Generate Sheet Barcode
+              <Sparkles className="w-4 h-4" /> Generate Sheet Barcode{pendingSheets.length > 1 ? `s (${pendingSheets.length})` : ''}
             </button>
           </div>
         </form>

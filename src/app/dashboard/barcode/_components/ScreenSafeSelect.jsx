@@ -22,6 +22,7 @@ import { selectCls, fieldStyle } from '../_lib/constants';
  * - onChange: Callback fired when an option is selected `(val) => void`.
  * - placeholder: Fallback text when no option is chosen.
  * - portal: When true, mounts dropdown options into `document.body`.
+ * - disabled: When true, the trigger is greyed out and cannot open.
  */
 export default function ScreenSafeSelect({
   value,
@@ -31,6 +32,7 @@ export default function ScreenSafeSelect({
   className = selectCls,
   style = fieldStyle,
   portal = false,
+  disabled = false,
 }) {
   // --------------------------------------------------------------------------
   // 1. STATE & REFERENCES
@@ -127,8 +129,9 @@ export default function ScreenSafeSelect({
       <button
         ref={buttonRef}
         type="button"
+        disabled={disabled}
         onClick={() => setOpen((o) => !o)}
-        className={`${className} flex items-center justify-between gap-2 text-left cursor-pointer`}
+        className={`${className} flex items-center justify-between gap-2 text-left ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
         style={style}
       >
         <span className="truncate">{label}</span>
@@ -138,7 +141,7 @@ export default function ScreenSafeSelect({
       </button>
 
       {/* Render options menu either directly or through body portal */}
-      {open && (portal ? (rect && createPortal(panel, document.body)) : panel)}
+      {open && !disabled && (portal ? (rect && createPortal(panel, document.body)) : panel)}
     </div>
   );
 }
