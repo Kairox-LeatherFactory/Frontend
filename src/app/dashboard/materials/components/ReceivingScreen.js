@@ -141,9 +141,9 @@ export function ReceivingScreen({ showToast, prefill }) {
 
         setSubmitting(true);
         try {
-            const computedSheetCount = sheets.length > 0 
-                ? sheets.length 
-                : (totalSheetsCount ? parseInt(totalSheetsCount, 10) : null);
+            const computedSheetCount = sheets.length > 0
+                ? sheets.length
+                : (totalSheetsCount ? parseInt(totalSheetsCount, 10) : 0);
 
             const payload = {
                 lot_id: lotId,
@@ -555,13 +555,12 @@ export function ReceivingScreen({ showToast, prefill }) {
 
                             <div className="w-full h-2.5 rounded-full bg-slate-200 overflow-hidden">
                                 <div
-                                    className={`h-full transition-all duration-300 ${
-                                        isMatching
+                                    className={`h-full transition-all duration-300 ${isMatching
                                             ? 'bg-emerald-500'
                                             : isOver
-                                            ? 'bg-red-500'
-                                            : 'bg-amber-600'
-                                    }`}
+                                                ? 'bg-red-500'
+                                                : 'bg-amber-600'
+                                        }`}
                                     style={{ width: `${progressPercent}%` }}
                                 />
                             </div>

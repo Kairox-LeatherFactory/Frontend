@@ -102,11 +102,10 @@ export function ArrivalsScreen({ showToast }) {
             <button
               type="button"
               onClick={() => setStatusFilter('ALL')}
-              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${
-                statusFilter === 'ALL'
+              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${statusFilter === 'ALL'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
-              }`}
+                }`}
             >
               All
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
@@ -117,16 +116,14 @@ export function ArrivalsScreen({ showToast }) {
             <button
               type="button"
               onClick={() => setStatusFilter('PENDING')}
-              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${
-                statusFilter === 'PENDING'
+              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${statusFilter === 'PENDING'
                   ? 'bg-amber-500 text-white shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
-              }`}
+                }`}
             >
               <Clock className="w-3.5 h-3.5" /> Pending
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                statusFilter === 'PENDING' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-900'
-              }`}>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${statusFilter === 'PENDING' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-900'
+                }`}>
                 {pendingCount}
               </span>
             </button>
@@ -134,16 +131,14 @@ export function ArrivalsScreen({ showToast }) {
             <button
               type="button"
               onClick={() => setStatusFilter('COMPLETED')}
-              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${
-                statusFilter === 'COMPLETED'
+              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${statusFilter === 'COMPLETED'
                   ? 'bg-emerald-600 text-white shadow-xs'
                   : 'text-slate-500 hover:text-slate-800'
-              }`}
+                }`}
             >
               <CheckCircle2 className="w-3.5 h-3.5" /> Completed
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-                statusFilter === 'COMPLETED' ? 'bg-emerald-700 text-white' : 'bg-emerald-100 text-emerald-900'
-              }`}>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${statusFilter === 'COMPLETED' ? 'bg-emerald-700 text-white' : 'bg-emerald-100 text-emerald-900'
+                }`}>
                 {completedCount}
               </span>
             </button>
@@ -172,8 +167,8 @@ export function ArrivalsScreen({ showToast }) {
             {statusFilter === 'PENDING'
               ? 'No Pending Arrivals Found'
               : statusFilter === 'COMPLETED'
-              ? 'No Completed Arrivals Found'
-              : 'No Material Arrivals Found'}
+                ? 'No Completed Arrivals Found'
+                : 'No Material Arrivals Found'}
           </h3>
           <p className="text-xs text-slate-400 font-medium max-w-md mx-auto">
             {statusFilter === 'PENDING'
@@ -204,11 +199,10 @@ export function ArrivalsScreen({ showToast }) {
                     </h4>
                   </div>
                   <span
-                    className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase border ${
-                      isCompleted
+                    className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase border ${isCompleted
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                         : 'bg-amber-50 text-amber-700 border-amber-200'
-                    }`}
+                      }`}
                   >
                     {arrival.status || 'PENDING'}
                   </span>
@@ -347,7 +341,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
     try {
       const computedSheetCount = sheets.length > 0
         ? sheets.length
-        : (totalSheetsCount ? parseInt(totalSheetsCount, 10) : null);
+        : (totalSheetsCount ? parseInt(totalSheetsCount, 10) : 0);
 
       const payload = {
         receiptId,
@@ -572,9 +566,8 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
 
           <div className="w-full h-2.5 rounded-full bg-slate-200 overflow-hidden">
             <div
-              className={`h-full transition-all duration-300 ${
-                isMatching ? 'bg-emerald-500' : isOver ? 'bg-red-500' : 'bg-amber-600'
-              }`}
+              className={`h-full transition-all duration-300 ${isMatching ? 'bg-emerald-500' : isOver ? 'bg-red-500' : 'bg-amber-600'
+                }`}
               style={{ width: `${progressPercent}%` }}
             />
           </div>
