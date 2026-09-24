@@ -153,15 +153,29 @@ export const barcodeApi = createApi({
 
     // ────────────────────────────────────────────────────────────────────
     // 7. GET /api/v1/materials/lots?category=LEATHER
-    // Leather lots offered in the Sheet Barcode generator
+    // Leather lots offered in the Sheet Barcode generator (called once an
+    // order is selected). Response shape:
+    //   { count, lots: [{ lot_id, barcode, article, colour, thickness, uom,
+    //     available, sheets_balance, ... }], options: { article, colour,
+    //     thickness, size }, suggested_lot_id, required }
     // ────────────────────────────────────────────────────────────────────
     getLeatherLots: builder.query({
       query: () => '/api/v1/materials/lots?category=LEATHER',
       transformResponse: (response) => {
-        if (Array.isArray(response)) return response;
-        if (Array.isArray(response?.lots)) return response.lots;
-        if (Array.isArray(response?.items)) return response.items;
-        return [];
+        const lots = Array.isArray(response)
+          ? response
+          : Array.isArray(response?.lots)
+          ? response.lots
+          : Array.isArray(response?.items)
+          ? response.items
+          : [];
+        return {
+          count: response?.count ?? lots.length,
+          lots,
+          options: response?.options ?? {},
+          suggested_lot_id: response?.suggested_lot_id ?? null,
+          required: response?.required ?? null,
+        };
       },
       providesTags: ['LeatherLots'],
     }),
