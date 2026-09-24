@@ -150,8 +150,8 @@ export function ReceivingScreen({ showToast, prefill }) {
 
             const payload = {
                 lot_id: lotId,
-                approved_qty: appNum,
-                rejected_qty: rejNum,
+                // approved_qty: appNum,
+                // rejected_qty: rejNum,
                 total_qty: totalNum,
                 sheet_count: computedSheetCount,
                 sheets: sheets.map((s) => ({ dcm: Number(s.dcm), note: s.note || null })),
