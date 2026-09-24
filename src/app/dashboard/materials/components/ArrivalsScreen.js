@@ -186,7 +186,16 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
   const [sheets, setSheets] = useState(arrival.sheets || []);
   const [currentSheetDcm, setCurrentSheetDcm] = useState('');
   const [totalSheetsCount, setTotalSheetsCount] = useState(arrival.sheet_count || '');
-  const [totalDcmInput, setTotalDcmInput] = useState(arrival.total_qty || '');
+  const [approvedQty, setApprovedQty] = useState(
+    arrival.approved_qty !== undefined && arrival.approved_qty !== null
+      ? String(arrival.approved_qty)
+      : (arrival.declared_qty || arrival.total_qty || '')
+  );
+  const [rejectedQty, setRejectedQty] = useState(
+    arrival.rejected_qty !== undefined && arrival.rejected_qty !== null
+      ? String(arrival.rejected_qty)
+      : '0'
+  );
   const [thickness, setThickness] = useState(arrival.thickness || '0.6MM');
   const [note, setNote] = useState(arrival.note || '');
 
@@ -194,10 +203,12 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
     return sheets.reduce((sum, s) => sum + (Number(s.dcm) || 0), 0);
   }, [sheets]);
 
-  const targetDcm = Number(totalDcmInput) || 0;
-  const isMatching = targetDcm > 0 && Math.abs(totalSheetsDcm - targetDcm) < 0.001;
-  const isOver = targetDcm > 0 && totalSheetsDcm > targetDcm;
-  const progressPercent = targetDcm > 0 ? Math.min(100, Math.round((totalSheetsDcm / targetDcm) * 100)) : 0;
+  const targetDcm = (Number(approvedQty) || 0) + (Number(rejectedQty) || 0);
+  const isMatching = targetDcm > 0 && Math.abs(totalSheetsDcm - (Number(approvedQty) || 0)) < 0.001;
+  const isOver = targetDcm > 0 && totalSheetsDcm > (Number(approvedQty) || targetDcm);
+  const progressPercent = (Number(approvedQty) || targetDcm) > 0
+    ? Math.min(100, Math.round((totalSheetsDcm / (Number(approvedQty) || targetDcm)) * 100))
+    : 0;
 
   // Add individual sheet handler
   const handleAddSheet = async (e) => {
@@ -237,27 +248,30 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
     setSheets((prev) => prev.filter((s) => s.id !== id).map((s, idx) => ({ ...s, sheetNo: idx + 1 })));
   };
 
-  // Complete / Approve / Reject Arrival Handler
-  const handleCompleteArrival = async (isApproved) => {
-    const approvedQty = isApproved ? (Number(totalDcmInput) || totalSheetsDcm) : 0;
-    const rejectedQty = isApproved ? 0 : (Number(totalDcmInput) || totalSheetsDcm);
+  // Complete Arrival Handler (POST /materials/arrivals/{receipt_id}/complete)
+  const handleCompleteArrival = async () => {
+    const appVal = parseFloat(approvedQty) || 0;
+    const rejVal = parseFloat(rejectedQty) || 0;
+
+    if (appVal === 0 && rejVal === 0 && totalSheetsDcm === 0) {
+      showToast?.('Please enter Approved Qty or Rejected Qty', 'error');
+      return;
+    }
 
     try {
       const payload = {
         receiptId,
-        approved_qty: approvedQty,
-        rejected_qty: rejectedQty,
+        approved_qty: appVal || totalSheetsDcm,
+        rejected_qty: rejVal,
         sheets: sheets.map((s) => ({ dcm: Number(s.dcm), note: s.note || null })),
         thickness: thickness || null,
-        note: note || (isApproved ? 'Approved upon inspection' : 'Rejected upon inspection'),
+        note: note || (appVal > 0 ? 'Approved upon inspection' : 'Rejected upon inspection'),
       };
 
       await completeArrival(payload).unwrap();
       showToast?.(
-        isApproved
-          ? `Arrival approved successfully! (${approvedQty} DCM added to stock)`
-          : `Arrival rejected. (${rejectedQty} DCM logged as rejected)`,
-        isApproved ? 'success' : 'error'
+        `Arrival completed successfully! (${payload.approved_qty} DCM approved · ${payload.rejected_qty} DCM rejected)`,
+        'success'
       );
       onBack();
     } catch (err) {
@@ -475,19 +489,19 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         </div>
       </div>
 
-      {/* Side-by-side: Total Sheets & Total DCM (Sole DCM input on page) */}
+      {/* Side-by-side: Approved Qty (DCM) & Rejected Qty (DCM) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="text-xs font-black text-slate-700 block mb-1.5">
-            Total Sheets <span className="font-semibold text-slate-500">(Sheet Count) *</span>
+            Approved Qty (DCM) <span className="font-semibold text-slate-500">— Enter total received DCM *</span>
           </label>
           <input
             type="number"
-            step="1"
+            step="any"
             disabled={isAlreadyCompleted}
-            placeholder="e.g. 5"
-            value={totalSheetsCount !== '' ? totalSheetsCount : (sheets.length > 0 ? String(sheets.length) : '')}
-            onChange={(e) => setTotalSheetsCount(e.target.value)}
+            placeholder="Enter approved DCM (e.g. 10000)"
+            value={approvedQty}
+            onChange={(e) => setApprovedQty(e.target.value)}
             className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
             style={{ borderColor: 'rgba(200,131,74,0.3)' }}
           />
@@ -495,48 +509,38 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
 
         <div>
           <label className="text-xs font-black text-slate-700 block mb-1.5">
-            Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
+            Rejected Qty (DCM) <span className="font-semibold text-slate-500">(optional)</span>
           </label>
           <input
             type="number"
             step="any"
             disabled={isAlreadyCompleted}
-            placeholder="e.g. 1233"
-            value={totalDcmInput}
-            onChange={(e) => setTotalDcmInput(e.target.value)}
+            placeholder="Enter rejected DCM (e.g. 0)"
+            value={rejectedQty}
+            onChange={(e) => setRejectedQty(e.target.value)}
             className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
             style={{ borderColor: 'rgba(200,131,74,0.3)' }}
           />
         </div>
       </div>
 
-      {/* Bottom Action: Approve & Reject Buttons (POST /materials/arrivals/{receipt_id}/complete) */}
+      {/* Bottom Action: Complete Inspection (POST /materials/arrivals/{receipt_id}/complete) */}
       {!isAlreadyCompleted ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+        <div className="pt-2">
           <button
             type="button"
-            onClick={() => handleCompleteArrival(false)}
-            disabled={isCompleting}
-            className="w-full h-12 rounded-2xl font-black text-xs uppercase tracking-wider text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-300 flex items-center justify-center gap-2 cursor-pointer shadow-sm transition-all"
-          >
-            {isCompleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4 text-rose-600" />}
-            Reject Arrival
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleCompleteArrival(true)}
-            disabled={isCompleting || (targetDcm === 0 && totalSheetsDcm === 0)}
+            onClick={handleCompleteArrival}
+            disabled={isCompleting || (parseFloat(approvedQty || 0) === 0 && parseFloat(rejectedQty || 0) === 0 && totalSheetsDcm === 0)}
             className="w-full h-12 rounded-2xl font-black text-xs uppercase tracking-wider text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-md hover:brightness-105 transition-all"
           >
             {isCompleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4 text-white" />}
-            Approve & Mint Lot ({targetDcm || totalSheetsDcm} DCM)
+            Complete Inspection ({parseFloat(approvedQty || totalSheetsDcm || 0)} DCM Approved · {parseFloat(rejectedQty || 0)} DCM Rejected)
           </button>
         </div>
       ) : (
         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-black flex items-center gap-2">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          <span>This arrival has already been inspected & approved. Stock is available in the Lot Directory.</span>
+          <span>This arrival has already been inspected & completed. Stock is available in the Lot Directory.</span>
         </div>
       )}
     </div>
