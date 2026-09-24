@@ -71,12 +71,14 @@ export default function SheetGenerationTab({
   // Sheets are selected by default; this tracks the ones the user unticked
   const [excludedSheetCodes, setExcludedSheetCodes] = useState(new Set());
 
-  // Leather lots roster
+  // Leather lots roster — fetched once an order is selected
   const {
-    data: lots = [],
-    isLoading: lotsLoading,
+    data: lotsData,
+    isFetching: lotsLoading,
     error: lotsErrorObj,
-  } = useGetLeatherLotsQuery(undefined, { skip: token === false });
+  } = useGetLeatherLotsQuery(undefined, { skip: token === false || !selectedOrderId });
+  const lots = useMemo(() => lotsData?.lots ?? [], [lotsData]);
+  const suggestedLotId = lotsData?.suggested_lot_id ?? null;
   const lotsError = lotsErrorObj?.data?.detail || lotsErrorObj?.error || null;
 
   // Sheets of the selected lot — each sheet's `code` is the barcode to mint
@@ -133,12 +135,15 @@ export default function SheetGenerationTab({
       const sheetCount = l.sheets_balance ?? l.sheets_arrived;
       const sheetPart = sheetCount !== undefined && sheetCount !== null ? ` · ${sheetCount} sheets` : '';
       const qtyPart = qty !== undefined && qty !== null ? ` (${qty} ${l.uom || 'dcm'}${sheetPart})` : '';
+      const id = l.lot_id || l.id;
+      const barcodePart = l.barcode ? `${l.barcode} · ` : '';
+      const suggestedPart = suggestedLotId && id === suggestedLotId ? ' ★ Suggested' : '';
       return {
-        value: l.lot_id || l.id,
-        label: `${l.article || 'LOT'} — ${l.colour || '-'}${qtyPart}`,
+        value: id,
+        label: `${barcodePart}${l.article || 'LOT'} — ${l.colour || '-'}${qtyPart}${suggestedPart}`,
       };
     });
-  }, [lots]);
+  }, [lots, suggestedLotId]);
 
   const selectedLot = useMemo(
     () => (lots || []).find((l) => (l.lot_id || l.id) === selectedLotId),
@@ -151,6 +156,10 @@ export default function SheetGenerationTab({
     // 0. Selected lot colour first
     if (lotSheetsData?.colour) set.add(lotSheetsData.colour.toUpperCase());
     if (selectedLot?.colour) set.add(selectedLot.colour.toUpperCase());
+    // 0b. Colours offered by the lots response
+    (Array.isArray(lotsData?.options?.colour) ? lotsData.options.colour : []).forEach((c) => {
+      if (c) set.add(String(c).toUpperCase());
+    });
     // 1. Order-specific SKU colors first
     const skus = Array.isArray(orderMeta?.skuOptions) ? orderMeta.skuOptions : [];
     skus.forEach((s) => {
@@ -168,7 +177,7 @@ export default function SheetGenerationTab({
       if (s.color) set.add(s.color.toUpperCase());
     });
     return Array.from(set).filter(Boolean).sort().map((c) => ({ value: c, label: c }));
-  }, [orderMeta, materials, sheetGenerated, lotSheetsData, selectedLot]);
+  }, [orderMeta, materials, sheetGenerated, lotSheetsData, selectedLot, lotsData]);
 
   // Search & Selection state
   const [search, setSearch] = useState('');
