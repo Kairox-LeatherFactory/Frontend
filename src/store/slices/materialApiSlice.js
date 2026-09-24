@@ -79,9 +79,19 @@ export const materialApiSlice = apiSlice.injectEndpoints({
             invalidatesTags: ['MaterialLot', 'MaterialStock'],
         }),
 
+        // POST /api/v1/suppliers/orders
+        createSupplierOrder: builder.mutation({
+            query: (orderData) => ({
+                url: '/api/v1/suppliers/orders',
+                method: 'POST',
+                body: orderData,
+            }),
+            invalidatesTags: ['SupplierOrder'],
+        }),
+
         // PATCH /api/v1/suppliers/orders/{id}
         patchSupplierOrder: builder.mutation({
-            query: ({ orderId, status = 'ARRIVED' }) => ({
+            query: ({ orderId, status = 'arrived' }) => ({
                 url: `/api/v1/suppliers/orders/${encodeURIComponent(orderId)}`,
                 method: 'PATCH',
                 body: { status },
@@ -116,6 +126,48 @@ export const materialApiSlice = apiSlice.injectEndpoints({
             query: (pieceId) => `/api/v1/materials/pieces/${encodeURIComponent(pieceId)}/consumption`,
             providesTags: (result, error, id) => [{ type: 'MaterialLot', id }],
         }),
+
+        // POST /api/v1/materials/arrivals
+        createMaterialArrival: builder.mutation({
+            query: (arrivalData) => ({
+                url: '/api/v1/materials/arrivals',
+                method: 'POST',
+                body: arrivalData,
+            }),
+            invalidatesTags: ['MaterialArrival', 'MaterialLot', 'MaterialStock'],
+        }),
+
+        // GET /api/v1/materials/arrivals
+        getMaterialArrivals: builder.query({
+            query: (params = {}) => {
+                const qs = new URLSearchParams();
+                for (const [key, value] of Object.entries(params)) {
+                    if (value !== undefined && value !== null && value !== '') qs.append(key, value);
+                }
+                return `/api/v1/materials/arrivals${qs.toString() ? `?${qs.toString()}` : ''}`;
+            },
+            providesTags: ['MaterialArrival'],
+        }),
+
+        // POST /api/v1/materials/lots/{lot_id}/sheets
+        createLotSheet: builder.mutation({
+            query: ({ lotId, ...sheetData }) => ({
+                url: `/api/v1/materials/lots/${encodeURIComponent(lotId)}/sheets`,
+                method: 'POST',
+                body: sheetData,
+            }),
+            invalidatesTags: (result, error, { lotId }) => [{ type: 'MaterialLot', id: lotId }, 'MaterialStock'],
+        }),
+
+        // POST /api/v1/materials/arrivals/{receipt_id}/complete
+        completeMaterialArrival: builder.mutation({
+            query: ({ receiptId, ...payload }) => ({
+                url: `/api/v1/materials/arrivals/${encodeURIComponent(receiptId)}/complete`,
+                method: 'POST',
+                body: payload,
+            }),
+            invalidatesTags: ['MaterialArrival', 'MaterialLot', 'MaterialStock'],
+        }),
     }),
     overrideExisting: true,
 });
@@ -134,10 +186,16 @@ export const {
     useAdjustMaterialLotMutation,
     useRetireMaterialLotMutation,
     useReceiveMaterialsMutation,
+    useCreateSupplierOrderMutation,
     usePatchSupplierOrderMutation,
     usePatchSupplierOrderSpecMutation,
     useGetMaterialLotHistoryQuery,
     useGetLeatherByStyleQuery,
     useGetPieceConsumptionQuery,
     useLazyGetPieceConsumptionQuery,
+    useCreateMaterialArrivalMutation,
+    useGetMaterialArrivalsQuery,
+    useLazyGetMaterialArrivalsQuery,
+    useCreateLotSheetMutation,
+    useCompleteMaterialArrivalMutation,
 } = materialApiSlice;

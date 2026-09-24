@@ -8,14 +8,16 @@ import { StockHubScreen } from './components/StockHubScreen';
 import { ReceivingScreen } from './components/ReceivingScreen';
 import { SupplierOrdersScreen } from './components/SupplierOrdersScreen';
 import { LeatherByStyleScreen } from './components/LeatherByStyleScreen';
+import { ArrivalsScreen } from './components/ArrivalsScreen';
 
-import {Package, Lock,Boxes,PackagePlus,Truck,Shirt } from 'lucide-react';
+import { Package, Lock, Boxes, PackagePlus, Truck, Shirt, PackageCheck } from 'lucide-react';
 // ── Page shell ─────────────────────────────────────────────────────────
 const SCREENS = [
   { id: 'hub', label: 'Overview & Alerts', icon: Boxes },
   { id: 'lots', label: 'Lot Directory', icon: Package },
-  { id: 'style', label: 'Leather by Style', icon: Shirt },
+  { id: 'style', label: 'Style Recipe (BOM)', icon: Shirt },
   { id: 'intake', label: 'Add Material', icon: PackagePlus, writersOnly: true },
+  { id: 'arrivals', label: 'Arrivals', icon: PackageCheck, writersOnly: true },
   { id: 'orders', label: 'Supplier Orders', dmOnly: true, icon: Truck },
 ];
 export default function MaterialsPage() {
@@ -91,7 +93,7 @@ export default function MaterialsPage() {
           onReceive={isWriter ? (p) => { setReceivePrefill(p); setScreen('intake'); } : null} />
       )}
       {screen === 'style' && (
-        <LeatherByStyleScreen showToast={showToast} />
+        <LeatherByStyleScreen showToast={showToast} onOpenOrder={isDmOnly ? (p) => { setOrderPrefill(p); setScreen('orders'); } : null} />
       )}
       {screen === 'intake' && isWriter && (
         <div className="space-y-8">
@@ -105,6 +107,9 @@ export default function MaterialsPage() {
               onDuplicate={(p) => { setReceivePrefill(p); window.scrollTo({ top: 0, behavior: 'smooth' }); showToast('Already exists — Receiving above is pre-filled with it.', 'success'); }} />
           </div>
         </div>
+      )}
+      {screen === 'arrivals' && isWriter && (
+        <ArrivalsScreen showToast={showToast} />
       )}
       {screen === 'orders' && isDmOnly && (
         <SupplierOrdersScreen showToast={showToast} prefill={orderPrefill}

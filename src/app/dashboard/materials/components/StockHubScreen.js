@@ -1,16 +1,22 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, CheckCircle2, AlertTriangle, ChevronRight, Truck, Shirt, ChevronDown } from 'lucide-react';
-import { useGetMaterialSpecQuery, useGetMaterialLotsQuery, useLazyGetMaterialLotsQuery, useLazyGetMaterialLotQuery, useLazyGetMaterialsStockQuery, useGetLeatherByStyleQuery }
-    from '@/store/slices/materialApiSlice';
+import { Search, Loader2, CheckCircle2, AlertTriangle, ChevronRight, Truck, Shirt, ChevronDown, PackageCheck, AlertCircle } from 'lucide-react';
+import {
+    useGetMaterialSpecQuery,
+    useGetMaterialLotsQuery,
+    useLazyGetMaterialLotsQuery,
+    useLazyGetMaterialLotQuery,
+    useLazyGetMaterialsStockQuery,
+    useGetLeatherByStyleQuery,
+} from '@/store/slices/materialApiSlice';
 import { errMsg, Tile, SelectableFilterCombobox, CategoryPicker } from './shared';
-
 import { LotDetail } from './LotDetailModal';
+
 export function StockHubScreen({ showToast, canOrder, onOpenOrder, canEdit, canAdjust, onReceive }) {
-    
     const [triggerGetLots] = useLazyGetMaterialLotsQuery();
     const [triggerGetLot] = useLazyGetMaterialLotQuery();
     const [triggerGetStock] = useLazyGetMaterialsStockQuery();
+
     const [category, setCategory] = useState('LEATHER');
     const [subtype, setSubtype] = useState('');
     const [filters, setFilters] = useState({ article: '', colour: '', thickness: '', size: '' });
@@ -20,18 +26,20 @@ export function StockHubScreen({ showToast, canOrder, onOpenOrder, canEdit, canA
     const [lots, setLots] = useState([]);
     const [detailLot, setDetailLot] = useState(null);
     const [styleOpen, setStyleOpen] = useState(false);
+
     const { data: styleData, isLoading: styleLoading } = useGetLeatherByStyleQuery({}, { skip: !styleOpen });
-const { data: spec } = useGetMaterialSpecQuery({ category, subtype }, { skip: !category });
-const { data: lotsRes } = useGetMaterialLotsQuery({ category, subtype: subtype || undefined }, { skip: !category });
-const availableLots = lotsRes?.lots || [];
+    const { data: spec } = useGetMaterialSpecQuery({ category, subtype }, { skip: !category });
+    const { data: lotsRes } = useGetMaterialLotsQuery({ category, subtype: subtype || undefined }, { skip: !category });
+    const availableLots = lotsRes?.lots || [];
+
     const openDetail = async (lotId) => {
         try {
             const full = await triggerGetLot(lotId).unwrap();
             setDetailLot(full);
-        } catch (e) { showToast(errMsg(e), 'error'); }
+        } catch (e) {
+            showToast(errMsg(e), 'error');
+        }
     };
-
-    
 
     const getFilterOptions = (field) => {
         if (!availableLots.length) return [];
@@ -49,7 +57,7 @@ const availableLots = lotsRes?.lots || [];
             return Array.from(map.entries()).map(([art, info]) => ({
                 value: art,
                 label: art,
-                sub: `${info.count} lot(s) · ${info.avail.toFixed(1)} ${info.uom} avail`,
+                sub: `${info.count} lot(s) · ${info.avail.toFixed(1)} ${info.uom} available`,
             }));
         }
         if (field === 'colour') {
@@ -88,24 +96,42 @@ const availableLots = lotsRes?.lots || [];
         } finally {
             setLoading(false);
         }
-    }, [category, subtype, filters, required, showToast]);
+    }, [category, subtype, filters, required, showToast, triggerGetLots, triggerGetStock]);
 
-    useEffect(() => { runCheck(); }, [category, subtype]); // eslint-disable-line react-hooks/exhaustive-deps
+    useEffect(() => {
+        runCheck();
+    }, [category, subtype]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const shortBy = stock?.short_by ?? 0;
 
     return (
-        <div className="space-y-5">
-            <div className="bg-white p-5 rounded-3xl shadow-sm border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+        <div className="space-y-6">
+            {/* Filter & Category Card */}
+            <div className="bg-white p-6 rounded-3xl shadow-sm border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
+                <div className="flex items-center justify-between border-b pb-3" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                    <div>
+                        <h2 className="text-sm font-black text-slate-800">Stock Availability &amp; Shortage Check</h2>
+                        <p className="text-[11px] font-medium text-slate-400">Select material category and filter to check stock balance</p>
+                    </div>
+                </div>
+
                 <CategoryPicker
                     category={category}
                     subtype={subtype}
-                    onCategory={(c) => { setCategory(c); setSubtype(''); setFilters({ article: '', colour: '', thickness: '', size: '' }); }}
-                    onSubtype={(s) => { setSubtype(s); setFilters({ article: '', colour: '', thickness: '', size: '' }); }}
+                    onCategory={(c) => {
+                        setCategory(c);
+                        setSubtype('');
+                        setFilters({ article: '', colour: '', thickness: '', size: '' });
+                    }}
+                    onSubtype={(s) => {
+                        setSubtype(s);
+                        setFilters({ article: '', colour: '', thickness: '', size: '' });
+                    }}
                     subtypeRequired={category === 'ACCESSORY'}
                 />
-                {spec && spec.filters.length > 0 && (
-                    <div className="flex flex-wrap items-center gap-2">
+
+                {spec && spec.filters && spec.filters.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2.5 pt-2">
                         {spec.filters.map((f) => (
                             <SelectableFilterCombobox
                                 key={f}
@@ -115,129 +141,196 @@ const availableLots = lotsRes?.lots || [];
                                 options={getFilterOptions(f)}
                             />
                         ))}
-                        <button onClick={runCheck} className="h-9 px-4 rounded-lg font-black text-[10px] uppercase text-white flex items-center gap-1.5 shrink-0" style={{ background: '#c8834a' }}>
-                            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Check
+                        <button
+                            onClick={runCheck}
+                            className="h-9 px-4 rounded-xl font-black text-xs uppercase text-white flex items-center gap-1.5 shrink-0 shadow-sm transition-all active:scale-95"
+                            style={{ background: '#c8834a' }}
+                        >
+                            {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Search className="w-3.5 h-3.5" />} Filter Stock
                         </button>
                     </div>
                 )}
             </div>
 
+            {/* Stock Summary Numbers */}
             {stock && (
-                <div className="bg-white p-5 rounded-3xl shadow-sm border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-                    <div className="flex flex-wrap gap-3">
-                        <Tile label="On Hand" value={stock.on_hand} uom={stock.uom} />
-                        <Tile label="Reserved" value={stock.reserved} uom={stock.uom} />
-                        <Tile label="Available" value={stock.available} uom={stock.uom} primary />
+                <div className="bg-white p-6 rounded-3xl shadow-sm border space-y-5" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <Tile label="Total In Factory" value={stock.on_hand} uom={stock.uom} />
+                        <Tile label="Reserved for Orders" value={stock.reserved} uom={stock.uom} />
+                        <Tile label="Ready / Available to Use" value={stock.available} uom={stock.uom} primary />
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-                        <input type="number" placeholder="Required qty…" value={required} onChange={(e) => setRequired(e.target.value)}
-                            className="h-9 w-40 px-3 bg-slate-50 border rounded-lg text-xs font-bold outline-none focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
-                        <button onClick={runCheck} className="h-9 px-4 rounded-lg font-black text-[10px] uppercase text-white" style={{ background: '#c8834a' }}>Check Shortfall</button>
+
+                    {/* Shortfall Calculator */}
+                    <div className="pt-3 border-t flex flex-wrap items-center gap-3" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="number"
+                                placeholder="Enter required quantity…"
+                                value={required}
+                                onChange={(e) => setRequired(e.target.value)}
+                                className="h-10 w-52 px-3 bg-slate-50 border rounded-xl text-xs font-bold outline-none focus:bg-white focus:ring-2 focus:ring-amber-500/20"
+                                style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+                            />
+                            <button
+                                onClick={runCheck}
+                                className="h-10 px-4 rounded-xl font-black text-xs uppercase text-white shadow-sm"
+                                style={{ background: '#c8834a' }}
+                            >
+                                Calculate Shortage
+                            </button>
+                        </div>
+
                         {stock.required !== undefined && stock.required !== null && (
                             shortBy > 0 ? (
-                                <div className="flex items-center gap-2 ml-auto p-2.5 rounded-xl bg-red-50 border border-red-200">
-                                    <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                                    <span className="text-xs font-bold text-red-700">Short by {shortBy.toFixed(1)} {stock.uom}</span>
+                                <div className="flex items-center gap-3 ml-auto p-2.5 px-3 rounded-2xl bg-rose-50 border border-rose-200">
+                                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                                    <span className="text-xs font-black text-rose-700">
+                                        Shortage: {shortBy.toFixed(1)} {stock.uom} needed
+                                    </span>
                                     {canOrder && (
-                                        <button onClick={() => onOpenOrder({ category, subtype, article: filters.article, colour: filters.colour, thickness: filters.thickness, qty: shortBy, supplier_id: stock.suggested_supplier?.id })}
-                                            className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white flex items-center gap-1" style={{ background: '#dc2626' }}>
-                                            <Truck className="w-3.5 h-3.5" /> Order {stock.suggested_supplier ? `via ${stock.suggested_supplier.name}` : ''}
+                                        <button
+                                            onClick={() => onOpenOrder({
+                                                category,
+                                                subtype,
+                                                article: filters.article,
+                                                colour: filters.colour,
+                                                thickness: filters.thickness,
+                                                qty: shortBy,
+                                                supplier_id: stock.suggested_supplier?.id,
+                                            })}
+                                            className="h-8 px-3 rounded-xl font-black text-xs uppercase text-white flex items-center gap-1 shadow-sm bg-rose-600 hover:bg-rose-700"
+                                        >
+                                            <Truck className="w-3.5 h-3.5" /> Order from Supplier
                                         </button>
                                     )}
                                 </div>
                             ) : (
-                                <span className="ml-auto text-xs font-bold text-emerald-600 flex items-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Covers requirement</span>
+                                <div className="ml-auto text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-2xl flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Sufficient Stock (Covers requirement)
+                                </div>
                             )
                         )}
                     </div>
                 </div>
             )}
 
+            {/* Needs Attention / Stock Alerts */}
             {(() => {
-                // Hub's job is "glance and alert", not "browse" — that's the Lots
-                // screen. Only surface the lots that actually need a look: zero
-                // available, or can't cover the typed requirement.
                 const attention = lots
-                    .filter((l) => l.available === 0 || l.covers_required === false)
-                    .sort((a, b) => a.available - b.available)
+                    .filter((l) => Number(l.available) === 0 || l.covers_required === false)
+                    .sort((a, b) => Number(a.available) - Number(b.available))
                     .slice(0, 5);
-                // A spec with ZERO lots at all is the worst case, not a healthy
-                // one — an empty `lots` array can't produce any per-lot attention
-                // rows, so without this the panel wrongly said "healthy" right
-                // under a red "short by 99999999999999 mtrs" banner above it.
+
                 const hasShortfall = stock?.required !== undefined && stock?.required !== null && shortBy > 0;
                 const trulyHealthy = attention.length === 0 && !hasShortfall;
+
                 return (
-                    <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-                        <div className="p-4 border-b font-black text-xs uppercase tracking-wider text-slate-500 flex items-center gap-2" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Needs Attention
+                    <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
+                        <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                            <div className="flex items-center gap-2">
+                                <AlertCircle className="w-4 h-4 text-amber-600" />
+                                <h3 className="text-xs font-black uppercase tracking-wider text-slate-700">Stock Alerts &amp; Critical Lots</h3>
+                            </div>
+                            <span className="text-[11px] font-semibold text-slate-400">Lots requiring stock top-up</span>
                         </div>
+
                         {attention.length > 0 ? (
                             <div className="divide-y" style={{ borderColor: 'rgba(200,131,74,0.08)' }}>
-                                {attention.map((l) => (
-                                    <div key={l.lot_id} onClick={() => openDetail(l.lot_id)}
-                                        className={`p-3 flex items-center gap-3 text-xs cursor-pointer hover:brightness-95 ${l.available === 0 ? 'bg-red-50/40' : 'bg-amber-50/40'}`}>
-                                        <span className="font-mono font-bold text-slate-500 w-24 shrink-0">{l.barcode}</span>
-                                        <span className="font-black text-slate-800 flex-1 min-w-0 truncate">{l.article} · {l.colour}{l.thickness ? ` · ${l.thickness}` : ''}{l.size ? ` · ${l.size}` : ''}</span>
-                                        <span className={`font-black w-28 text-right ${l.available === 0 ? 'text-red-500' : 'text-amber-600'}`}>{l.available.toFixed(1)} {l.uom} avail</span>
-                                        {l.covers_required === false && <span className="text-[9px] font-black uppercase text-amber-600 shrink-0">Short</span>}
-                                        <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                                    </div>
-                                ))}
+                                {attention.map((l) => {
+                                    const isOutOfStock = Number(l.available) === 0;
+                                    return (
+                                        <div
+                                            key={l.lot_id}
+                                            onClick={() => openDetail(l.lot_id)}
+                                            className={`p-3.5 px-4 flex items-center gap-3 text-xs cursor-pointer hover:brightness-95 transition-all ${
+                                                isOutOfStock ? 'bg-rose-50/40' : 'bg-amber-50/40'
+                                            }`}
+                                        >
+                                            <span className="font-mono font-bold text-slate-600 w-28 shrink-0">{l.barcode}</span>
+                                            <span className="font-black text-slate-900 flex-1 min-w-0 truncate">
+                                                {l.article} · {l.colour}{l.thickness ? ` · ${l.thickness}` : ''}{l.size ? ` · ${l.size}` : ''}
+                                            </span>
+                                            <span className={`font-black w-32 text-right ${isOutOfStock ? 'text-rose-600' : 'text-amber-700'}`}>
+                                                {Number(l.available || 0).toFixed(1)} {l.uom} available
+                                            </span>
+                                            {isOutOfStock ? (
+                                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 shrink-0">
+                                                    Out of Stock
+                                                </span>
+                                            ) : (
+                                                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 shrink-0">
+                                                    Low Stock
+                                                </span>
+                                            )}
+                                            <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                                        </div>
+                                    );
+                                })}
                             </div>
                         ) : trulyHealthy ? (
-                            <div className="p-6 text-center text-xs font-bold text-emerald-600 flex items-center justify-center gap-1.5"><CheckCircle2 className="w-4 h-4" /> Every lot in this spec looks healthy.</div>
+                            <div className="p-6 text-center text-xs font-bold text-emerald-700 flex items-center justify-center gap-2">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                                All lots in this specification have a healthy stock balance.
+                            </div>
                         ) : (
-                            <div className="p-4 text-xs font-bold text-red-700 bg-red-50/40 flex items-center gap-2">
-                                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
-                                No lots exist for this spec at all — short by {shortBy.toFixed(1)} {stock.uom}. Use Add Material to create one, or widen the filters above.
+                            <div className="p-4 text-xs font-bold text-rose-700 bg-rose-50/40 flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                                No lots found for this specification — shortage of {shortBy.toFixed(1)} {stock?.uom || 'units'}. Use "Add Material" or raise a Supplier Order.
                             </div>
                         )}
                     </div>
                 );
             })()}
 
-            {/* Leather by Style Section */}
-            <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-                <button onClick={() => setStyleOpen(o => !o)}
-                    className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-50/50 transition-colors">
-                    <span className="font-black text-xs uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                        <Shirt className="w-3.5 h-3.5 text-amber-500" /> Leather Stock by Style
+            {/* Leather by Style Accordion */}
+            <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
+                <button
+                    onClick={() => setStyleOpen((o) => !o)}
+                    className="w-full p-4 px-5 flex items-center justify-between text-left hover:bg-slate-50/60 transition-colors"
+                >
+                    <span className="font-black text-xs uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                        <Shirt className="w-4 h-4 text-amber-600" /> Leather Consumption by Style
                     </span>
-                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${styleOpen ? 'rotate-180' : ''}`} />
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${styleOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {styleOpen && (
                     <div className="p-4 border-t" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
                         {styleLoading ? (
                             <div className="flex justify-center py-6">
-                                <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                                <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
                             </div>
                         ) : styleData && Array.isArray(styleData) && styleData.length > 0 ? (
-                            <div className="overflow-x-auto rounded-xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+                            <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
                                 <table className="w-full text-xs text-left">
                                     <thead>
                                         <tr className="font-black uppercase tracking-wider text-[10px]" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
-                                            <th className="p-3">Style</th>
+                                            <th className="p-3">Style Code</th>
                                             <th className="p-3">Article</th>
                                             <th className="p-3">Colour</th>
                                             <th className="p-3 text-right">Required</th>
                                             <th className="p-3 text-right">Available</th>
-                                            <th className="p-3 text-right">Status</th>
+                                            <th className="p-3 text-right">Stock Status</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.08)' }}>
                                         {styleData.map((row, i) => (
                                             <tr key={i} className="hover:bg-[#fcfaf8] transition-colors">
-                                                <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{row.style || '—'}</td>
-                                                <td className="p-3 font-bold" style={{ color: '#9a7a5a' }}>{row.article || '—'}</td>
-                                                <td className="p-3 font-bold" style={{ color: '#9a7a5a' }}>{row.colour || '—'}</td>
-                                                <td className="p-3 text-right font-bold">{row.required ?? '—'}</td>
+                                                <td className="p-3 font-black text-slate-900">{row.style || '—'}</td>
+                                                <td className="p-3 font-bold text-slate-600">{row.article || '—'}</td>
+                                                <td className="p-3 font-bold text-slate-600">{row.colour || '—'}</td>
+                                                <td className="p-3 text-right font-bold text-slate-700">{row.required ?? '—'}</td>
                                                 <td className="p-3 text-right font-black" style={{ color: '#c8834a' }}>{row.available ?? '—'}</td>
                                                 <td className="p-3 text-right">
-                                                    {row.short_by > 0
-                                                        ? <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-red-50 text-red-600 border border-red-200">Short {row.short_by}</span>
-                                                        : <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-600 border border-emerald-200">OK</span>
-                                                    }
+                                                    {Number(row.short_by) > 0 ? (
+                                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
+                                                            Short {row.short_by}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                                            Sufficient
+                                                        </span>
+                                                    )}
                                                 </td>
                                             </tr>
                                         ))}
@@ -245,17 +338,25 @@ const availableLots = lotsRes?.lots || [];
                                 </table>
                             </div>
                         ) : (
-                            <div className="text-center py-6 text-xs font-bold text-slate-400">No leather-by-style data available.</div>
+                            <div className="text-center py-6 text-xs font-semibold text-slate-400">
+                                No style material consumption data available yet.
+                            </div>
                         )}
                     </div>
                 )}
             </div>
 
+            {/* Lot Detail Modal */}
             {detailLot && (
-                <LotDetail lot={detailLot} onClose={() => setDetailLot(null)} showToast={showToast}
-                    canEdit={canEdit} canAdjust={canAdjust}
+                <LotDetail
+                    lot={detailLot}
+                    onClose={() => setDetailLot(null)}
+                    showToast={showToast}
+                    canEdit={canEdit}
+                    canAdjust={canAdjust}
                     onReceive={onReceive ? (lot) => { onReceive({ lotId: lot.lot_id, article: lot.article }); } : null}
-                    onChanged={() => { runCheck(); openDetail(detailLot.lot_id); }} />
+                    onChanged={() => { runCheck(); openDetail(detailLot.lot_id); }}
+                />
             )}
         </div>
     );

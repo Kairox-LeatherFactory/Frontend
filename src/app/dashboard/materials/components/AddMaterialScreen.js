@@ -14,13 +14,17 @@ import {
   AlertCircle,
   RefreshCw
 } from 'lucide-react';
-import { useGetMaterialSpecQuery, useGetMaterialLotsQuery, useLazyGetMaterialLotsQuery, useCreateMaterialLotMutation } 
-from '@/store/slices/materialApiSlice';
+import { 
+  useGetMaterialSpecQuery, 
+  useGetMaterialLotsQuery, 
+  useLazyGetMaterialLotsQuery, 
+  useCreateMaterialArrivalMutation 
+} from '@/store/slices/materialApiSlice';
 import { errMsg, SelectableFilterCombobox, CategoryPicker } from './shared';
 
 export function AddMaterialScreen({ showToast, onDuplicate }) {
   const [triggerGetLots] = useLazyGetMaterialLotsQuery();
-  const [createMaterialLot] = useCreateMaterialLotMutation();
+  const [createMaterialArrival] = useCreateMaterialArrivalMutation();
   const [category, setCategory] = useState('');
   const [subtype, setSubtype] = useState('');
 
@@ -33,6 +37,7 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
   // Sheet-wise DCM Entry state for new leather lots
   const [sheets, setSheets] = useState([]);
   const [currentSheetDcm, setCurrentSheetDcm] = useState('');
+  const [totalSheetsCount, setTotalSheetsCount] = useState('');
 
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
@@ -159,23 +164,36 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
     showToast?.('Sample sheets (1,240 DCM) loaded.', 'success');
   };
 
-  const canSubmit = spec && spec.required_to_add.length >= 0 && article.trim() && colour.trim()
-    && spec.required_to_add.every((k) => attrs[k] !== undefined && attrs[k] !== '');
+  const requiredKeys = spec ? spec.required_to_add.filter((k) => !(isLeather && k === spec.quantity_field)) : [];
+  const totalQtyVal = isLeather
+    ? (Number(attrs.dcm) || totalSheetsDcm || 0)
+    : (Number(attrs[spec?.quantity_field]) || 0);
+
+  const canSubmit = spec && article.trim() && colour.trim()
+    && requiredKeys.every((k) => attrs[k] !== undefined && attrs[k] !== '')
+    && (!isLeather || totalQtyVal > 0);
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const res = await createMaterialLot({
-        category,
-        subtype: subtype || undefined,
+      const arrivalPayload = {
         article: article.trim(),
         colour: colour.trim(),
-        attributes: attrs,
-        supplier_id: supplierId || undefined,
-        supplier_name: supplierName || undefined,
-      }).unwrap();
+        total_qty: totalQtyVal,
+        sheet_count: sheets.length > 0 ? sheets.length : (totalSheetsCount ? parseInt(totalSheetsCount) : null),
+        category: category || 'LEATHER',
+        subtype: subtype || null,
+        thickness: attrs.thickness || null,
+        size: attrs.size || null,
+        supplier_id: supplierId || null,
+        supplier_order_id: null,
+        note: attrs.note || null,
+      };
 
-      const lotBarcode = res.lot_barcode || res.barcode || 'LOT-CREATED';
+      const res = await createMaterialArrival(arrivalPayload).unwrap();
+      const receiptId = res.receipt_id || res.id || 'RCV-CREATED';
+      const lotBarcode = res.lot_barcode || res.barcode || (res.lot_id ? `LOT-${res.lot_id.slice(0, 8)}` : 'LOT-CREATED');
+
       const finalizedSheets = sheets.map((s, idx) => ({
         ...s,
         barcode: `${lotBarcode}-S${String(idx + 1).padStart(2, '0')}`,
@@ -183,11 +201,12 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
 
       setResult({
         ...res,
+        receipt_id: receiptId,
         lot_barcode: lotBarcode,
         generatedSheets: finalizedSheets,
         totalSheetsDcm,
       });
-      showToast?.(`Lot created successfully! ${sheets.length > 0 ? `${sheets.length} sheet barcodes generated.` : ''}`, 'success');
+      showToast?.(`Arrival registered! Receipt ID: ${receiptId}`, 'success');
     } catch (e) {
       showToast?.(errMsg(e), 'error');
       if (e.status === 409 && onDuplicate) {
@@ -362,7 +381,9 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
               />
             </div>
 
-            {spec.required_to_add.map((k) => (
+            {spec.required_to_add
+              .filter((k) => !(isLeather && k === spec.quantity_field))
+              .map((k) => (
               <div key={k}>
                 <label className="text-xs font-black text-slate-700 capitalize block mb-1">
                   {k}{k === spec.quantity_field ? ` (${spec.uom}) *` : ' *'}
@@ -575,6 +596,41 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
             </div>
           )}
 
+          {/* Side-by-side: Total Sheets & Total DCM */}
+          {isLeather && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-black text-slate-700 block mb-1.5">
+                  Total Sheets <span className="font-semibold text-slate-500">(Sheet Count) *</span>
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  placeholder="e.g. 8"
+                  value={totalSheetsCount !== '' ? totalSheetsCount : (sheets.length > 0 ? String(sheets.length) : '')}
+                  onChange={(e) => setTotalSheetsCount(e.target.value)}
+                  className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-black text-slate-700 block mb-1.5">
+                  Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  placeholder="e.g. 1000"
+                  value={attrs.dcm ?? ''}
+                  onChange={(e) => setAttrs((p) => ({ ...p, dcm: e.target.value }))}
+                  className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                />
+              </div>
+            </div>
+          )}
+
           {spec.required_to_add.length === 0 && (
             <p className="text-[11px] font-bold text-amber-600">This category/subtype combination isn&apos;t configured yet — submit is blocked.</p>
           )}
@@ -590,7 +646,7 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
             ) : (
               <PackagePlus className="w-4 h-4" />
             )}
-            Create Lot {sheets.length > 0 ? `(${sheets.length} Sheets)` : ''}
+            Create Lot {targetDcm > 0 ? `(${targetDcm} DCM${sheets.length > 0 ? ` · ${sheets.length} Sheets` : ''})` : ''}
           </button>
         </div>
       )}

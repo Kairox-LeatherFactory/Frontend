@@ -4,6 +4,8 @@ import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Scissors, Loader2, FileSpreadsheet, LockOpen, Check } from 'lucide-react';
 import {
   useLazyGetMaterialLotsQuery,
+  useGetCuttingGridQuery,
+  useLazyGetCuttingSheetQuery,
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
   useUpdateCuttingSheetMutation,
@@ -65,9 +67,22 @@ export default function CuttingSheetSection() {
 
   const [generateRows] = useGenerateCuttingRowsMutation();
 
+  // 📡 GET /api/v1/cutting/grid?style_id=&colour=&work_date=
+  const { data: gridData, isLoading: gridLoading } = useGetCuttingGridQuery(
+    { style_id: styleId, colour, work_date: workDate },
+    { skip: !styleId || !colour }
+  );
+
   // Grid state
   const [rows, setRows] = useState([]);
   const [isLooping, setIsLooping] = useState(false);
+
+  // Sync loaded grid rows
+  useEffect(() => {
+    if (gridData?.rows && Array.isArray(gridData.rows)) {
+      setRows(gridData.rows);
+    }
+  }, [gridData]);
 
   const handleGenerate = async () => {
     if (!styleId) {
@@ -94,10 +109,10 @@ export default function CuttingSheetSection() {
 
       while (keepGenerating) {
         const res = await generateRows(payload).unwrap();
-        
+
         if (res.message) lastMessage = res.message;
         else if (res.detail) lastMessage = res.detail;
-        
+
         if (res.rows && Array.isArray(res.rows) && res.rows.length > 0) {
           setRows(prev => [...prev, ...res.rows]);
           const createdThisBatch = res.created || res.rows.length;
@@ -119,7 +134,7 @@ export default function CuttingSheetSection() {
           keepGenerating = false;
         }
       }
-      
+
       if (totalGenerated > 0) {
         toast.success(`Generated a total of ${totalGenerated} rows successfully`);
       } else {
@@ -313,6 +328,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
   const [updateRowMutation] = useUpdateCuttingRowMutation();
   const [approveRow, { isLoading: isApproving }] = useApproveCuttingRowMutation();
   const [reopenRow, { isLoading: isReopening }] = useReopenCuttingRowMutation();
+  const [fetchSheetDetail] = useLazyGetCuttingSheetQuery();
 
   const [localCells, setLocalCells] = useState({});
   const [loadingCells, setLoadingCells] = useState({});
@@ -324,23 +340,48 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
     const numValue = parseFloat(value);
     const existingSheet = sheets[sheetIndex];
 
+    // 1. Value removed / cleared from existing cell: PATCH without payload
     if (!value || isNaN(numValue) || numValue <= 0) {
       if (!existingSheet) return;
-      // User cleared an existing sheet - normally requires DELETE /sheets/{id}
-      toast.warning('Cannot delete sheets via grid yet.');
+      setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
+      try {
+        const sheetId = existingSheet.id || existingSheet.sheet_id;
+        const res = await updateSheet({ 
+          row_id: row.row_id || row.id, 
+          sheet_id: sheetId 
+        }).unwrap();
+        updateRowInState(res.row || res);
+        toast.success('Sheet cleared');
+      } catch (err) {
+        toast.error(err?.data?.message || 'Failed to clear sheet');
+        setLocalCells(prev => ({ ...prev, [sheetIndex]: existingSheet.dcm }));
+      } finally {
+        setLoadingCells(prev => ({ ...prev, [sheetIndex]: false }));
+      }
       return;
     }
 
     if (existingSheet && existingSheet.dcm === numValue) return; // No change
 
+    // 2. Value entered / updated in cell: PATCH with { dcm: numValue }
     setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
     try {
       if (existingSheet) {
-        const res = await updateSheet({ row_id: row.row_id || row.id, sheet_id: existingSheet.id, payload: { dcm: numValue } }).unwrap();
+        const sheetId = existingSheet.id || existingSheet.sheet_id;
+        const res = await updateSheet({ 
+          row_id: row.row_id || row.id, 
+          sheet_id: sheetId, 
+          payload: { dcm: numValue } 
+        }).unwrap();
         updateRowInState(res.row || res);
-        toast.success(`Sheet updated to ${numValue} dcm`);
+        toast.success(`Sheet updated: ${numValue} dcm`);
       } else {
-        const res = await createSheet({ row_id: row.row_id || row.id, payload: { dcm: numValue } }).unwrap();
+        const sheetPayload = {
+          sheet_code: row.sheet_code || (row.barcode ? `${row.barcode}-S${String(sheetIndex + 1).padStart(2, '0')}` : undefined),
+          material_lot_id: row.material_lot_id || row.lot_id || undefined,
+          dcm: numValue,
+        };
+        const res = await createSheet({ row_id: row.row_id || row.id, payload: sheetPayload }).unwrap();
         updateRowInState(res.row || res);
         toast.success(`Sheet created: ${numValue} dcm`);
       }

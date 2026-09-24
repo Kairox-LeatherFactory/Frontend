@@ -316,47 +316,6 @@ export default function InspectionSection({ onGoBack }) {
             </h3>
           </div>
 
-          {cameraScanTarget === "worker" && (
-            <CameraScannerModal
-              title="Scan Worker Barcode"
-              onClose={() => setCameraScanTarget(null)}
-              onScan={(scannedCode) => {
-                const cleanCode = String(scannedCode || "")
-                  .replace(/[\r\n]+/g, "")
-                  .trim();
-                if (!cleanCode) return;
-                const q = cleanCode.toLowerCase();
-                const worker = workers.find((w) => 
-                  String(w.id || "").toLowerCase() === q || 
-                  String(w.employee_id || "").toLowerCase() === q ||
-                  String(w.employee_barcode || "").toLowerCase() === q
-                );
-                if (worker) {
-                  setResponsibleEmpObj(worker);
-                  setResponsibleEmpId(worker.id || worker.employee_id);
-                  setFormError("");
-                } else {
-                  setFormError("Worker ID not found in active roster.");
-                }
-                setCameraScanTarget(null);
-              }}
-            />
-          )}
-
-          {cameraScanTarget === "piece" && (
-            <CameraScannerModal
-              title="Scan Piece Barcode"
-              onClose={() => setCameraScanTarget(null)}
-              onScan={(scannedCode) => {
-                const cleanCode = String(scannedCode || "").replace(/[\r\n]+/g, "").trim();
-                if (!cleanCode) return;
-                setPieceBarcode(cleanCode);
-                handleLookupPiece(cleanCode);
-                setCameraScanTarget(null);
-              }}
-            />
-          )}
-
           {formSuccess && (
             <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-sm font-bold flex items-center gap-3 animate-fade-in">
               <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -378,14 +337,20 @@ export default function InspectionSection({ onGoBack }) {
                 <label className="block text-xs font-black uppercase text-slate-600 mb-1.5">
                   Piece Barcode <span className="text-rose-500">*</span>
                 </label>
-                <div className="relative">
+                <div className="relative flex items-center">
                   <input
                     type="text"
                     placeholder="e.g. 2222-BF27P010501-SUEDE_BOMBER-NAVY-S-008"
                     value={pieceBarcode}
                     onChange={(e) => setPieceBarcode(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleLookupPiece(e.target.value);
+                      }
+                    }}
                     onBlur={(e) => handleLookupPiece(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:border-amber-500 outline-none transition-all pr-10"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 focus:bg-white focus:border-amber-500 outline-none transition-all pr-12"
                     required
                   />
                   <button
@@ -394,9 +359,10 @@ export default function InspectionSection({ onGoBack }) {
                       e.preventDefault();
                       setCameraScanTarget("piece");
                     }}
-                    className="md:hidden absolute right-2 top-1/2 -translate-y-1/2 p-1.5 bg-amber-100 text-amber-700 rounded-lg"
+                    className="absolute right-2 p-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+                    title="Scan Barcode with Camera"
                   >
-                    <Camera className="w-5 h-5" />
+                    <Camera className="w-4 h-4" />
                   </button>
                   {isPieceStateLoading && (
                     <Loader2 className="w-4 h-4 animate-spin text-amber-600 absolute right-12 top-3" />
@@ -735,7 +701,7 @@ export default function InspectionSection({ onGoBack }) {
                     <div className="space-y-2 min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-black text-xs font-mono bg-slate-900 text-amber-400 px-2.5 py-1 rounded-md">
-                          {item.piece_barcode}
+                          {item.piece_code || item.piece_barcode || item.barcode || "N/A"}
                         </span>
 
                         <span
@@ -864,14 +830,27 @@ export default function InspectionSection({ onGoBack }) {
             </h3>
           </div>
 
-          <div className="flex gap-3 max-w-xl">
-            <input
-              type="text"
-              placeholder="Enter Piece Barcode (e.g. PC-2234)"
-              value={searchPieceCode}
-              onChange={(e) => setSearchPieceCode(e.target.value)}
-              className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none focus:border-amber-500"
-            />
+          <div className="flex items-center gap-2 max-w-xl">
+            <div className="relative flex-1 flex items-center">
+              <input
+                type="text"
+                placeholder="Enter Piece Barcode (e.g. PC-2234)"
+                value={searchPieceCode}
+                onChange={(e) => setSearchPieceCode(e.target.value)}
+                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-bold text-slate-800 outline-none focus:border-amber-500 pr-12"
+              />
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setCameraScanTarget("history-piece");
+                }}
+                className="absolute right-2 p-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg transition-colors flex items-center gap-1 shadow-sm"
+                title="Scan Piece Barcode with Camera"
+              >
+                <Camera className="w-4 h-4" />
+              </button>
+            </div>
           </div>
 
           {isHistoryLoading ? (
@@ -924,7 +903,7 @@ export default function InspectionSection({ onGoBack }) {
             </h3>
 
             <p className="text-xs text-slate-600 font-medium">
-              Piece: <strong className="font-mono text-slate-900">{actionModalItem.piece_barcode}</strong>
+              Piece: <strong className="font-mono text-slate-900">{actionModalItem.piece_code || actionModalItem.piece_barcode || actionModalItem.barcode || "N/A"}</strong>
             </p>
 
             {actionError && (
@@ -970,6 +949,63 @@ export default function InspectionSection({ onGoBack }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ======================================================================== */}
+      {/* GLOBAL CAMERA SCANNER MODAL                                             */}
+      {/* ======================================================================== */}
+      {cameraScanTarget === "worker" && (
+        <CameraScannerModal
+          title="Scan Worker Barcode"
+          onClose={() => setCameraScanTarget(null)}
+          onScan={(scannedCode) => {
+            const cleanCode = String(scannedCode || "")
+              .replace(/[\r\n]+/g, "")
+              .trim();
+            if (!cleanCode) return;
+            const q = cleanCode.toLowerCase();
+            const worker = workers.find((w) => 
+              String(w.id || "").toLowerCase() === q || 
+              String(w.employee_id || "").toLowerCase() === q ||
+              String(w.employee_barcode || "").toLowerCase() === q
+            );
+            if (worker) {
+              setResponsibleEmpObj(worker);
+              setResponsibleEmpId(worker.id || worker.employee_id);
+              setFormError("");
+            } else {
+              setFormError("Worker ID not found in active roster.");
+            }
+            setCameraScanTarget(null);
+          }}
+        />
+      )}
+
+      {cameraScanTarget === "piece" && (
+        <CameraScannerModal
+          title="Scan Piece Barcode"
+          onClose={() => setCameraScanTarget(null)}
+          onScan={(scannedCode) => {
+            const cleanCode = String(scannedCode || "").replace(/[\r\n]+/g, "").trim();
+            if (!cleanCode) return;
+            setPieceBarcode(cleanCode);
+            handleLookupPiece(cleanCode);
+            setCameraScanTarget(null);
+          }}
+        />
+      )}
+
+      {cameraScanTarget === "history-piece" && (
+        <CameraScannerModal
+          title="Scan Piece Barcode for History"
+          onClose={() => setCameraScanTarget(null)}
+          onScan={(scannedCode) => {
+            const cleanCode = String(scannedCode || "").replace(/[\r\n]+/g, "").trim();
+            if (!cleanCode) return;
+            setSearchPieceCode(cleanCode);
+            setCameraScanTarget(null);
+          }}
+        />
       )}
     </div>
   );

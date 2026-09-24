@@ -12,7 +12,8 @@ import {
     Sparkles,
     AlertCircle,
     Info,
-    RefreshCw
+    RefreshCw,
+    Boxes
 } from 'lucide-react';
 import { useGetMaterialLotQuery, useGetMaterialLotsQuery, useReceiveMaterialsMutation }
     from '@/store/slices/materialApiSlice';
@@ -24,6 +25,8 @@ export function ReceivingScreen({ showToast, prefill }) {
 
     // Form inputs
     const [approvedQty, setApprovedQty] = useState('');
+    const [totalDcm, setTotalDcm] = useState('');
+    const [totalSheetsCount, setTotalSheetsCount] = useState('');
     const [rejectedQty, setRejectedQty] = useState('');
     const [supplierOrderId, setSupplierOrderId] = useState(prefill?.orderId || '');
     const [reserveFor, setReserveFor] = useState('');
@@ -66,7 +69,7 @@ export function ReceivingScreen({ showToast, prefill }) {
         return sheets.reduce((sum, s) => sum + (Number(s.dcm) || 0), 0);
     }, [sheets]);
 
-    const approvedNum = Number(approvedQty) || 0;
+    const approvedNum = Number(approvedQty) || Number(totalDcm) || 0;
     const isMatching = approvedNum > 0 && Math.abs(totalSheetsDcm - approvedNum) < 0.001;
     const isOver = approvedNum > 0 && totalSheetsDcm > approvedNum;
     const progressPercent = approvedNum > 0 ? Math.min(100, Math.round((totalSheetsDcm / approvedNum) * 100)) : 0;
@@ -110,7 +113,7 @@ export function ReceivingScreen({ showToast, prefill }) {
 
     // Auto-fill sample sheets for fast demo/testing
     const handleDemoFill = () => {
-        if (!approvedNum) {
+        if (!approvedQty && !totalDcm) {
             setApprovedQty('1240');
         }
         const baseBarcode = activeLotBarcode || 'LOT-LEA-000001';
@@ -126,12 +129,13 @@ export function ReceivingScreen({ showToast, prefill }) {
     };
 
     const submit = async (approveMismatch = false) => {
+        const finalApprovedQty = Number(totalDcm) || Number(approvedQty) || totalSheetsDcm;
         if (!lotId) {
             showToast?.('Please select or specify a target lot.', 'error');
             return;
         }
-        if (!approvedQty || approvedNum <= 0) {
-            showToast?.('Please enter a valid approved quantity.', 'error');
+        if (!finalApprovedQty || finalApprovedQty <= 0) {
+            showToast?.('Please enter a valid quantity.', 'error');
             return;
         }
 
@@ -139,7 +143,7 @@ export function ReceivingScreen({ showToast, prefill }) {
         try {
             const payload = {
                 lot_id: lotId,
-                approved_qty: approvedNum,
+                approved_qty: finalApprovedQty,
                 rejected_qty: Number(rejectedQty) || 0,
             };
             if (supplierOrderId) payload.supplier_order_id = supplierOrderId;
@@ -605,11 +609,44 @@ export function ReceivingScreen({ showToast, prefill }) {
                     </div>
                 )}
 
+                {/* Side-by-side: Total Sheets (Sheet Count) & Total DCM */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-xs font-black text-slate-700 block mb-1.5">
+                            Total Sheets <span className="font-semibold text-slate-500">(Sheet Count) *</span>
+                        </label>
+                        <input
+                            type="number"
+                            step="1"
+                            placeholder="e.g. 8"
+                            value={totalSheetsCount !== '' ? totalSheetsCount : (sheets.length > 0 ? String(sheets.length) : '')}
+                            onChange={(e) => setTotalSheetsCount(e.target.value)}
+                            className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                            style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                        />
+                    </div>
+
+                    <div>
+                        <label className="text-xs font-black text-slate-700 block mb-1.5">
+                            Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
+                        </label>
+                        <input
+                            type="number"
+                            step="any"
+                            placeholder="e.g. 1000"
+                            value={totalDcm}
+                            onChange={(e) => setTotalDcm(e.target.value)}
+                            className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                            style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                        />
+                    </div>
+                </div>
+
                 {/* 5. Primary CTA Button: RECEIVE STOCK */}
                 <button
                     type="button"
                     onClick={() => submit(false)}
-                    disabled={submitting || !lotId || !approvedQty || approvedNum <= 0}
+                    disabled={submitting || !lotId || (!approvedQty && !totalDcm && sheets.length === 0)}
                     className="w-full h-12 rounded-2xl font-black text-xs uppercase tracking-wider text-white shadow-md shadow-amber-900/15 disabled:opacity-40 disabled:cursor-not-allowed hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2"
                     style={{ background: '#c8834a' }}
                 >
