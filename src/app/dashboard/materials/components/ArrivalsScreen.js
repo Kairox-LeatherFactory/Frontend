@@ -28,6 +28,7 @@ import { errMsg } from './shared';
 
 export function ArrivalsScreen({ showToast }) {
   const [selectedArrival, setSelectedArrival] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('ALL');
 
   const { data: arrivalsRes, isLoading, refetch } = useGetMaterialArrivalsQuery();
   const rawArrivals = Array.isArray(arrivalsRes) ? arrivalsRes : arrivalsRes?.items || arrivalsRes?.arrivals || [];
@@ -43,6 +44,31 @@ export function ArrivalsScreen({ showToast }) {
       return idB.localeCompare(idA);
     });
   }, [rawArrivals]);
+
+  // Counts for status tabs
+  const pendingCount = useMemo(() => {
+    return rawArrivals.filter((a) => {
+      const isCompleted = a.status === 'COMPLETED' || a.status === 'completed' || a.status === 'approved';
+      return !isCompleted;
+    }).length;
+  }, [rawArrivals]);
+
+  const completedCount = useMemo(() => {
+    return rawArrivals.filter((a) => {
+      const isCompleted = a.status === 'COMPLETED' || a.status === 'completed' || a.status === 'approved';
+      return isCompleted;
+    }).length;
+  }, [rawArrivals]);
+
+  // Filtered by selected tab
+  const displayedArrivals = useMemo(() => {
+    return sortedArrivals.filter((arrival) => {
+      const isCompleted = arrival.status === 'COMPLETED' || arrival.status === 'completed' || arrival.status === 'approved';
+      if (statusFilter === 'PENDING') return !isCompleted;
+      if (statusFilter === 'COMPLETED') return isCompleted;
+      return true; // 'ALL'
+    });
+  }, [sortedArrivals, statusFilter]);
 
   if (selectedArrival) {
     return (
@@ -70,7 +96,59 @@ export function ArrivalsScreen({ showToast }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Status Filter Toggle */}
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('ALL')}
+              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${
+                statusFilter === 'ALL'
+                  ? 'bg-white text-slate-900 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              All
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 font-bold">
+                {rawArrivals.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter('PENDING')}
+              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${
+                statusFilter === 'PENDING'
+                  ? 'bg-amber-500 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" /> Pending
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                statusFilter === 'PENDING' ? 'bg-amber-600 text-white' : 'bg-amber-100 text-amber-900'
+              }`}>
+                {pendingCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter('COMPLETED')}
+              className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${
+                statusFilter === 'COMPLETED'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" /> Completed
+              <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                statusFilter === 'COMPLETED' ? 'bg-emerald-700 text-white' : 'bg-emerald-100 text-emerald-900'
+              }`}>
+                {completedCount}
+              </span>
+            </button>
+          </div>
+
           <button
             onClick={() => refetch()}
             className="h-9 px-3.5 rounded-xl font-bold text-xs text-slate-600 bg-slate-100 hover:bg-slate-200 flex items-center gap-1.5 transition-all"
@@ -87,17 +165,25 @@ export function ArrivalsScreen({ showToast }) {
           <Loader2 className="w-8 h-8 animate-spin text-[#c8834a] mx-auto mb-2" />
           <p className="text-xs font-bold text-slate-500">Loading material arrivals…</p>
         </div>
-      ) : sortedArrivals.length === 0 ? (
+      ) : displayedArrivals.length === 0 ? (
         <div className="py-16 text-center bg-white border border-dashed rounded-3xl p-8 space-y-3" style={{ borderColor: 'rgba(200,131,74,0.3)' }}>
           <Boxes className="w-12 h-12 text-slate-300 mx-auto" />
-          <h3 className="text-base font-black text-slate-700">No Material Arrivals Found</h3>
+          <h3 className="text-base font-black text-slate-700">
+            {statusFilter === 'PENDING'
+              ? 'No Pending Arrivals Found'
+              : statusFilter === 'COMPLETED'
+              ? 'No Completed Arrivals Found'
+              : 'No Material Arrivals Found'}
+          </h3>
           <p className="text-xs text-slate-400 font-medium max-w-md mx-auto">
-            Create a new material arrival from the &quot;Add Material&quot; tab to begin receiving sheets.
+            {statusFilter === 'PENDING'
+              ? 'All incoming arrivals have been inspected and completed.'
+              : 'Create a new material arrival from the "Add Material" tab to begin receiving sheets.'}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {sortedArrivals.map((arrival) => {
+          {displayedArrivals.map((arrival) => {
             const receiptId = arrival.receipt_id || arrival.id;
             const isCompleted = arrival.status === 'COMPLETED' || arrival.status === 'completed' || arrival.status === 'approved';
 
