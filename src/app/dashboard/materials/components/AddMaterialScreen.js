@@ -14,13 +14,17 @@ import {
   AlertCircle,
   RefreshCw
 } from 'lucide-react';
-import { useGetMaterialSpecQuery, useGetMaterialLotsQuery, useLazyGetMaterialLotsQuery, useCreateMaterialLotMutation } 
-from '@/store/slices/materialApiSlice';
+import { 
+  useGetMaterialSpecQuery, 
+  useGetMaterialLotsQuery, 
+  useLazyGetMaterialLotsQuery, 
+  useCreateMaterialArrivalMutation 
+} from '@/store/slices/materialApiSlice';
 import { errMsg, SelectableFilterCombobox, CategoryPicker } from './shared';
 
 export function AddMaterialScreen({ showToast, onDuplicate }) {
   const [triggerGetLots] = useLazyGetMaterialLotsQuery();
-  const [createMaterialLot] = useCreateMaterialLotMutation();
+  const [createMaterialArrival] = useCreateMaterialArrivalMutation();
   const [category, setCategory] = useState('');
   const [subtype, setSubtype] = useState('');
 
@@ -160,29 +164,36 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
     showToast?.('Sample sheets (1,240 DCM) loaded.', 'success');
   };
 
-  const canSubmit = spec && spec.required_to_add.length >= 0 && article.trim() && colour.trim()
-    && spec.required_to_add.every((k) => attrs[k] !== undefined && attrs[k] !== '');
+  const requiredKeys = spec ? spec.required_to_add.filter((k) => !(isLeather && k === spec.quantity_field)) : [];
+  const totalQtyVal = isLeather
+    ? (Number(attrs.dcm) || totalSheetsDcm || 0)
+    : (Number(attrs[spec?.quantity_field]) || 0);
+
+  const canSubmit = spec && article.trim() && colour.trim()
+    && requiredKeys.every((k) => attrs[k] !== undefined && attrs[k] !== '')
+    && (!isLeather || totalQtyVal > 0);
 
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
-      const formattedAttrs = { ...attrs };
-      // Format quantity attribute as number if present
-      if (spec?.quantity_field && formattedAttrs[spec.quantity_field] !== undefined) {
-        formattedAttrs[spec.quantity_field] = Number(formattedAttrs[spec.quantity_field]) || formattedAttrs[spec.quantity_field];
-      }
-
-      const res = await createMaterialLot({
-        category,
-        subtype: subtype || null,
+      const arrivalPayload = {
         article: article.trim(),
         colour: colour.trim(),
-        attributes: formattedAttrs,
+        total_qty: totalQtyVal,
+        sheet_count: sheets.length > 0 ? sheets.length : (totalSheetsCount ? parseInt(totalSheetsCount) : null),
+        category: category || 'LEATHER',
+        subtype: subtype || null,
+        thickness: attrs.thickness || null,
+        size: attrs.size || null,
         supplier_id: supplierId || null,
-        supplier_name: supplierName || null,
-      }).unwrap();
+        supplier_order_id: null,
+        note: attrs.note || null,
+      };
 
-      const lotBarcode = res.lot_barcode || res.barcode || 'LOT-CREATED';
+      const res = await createMaterialArrival(arrivalPayload).unwrap();
+      const receiptId = res.receipt_id || res.id || 'RCV-CREATED';
+      const lotBarcode = res.lot_barcode || res.barcode || (res.lot_id ? `LOT-${res.lot_id.slice(0, 8)}` : 'LOT-CREATED');
+
       const finalizedSheets = sheets.map((s, idx) => ({
         ...s,
         barcode: `${lotBarcode}-S${String(idx + 1).padStart(2, '0')}`,
@@ -190,11 +201,12 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
 
       setResult({
         ...res,
+        receipt_id: receiptId,
         lot_barcode: lotBarcode,
         generatedSheets: finalizedSheets,
         totalSheetsDcm,
       });
-      showToast?.(`Lot created successfully! ${sheets.length > 0 ? `${sheets.length} sheet barcodes generated.` : ''}`, 'success');
+      showToast?.(`Arrival registered! Receipt ID: ${receiptId}`, 'success');
     } catch (e) {
       showToast?.(errMsg(e), 'error');
       if (e.status === 409 && onDuplicate) {
@@ -369,7 +381,9 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
               />
             </div>
 
-            {spec.required_to_add.map((k) => (
+            {spec.required_to_add
+              .filter((k) => !(isLeather && k === spec.quantity_field))
+              .map((k) => (
               <div key={k}>
                 <label className="text-xs font-black text-slate-700 capitalize block mb-1">
                   {k}{k === spec.quantity_field ? ` (${spec.uom}) *` : ' *'}
