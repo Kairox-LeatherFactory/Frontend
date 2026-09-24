@@ -22,13 +22,13 @@ export default function CreateMaterialLotModal({ open, onClose, token, showToast
   // --------------------------------------------------------------------------
   // 1. FORM STATE VARIABLES
   // --------------------------------------------------------------------------
-  const [category, setCategory] = useState('LEATHER');  // LEATHER | LINING | ACCESSORIES
+  const [category, setCategory] = useState('ACCESSORY');  // LEATHER | LINING | ACCESSORY
   const [subtype, setSubtype] = useState('');            // Optional category subtype
   const [article, setArticle] = useState('');            // Article name (required)
   const [colour, setColour] = useState('');              // Color description / hex
   const [thickness, setThickness] = useState('');        // Leather thickness (e.g. 1.2-1.4 mm)
   const [size, setSize] = useState('');                  // Accessory/lining dimension
-  const [uom, setUom] = useState('DCM');                 // Unit of measure (DCM, MTRS, PCS, CONES)
+  const [uom, setUom] = useState('PCS');                 // Unit of measure (DCM, MTRS, PCS, CONES)
   const [onHand, setOnHand] = useState('');              // Opening stock quantity
   const [supplierId, setSupplierId] = useState('');      // Optional supplier reference
   const [spec, setSpec] = useState(null);                // Active category specification rules
@@ -50,11 +50,11 @@ export default function CreateMaterialLotModal({ open, onClose, token, showToast
   useEffect(() => {
     if (!open || !token) return;
     let isCurrent = true;
-    setError(null);
 
     apiGetMaterialSpec(token, { category, subtype: subtype || undefined })
       .then((data) => {
         if (!isCurrent) return;
+        setError(null);
         setSpec(data);
         if (data?.uom) setUom(data.uom);
         else if (category === 'LEATHER') setUom('DCM');

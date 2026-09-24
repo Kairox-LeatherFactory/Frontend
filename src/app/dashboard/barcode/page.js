@@ -3,10 +3,9 @@ import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { Barcode } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import {
-  BRAND, TABS, CATEGORIES, CATEGORY_SUBTITLES, CATEGORY_LABELS,
+  BRAND, TABS, CATEGORIES, CATEGORY_LABELS,
   DEFAULT_HISTORY_FILTERS, EMPTY_LIST,
   BUCKET_LABEL, BUCKET_LABELS_PER_PAGE, STYLE_LABELS_PER_PAGE,
 } from './_lib/constants';
@@ -18,9 +17,6 @@ import {
   addGenerated,
   addHistory,
   markPrinted as markPrintedAction,
-  setDrawerStateFilter,
-  setDrawerSeqFrom,
-  setDrawerSeqTo,
   togglePrintSelected,
   setPrintSelected,
   addPrintSelected,
@@ -37,15 +33,14 @@ import {
 } from './_lib/barcodeSlice';
 import {
   useGetEmployeesQuery,
-  useListDrawersQuery,
   useGetBarcodeMaterialsQuery,
+  useGetBarcodeOrdersQuery,
 } from './_lib/barcodeApiSlice';
 import ToastStack from './_components/ToastStack';
 import ResolveBarcodeWidget from './_components/ResolveBarcodeWidget';
 import StyleRegistryPanel from './_components/style/StyleRegistryPanel';
 import EmployeeGenerationTab from './_components/EmployeeGenerationTab';
-// ─── DEPRECATED: Drawer generation removed (store migration) ───
-// import DrawerGenerationTab from './_components/DrawerGenerationTab';
+import SheetGenerationTab from './_components/SheetGenerationTab';
 import MaterialGenerationTab from './_components/MaterialGenerationTab';
 import PrintTab from './_components/PrintTab';
 import HistoryTab from './_components/HistoryTab';
@@ -97,10 +92,6 @@ export default function BarcodeManagementPage() {
   const bucketStore = useSelector((s) => s.barcode.byCategory.bucket);
   const materialStore = useSelector((s) => s.barcode.byCategory.material);
 
-  const drawerStateFilter = useSelector((s) => s.barcode.byCategory.bucket.stateFilter);
-  const drawerSeqFrom = useSelector((s) => s.barcode.byCategory.bucket.seqFrom);
-  const drawerSeqTo = useSelector((s) => s.barcode.byCategory.bucket.seqTo);
-
   const printSelections = useSelector((s) => s.barcode.selection.printSelected);
   const expandedOrdersByCat = useSelector((s) => s.barcode.selection.expandedOrders);
   const expandedGroupsByCat = useSelector((s) => s.barcode.selection.expandedGroups);
@@ -110,9 +101,6 @@ export default function BarcodeManagementPage() {
   const detailCode = useSelector((s) => s.barcode.modals.detailCode);
   const previewOpen = useSelector((s) => s.barcode.modals.previewOpen);
 
-  // ==========================================================================
-  // SECTION 3: RTK QUERY HOOKS (replaces 3 useEffect fetch blocks + 12 useState fields)
-  // ==========================================================================
   const {
     data: employeeDirectory = [],
     isLoading: employeesLoading,
@@ -123,18 +111,9 @@ export default function BarcodeManagementPage() {
   });
   const employeesError = employeesErrorObj?.data?.detail || employeesErrorObj?.error || null;
 
-  const {
-    data: drawerData,
-    isLoading: drawerLoading,
-    error: drawerErrorObj,
-    refetch: refetchDrawers,
-  } = useListDrawersQuery(
-    { state: drawerStateFilter, seqFrom: drawerSeqFrom, seqTo: drawerSeqTo },
-    { skip: !hasMounted || category !== 'bucket' || !token },
-  );
-  const drawerDirectory = drawerData?.items ?? [];
-  const drawerTotal = drawerData?.total ?? 0;
-  const drawerError = drawerErrorObj?.data?.detail || drawerErrorObj?.error || null;
+  const { data: barcodeOrders = [] } = useGetBarcodeOrdersQuery(undefined, {
+    skip: !hasMounted || !token,
+  });
 
   const {
     data: materialDirectory = [],
@@ -361,82 +340,40 @@ export default function BarcodeManagementPage() {
   }, [materialStore.generated, showToast, dispatch]);
 
   // ==========================================================================
-  // SECTION 9: DRAWER / BUCKET BARCODE GENERATION LOGIC
+  // SECTION 9: SHEET BARCODE GENERATION LOGIC
   // ==========================================================================
-  const buildDrawerRecords = useCallback((rows, batchId) => rows.map((drw) => {
-    const seq = drw.seq ?? 0;
-    const label = drw.code || `Drawer #${seq}`;
-    return {
-      pieceCode: drw.barcode,
-      orderId: drw.state || 'unknown',
-      client: label,
-      style: label,
-      color: drw.state || '',
-      size: drw.drawer_id || '',
-      serial: seq,
-      serialStr: String(seq).padStart(4, '0'),
-      batchNo: batchId,
-      createdDate: new Date().toLocaleString(),
-      generatedBy: operatorLabel,
-      printStatus: 'PENDING',
-      printCount: 0,
-    };
-  }), [operatorLabel]);
-
-  const drawerBatchHistoryEntry = useCallback((batchId, records) => ({
-    batchNo: batchId,
-    orderId: 'DRAWERS',
-    client: 'Drawer / Bucket Pool',
-    style: records.length === 1 ? records[0].style : `${records.length} Drawers`,
-    color: records.length === 1 ? records[0].color : '',
-    size: records.length === 1 ? records[0].size : `${records.length} labels`,
-    qty: records.length,
-    generatedBy: operatorLabel,
-    createdDate: new Date().toLocaleString(),
-    printStatus: 'PENDING',
-  }), [operatorLabel]);
-
-  const generateDrawerLabels = useCallback((rows) => {
-    if (!rows || rows.length === 0) {
-      showToast('Check at least one drawer to generate!', 'error');
-      return;
-    }
-    const printable = rows.filter((d) => d.barcode);
-    const skipped = rows.length - printable.length;
-    const already = new Set(bucketStore.generated.map((r) => r.pieceCode));
-    const pending = printable.filter((d) => !already.has(d.barcode));
-    if (pending.length === 0) {
-      showToast(printable.length === 0
-        ? `${skipped} drawer${skipped === 1 ? ' has' : 's have'} no registry barcode — re-run gen_drawer_barcodes on the backend.`
-        : 'Those drawers already have generated labels!', printable.length === 0 ? 'error' : 'info');
-      return;
-    }
-    const batchId = `DRW-BATCH-${Date.now().toString().slice(-6)}`;
-    const newRecords = buildDrawerRecords(pending, batchId);
+  const handleGenerateSheets = useCallback((newRecords) => {
+    if (!newRecords || newRecords.length === 0) return;
+    const batchId = newRecords[0].batchNo || `SHT-${Date.now().toString().slice(-6)}`;
     dispatch(addGenerated({ category: 'bucket', records: newRecords }));
-    dispatch(addHistory({ category: 'bucket', entry: drawerBatchHistoryEntry(batchId, newRecords) }));
-    showToast(`Generated ${newRecords.length} drawer barcode label${newRecords.length === 1 ? '' : 's'}!`, 'success');
-    if (skipped > 0) showToast(`${skipped} drawer${skipped === 1 ? '' : 's'} skipped — no registry barcode to encode.`, 'info');
-  }, [bucketStore, buildDrawerRecords, drawerBatchHistoryEntry, showToast, dispatch]);
+    dispatch(addHistory({
+      category: 'bucket',
+      entry: {
+        batchNo: batchId,
+        orderId: newRecords[0].orderId || 'SHEETS',
+        client: newRecords[0].client || 'Sheet Group',
+        style: newRecords.length === 1 ? newRecords[0].style : `${newRecords.length} Sheets`,
+        color: newRecords[0].color || '',
+        size: `${newRecords.length} labels`,
+        qty: newRecords.length,
+        generatedBy: operatorLabel,
+        createdDate: new Date().toLocaleString(),
+        printStatus: 'PENDING',
+      },
+    }));
+    showToast(`Generated ${newRecords.length} sheet barcode${newRecords.length === 1 ? '' : 's'}!`, 'success');
+  }, [operatorLabel, showToast, dispatch]);
 
-  const generateAllRemainingDrawers = useCallback(() => {
-    if (drawerDirectory.length === 0) {
-      showToast('No drawers loaded from the server to generate labels for!', 'error');
+  const handleSendSheetsToPrintCenter = useCallback((codes) => {
+    const toSend = codes && codes.length > 0 ? codes : bucketStore.generated.map((b) => b.pieceCode);
+    if (toSend.length === 0) {
+      showToast('Select sheet barcodes first to send to Print Center!', 'error');
       return;
     }
-    generateDrawerLabels(drawerDirectory);
-  }, [drawerDirectory, generateDrawerLabels, showToast]);
-
-  const sendDrawersToPrintCenter = useCallback(() => {
-    const codes = bucketStore.generated;
-    if (codes.length === 0) {
-      showToast('Generate drawer labels first — nothing to send to Print Center!', 'error');
-      return;
-    }
-    dispatch(addPrintSelected({ category: 'bucket', codes: codes.map((b) => b.pieceCode) }));
-    showToast(`Queued ${codes.length} drawer barcodes to Print Center!`, 'success');
+    dispatch(addPrintSelected({ category: 'bucket', codes: toSend }));
+    showToast(`Queued ${toSend.length} sheet barcodes to Print Center!`, 'success');
     dispatch(setReduxActiveTab('print'));
-  }, [bucketStore, showToast, dispatch]);
+  }, [bucketStore.generated, showToast, dispatch]);
 
   // ==========================================================================
   // SECTION 10: PRINTING & BULK EXPORT ACTIONS
@@ -461,33 +398,7 @@ export default function BarcodeManagementPage() {
     executeThermalPrint([pieceCode]);
   }, [executeThermalPrint]);
 
-  const printAllDrawerLabels = useCallback(() => {
-    const printable = (drawerDirectory || []).filter((d) => d.barcode);
-    const skipped = (drawerDirectory || []).length - printable.length;
-    if (printable.length === 0) {
-      showToast(skipped > 0
-        ? `None of the ${skipped} loaded drawers has a registry barcode yet — nothing can be printed.`
-        : 'No drawers loaded from the server to print!', 'error');
-      return;
-    }
-    const batchId = `DRW-BATCH-${Date.now().toString().slice(-6)}`;
-    const existingByCode = new Map(bucketStore.generated.map((r) => [r.pieceCode, r]));
-    const fresh = buildDrawerRecords(printable.filter((d) => !existingByCode.has(d.barcode)), batchId);
-    const freshByCode = new Map(fresh.map((r) => [r.pieceCode, r]));
-    const items = printable
-      .map((d) => existingByCode.get(d.barcode) || freshByCode.get(d.barcode))
-      .filter(Boolean);
-    const printedCodes = items.map((r) => r.pieceCode);
 
-    if (fresh.length > 0) {
-      dispatch(addGenerated({ category: 'bucket', records: fresh }));
-      dispatch(addHistory({ category: 'bucket', entry: drawerBatchHistoryEntry(batchId, fresh) }));
-    }
-    dispatch(markPrintedAction({ category: 'bucket', codes: printedCodes }));
-    setPrintSheetItems(items);
-    showToast(`Printing all ${items.length} drawer labels (4 per page)...`, 'success');
-    if (skipped > 0) showToast(`${skipped} drawer${skipped === 1 ? '' : 's'} skipped — no registry barcode to encode.`, 'info');
-  }, [drawerDirectory, bucketStore, buildDrawerRecords, drawerBatchHistoryEntry, showToast, dispatch]);
 
   const handleDownloadAll = useCallback(async (format) => {
     const codes = Array.from(activeSelectedPrint);
@@ -706,43 +617,34 @@ export default function BarcodeManagementPage() {
       {/* Floating Notification Toast Stack */}
       <ToastStack toasts={toasts} />
 
-      {/* --- Section 12.1: Dashboard Top Header & Scanner Lookup Widget --- */}
-      <motion.div className="flex items-start justify-between flex-wrap gap-4">
-        <div>
-          <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: BRAND.accent }}>Production · Piece-Level Traceability</p>
-          <h1 className="text-3xl font-black tracking-tight flex items-center gap-3" style={{ color: BRAND.text }}>
-            <Barcode className="w-8 h-8" style={{ color: BRAND.accent }} /> Barcode Management
-          </h1>
-          <p className="font-medium mt-0.5" style={{ color: BRAND.textMuted }}>{CATEGORY_SUBTITLES[category]}</p>
-        </div>
+      {/* --- Section 12.1: Category Switcher Pills & Scanner Lookup Widget --- */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
+        <motion.div className="flex items-center gap-1.5 p-1.5 rounded-2xl w-fit flex-wrap" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
+          {CATEGORIES.map((c) => {
+            const Icon = c.icon;
+            const isActive = category === c.id;
+            return (
+              <button
+                key={c.id}
+                onClick={() => switchCategory(c.id)}
+                className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
+                style={{ color: isActive ? '#fff' : BRAND.textMuted }}
+              >
+                {isActive && (
+                  <motion.span
+                    layoutId="barcodeCategoryPill"
+                    className="absolute inset-0 rounded-xl"
+                    style={{ background: BRAND.accent, boxShadow: '0 4px 14px rgba(200,131,74,0.3)' }}
+                    transition={{ type: 'spring', stiffness: 450, damping: 32 }}
+                  />
+                )}
+                <Icon className="w-4 h-4 relative" /> <span className="relative">{c.label}</span>
+              </button>
+            );
+          })}
+        </motion.div>
         <ResolveBarcodeWidget token={token} showToast={showToast} />
-      </motion.div>
-
-      {/* --- Section 12.2: Category Switcher Pills (Style / Employee / Bucket / Material) --- */}
-      <motion.div className="flex items-center gap-1.5 p-1.5 rounded-2xl w-fit flex-wrap" style={{ background: '#fff', border: `1px solid ${BRAND.border}` }}>
-        {CATEGORIES.map((c) => {
-          const Icon = c.icon;
-          const isActive = category === c.id;
-          return (
-            <button
-              key={c.id}
-              onClick={() => switchCategory(c.id)}
-              className="relative flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-colors"
-              style={{ color: isActive ? '#fff' : BRAND.textMuted }}
-            >
-              {isActive && (
-                <motion.span
-                  layoutId="barcodeCategoryPill"
-                  className="absolute inset-0 rounded-xl"
-                  style={{ background: BRAND.accent, boxShadow: '0 4px 14px rgba(200,131,74,0.3)' }}
-                  transition={{ type: 'spring', stiffness: 450, damping: 32 }}
-                />
-              )}
-              <Icon className="w-4 h-4 relative" /> <span className="relative">{c.label}</span>
-            </button>
-          );
-        })}
-      </motion.div>
+      </div>
 
       {/* --- Section 12.3: Sub-Tab Switcher Pills (Batch Generation / Print Center / Batch History) --- */}
       <motion.div className="flex items-center gap-1.5 p-1.5 rounded-2xl w-fit" style={{ background: '#fff', border: `1px solid ${BRAND.border}` }}>
@@ -793,29 +695,24 @@ export default function BarcodeManagementPage() {
             />
           )}
 
-          {/* DEPRECATED: Drawer/Bucket Generation Tab removed (store migration) */}
-          {/* activeTab === 'generation' && category === 'bucket' && (
-            <DrawerGenerationTab
-              drawers={drawerDirectory}
-              drawersLoading={drawerLoading}
-              drawersError={token ? drawerError : 'Sign in to load the drawer pool.'}
-              onRetryDrawers={refetchDrawers}
-              drawerTotal={drawerTotal}
-              drawerGenerated={bucketStore.generated}
-              onGenerateSelected={generateDrawerLabels}
-              onGenerateAllRemaining={generateAllRemainingDrawers}
-              onPrintAll={printAllDrawerLabels}
-              onSendToPrintCenter={sendDrawersToPrintCenter}
+          {/* Sheet Batch Generation Tab */}
+          {activeTab === 'generation' && category === 'bucket' && (
+            <SheetGenerationTab
+              orders={barcodeOrders}
+              materials={materialDirectory}
+              sheetGenerated={bucketStore.generated}
+              onGenerateSheets={handleGenerateSheets}
+              onSendToPrintCenter={handleSendSheetsToPrintCenter}
               onOpenDetail={(code) => dispatch(setDetailCode(code))}
               onPrintSingle={handlePrintSingle}
-              stateFilter={drawerStateFilter}
-              setStateFilter={(v) => dispatch(setDrawerStateFilter(v))}
-              seqFrom={drawerSeqFrom}
-              setSeqFrom={(v) => dispatch(setDrawerSeqFrom(v))}
-              seqTo={drawerSeqTo}
-              setSeqTo={(v) => dispatch(setDrawerSeqTo(v))}
+              onPrintAll={(codes) => {
+                const toPrint = codes && codes.length > 0 ? codes : bucketStore.generated.map((b) => b.pieceCode);
+                executeThermalPrint(toPrint);
+              }}
+              operatorLabel={operatorLabel}
+              token={token}
             />
-          ) */}
+          )}
 
           {/* Material Batch Generation & Operations Tab */}
           {activeTab === 'generation' && category === 'material' && (
