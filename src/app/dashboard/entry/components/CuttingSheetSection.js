@@ -30,10 +30,50 @@ export default function CuttingSheetSection() {
   const [fetchStyles, { data: stylesData }] = useLazyGetClientStylesQuery();
   const stylesList = Array.isArray(stylesData) ? stylesData : stylesData?.items || [];
 
-  const [workDate, setWorkDate] = useState(new Date().toISOString().slice(0, 10));
-  const [styleId, setStyleId] = useState('');
-  const [colour, setColour] = useState('');
-  const [selectedArticle, setSelectedArticle] = useState('');
+  // Persist selections in localStorage so user doesn't lose state on refresh or navigation
+  const [workDate, setWorkDate] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('cs_workDate') || new Date().toISOString().slice(0, 10);
+    }
+    return new Date().toISOString().slice(0, 10);
+  });
+
+  const [styleId, setStyleId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('cs_styleId') || '';
+    }
+    return '';
+  });
+
+  const [colour, setColour] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('cs_colour') || '';
+    }
+    return '';
+  });
+
+  const [selectedArticle, setSelectedArticle] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('cs_article') || '';
+    }
+    return '';
+  });
+
+  // Auto-fetch lots & styles on mount so options are available
+  useEffect(() => {
+    fetchLots();
+    fetchStyles();
+  }, [fetchLots, fetchStyles]);
+
+  // Save changes to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (workDate) localStorage.setItem('cs_workDate', workDate);
+      if (styleId) localStorage.setItem('cs_styleId', styleId);
+      if (colour) localStorage.setItem('cs_colour', colour);
+      if (selectedArticle) localStorage.setItem('cs_article', selectedArticle);
+    }
+  }, [workDate, styleId, colour, selectedArticle]);
 
   // Material spec: fires only when a style is selected
   const [fetchSpec, { data: specData }] = useLazyGetStyleMaterialSpecQuery();

@@ -54,8 +54,12 @@ export default function MaterialReceiveModal({ open, onClose, lot, token, showTo
 
       const payload = {
         material_lot_id: materialLotId,
+        lot_id: materialLotId,
         approved_qty: appNum,
         rejected_qty: rejNum,
+        total_qty: appNum + rejNum,
+        sheet_count: null,
+        sheets: [],
       };
       if (supplierOrderId.trim()) payload.supplier_order_id = supplierOrderId.trim();
 
