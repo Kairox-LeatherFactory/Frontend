@@ -28,7 +28,7 @@ export const barcodeApi = createApi({
       return headers;
     },
   }),
-  tagTypes: ['Employees', /* 'Drawers' — DEPRECATED: drawer system removed (store migration) */ 'Materials', 'BarcodeOrders', 'OrderMeta', 'OrderBarcodes'],
+  tagTypes: ['Employees', /* 'Drawers' — DEPRECATED: drawer system removed (store migration) */ 'Materials', 'BarcodeOrders', 'OrderMeta', 'OrderBarcodes', 'LeatherLots', 'LotSheets'],
   endpoints: (builder) => ({
     // ────────────────────────────────────────────────────────────────────
     // 1. GET /api/v1/employees
@@ -43,28 +43,7 @@ export const barcodeApi = createApi({
       providesTags: ['Employees'],
     }),
 
-    // ────────────────────────────────────────────────────────────────────
-    listDrawers: builder.query({
-      query: ({ state, seqFrom, seqTo } = {}) => {
-        const params = new URLSearchParams();
-        params.set('limit', '500');
-        if (state && state !== 'ALL') params.set('state', state);
-        if (seqFrom) params.set('seq_from', parseInt(seqFrom, 10));
-        if (seqTo) params.set('seq_to', parseInt(seqTo, 10));
-        return `/api/v1/drawers?${params.toString()}`;
-      },
-      transformResponse: (response) => {
-        if (response && Array.isArray(response.items)) {
-          return { items: response.items, total: response.total ?? response.items.length };
-        }
-        if (Array.isArray(response)) {
-          return { items: response, total: response.length };
-        }
-        return { items: [], total: 0 };
-      },
-      providesTags: ['Drawers'],
-    }),
-    // ────────────────────────────────────────────────────────────────────
+
 
     // ────────────────────────────────────────────────────────────────────
     // 3. GET /api/v1/barcode/materials
@@ -72,22 +51,53 @@ export const barcodeApi = createApi({
     // Fallback to /api/v1/materials/lots handled in queryFn
     // ────────────────────────────────────────────────────────────────────
     getBarcodeMaterials: builder.query({
-      async queryFn(_arg, _queryApi, _extraOptions, fetchWithBQ) {
-        // Try primary endpoint first
-        const primary = await fetchWithBQ('/api/v1/barcode/materials?active_only=false');
+      async queryFn(arg, _queryApi, _extraOptions, fetchWithBQ) {
+        const cat = (typeof arg === 'string' ? arg : arg?.category) || 'ACCESSORY';
+        // Try with category=ACCESSORY first (official MaterialCategory enum in OpenAPI spec)
+        let primary = await fetchWithBQ(`/api/v1/barcode/materials?category=${encodeURIComponent(cat)}&active_only=false`);
+        // If error or 0 results and cat was ACCESSORY, retry with plural ACCESSORIES
+        if (primary.error || (Array.isArray(primary.data?.items || primary.data?.lots) && (primary.data.items || primary.data.lots).length === 0)) {
+          const altCat = cat === 'ACCESSORY' ? 'ACCESSORIES' : 'ACCESSORY';
+          const alt = await fetchWithBQ(`/api/v1/barcode/materials?category=${encodeURIComponent(altCat)}&active_only=false`);
+          if (!alt.error && (alt.data?.items?.length > 0 || alt.data?.lots?.length > 0 || (Array.isArray(alt.data) && alt.data.length > 0))) {
+            primary = alt;
+          }
+        }
         if (!primary.error) {
           const res = primary.data;
-          const items = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+          const rawItems = Array.isArray(res?.lots)
+            ? res.lots
+            : Array.isArray(res?.items)
+            ? res.items
+            : Array.isArray(res)
+            ? res
+            : [];
+          // Ensure only accessories are returned
+          const items = rawItems.filter(
+            (m) => !m.category || m.category.toUpperCase().startsWith('ACCESSOR')
+          );
           return { data: items };
         }
         // Fallback to /materials/lots
-        const fallback = await fetchWithBQ('/api/v1/materials/lots');
+        let fallback = await fetchWithBQ(`/api/v1/materials/lots?category=${encodeURIComponent(cat)}`);
+        if (fallback.error) {
+          fallback = await fetchWithBQ('/api/v1/materials/lots?category=ACCESSORIES');
+        }
         if (!fallback.error) {
           const res = fallback.data;
-          const items = Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : [];
+          const rawItems = Array.isArray(res?.lots)
+            ? res.lots
+            : Array.isArray(res?.items)
+            ? res.items
+            : Array.isArray(res)
+            ? res
+            : [];
+          const items = rawItems.filter(
+            (m) => !m.category || m.category.toUpperCase().startsWith('ACCESSOR')
+          );
           return { data: items };
         }
-        return { error: fallback.error };
+        return { error: primary.error || fallback.error };
       },
       providesTags: ['Materials'],
     }),
@@ -140,14 +150,39 @@ export const barcodeApi = createApi({
       },
       providesTags: (_result, _error, arg) => [{ type: 'OrderBarcodes', id: arg.orderId }],
     }),
+
+    // ────────────────────────────────────────────────────────────────────
+    // 7. GET /api/v1/materials/lots?category=LEATHER
+    // Leather lots offered in the Sheet Barcode generator
+    // ────────────────────────────────────────────────────────────────────
+    getLeatherLots: builder.query({
+      query: () => '/api/v1/materials/lots?category=LEATHER',
+      transformResponse: (response) => {
+        if (Array.isArray(response)) return response;
+        if (Array.isArray(response?.lots)) return response.lots;
+        if (Array.isArray(response?.items)) return response.items;
+        return [];
+      },
+      providesTags: ['LeatherLots'],
+    }),
+
+    // ────────────────────────────────────────────────────────────────────
+    // 8. GET /api/v1/materials/lots/:lotId/sheets
+    // Individual leather sheets of a lot — each sheet's `code` is its barcode
+    // ────────────────────────────────────────────────────────────────────
+    getLotSheets: builder.query({
+      query: (lotId) => `/api/v1/materials/lots/${encodeURIComponent(lotId)}/sheets`,
+      providesTags: (_result, _error, lotId) => [{ type: 'LotSheets', id: lotId }],
+    }),
   }),
 });
 
 export const {
   useGetEmployeesQuery,
-  useListDrawersQuery,
   useGetBarcodeMaterialsQuery,
   useGetBarcodeOrdersQuery,
   useGetOrderMetaQuery,
   useGetOrderBarcodesQuery,
+  useGetLeatherLotsQuery,
+  useGetLotSheetsQuery,
 } = barcodeApi;

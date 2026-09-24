@@ -57,12 +57,15 @@ export default function MaterialGenerationTab({
   const generatedCodes = useMemo(() => new Set(materialGenerated.map((r) => r.pieceCode || r.lotId)), [materialGenerated]);
 
   // --------------------------------------------------------------------------
-  // 2. SEARCH & CATEGORY FILTERING
+  // 2. SEARCH & SUBTYPE FILTERING (ACCESSORIES ONLY)
   // --------------------------------------------------------------------------
   const filteredMaterials = useMemo(() => {
-    let list = materials || [];
-    if (categoryFilter !== 'ALL') {
-      list = list.filter((m) => (m.category || '').toUpperCase() === categoryFilter.toUpperCase());
+    let list = (materials || []).filter((m) => !m.category || m.category.toUpperCase().startsWith('ACCESSOR'));
+    if (categoryFilter !== 'ALL' && categoryFilter !== 'ACCESSORIES' && categoryFilter !== 'ACCESSORY') {
+      list = list.filter((m) =>
+        (m.subtype || '').toUpperCase() === categoryFilter.toUpperCase() ||
+        (m.category || '').toUpperCase() === categoryFilter.toUpperCase()
+      );
     }
     const q = search.trim().toLowerCase();
     if (q) {
@@ -71,19 +74,17 @@ export default function MaterialGenerationTab({
         (m.colour || '').toLowerCase().includes(q) ||
         (m.barcode || '').toLowerCase().includes(q) ||
         (m.lot_id || '').toLowerCase().includes(q) ||
+        (m.subtype || '').toLowerCase().includes(q) ||
         (m.supplier_name || m.supplier_id || '').toLowerCase().includes(q)
       );
     }
     return list;
   }, [materials, categoryFilter, search]);
 
-  // Summary statistics across Leather, Lining, Accessories
+  // Summary statistics for Accessories
   const stats = useMemo(() => {
-    const list = materials || [];
-    const leather = list.filter((m) => (m.category || '').toUpperCase() === 'LEATHER').length;
-    const lining = list.filter((m) => (m.category || '').toUpperCase() === 'LINING').length;
-    const acc = list.filter((m) => (m.category || '').toUpperCase().startsWith('ACCESSOR')).length;
-    return { total: list.length, leather, lining, acc, generated: materialGenerated.length };
+    const list = (materials || []).filter((m) => !m.category || m.category.toUpperCase().startsWith('ACCESSOR'));
+    return { total: list.length, generated: materialGenerated.length };
   }, [materials, materialGenerated]);
 
   // --------------------------------------------------------------------------
@@ -124,10 +125,7 @@ export default function MaterialGenerationTab({
     <div className="space-y-6 animate-fade-in">
       {/* --- Section 1: Overview Summary Cards --- */}
       <div className="rounded-2xl p-6 shadow-sm flex items-center gap-6 flex-wrap" style={{ background: '#fff', border: `1.5px solid ${BRAND.border}` }}>
-        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Total Material Lots</p><p className="font-bold text-lg" style={{ color: BRAND.text }}>{stats.total}</p></div>
-        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Leather Lots</p><p className="font-bold text-lg" style={{ color: BRAND.text }}>{stats.leather}</p></div>
-        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Lining Lots</p><p className="font-bold text-lg" style={{ color: BRAND.text }}>{stats.lining}</p></div>
-        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Accessories</p><p className="font-bold text-lg" style={{ color: BRAND.text }}>{stats.acc}</p></div>
+        <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Total Accessory Lots</p><p className="font-bold text-lg" style={{ color: BRAND.text }}>{stats.total}</p></div>
         <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Queued / Generated</p><p className="font-bold text-lg" style={{ color: BRAND.accent }}>{stats.generated}</p></div>
         <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Selected</p><p className="font-bold text-lg" style={{ color: '#d97706' }}>{selectedIds.size}</p></div>
       </div>
@@ -137,10 +135,10 @@ export default function MaterialGenerationTab({
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h3 className="text-lg font-black flex items-center gap-2" style={{ color: BRAND.text }}>
-              <Package className="w-5 h-5 text-[#c8834a]" /> Material Barcode &amp; Lot Operations
+              <Package className="w-5 h-5 text-[#c8834a]" /> Accessory Barcode &amp; Lot Operations
             </h3>
             <p className="text-xs" style={{ color: BRAND.textMuted }}>
-              Create material lots with child barcodes (<code className="font-mono text-xs font-bold text-[#a86530]">POST /materials/lots</code>), check live stock &amp; shortfalls, record receiving, and raise supplier orders.
+              Create accessory lots with child barcodes (<code className="font-mono text-xs font-bold text-[#a86530]">POST /materials/lots</code>), check live stock &amp; shortfalls, record receiving, and raise supplier orders.
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -163,12 +161,13 @@ export default function MaterialGenerationTab({
         <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-[rgba(200,131,74,0.15)]">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-2">
-              <span className="text-[0.68rem] font-bold uppercase whitespace-nowrap" style={{ color: BRAND.textMuted }}>Category:</span>
+              <span className="text-[0.68rem] font-bold uppercase whitespace-nowrap" style={{ color: BRAND.textMuted }}>Subtype:</span>
               <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)} className={`${selectCls} !w-44`} style={fieldStyle}>
-                <option value="ALL">All Categories</option>
-                <option value="LEATHER">LEATHER</option>
-                <option value="LINING">LINING</option>
-                <option value="ACCESSORIES">ACCESSORIES</option>
+                <option value="ALL">All Accessories</option>
+                <option value="BUTTON">BUTTONS</option>
+                <option value="ZIP">ZIPPERS</option>
+                <option value="THREAD">THREADS</option>
+                <option value="OTHER">OTHER ACCESSORIES</option>
               </select>
             </div>
             <div className="relative">

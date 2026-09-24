@@ -1,4 +1,4 @@
-import { Barcode, Printer, History, Users, Box, Package } from 'lucide-react';
+import { Barcode, Printer, History, Users, Layers, Package } from 'lucide-react';
 
 /**
  * ============================================================================
@@ -59,16 +59,16 @@ export const TABS = [
 // 6. BARCODE CATEGORIES (STYLE, EMPLOYEE, BUCKET/DRAWER, MATERIAL)
 // ============================================================================
 export const CATEGORIES = [
-  { id: 'style', label: 'Style Barcodes', icon: Barcode },
+  { id: 'style', label: 'Bundle Barcodes', icon: Barcode },
   { id: 'employee', label: 'Employee Barcodes', icon: Users },
-  { id: 'bucket', label: 'Bucket Barcodes', icon: Box },
+  { id: 'bucket', label: 'Sheet Barcodes', icon: Layers },
   { id: 'material', label: 'Material Barcodes', icon: Package },
 ];
 
 export const CATEGORY_SUBTITLES = {
   style: 'Generate, print, and audit piece-level Code128 barcodes across production orders.',
   employee: 'Generate, print, and audit employee ID badge barcodes across departments.',
-  bucket: 'Print the live drawer/bucket label sheet straight off GET /api/v1/drawers — the whole 200-drawer pool in one pass.',
+  bucket: 'Print the live sheet barcode labels straight off the system.',
   material: 'Create and print material lot barcodes (Leather, Lining, Accessories) with real-time stock & spec validation.',
 };
 
@@ -82,8 +82,8 @@ export const CATEGORY_LABELS = {
     styleLabel: 'Style',
     colorLabel: 'Color',
     sizeLabel: 'Size',
-    groupHint: 'Grouped by Production Order — click a card to drill into its styles',
-    subGroupNounPlural: 'Styles',
+    groupHint: 'Grouped by Production Order — click a card to drill into its bundles',
+    subGroupNounPlural: 'Bundles',
   },
   employee: {
     orderIdLabel: 'Dept. Code',
@@ -95,13 +95,13 @@ export const CATEGORY_LABELS = {
     subGroupNounPlural: 'Employees',
   },
   bucket: {
-    orderIdLabel: 'Drawer State',
-    clientLabel: 'Drawer Code',
-    styleLabel: 'Drawer / Code',
+    orderIdLabel: 'Sheet State',
+    clientLabel: 'Sheet Code',
+    styleLabel: 'Sheet / Code',
     colorLabel: 'State',
-    sizeLabel: 'Drawer ID / UUID',
-    groupHint: 'Grouped by Drawer State — click a card to view drawer barcodes',
-    subGroupNounPlural: 'Drawers',
+    sizeLabel: 'Sheet ID',
+    groupHint: 'Grouped by Sheet State — click a card to view sheet barcodes',
+    subGroupNounPlural: 'Sheets',
   },
   material: {
     orderIdLabel: 'Lot Barcode',
@@ -136,9 +136,9 @@ export const fieldStyle = { background: '#faf6f0', borderColor: 'rgba(200,131,74
 // 9. LIVE BARCODE REGISTRY CONSTANTS
 // ============================================================================
 export const BARCODE_TYPE_LABELS = {
-  PIECE: 'Piece',
+  PIECE: 'Bundle',
   EMPLOYEE: 'Employee',
-  DRAWER: 'Drawer',
+  DRAWER: 'Sheet',
   MATERIAL_LOT: 'Material Lot',
 };
 

@@ -6,7 +6,6 @@ import {
   apiGetBarcodeDetail, apiPrintBarcodes,
 } from '@/lib/api';
 import { BRAND, STYLE_HISTORY_PAGE_SIZE, DEFAULT_STYLE_FILTERS } from '../../_lib/constants';
-import { statusBadgeClass } from '../../_lib/helpers';
 import {
   setStyleSelectedOrder,
   setStyleFilter,
@@ -317,33 +316,16 @@ export default function StyleRegistryPanel({ activeTab, token, showToast, setPri
             ) : orderMetaError ? (
               <p className="text-sm" style={{ color: '#b91c1c' }}>{orderMetaError}</p>
             ) : analytics ? (
-              <>
-                <div className="flex items-center gap-6 flex-wrap">
-                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Planned</p><p className="font-bold" style={{ color: BRAND.text }}>{analytics.order_total.planned} pcs</p></div>
-                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Generated</p><p className="font-bold" style={{ color: BRAND.text }}>{analytics.order_total.generated} pcs</p></div>
-                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Balance</p><p className="font-bold" style={{ color: '#d97706' }}>{analytics.order_total.balance} pcs</p></div>
-                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Active</p><p className="font-bold" style={{ color: '#16a34a' }}>{analytics.order_total.active}</p></div>
-                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Retired</p><p className="font-bold" style={{ color: BRAND.textMuted }}>{analytics.order_total.retired}</p></div>
-                  <div><p className="text-[0.68rem] font-bold uppercase" style={{ color: BRAND.textMuted }}>Duplicates</p><p className="font-bold" style={{ color: analytics.order_total.duplicates > 0 ? '#b91c1c' : '#16a34a' }}>{analytics.order_total.duplicates}</p></div>
-                  <span className={statusBadgeClass(analytics.order_total.fully_generated ? 'PRINTED' : 'PARTIAL')}>
-                    {analytics.order_total.fully_generated ? 'Fully Generated' : analytics.order_total.half_minted ? 'Partially Minted' : 'Pending Cutting'}
-                  </span>
+              <div className="flex items-center gap-6 flex-wrap">
+                <div>
+                  <p className="text-[0.68rem] font-bold uppercase tracking-wider" style={{ color: BRAND.textMuted }}>
+                    Total Count
+                  </p>
+                  <p className="text-xl font-black mt-0.5" style={{ color: BRAND.text }}>
+                    {analytics.order_total?.generated ?? historyData?.total ?? 0} pcs
+                  </p>
                 </div>
-
-                {/* Per-Style Breakdown Cards */}
-                {analytics.by_style.length > 0 && (
-                  <div className="grid gap-3 mt-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))' }}>
-                    {analytics.by_style.map((st) => (
-                      <div key={st.style_id} className="rounded-lg p-3 text-xs space-y-1.5" style={{ background: BRAND.bg, border: '1px solid rgba(200,131,74,0.15)' }}>
-                        <div className="font-bold text-sm truncate" style={{ color: '#5a3518' }}>{st.style_name}</div>
-                        <div className="flex justify-between"><span style={{ color: BRAND.textMuted }}>Planned:</span><strong>{st.planned}</strong></div>
-                        <div className="flex justify-between"><span style={{ color: BRAND.textMuted }}>Minted:</span><strong>{st.minted}</strong></div>
-                        <div className="flex justify-between"><span style={{ color: BRAND.textMuted }}>Balance:</span><strong style={{ color: '#c8834a' }}>{st.balance}</strong></div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </>
+              </div>
             ) : null}
           </div>
 
