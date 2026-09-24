@@ -345,10 +345,16 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
     }
 
     try {
+      const computedSheetCount = sheets.length > 0
+        ? sheets.length
+        : (totalSheetsCount ? parseInt(totalSheetsCount, 10) : null);
+
       const payload = {
         receiptId,
         approved_qty: appVal || totalSheetsDcm,
         rejected_qty: rejVal,
+        total_qty: (appVal || totalSheetsDcm) + rejVal,
+        sheet_count: computedSheetCount,
         sheets: sheets.map((s) => ({ dcm: Number(s.dcm), note: s.note || null })),
         thickness: thickness || null,
         note: note || (appVal > 0 ? 'Approved upon inspection' : 'Rejected upon inspection'),
