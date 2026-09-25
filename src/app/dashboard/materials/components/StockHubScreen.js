@@ -156,9 +156,9 @@ export function StockHubScreen({ showToast, canOrder, onOpenOrder, canEdit, canA
             {stock && (
                 <div className="bg-white p-6 rounded-3xl shadow-sm border space-y-5" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <Tile label="Total In Factory" value={stock.on_hand} uom={stock.uom} />
-                        <Tile label="Reserved for Orders" value={stock.reserved} uom={stock.uom} />
-                        <Tile label="Ready / Available to Use" value={stock.available} uom={stock.uom} primary />
+                        <Tile label="Arrived" value={stock.arrived} uom={stock.uom} />
+                        <Tile label="Used" value={stock.used} uom={stock.uom} />
+                        <Tile label="Balance" value={stock.balance} uom={stock.uom} primary />
                     </div>
 
                     {/* Shortfall Calculator */}

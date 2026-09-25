@@ -116,6 +116,7 @@ const availableLots = lotsRes?.lots || [];
               <th className="p-3.5">Material</th>
               <th className="p-3.5">Colour</th>
               <th className="p-3.5">Thickness / Size</th>
+              <th className="p-3.5 text-right">Sheets</th>
               <th className="p-3.5 text-right">In Factory</th>
               <th className="p-3.5 text-right">Reserved</th>
               <th className="p-3.5 text-right">Ready to Use</th>
@@ -134,6 +135,7 @@ const availableLots = lotsRes?.lots || [];
                 <td className="p-3.5 font-black text-slate-800">{l.article}</td>
                 <td className="p-3.5 text-slate-600 font-bold">{l.colour}</td>
                 <td className="p-3.5 text-slate-500 font-medium">{l.thickness || l.size || '—'}</td>
+                <td className="p-3.5 text-right font-bold text-slate-700">{l.sheets_arrived ?? 0}</td>
                 <td className="p-3.5 text-right font-bold text-slate-700">{l.on_hand.toFixed(1)} {l.uom}</td>
                 <td className="p-3.5 text-right font-bold text-amber-600">{l.reserved > 0 ? `${l.reserved.toFixed(1)} ${l.uom}` : '0'}</td>
                 <td className="p-3.5 text-right">
@@ -152,7 +154,7 @@ const availableLots = lotsRes?.lots || [];
             ))}
             {lots.length === 0 && !loading && (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-xs font-bold text-slate-400">
+                <td colSpan={9} className="p-8 text-center text-xs font-bold text-slate-400">
                   No materials found matching your filters.
                 </td>
               </tr>
