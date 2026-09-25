@@ -4,7 +4,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({
-    baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || '',
+    baseUrl: '',
     prepareHeaders: (headers, { getState }) => {
     
       const token = getState().auth?.token || localStorage.getItem('kairox_token');
@@ -122,9 +122,16 @@ export const apiSlice = createApi({
       invalidatesTags: ['CuttingGrid']
     }),
     approveCuttingRow: builder.mutation({
-      query: (row_id) => ({ url: `/api/v1/cutting/rows/${row_id}/approve`, method: 'POST' }),
+      query: (arg) => {
+        const row_id = typeof arg === 'string' ? arg : arg.row_id;
+        return {
+          url: `/api/v1/cutting/rows/${row_id}/approve`,
+          method: 'POST'
+        };
+      },
       invalidatesTags: ['CuttingGrid']
     }),
+
     reopenCuttingRow: builder.mutation({
       query: ({ row_id, reason }) => ({ 
         url: `/api/v1/cutting/rows/${row_id}/reopen?reason=${encodeURIComponent(reason || '')}`, 

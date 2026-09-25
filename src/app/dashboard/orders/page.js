@@ -16,9 +16,10 @@ export default function OrdersTreeBrowser() {
   const { user } = useAuth();
   
   // Transform data to match original format
+  const clientsList = Array.isArray(clientsData) ? clientsData : (clientsData?.items || clientsData?.clients || []);
   const clients = useMemo(() => 
-    clientsData.map(c => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—', code: c.code, order_id: c.order_id, is_active: c.is_active !== false })), 
-  [clientsData]);
+    clientsList.map(c => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—', code: c.code, order_id: c.order_id, is_active: c.is_active !== false })), 
+  [clientsList]);
 
   // Local state for dynamically created clients (fallback if no API)
   const [localClients, setLocalClients] = useState([]);
