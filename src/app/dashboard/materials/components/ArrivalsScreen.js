@@ -319,8 +319,8 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
       }));
     return [...saved, ...localSheets].map((s, idx) => ({ ...s, sheetNo: idx + 1 }));
   }, [savedSheetsRaw, localSheets, arrival.arrived_at]);
-  // The list shows only IN_STOCK saved sheets (plus unsaved local ones) — ALLOCATED / CONSUMED are hidden;
-  // totals still use every sheet
+  // The list and Sheets DCM use only IN_STOCK saved sheets (plus unsaved local ones) — ALLOCATED / CONSUMED
+  // are hidden; the Total Sheets count still uses every sheet
   const listedSheets = useMemo(
     () => sheets.filter((s) => !s.saved || s.status === 'IN_STOCK'),
     [sheets]
@@ -360,9 +360,10 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
   const [thickness, setThickness] = useState(arrival.thickness || '0.6MM');
   const [note, setNote] = useState(arrival.note || '');
 
+  // In-stock sheets only — drives Sheets DCM, the remaining/over badge, progress and the complete check
   const totalSheetsDcm = useMemo(() => {
-    return sheets.reduce((sum, s) => sum + (Number(s.dcm) || 0), 0);
-  }, [sheets]);
+    return listedSheets.reduce((sum, s) => sum + (Number(s.dcm) || 0), 0);
+  }, [listedSheets]);
 
   // Sheets are verified against the approved qty once entered, otherwise the declared total
   const approvedNum = Number(approvedQty) || 0;
@@ -873,7 +874,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         <div className="pt-2">
           <div className="flex items-center justify-between text-xs font-black mb-1.5">
             <span className={isMatching ? 'text-emerald-700 flex items-center gap-1' : 'text-slate-600'}>
-              {`${sheets.length} sheets entered (${totalSheetsDcm} / ${targetDcm || 0} DCM)`}
+              {`${listedSheets.length} in-stock sheets (${totalSheetsDcm} / ${targetDcm || 0} DCM)`}
             </span>
             <span className="font-bold text-slate-500 text-[11px]">{progressPercent}%</span>
           </div>
