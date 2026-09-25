@@ -104,7 +104,7 @@ export default function MaterialsPage() {
           <div>
             <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 px-1">Step 2 — No Matching Lot? Add a New Material</div>
             <AddMaterialScreen showToast={showToast}
-              onDuplicate={(p) => { setReceivePrefill(p); window.scrollTo({ top: 0, behavior: 'smooth' }); showToast('Already exists — Receiving above is pre-filled with it.', 'success'); }} />
+              onDuplicate={(p) => { setReceivePrefill(p); document.getElementById('app-main')?.scrollTo({ top: 0, behavior: 'smooth' }); showToast('Already exists — Receiving above is pre-filled with it.', 'success'); }} />
           </div>
         </div>
       )}

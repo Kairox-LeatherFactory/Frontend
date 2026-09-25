@@ -319,9 +319,10 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
       }));
     return [...saved, ...localSheets].map((s, idx) => ({ ...s, sheetNo: idx + 1 }));
   }, [savedSheetsRaw, localSheets, arrival.arrived_at]);
-  // The list shows only ALLOCATED saved sheets (plus unsaved local ones); totals still use every sheet
+  // The list shows only IN_STOCK saved sheets (plus unsaved local ones) — ALLOCATED / CONSUMED are hidden;
+  // totals still use every sheet
   const listedSheets = useMemo(
-    () => sheets.filter((s) => !s.saved || s.status === 'ALLOCATED'),
+    () => sheets.filter((s) => !s.saved || s.status === 'IN_STOCK'),
     [sheets]
   );
   const [currentSheetDcm, setCurrentSheetDcm] = useState('');
@@ -729,7 +730,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
               </div>
             ) : listedSheets.length === 0 ? (
               <div className="py-7 text-center text-xs font-bold text-slate-400">
-                No allocated sheets.
+                No in-stock sheets.
               </div>
             ) : (
               listedSheets.map((sheet) => (

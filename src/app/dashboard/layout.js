@@ -389,7 +389,8 @@ export default function DashboardLayout({ children }) {
       </div>
 
       {/* Sidebar Navigation */}
-      <motion.nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto" variants={navStagger} initial="hidden" animate="show">
+      {/* Still scrolls on short screens, just without a visible scrollbar */}
+      <motion.nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" variants={navStagger} initial="hidden" animate="show">
         {navLinks.map((link) => {
           const isActive = pathname === link.href || (link.href !== '/dashboard' && pathname.startsWith(link.href + '/'));
           const IconComp = NAV_ICONS[link.href] || LayoutDashboard;
@@ -434,9 +435,11 @@ export default function DashboardLayout({ children }) {
   const mobileSidebar = renderSidebar('mobile');
 
   return (
+    // Shell is pinned to the viewport: sidebar and header stay put and only
+    // <main> scrolls (print falls back to normal flow so pages aren't clipped)
     <div
       id="app-shell"
-      className="min-h-screen flex flex-col md:flex-row"
+      className="h-dvh overflow-hidden flex flex-col md:flex-row print:h-auto print:overflow-visible"
       style={{
         background: '#faf6f0',
       }}
@@ -445,7 +448,7 @@ export default function DashboardLayout({ children }) {
           DESKTOP SIDEBAR (persistent, lg+ only — tablets get the
           collapsible overlay sidebar below, same as mobile)
           ================================================ */}
-      <aside className="hidden lg:flex flex-col static inset-auto z-auto w-72 shadow-2xl" style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
+      <aside className="hidden lg:flex flex-col static inset-auto z-auto w-72 shrink-0 shadow-2xl" style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
         {desktopSidebar}
       </aside>
 
@@ -471,7 +474,7 @@ export default function DashboardLayout({ children }) {
       {/* ================================================
           MAIN CONTENT
           ================================================ */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen lg:min-h-0 lg:overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden print:overflow-visible">
         {/* Header */}
 
         <motion.header
@@ -487,7 +490,7 @@ export default function DashboardLayout({ children }) {
             duration: 0.4,
             ease: [0.22, 1, 0.36, 1],
           }}
-          className="h-20 flex items-center justify-between px-6 sticky top-0 z-30"
+          className="h-20 shrink-0 flex items-center justify-between px-6 relative z-30"
           style={{
             background: '#faf6f0',
             borderBottom:
@@ -613,11 +616,15 @@ export default function DashboardLayout({ children }) {
             </button>
           </div>
         </motion.header>
+        {/* Full-width scroll area so the scrollbar sits at the window edge; content stays capped at 1920px */}
         <main
-          className="flex-1 p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full min-h-screen lg:min-h-0 overflow-y-auto z-0 mx-auto relative"
+          id="app-main"
+          className="flex-1 min-h-0 w-full overflow-y-auto z-0 print:overflow-visible"
           style={{ background: '#faf6f0' }}
         >
-          {children}
+          <div className="p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full mx-auto relative">
+            {children}
+          </div>
         </main>
       </div>
     </div>

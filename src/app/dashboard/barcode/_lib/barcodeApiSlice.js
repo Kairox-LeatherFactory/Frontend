@@ -37,7 +37,7 @@ export const barcodeApi = createApi({
     getEmployees: builder.query({
       query: () => '/api/v1/employees',
       transformResponse: (response) => {
-        const rows = Array.isArray(response) ? response : [];
+        const rows = Array.isArray(response) ? response : response?.items || [];
         return rows.map(normalizeEmployee);
       },
       providesTags: ['Employees'],

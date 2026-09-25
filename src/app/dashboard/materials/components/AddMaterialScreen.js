@@ -249,7 +249,8 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
               <label className="text-xs font-black text-slate-700 block mb-1">Colour *</label>
               <SelectableFilterCombobox
                 value={colour}
-                onChange={setColour}
+                // Colours are stored in capitals — uppercase as the user types
+                onChange={(v) => setColour(v.toUpperCase())}
                 placeholder="Select or type colour…"
                 options={colourOptions}
                 className="mt-1"
