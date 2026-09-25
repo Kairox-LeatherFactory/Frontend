@@ -179,20 +179,59 @@ export default function CuttingSheetSection() {
     }
   };
 
-  // Sync loaded grid rows (filtered by workDate on frontend)
+  // Sync loaded grid rows (filtered by Article, Colour, workDate & status rules)
   useEffect(() => {
     if (gridData?.rows && Array.isArray(gridData.rows)) {
-      if (workDate) {
-        const filtered = gridData.rows.filter(r => {
-          const rowDate = (r.work_date || r.date || '').slice(0, 10);
-          return !rowDate || rowDate === workDate;
-        });
-        setRows(filtered);
-      } else {
-        setRows(gridData.rows);
-      }
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      const filtered = gridData.rows.filter(r => {
+        // Article & Colour filter (if selected in top bar)
+        if (selectedArticle && r.article && r.article.toLowerCase() !== selectedArticle.toLowerCase()) {
+          return false;
+        }
+        if (colour && (r.colour || r.color) && (r.colour || r.color).toLowerCase() !== colour.toLowerCase()) {
+          return false;
+        }
+
+        if (!workDate) return true;
+
+        const rowDate = (r.work_date || r.date || '').slice(0, 10);
+        const isApproved = r.status === 'APPROVED' || r.status === 'ISSUED';
+        const isReopenedOrActive = r.status === 'REOPENED' || r.status === 'IN_PROGRESS' || !r.status;
+
+        // Rule 1: Future date selected -> EMPTY (0 rows)
+        if (workDate > todayStr) {
+          return false;
+        }
+
+        // Rule 2: Past date selected -> Show ONLY Reopened/Active rows for that exact past date
+        if (workDate < todayStr) {
+          return rowDate === workDate && isReopenedOrActive;
+        }
+
+        // Rule 3: Today's date selected (workDate === todayStr)
+        if (workDate === todayStr) {
+          // a) Rows created today: show ALL rows (both Approved & Reopened)
+          if (rowDate === todayStr) {
+            return true;
+          }
+          // b) Rows created on earlier dates: show ONLY APPROVED rows
+          if (rowDate < todayStr) {
+            return isApproved;
+          }
+        }
+
+        return false;
+      });
+
+      setRows(filtered);
     }
-  }, [gridData, workDate]);
+  }, [gridData, workDate, selectedArticle, colour]);
+
+
+
+
+
 
 
 
