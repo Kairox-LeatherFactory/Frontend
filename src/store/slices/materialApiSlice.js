@@ -149,6 +149,13 @@ export const materialApiSlice = apiSlice.injectEndpoints({
             providesTags: ['MaterialArrival'],
         }),
 
+        // GET /api/v1/materials/lots/{lot_id}/sheets
+        getLotSheets: builder.query({
+            query: (lotId) => `/api/v1/materials/lots/${encodeURIComponent(lotId)}/sheets`,
+            transformResponse: (res) => (Array.isArray(res) ? res : res?.sheets || []),
+            providesTags: (result, error, lotId) => [{ type: 'MaterialLot', id: lotId }],
+        }),
+
         // POST /api/v1/materials/lots/{lot_id}/sheets
         createLotSheet: builder.mutation({
             query: ({ lotId, sheets, ...sheetData }) => {
@@ -161,6 +168,25 @@ export const materialApiSlice = apiSlice.injectEndpoints({
                     body: bodyPayload,
                 };
             },
+            invalidatesTags: (result, error, { lotId }) => [{ type: 'MaterialLot', id: lotId }, 'MaterialStock'],
+        }),
+
+        // PATCH /api/v1/materials/sheets/{sheet_id}  (lotId only used to refresh that lot's sheets)
+        patchLotSheet: builder.mutation({
+            query: ({ sheetId, lotId, ...payload }) => ({
+                url: `/api/v1/materials/sheets/${encodeURIComponent(sheetId)}`,
+                method: 'PATCH',
+                body: payload,
+            }),
+            invalidatesTags: (result, error, { lotId }) => [{ type: 'MaterialLot', id: lotId }, 'MaterialStock'],
+        }),
+
+        // DELETE /api/v1/materials/sheets/{sheet_id}
+        deleteLotSheet: builder.mutation({
+            query: ({ sheetId }) => ({
+                url: `/api/v1/materials/sheets/${encodeURIComponent(sheetId)}`,
+                method: 'DELETE',
+            }),
             invalidatesTags: (result, error, { lotId }) => [{ type: 'MaterialLot', id: lotId }, 'MaterialStock'],
         }),
 
@@ -201,6 +227,9 @@ export const {
     useCreateMaterialArrivalMutation,
     useGetMaterialArrivalsQuery,
     useLazyGetMaterialArrivalsQuery,
+    useGetLotSheetsQuery,
     useCreateLotSheetMutation,
+    usePatchLotSheetMutation,
+    useDeleteLotSheetMutation,
     useCompleteMaterialArrivalMutation,
 } = materialApiSlice;

@@ -9,6 +9,7 @@ import {
     useLazyGetMaterialsStockQuery,
     useGetLeatherByStyleQuery,
 } from '@/store/slices/materialApiSlice';
+import { useGetClientStylesQuery } from '@/store/slices/apiSlice';
 import { errMsg, Tile, SelectableFilterCombobox, CategoryPicker } from './shared';
 import { LotDetail } from './LotDetailModal';
 
@@ -27,7 +28,16 @@ export function StockHubScreen({ showToast, canOrder, onOpenOrder, canEdit, canA
     const [detailLot, setDetailLot] = useState(null);
     const [styleOpen, setStyleOpen] = useState(false);
 
-    const { data: styleData, isLoading: styleLoading } = useGetLeatherByStyleQuery({}, { skip: !styleOpen });
+    // Leather by style: pick a style (GET /clients/styles), then GET /materials/leather-by-style?style_id=
+    const [styleId, setStyleId] = useState('');
+    const { data: stylesRes, isLoading: stylesLoading } = useGetClientStylesQuery({ limit: 200 }, { skip: !styleOpen });
+    const styleOptions = Array.isArray(stylesRes) ? stylesRes : stylesRes?.items || [];
+    const { data: styleRes, isFetching: styleLoading } = useGetLeatherByStyleQuery(
+        { style_id: styleId },
+        { skip: !styleOpen || !styleId }
+    );
+    const styleData = Array.isArray(styleRes) ? styleRes : styleRes?.items || [];
+    const fmtQty = (v) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 2 });
     const { data: spec } = useGetMaterialSpecQuery({ category, subtype }, { skip: !category });
     const { data: lotsRes } = useGetMaterialLotsQuery({ category, subtype: subtype || undefined }, { skip: !category });
     const availableLots = lotsRes?.lots || [];
@@ -295,42 +305,75 @@ export function StockHubScreen({ showToast, canOrder, onOpenOrder, canEdit, canA
                     <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${styleOpen ? 'rotate-180' : ''}`} />
                 </button>
                 {styleOpen && (
-                    <div className="p-4 border-t" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
-                        {styleLoading ? (
+                    <div className="p-4 border-t space-y-4" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                        {/* Style picker */}
+                        <div className="flex flex-wrap items-center gap-2.5">
+                            <label className="text-[11px] font-black uppercase tracking-wider text-slate-500 shrink-0">Style</label>
+                            <select
+                                value={styleId}
+                                onChange={(e) => setStyleId(e.target.value)}
+                                disabled={stylesLoading}
+                                className="flex-1 min-w-[240px] h-10 px-3 rounded-xl border bg-white text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500/20 disabled:opacity-60"
+                                style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                            >
+                                <option value="">{stylesLoading ? 'Loading styles…' : '-- Select a style --'}</option>
+                                {styleOptions.map((s) => (
+                                    <option key={s.style_id} value={s.style_id}>
+                                        {s.style_name}{s.article ? ` · ${s.article}` : ''}{s.order_number ? ` — Order ${s.order_number}` : ''}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {!styleId ? (
+                            <div className="text-center py-6 text-xs font-semibold text-slate-400">
+                                {!stylesLoading && styleOptions.length === 0
+                                    ? 'No styles found.'
+                                    : 'Select a style to see its leather consumption.'}
+                            </div>
+                        ) : styleLoading ? (
                             <div className="flex justify-center py-6">
                                 <Loader2 className="w-5 h-5 animate-spin text-amber-600" />
                             </div>
-                        ) : styleData && Array.isArray(styleData) && styleData.length > 0 ? (
+                        ) : styleData.length > 0 ? (
                             <div className="overflow-x-auto rounded-2xl border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
                                 <table className="w-full text-xs text-left">
                                     <thead>
                                         <tr className="font-black uppercase tracking-wider text-[10px]" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
-                                            <th className="p-3">Style Code</th>
-                                            <th className="p-3">Article</th>
-                                            <th className="p-3">Colour</th>
-                                            <th className="p-3 text-right">Required</th>
+                                            <th className="p-3">Style</th>
+                                            <th className="p-3">Leather</th>
+                                            <th className="p-3 text-right">Pieces</th>
+                                            <th className="p-3 text-right">Arrived</th>
+                                            <th className="p-3 text-right">Consumed</th>
+                                            <th className="p-3 text-right">On Hand</th>
+                                            <th className="p-3 text-right">Reserved</th>
                                             <th className="p-3 text-right">Available</th>
-                                            <th className="p-3 text-right">Stock Status</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.08)' }}>
+                                    <tbody className="divide-y" style={{ borderColor: 'rgba(200,131,74,0.08)' }}>
                                         {styleData.map((row, i) => (
-                                            <tr key={i} className="hover:bg-[#fcfaf8] transition-colors">
-                                                <td className="p-3 font-black text-slate-900">{row.style || '—'}</td>
-                                                <td className="p-3 font-bold text-slate-600">{row.article || '—'}</td>
-                                                <td className="p-3 font-bold text-slate-600">{row.colour || '—'}</td>
-                                                <td className="p-3 text-right font-bold text-slate-700">{row.required ?? '—'}</td>
-                                                <td className="p-3 text-right font-black" style={{ color: '#c8834a' }}>{row.available ?? '—'}</td>
+                                            <tr key={`${row.style_id}-${row.article}-${row.colour}-${i}`} className="hover:bg-[#fcfaf8] transition-colors">
+                                                <td className="p-3">
+                                                    <div className="font-black text-slate-900">{row.style_name || '—'}</div>
+                                                    {row.style_article && <div className="text-[10px] font-bold text-slate-400">{row.style_article}</div>}
+                                                </td>
+                                                <td className="p-3 font-bold text-slate-600">
+                                                    {row.article || '—'}{row.colour ? ` · ${row.colour}` : ''}
+                                                </td>
+                                                <td className="p-3 text-right font-bold text-slate-700">{row.pieces ?? 0}</td>
+                                                <td className="p-3 text-right font-bold text-slate-700">{fmtQty(row.arrived)}</td>
                                                 <td className="p-3 text-right">
-                                                    {Number(row.short_by) > 0 ? (
-                                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200">
-                                                            Short {row.short_by}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                                            Sufficient
-                                                        </span>
+                                                    <div className="font-black text-slate-800">{fmtQty(row.consumed)}</div>
+                                                    {Number(row.consumed_rework) > 0 && (
+                                                        <div className="text-[10px] font-bold text-rose-600">
+                                                            incl. {fmtQty(row.consumed_rework)} rework
+                                                        </div>
                                                     )}
+                                                </td>
+                                                <td className="p-3 text-right font-bold text-slate-700">{fmtQty(row.on_hand)}</td>
+                                                <td className="p-3 text-right font-bold text-slate-500">{fmtQty(row.reserved)}</td>
+                                                <td className="p-3 text-right font-black" style={{ color: '#c8834a' }}>
+                                                    {fmtQty(row.available)} <span className="text-[10px] text-slate-400">{row.uom || ''}</span>
                                                 </td>
                                             </tr>
                                         ))}
@@ -339,7 +382,7 @@ export function StockHubScreen({ showToast, canOrder, onOpenOrder, canEdit, canA
                             </div>
                         ) : (
                             <div className="text-center py-6 text-xs font-semibold text-slate-400">
-                                No style material consumption data available yet.
+                                No leather consumption recorded for this style yet.
                             </div>
                         )}
                     </div>
