@@ -5,6 +5,7 @@ export const entryApiSlice = apiSlice.injectEndpoints({
     // --- CLIENTS & ORDERS ---
     getClients: builder.query({
       query: (includeInactive = true) => `/api/v1/clients${includeInactive ? '?include_inactive=true' : ''}`,
+      transformResponse: (response) => Array.isArray(response) ? response : (response?.items || response?.clients || []),
       providesTags: ['Clients'],
     }),
     
@@ -28,6 +29,7 @@ export const entryApiSlice = apiSlice.injectEndpoints({
 
     getClientOrders: builder.query({
       query: (clientId) => `/api/v1/clients/${encodeURIComponent(clientId)}/orders`,
+      transformResponse: (response) => Array.isArray(response) ? response : (response?.items || response?.orders || []),
       providesTags: (_result, _error, clientId) => [{ type: 'ClientOrders', id: clientId }],
     }),
 

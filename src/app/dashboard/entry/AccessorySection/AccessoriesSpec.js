@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback} from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight, Copy, Truck, PackageCheck,
 } from 'lucide-react';
@@ -296,8 +296,8 @@ export function KitStatusMini({ kit }) {
  * drawers render exactly as before.
  */
 export function AccessoryKitCard({ drawer, token, employee, onIssued }) {
-  const [issueAccessoryKit] = useIssueAccessoryKitMutation(); 
-  const[loading, setLoading] = useState(true);
+  const [issueAccessoryKit] = useIssueAccessoryKitMutation();
+  const [loading, setLoading] = useState(true);
   const [requirement, setRequirement] = useState(null);
   const [issuing, setIssuing] = useState(false);
   const [error, setError] = useState('');

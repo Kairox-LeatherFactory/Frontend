@@ -15,6 +15,7 @@ import {
   useLazyGetClientStylesQuery,
   useLazyGetStyleMaterialSpecQuery
 } from '@/store/slices/apiSlice';
+import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
 
 const toast = {
   success: (msg) => console.log('SUCCESS:', msg),
@@ -88,11 +89,48 @@ export default function CuttingSheetSection() {
     return lines.filter(l => l.category === 'LEATHER');
   }, [specData]);
 
+  const [generateRows] = useGenerateCuttingRowsMutation();
+
+  // 📡 GET /api/v1/cutting/grid?style_id=&colour=&work_date=
+  const { data: gridData, isLoading: gridLoading, error: gridError } = useGetCuttingGridQuery(
+    { style_id: styleId, colour, work_date: workDate },
+    { skip: !styleId || !colour }
+  );
+
+  useEffect(() => {
+    if (gridError) {
+      console.warn('Backend Grid Error 500:', gridError);
+    }
+  }, [gridError]);
+
+
+  // 📡 GET /api/v1/attendance/today
+  const { data: attendanceRes } = useGetAttendanceTodayQuery();
+  const presentWorkers = useMemo(() => {
+    const raw = Array.isArray(attendanceRes)
+      ? attendanceRes
+      : (attendanceRes?.roster || attendanceRes?.items || attendanceRes?.employees || attendanceRes?.attendance || []);
+    const gridCutters = Array.isArray(gridData?.present_cutters) ? gridData.present_cutters : [];
+    const combined = [...raw, ...gridCutters];
+    
+    const uniqueMap = new Map();
+    combined.forEach(w => {
+      const id = w.employee_id || w.id || w.worker_id || w.employee_code;
+      const name = w.employee_name || w.name || w.worker_name || w.cutter_name;
+      const code = w.employee_code || w.code || '';
+      if (id && name && !uniqueMap.has(String(id))) {
+        uniqueMap.set(String(id), { id, name, code });
+      }
+    });
+    return Array.from(uniqueMap.values());
+  }, [attendanceRes, gridData]);
+
   const availableArticles = useMemo(() => {
     const lotArticles = lotsList.map(l => l.article).filter(Boolean);
     const specArticles = leatherLines.map(l => l.article).filter(Boolean);
-    return [...new Set([...lotArticles, ...specArticles])];
-  }, [leatherLines, lotsList]);
+    const savedArticle = selectedArticle ? [selectedArticle] : [];
+    return [...new Set([...specArticles, ...lotArticles, ...savedArticle])];
+  }, [leatherLines, lotsList, selectedArticle]);
 
   const availableColours = useMemo(() => {
     const lotColours = lotsList.flatMap(l => {
@@ -101,17 +139,12 @@ export default function CuttingSheetSection() {
     }).filter(Boolean);
 
     const specColours = leatherLines.map(l => l.colour || l.color).filter(Boolean);
+    const gridColours = Array.isArray(gridData?.colours) ? gridData.colours : (gridData?.colour ? [gridData.colour] : []);
+    const specExtraColours = Array.isArray(specData?.colours) ? specData.colours : [];
+    const savedColour = colour ? [colour] : [];
 
-    return [...new Set([...lotColours, ...specColours])];
-  }, [leatherLines, lotsList]);
-
-  const [generateRows] = useGenerateCuttingRowsMutation();
-
-  // 📡 GET /api/v1/cutting/grid?style_id=&colour=&work_date=
-  const { data: gridData, isLoading: gridLoading } = useGetCuttingGridQuery(
-    { style_id: styleId, colour, work_date: workDate },
-    { skip: !styleId || !colour }
-  );
+    return [...new Set([...specColours, ...gridColours, ...specExtraColours, ...lotColours, ...savedColour])];
+  }, [leatherLines, lotsList, gridData, specData, colour]);
 
   // Grid state
   const [rows, setRows] = useState([]);
@@ -335,6 +368,7 @@ export default function CuttingSheetSection() {
                     row={row}
                     updateRowInState={updateRowInState}
                     stylesList={stylesList}
+                    presentWorkers={presentWorkers}
                   />
                 ))
               )}
@@ -362,7 +396,7 @@ export default function CuttingSheetSection() {
   );
 }
 
-const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList }) => {
+const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [] }) => {
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
   const [updateRowMutation] = useUpdateCuttingRowMutation();
@@ -372,6 +406,17 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
 
   const [localCells, setLocalCells] = useState({});
   const [loadingCells, setLoadingCells] = useState({});
+  const [rcNo, setRcNo] = useState(row.rc_no || '');
+  const [sizeVal, setSizeVal] = useState(row.size || row.size_name || '');
+
+  useEffect(() => {
+    setRcNo(row.rc_no || '');
+  }, [row.rc_no]);
+
+  useEffect(() => {
+    setSizeVal(row.size || row.size_name || '');
+  }, [row.size, row.size_name]);
+
 
   const isLocked = row.status === 'APPROVED' || row.status === 'ISSUED';
   const sheets = row.sheets || [];
@@ -386,9 +431,10 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
       setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
       try {
         const sheetId = existingSheet.id || existingSheet.sheet_id;
-        const res = await updateSheet({ 
-          row_id: row.row_id || row.id, 
-          sheet_id: sheetId 
+        const res = await updateSheet({
+          row_id: row.row_id || row.id,
+          sheet_id: sheetId,
+          payload: {}
         }).unwrap();
         updateRowInState(res.row || res);
         toast.success('Sheet cleared');
@@ -406,27 +452,37 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
     // 2. Value entered / updated in cell: PATCH with { dcm: numValue }
     setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
     try {
+      const lotId = row.material_lot_id || row.lot_id || row.lot?.lot_id || row.lot?.id || (typeof row.lot === 'string' ? row.lot : undefined) || (existingSheet && (existingSheet.material_lot_id || existingSheet.lot_id));
+      const sheetCode = (existingSheet && (existingSheet.code || existingSheet.sheet_code)) || row.sheet_code || (row.barcode ? `${row.barcode}-S${String(sheetIndex + 1).padStart(2, '0')}` : undefined);
+
       if (existingSheet) {
         const sheetId = existingSheet.id || existingSheet.sheet_id;
-        const res = await updateSheet({ 
-          row_id: row.row_id || row.id, 
-          sheet_id: sheetId, 
-          payload: { dcm: numValue } 
+        const res = await updateSheet({
+          row_id: row.row_id || row.id,
+          sheet_id: sheetId,
+          payload: { dcm: numValue }
         }).unwrap();
         updateRowInState(res.row || res);
         toast.success(`Sheet updated: ${numValue} dcm`);
       } else {
         const sheetPayload = {
-          sheet_code: row.sheet_code || (row.barcode ? `${row.barcode}-S${String(sheetIndex + 1).padStart(2, '0')}` : undefined),
-          material_lot_id: row.material_lot_id || row.lot_id || undefined,
           dcm: numValue,
         };
+        if (lotId) sheetPayload.material_lot_id = lotId;
+        if (sheetCode) sheetPayload.sheet_code = sheetCode;
+
         const res = await createSheet({ row_id: row.row_id || row.id, payload: sheetPayload }).unwrap();
         updateRowInState(res.row || res);
         toast.success(`Sheet created: ${numValue} dcm`);
       }
     } catch (err) {
-      toast.error(err?.data?.message || 'Failed to save sheet');
+      const errorMsg =
+        (typeof err?.data?.detail === 'string' && err.data.detail) ||
+        (Array.isArray(err?.data?.detail) && err.data.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ')) ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to save sheet';
+      toast.error(errorMsg);
       setLocalCells(prev => ({ ...prev, [sheetIndex]: existingSheet ? existingSheet.dcm : '' }));
     } finally {
       setLoadingCells(prev => ({ ...prev, [sheetIndex]: false }));
@@ -451,11 +507,19 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
 
   const handleApprove = async () => {
     try {
-      const res = await approveRow(row.row_id || row.id).unwrap();
+      const rowId = row.row_id || row.id;
+      const res = await approveRow(rowId).unwrap();
       updateRowInState(res.row || res);
       toast.success(res.message || 'Row Approved successfully');
     } catch (err) {
-      toast.error(err?.data?.message || 'Failed to approve row');
+
+      const errorMsg =
+        (typeof err?.data?.detail === 'string' && err.data.detail) ||
+        (Array.isArray(err?.data?.detail) && err.data.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ')) ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to approve row';
+      toast.error(errorMsg);
     }
   };
 
@@ -522,27 +586,59 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
           className="w-full h-9 text-center font-bold text-[#166534] bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
         />
       </td>
-      <td className="p-2 border-r border-slate-300 bg-[#f8fafc] text-center font-bold text-slate-700">
-        {row.name || ''}
+      <td className="p-0 border-r border-slate-300 bg-[#f8fafc]">
+        <select
+          value={row.cutter_employee_id || row.cutter_id || ''}
+          disabled={isLocked}
+          onChange={async (e) => {
+            const selectedId = e.target.value;
+            const selectedWorker = presentWorkers.find(w => String(w.id) === String(selectedId));
+            const payload = { cutter_employee_id: selectedId };
+            if (selectedWorker?.name) {
+              payload.cutter_name = selectedWorker.name;
+              payload.name = selectedWorker.name;
+            }
+            try {
+              const res = await updateRowMutation({ row_id: row.row_id || row.id, payload }).unwrap();
+              updateRowInState(res.row || res);
+              toast.success('Worker assigned');
+            } catch (err) {
+              toast.error(err?.data?.message || 'Failed to assign worker');
+            }
+          }}
+          className="w-full h-9 px-1 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all truncate text-xs cursor-pointer"
+        >
+          <option value="">{row.cutter_name || row.name || '-- Select Worker --'}</option>
+          {presentWorkers.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name} {w.code ? `(${w.code})` : ''}
+            </option>
+          ))}
+        </select>
       </td>
       <td className="p-0 border-r border-slate-300 bg-white">
         <input
           type="text"
-          defaultValue={row.size || row.size_name || ''}
+          value={sizeVal}
+          onChange={(e) => setSizeVal(e.target.value)}
           disabled={isLocked}
           onBlur={(e) => handleRowCellBlur('size', e.target.value)}
           className="w-full h-9 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+          placeholder="Size"
         />
       </td>
       <td className="p-0 border-r border-slate-300 bg-white">
         <input
           type="text"
-          defaultValue={row.rc_no || ''}
+          value={rcNo}
+          onChange={(e) => setRcNo(e.target.value)}
           disabled={isLocked}
           onBlur={(e) => handleRowCellBlur('rc_no', e.target.value)}
           className="w-full h-9 text-center font-bold text-blue-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+          placeholder="RC No"
         />
       </td>
+
 
       {/* 17 Sheet Cells */}
       {Array(17).fill(0).map((_, i) => {

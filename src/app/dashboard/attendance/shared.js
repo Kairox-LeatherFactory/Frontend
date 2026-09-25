@@ -109,12 +109,17 @@ export async function apiFetch(url, options = {}, token = null) {
 }
 
 export function normalizeRosterArray(rosterData) {
+  if (!rosterData) return [];
   if (Array.isArray(rosterData)) return rosterData;
   if (rosterData?.data && Array.isArray(rosterData.data)) return rosterData.data;
   if (rosterData?.items && Array.isArray(rosterData.items)) return rosterData.items;
-  if (rosterData?.employee_id) return [rosterData];
+  if (rosterData?.employees && Array.isArray(rosterData.employees)) return rosterData.employees;
+  if (rosterData?.workers && Array.isArray(rosterData.workers)) return rosterData.workers;
+  if (rosterData?.roster && Array.isArray(rosterData.roster)) return rosterData.roster;
+  if (rosterData?.employee_id || rosterData?.id) return [rosterData];
   return [];
 }
+
 
 // ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
 export function Badge({ label, type }) {
@@ -213,11 +218,13 @@ export function LockedView({ title, description }) {
 export function EmployeesListView({ workers = [] }) {
   const [search, setSearch] = useState('');
 
-  const filteredWorkers = workers.filter(w =>
-    w.name?.toLowerCase().includes(search.toLowerCase()) ||
-    w.employee_barcode?.toLowerCase().includes(search.toLowerCase()) ||
-    w.phone?.includes(search)
+  const workerList = normalizeRosterArray(workers);
+  const filteredWorkers = workerList.filter(w =>
+    w?.name?.toLowerCase().includes(search.toLowerCase()) ||
+    w?.employee_barcode?.toLowerCase().includes(search.toLowerCase()) ||
+    w?.phone?.includes(search)
   );
+
 
   return (
     <div className="space-y-6">
