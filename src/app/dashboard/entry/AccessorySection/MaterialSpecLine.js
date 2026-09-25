@@ -67,7 +67,7 @@ const [deleteStyleMaterialSpecLine] = useDeleteStyleMaterialSpecLineMutation();
                 <span className="font-mono font-bold text-slate-700">{line.article}</span>
             )}
             {editing ? (
-                <input value={colour} onChange={(e) => setColour(e.target.value)} className="w-20 h-7 px-1.5 border rounded font-bold" style={{ borderColor: 'rgba(200,131,74,0.3)' }} placeholder="Colour" />
+                <input value={colour} onChange={(e) => setColour(e.target.value.toUpperCase())} className="w-20 h-7 px-1.5 border rounded font-bold" style={{ borderColor: 'rgba(200,131,74,0.3)' }} placeholder="Colour" />
             ) : (
                 <span className="text-slate-500">{line.colour || '—'}</span>
             )}
