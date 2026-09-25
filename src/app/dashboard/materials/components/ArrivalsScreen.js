@@ -1,5 +1,6 @@
 'use client';
 import { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import {
   PackageCheck,
   Search,
@@ -16,22 +17,52 @@ import {
   ShieldCheck,
   ShieldAlert,
   Boxes,
-  Truck
+  Truck,
+  Pencil,
+  Check,
+  X
 } from 'lucide-react';
 import {
   useGetMaterialArrivalsQuery,
   useCreateLotSheetMutation,
+  usePatchLotSheetMutation,
+  useDeleteLotSheetMutation,
   useCompleteMaterialArrivalMutation,
-  useGetMaterialLotsQuery
+  useGetMaterialLotsQuery,
+  useGetLotSheetsQuery
 } from '@/store/slices/materialApiSlice';
 import { errMsg } from './shared';
+
+// An arrival is done once the backend stamps completed_at, or its status says so
+const COMPLETED_STATUSES = ['completed', 'complete', 'approved', 'received', 'inspected', 'closed'];
+function isArrivalCompleted(a) {
+  if (!a) return false;
+  if (a.completed_at) return true;
+  return COMPLETED_STATUSES.includes(String(a.status || '').toLowerCase());
+}
 
 export function ArrivalsScreen({ showToast }) {
   const [selectedArrival, setSelectedArrival] = useState(null);
   const [statusFilter, setStatusFilter] = useState('ALL');
 
-  const { data: arrivalsRes, isLoading, refetch } = useGetMaterialArrivalsQuery();
-  const rawArrivals = Array.isArray(arrivalsRes) ? arrivalsRes : arrivalsRes?.items || arrivalsRes?.arrivals || [];
+  // GET /materials/arrivals defaults to status=PENDING, so completed ones must be asked for separately
+  const pendingQ = useGetMaterialArrivalsQuery({ status: 'PENDING' });
+  const completedQ = useGetMaterialArrivalsQuery({ status: 'COMPLETED' });
+  const isLoading = pendingQ.isLoading || completedQ.isLoading;
+  const refetch = () => {
+    pendingQ.refetch();
+    completedQ.refetch();
+  };
+  const rawArrivals = useMemo(() => {
+    const toList = (res) => (Array.isArray(res) ? res : res?.items || res?.arrivals || []);
+    // Completed first so a receipt returned by both keeps its completed copy
+    const byId = new Map();
+    for (const a of [...toList(completedQ.data), ...toList(pendingQ.data)]) {
+      const id = a.receipt_id || a.id;
+      if (!byId.has(id)) byId.set(id, a);
+    }
+    return [...byId.values()];
+  }, [pendingQ.data, completedQ.data]);
 
   // Sort by recent / descending
   const sortedArrivals = useMemo(() => {
@@ -48,14 +79,14 @@ export function ArrivalsScreen({ showToast }) {
   // Counts for status tabs
   const pendingCount = useMemo(() => {
     return rawArrivals.filter((a) => {
-      const isCompleted = a.status === 'COMPLETED' || a.status === 'completed' || a.status === 'approved';
+      const isCompleted = isArrivalCompleted(a);
       return !isCompleted;
     }).length;
   }, [rawArrivals]);
 
   const completedCount = useMemo(() => {
     return rawArrivals.filter((a) => {
-      const isCompleted = a.status === 'COMPLETED' || a.status === 'completed' || a.status === 'approved';
+      const isCompleted = isArrivalCompleted(a);
       return isCompleted;
     }).length;
   }, [rawArrivals]);
@@ -63,7 +94,7 @@ export function ArrivalsScreen({ showToast }) {
   // Filtered by selected tab
   const displayedArrivals = useMemo(() => {
     return sortedArrivals.filter((arrival) => {
-      const isCompleted = arrival.status === 'COMPLETED' || arrival.status === 'completed' || arrival.status === 'approved';
+      const isCompleted = isArrivalCompleted(arrival);
       if (statusFilter === 'PENDING') return !isCompleted;
       if (statusFilter === 'COMPLETED') return isCompleted;
       return true; // 'ALL'
@@ -74,8 +105,10 @@ export function ArrivalsScreen({ showToast }) {
     return (
       <ArrivalInspectionDetail
         arrival={selectedArrival}
-        onBack={() => {
+        onBack={({ completed } = {}) => {
           setSelectedArrival(null);
+          // Just completed an inspection — jump to the Completed tab so the user sees it land there
+          if (completed) setStatusFilter('COMPLETED');
           refetch();
         }}
         showToast={showToast}
@@ -180,7 +213,7 @@ export function ArrivalsScreen({ showToast }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {displayedArrivals.map((arrival) => {
             const receiptId = arrival.receipt_id || arrival.id;
-            const isCompleted = arrival.status === 'COMPLETED' || arrival.status === 'completed' || arrival.status === 'approved';
+            const isCompleted = isArrivalCompleted(arrival);
 
             return (
               <div
@@ -204,7 +237,7 @@ export function ArrivalsScreen({ showToast }) {
                         : 'bg-amber-50 text-amber-700 border-amber-200'
                       }`}
                   >
-                    {arrival.status || 'PENDING'}
+                    {isCompleted ? 'COMPLETED' : (arrival.status || 'PENDING')}
                   </span>
                 </div>
 
@@ -216,7 +249,7 @@ export function ArrivalsScreen({ showToast }) {
                   <div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Quantity</span>
                     <span className="font-black text-amber-900">
-                      {arrival.total_qty || arrival.qty || 0} {arrival.category === 'LEATHER' || !arrival.category ? 'DCM' : ''}
+                      {arrival.total_qty || arrival.declared_qty || arrival.qty || 0} {arrival.category === 'LEATHER' || !arrival.category ? 'DCM' : ''}
                     </span>
                   </div>
                   {arrival.sheet_count !== undefined && (
@@ -251,9 +284,11 @@ export function ArrivalsScreen({ showToast }) {
 // ── Detail & Sheet Entry Inspection Screen ──────────────────────────────
 function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
   const receiptId = arrival.receipt_id || arrival.id;
-  const isAlreadyCompleted = arrival.status === 'COMPLETED' || arrival.status === 'completed' || arrival.status === 'approved';
+  const isAlreadyCompleted = isArrivalCompleted(arrival);
 
   const [createLotSheet] = useCreateLotSheetMutation();
+  const [patchLotSheet] = usePatchLotSheetMutation();
+  const [deleteLotSheet] = useDeleteLotSheetMutation();
   const [completeArrival, { isLoading: isCompleting }] = useCompleteMaterialArrivalMutation();
 
   const { data: lotsRes } = useGetMaterialLotsQuery({ category: arrival.category || 'LEATHER' });
@@ -262,20 +297,59 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
   );
   const activeLotId = arrival.lot_id || matchingLot?.lot_id || receiptId;
 
-  // Sheets state
-  const [sheets, setSheets] = useState(arrival.sheets || []);
+  // Sheets not (yet) saved on the backend — e.g. no real lot, or the POST failed
+  const [localSheets, setLocalSheets] = useState(arrival.sheets || []);
+
+  // Sheets already saved on the lot, so they survive a refresh.
+  // Refetches automatically after each POST (createLotSheet invalidates the same tag).
+  const hasRealLot = Boolean(activeLotId) && activeLotId !== receiptId;
+  const { data: savedSheetsRaw, refetch: refetchSheets } = useGetLotSheetsQuery(activeLotId, { skip: !hasRealLot });
+  const sheets = useMemo(() => {
+    // Only this arrival's sheets when the backend gives timestamps; otherwise all of the lot's sheets
+    const since = arrival.arrived_at ? new Date(arrival.arrived_at).getTime() : null;
+    const saved = (savedSheetsRaw || [])
+      .filter((s) => !since || !s.created_at || new Date(s.created_at).getTime() >= since)
+      .map((s) => ({
+        id: s.sheet_id || s.id || s.code,
+        dcm: Number(s.dcm) || 0,
+        barcode: s.code || s.barcode,
+        note: s.note || null,
+        saved: true,
+      }));
+    return [...saved, ...localSheets].map((s, idx) => ({ ...s, sheetNo: idx + 1 }));
+  }, [savedSheetsRaw, localSheets, arrival.arrived_at]);
   const [currentSheetDcm, setCurrentSheetDcm] = useState('');
   const [totalSheetsCount, setTotalSheetsCount] = useState(arrival.sheet_count || '');
+  // Total DCM declared on the arrival — approved + rejected must add up to this
+  const declaredTotal = Number(arrival.declared_qty || arrival.total_qty) || 0;
   const [approvedQty, setApprovedQty] = useState(
-    arrival.approved_qty !== undefined && arrival.approved_qty !== null
-      ? String(arrival.approved_qty)
-      : (arrival.declared_qty || arrival.total_qty || '')
+    Number(arrival.approved_qty) ? String(arrival.approved_qty) : ''
   );
   const [rejectedQty, setRejectedQty] = useState(
-    arrival.rejected_qty !== undefined && arrival.rejected_qty !== null
-      ? String(arrival.rejected_qty)
-      : '0'
+    Number(arrival.rejected_qty) ? String(arrival.rejected_qty) : ''
   );
+  // Digits and one decimal point only; strip leading zeros ("01" -> "1", keep "0.5")
+  const toQtyInput = (v) => {
+    let s = v.replace(/[^\d.]/g, '').replace(/(\..*)\./g, '$1');
+    s = s.replace(/^0+(?=\d)/, '');
+    return s;
+  };
+  // Remainder of the declared total, rounded to avoid float noise ("" when not computable)
+  const remainderOf = (v) => {
+    if (v === '' || !declaredTotal) return '';
+    const rest = Math.max(0, declaredTotal - (Number(v) || 0));
+    return String(Math.round(rest * 1000) / 1000);
+  };
+  const handleApprovedChange = (raw) => {
+    const v = toQtyInput(raw);
+    setApprovedQty(v);
+    if (declaredTotal) setRejectedQty(remainderOf(v));
+  };
+  const handleRejectedChange = (raw) => {
+    const v = toQtyInput(raw);
+    setRejectedQty(v);
+    if (declaredTotal) setApprovedQty(remainderOf(v));
+  };
   const [thickness, setThickness] = useState(arrival.thickness || '0.6MM');
   const [note, setNote] = useState(arrival.note || '');
 
@@ -283,11 +357,22 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
     return sheets.reduce((sum, s) => sum + (Number(s.dcm) || 0), 0);
   }, [sheets]);
 
-  const targetDcm = (Number(approvedQty) || 0) + (Number(rejectedQty) || 0);
-  const isMatching = targetDcm > 0 && Math.abs(totalSheetsDcm - (Number(approvedQty) || 0)) < 0.001;
-  const isOver = targetDcm > 0 && totalSheetsDcm > (Number(approvedQty) || targetDcm);
-  const progressPercent = (Number(approvedQty) || targetDcm) > 0
-    ? Math.min(100, Math.round((totalSheetsDcm / (Number(approvedQty) || targetDcm)) * 100))
+  // Sheets are verified against the approved qty once entered, otherwise the declared total
+  const approvedNum = Number(approvedQty) || 0;
+  const rejectedNum = Number(rejectedQty) || 0;
+  const targetDcm = approvedNum || declaredTotal;
+  const isMatching = targetDcm > 0 && Math.abs(totalSheetsDcm - targetDcm) < 0.001;
+  const isOver = targetDcm > 0 && totalSheetsDcm > targetDcm;
+  // Inspection can only be completed once the entered sheets add up exactly to the approved qty
+  const sheetsMatchApproved = approvedNum > 0 && Math.abs(totalSheetsDcm - approvedNum) < 0.001;
+  const canComplete = sheetsMatchApproved;
+  const completeBlockReason = approvedNum <= 0
+    ? 'Enter Approved Qty to continue'
+    : totalSheetsDcm < approvedNum
+      ? `Sheets DCM must match Approved Qty — ${Math.round((approvedNum - totalSheetsDcm) * 1000) / 1000} DCM remaining`
+      : `Sheets DCM must match Approved Qty — ${Math.round((totalSheetsDcm - approvedNum) * 1000) / 1000} DCM over`;
+  const progressPercent = targetDcm > 0
+    ? Math.min(100, Math.round((totalSheetsDcm / targetDcm) * 100))
     : 0;
 
   // Add individual sheet handler
@@ -307,25 +392,84 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
       barcode: `LOT-${String(activeLotId).slice(0, 8)}-S${String(nextIndex).padStart(2, '0')}`,
     };
 
-    setSheets((prev) => [...prev, newSheet]);
+    setLocalSheets((prev) => [...prev, newSheet]);
     setCurrentSheetDcm('');
 
     // Trigger API call POST /api/v1/materials/lots/{lot_id}/sheets if lot_id exists
-    if (activeLotId && activeLotId !== receiptId) {
+    if (hasRealLot) {
       try {
         await createLotSheet({
           lotId: activeLotId,
           dcm: dcmVal,
           note: null,
         }).unwrap();
+        // Now saved on the lot — swap the local copy for the server one
+        await refetchSheets();
+        setLocalSheets((prev) => prev.filter((s) => s.id !== newSheet.id));
       } catch (err) {
         console.warn('Sheet created locally (will complete on batch approval):', err);
       }
     }
   };
 
-  const handleRemoveSheet = (id) => {
-    setSheets((prev) => prev.filter((s) => s.id !== id).map((s, idx) => ({ ...s, sheetNo: idx + 1 })));
+  // Inline edit / delete — saved sheets go through PATCH/DELETE /materials/sheets/{sheet_id},
+  // unsaved ones are only changed locally
+  const [editingSheetId, setEditingSheetId] = useState(null);
+  const [editSheetDcm, setEditSheetDcm] = useState('');
+  const [busySheetId, setBusySheetId] = useState(null);
+
+  const startEditSheet = (sheet) => {
+    setEditingSheetId(sheet.id);
+    setEditSheetDcm(String(sheet.dcm));
+  };
+
+  const handleSaveSheet = async (sheet) => {
+    const dcmVal = parseFloat(editSheetDcm);
+    if (isNaN(dcmVal) || dcmVal <= 0) {
+      showToast?.('Please enter a valid DCM value greater than 0', 'error');
+      return;
+    }
+    if (!sheet.saved) {
+      setLocalSheets((prev) => prev.map((s) => (s.id === sheet.id ? { ...s, dcm: dcmVal } : s)));
+      setEditingSheetId(null);
+      return;
+    }
+    setBusySheetId(sheet.id);
+    try {
+      await patchLotSheet({ sheetId: sheet.id, lotId: activeLotId, dcm: dcmVal }).unwrap();
+      showToast?.(`Sheet ${sheet.barcode} updated to ${dcmVal} DCM`, 'success');
+      setEditingSheetId(null);
+    } catch (err) {
+      showToast?.(errMsg(err), 'error');
+    } finally {
+      setBusySheetId(null);
+    }
+  };
+
+  // Saved sheets ask for confirmation in an in-app modal before the DELETE call
+  const [sheetToDelete, setSheetToDelete] = useState(null);
+
+  const handleRemoveSheet = (sheet) => {
+    if (!sheet.saved) {
+      setLocalSheets((prev) => prev.filter((s) => s.id !== sheet.id));
+      return;
+    }
+    setSheetToDelete(sheet);
+  };
+
+  const confirmDeleteSheet = async () => {
+    const sheet = sheetToDelete;
+    if (!sheet) return;
+    setBusySheetId(sheet.id);
+    try {
+      await deleteLotSheet({ sheetId: sheet.id, lotId: activeLotId }).unwrap();
+      showToast?.(`Sheet ${sheet.barcode} deleted`, 'success');
+      setSheetToDelete(null);
+    } catch (err) {
+      showToast?.(errMsg(err), 'error');
+    } finally {
+      setBusySheetId(null);
+    }
   };
 
   // Complete Arrival Handler (POST /materials/arrivals/{receipt_id}/complete)
@@ -333,8 +477,17 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
     const appVal = parseFloat(approvedQty) || 0;
     const rejVal = parseFloat(rejectedQty) || 0;
 
+    if (!canComplete) {
+      showToast?.(completeBlockReason, 'error');
+      return;
+    }
+
     if (appVal === 0 && rejVal === 0 && totalSheetsDcm === 0) {
       showToast?.('Please enter Approved Qty or Rejected Qty', 'error');
+      return;
+    }
+    if (declaredTotal && appVal + rejVal > declaredTotal + 0.001) {
+      showToast?.(`Approved + Rejected cannot exceed Total DCM (${declaredTotal})`, 'error');
       return;
     }
 
@@ -349,7 +502,8 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         rejected_qty: rejVal,
         total_qty: (appVal || totalSheetsDcm) + rejVal,
         sheet_count: computedSheetCount,
-        sheets: sheets.map((s) => ({ dcm: Number(s.dcm), note: s.note || null })),
+        // Sheets already on the lot were POSTed when added — only send the ones that weren't
+        sheets: sheets.filter((s) => !s.saved).map((s) => ({ dcm: Number(s.dcm), note: s.note || null })),
         thickness: thickness || null,
         note: note || (appVal > 0 ? 'Approved upon inspection' : 'Rejected upon inspection'),
       };
@@ -359,7 +513,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         `Arrival completed successfully! (${payload.approved_qty} DCM approved · ${payload.rejected_qty} DCM rejected)`,
         'success'
       );
-      onBack();
+      onBack({ completed: true });
     } catch (err) {
       showToast?.(errMsg(err), 'error');
     }
@@ -367,6 +521,55 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
 
   return (
     <div className="bg-white p-6 rounded-3xl shadow-sm border space-y-6 max-w-4xl mx-auto animate-fade-in" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
+      {/* Delete Sheet Confirm Modal (portaled so the card's animation can't offset the fixed overlay) */}
+      {sheetToDelete && createPortal(
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-fade-in"
+          onClick={() => busySheetId !== sheetToDelete.id && setSheetToDelete(null)}
+        >
+          <div
+            className="bg-white rounded-3xl shadow-xl border max-w-sm w-full p-6 space-y-4"
+            style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-50 border border-red-200 flex items-center justify-center text-red-600 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-black text-base tracking-tight" style={{ color: '#2d1f0e' }}>Delete Sheet?</h3>
+                <p className="text-xs font-medium text-slate-500">This removes the sheet from the lot and cannot be undone.</p>
+              </div>
+            </div>
+
+            <div className="rounded-2xl p-3 border flex items-center justify-between text-xs" style={{ background: '#fdfbf7', borderColor: 'rgba(200,131,74,0.2)' }}>
+              <span className="font-mono font-black text-slate-700">{sheetToDelete.barcode}</span>
+              <span className="font-black text-amber-900">{sheetToDelete.dcm} <span className="text-[10px] text-slate-400">DCM</span></span>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={confirmDeleteSheet}
+                disabled={busySheetId === sheetToDelete.id}
+                className="flex-1 h-10 rounded-xl font-black text-xs uppercase text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 flex items-center justify-center gap-1.5 transition-all"
+              >
+                {busySheetId === sheetToDelete.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Trash2 className="w-3.5 h-3.5" /> Delete</>}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSheetToDelete(null)}
+                disabled={busySheetId === sheetToDelete.id}
+                className="h-10 px-4 rounded-xl font-bold text-xs uppercase text-slate-500 bg-slate-100 hover:bg-slate-200 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Header with Back Button */}
       <div className="flex items-center justify-between border-b pb-4" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         <button
@@ -436,6 +639,41 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         </div>
       </div>
 
+      {/* Side-by-side: Approved Qty (DCM) & Rejected Qty (DCM) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-black text-slate-700 block mb-1.5">
+            Approved Qty (DCM) <span className="font-semibold text-slate-500">— Enter total received DCM *</span>
+          </label>
+          <input
+            type="text"
+            inputMode="decimal"
+            disabled={isAlreadyCompleted}
+            placeholder={declaredTotal ? `Enter approved DCM (max ${declaredTotal})` : 'Enter approved DCM (e.g. 10000)'}
+            value={approvedQty}
+            onChange={(e) => handleApprovedChange(e.target.value)}
+            className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+            style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-black text-slate-700 block mb-1.5">
+            Rejected Qty (DCM) <span className="font-semibold text-slate-500">(optional)</span>
+          </label>
+          <input
+            type="text"
+            inputMode="decimal"
+            disabled={isAlreadyCompleted}
+            placeholder={declaredTotal ? 'Auto-filled from Total DCM − Approved' : 'Enter rejected DCM (e.g. 0)'}
+            value={rejectedQty}
+            onChange={(e) => handleRejectedChange(e.target.value)}
+            className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+            style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+          />
+        </div>
+      </div>
+
       {/* Sheet-wise DCM Entry */}
       <div className="rounded-2xl border p-5 space-y-4" style={{ background: '#faf7f2', borderColor: 'rgba(200,131,74,0.25)' }}>
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -499,21 +737,68 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="font-black text-amber-900">
-                      {sheet.dcm} <span className="text-[10px] text-slate-400 font-bold">DCM</span>
-                    </span>
-                    {!isAlreadyCompleted && (
+                  {editingSheetId === sheet.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        autoFocus
+                        value={editSheetDcm}
+                        onChange={(e) => setEditSheetDcm(toQtyInput(e.target.value))}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveSheet(sheet);
+                          if (e.key === 'Escape') setEditingSheetId(null);
+                        }}
+                        className="w-20 h-7 px-2 border rounded-lg text-xs font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                        style={{ borderColor: 'rgba(200,131,74,0.4)' }}
+                      />
                       <button
                         type="button"
-                        onClick={() => handleRemoveSheet(sheet.id)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
-                        title="Delete sheet"
+                        onClick={() => handleSaveSheet(sheet)}
+                        disabled={busySheetId === sheet.id}
+                        className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                        title="Save"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        {busySheetId === sheet.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                       </button>
-                    )}
-                  </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditingSheetId(null)}
+                        className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 transition-colors"
+                        title="Cancel"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-amber-900">
+                        {sheet.dcm} <span className="text-[10px] text-slate-400 font-bold">DCM</span>
+                      </span>
+                      {!isAlreadyCompleted && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => startEditSheet(sheet)}
+                            disabled={busySheetId === sheet.id}
+                            className="p-1 rounded-lg text-slate-400 hover:text-amber-700 hover:bg-amber-50 transition-colors disabled:opacity-50"
+                            title="Edit sheet DCM"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSheet(sheet)}
+                            disabled={busySheetId === sheet.id}
+                            className="p-1 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
+                            title="Delete sheet"
+                          >
+                            {busySheetId === sheet.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))
             )}
@@ -528,7 +813,25 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">TOTAL DCM</span>
                 <span className="text-2xl font-black text-amber-900">
-                  {totalSheetsDcm.toLocaleString()} <span className="text-xs text-amber-700">DCM</span>
+                  {declaredTotal.toLocaleString()} <span className="text-xs text-amber-700">DCM</span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">APPROVED</span>
+                <span className="text-sm font-black text-emerald-700">
+                  {approvedNum.toLocaleString()} <span className="text-[10px]">DCM</span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wider text-red-600">REJECTED</span>
+                <span className="text-sm font-black text-red-600">
+                  {rejectedNum.toLocaleString()} <span className="text-[10px]">DCM</span>
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">SHEETS DCM</span>
+                <span className="text-sm font-black text-slate-700">
+                  {totalSheetsDcm.toLocaleString()} <span className="text-[10px]">DCM</span>
                 </span>
               </div>
             </div>
@@ -574,53 +877,23 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         </div>
       </div>
 
-      {/* Side-by-side: Approved Qty (DCM) & Rejected Qty (DCM) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="text-xs font-black text-slate-700 block mb-1.5">
-            Approved Qty (DCM) <span className="font-semibold text-slate-500">— Enter total received DCM *</span>
-          </label>
-          <input
-            type="number"
-            step="any"
-            disabled={isAlreadyCompleted}
-            placeholder="Enter approved DCM (e.g. 10000)"
-            value={approvedQty}
-            onChange={(e) => setApprovedQty(e.target.value)}
-            className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-            style={{ borderColor: 'rgba(200,131,74,0.3)' }}
-          />
-        </div>
-
-        <div>
-          <label className="text-xs font-black text-slate-700 block mb-1.5">
-            Rejected Qty (DCM) <span className="font-semibold text-slate-500">(optional)</span>
-          </label>
-          <input
-            type="number"
-            step="any"
-            disabled={isAlreadyCompleted}
-            placeholder="Enter rejected DCM (e.g. 0)"
-            value={rejectedQty}
-            onChange={(e) => setRejectedQty(e.target.value)}
-            className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-            style={{ borderColor: 'rgba(200,131,74,0.3)' }}
-          />
-        </div>
-      </div>
-
       {/* Bottom Action: Complete Inspection (POST /materials/arrivals/{receipt_id}/complete) */}
       {!isAlreadyCompleted ? (
         <div className="pt-2">
           <button
             type="button"
             onClick={handleCompleteArrival}
-            disabled={isCompleting || (parseFloat(approvedQty || 0) === 0 && parseFloat(rejectedQty || 0) === 0 && totalSheetsDcm === 0)}
-            className="w-full h-12 rounded-2xl font-black text-xs uppercase tracking-wider text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer shadow-md hover:brightness-105 transition-all"
+            disabled={isCompleting || !canComplete}
+            className="w-full h-12 rounded-2xl font-black text-xs uppercase tracking-wider text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-emerald-600 disabled:hover:brightness-100 flex items-center justify-center gap-2 cursor-pointer shadow-md hover:brightness-105 transition-all"
           >
             {isCompleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4 text-white" />}
-            Complete Inspection ({parseFloat(approvedQty || totalSheetsDcm || 0)} DCM Approved · {parseFloat(rejectedQty || 0)} DCM Rejected)
+            Complete Inspection ({approvedNum} DCM Approved · {rejectedNum} DCM Rejected)
           </button>
+          {!canComplete && (
+            <p className="text-[11px] font-bold text-amber-800 text-center mt-2 flex items-center justify-center gap-1">
+              <ShieldAlert className="w-3.5 h-3.5" /> {completeBlockReason}
+            </p>
+          )}
         </div>
       ) : (
         <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-emerald-800 text-xs font-black flex items-center gap-2">

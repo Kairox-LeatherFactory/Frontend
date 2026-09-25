@@ -9,7 +9,8 @@ const nextConfig = {
       {
         source: '/api/v1/:path*',
         // destination: 'http://127.0.0.1:8000/api/v1/:path*',
-        destination: 'https://staging-api-lf.kairoxaitech.com/api/v1/:path*',
+        destination: 'https://backend-bctk.onrender.com/api/v1/:path*',
+        // destination: 'https://staging-api-lf.kairoxaitech.com/api/v1/:path*',
       },
     ];
   },
