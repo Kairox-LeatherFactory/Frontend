@@ -10,7 +10,10 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
   const [adjustMaterialLot] = useAdjustMaterialLotMutation();
   const [retireMaterialLot] = useRetireMaterialLotMutation();
   
-  const { data: historyEvents = [], isLoading: historyLoading } = useGetMaterialLotHistoryQuery(lot?.lot_id, { skip: !lot?.lot_id });
+  const { data: historyRes, isLoading: historyLoading } = useGetMaterialLotHistoryQuery(lot?.lot_id, { skip: !lot?.lot_id });
+  const historyEvents = Array.isArray(historyRes)
+    ? historyRes
+    : (historyRes?.events || historyRes?.history || historyRes?.items || []);
 
     const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});

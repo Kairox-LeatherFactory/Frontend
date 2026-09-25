@@ -4,7 +4,7 @@ import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 export const apiSlice = createApi({
   reducerPath: 'api',
   baseQuery: fetchBaseQuery({
-    baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || '',
+    baseUrl: '',
     prepareHeaders: (headers, { getState }) => {
     
       const token = getState().auth?.token || localStorage.getItem('kairox_token');
@@ -86,16 +86,15 @@ export const apiSlice = createApi({
       query: (payload) => ({ url: '/api/v1/production/cutting/issue', method: 'POST', body: payload })
     }),
     getCuttingGrid: builder.query({
-      query: ({ style_id, colour, work_date, date } = {}) => {
+      query: ({ style_id, colour } = {}) => {
         const qs = new URLSearchParams();
         if (style_id) qs.append('style_id', style_id);
         if (colour) qs.append('colour', colour);
-        if (work_date) qs.append('work_date', work_date);
-        else if (date) qs.append('date', date);
         return `/api/v1/cutting/grid?${qs.toString()}`;
       },
       providesTags: ['CuttingGrid']
     }),
+
     generateCuttingRows: builder.mutation({
       query: (payload) => ({ 
         url: '/api/v1/cutting/rows/generate', 
@@ -122,9 +121,16 @@ export const apiSlice = createApi({
       invalidatesTags: ['CuttingGrid']
     }),
     approveCuttingRow: builder.mutation({
-      query: (row_id) => ({ url: `/api/v1/cutting/rows/${row_id}/approve`, method: 'POST' }),
+      query: (arg) => {
+        const row_id = typeof arg === 'string' ? arg : arg.row_id;
+        return {
+          url: `/api/v1/cutting/rows/${row_id}/approve`,
+          method: 'POST'
+        };
+      },
       invalidatesTags: ['CuttingGrid']
     }),
+
     reopenCuttingRow: builder.mutation({
       query: ({ row_id, reason }) => ({ 
         url: `/api/v1/cutting/rows/${row_id}/reopen?reason=${encodeURIComponent(reason || '')}`, 

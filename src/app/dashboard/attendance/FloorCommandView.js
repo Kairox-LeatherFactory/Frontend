@@ -217,15 +217,16 @@ await addEmployeeApi(payload).unwrap();
  };
 
  const dailyWorkers = useMemo(() => {
- return workers;
+   return normalizeRosterArray(workers);
  }, [workers]);
 
  const filtered = useMemo(() => {
- const q = search.trim().toLowerCase();
- if (!q) return dailyWorkers;
- return dailyWorkers.filter(
- (w) => w.name?.toLowerCase().includes(q) || String(w.id).includes(q)
- );
+   const list = Array.isArray(dailyWorkers) ? dailyWorkers : [];
+   const q = search.trim().toLowerCase();
+   if (!q) return list;
+   return list.filter(
+     (w) => w?.name?.toLowerCase().includes(q) || String(w?.id || '').includes(q)
+   );
  }, [dailyWorkers, search]);
 
  const toggleSelect = (id) =>
@@ -235,8 +236,11 @@ await addEmployeeApi(payload).unwrap();
  return next;
  });
 
- const toggleAll = () =>
- setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map((w) => w.id)));
+ const toggleAll = () => {
+   const list = Array.isArray(filtered) ? filtered : [];
+   setSelected(selected.size === list.length ? new Set() : new Set(list.map((w) => w.id)));
+ };
+
 
  const batchAction = async (type) => {
  if (selected.size === 0) return;

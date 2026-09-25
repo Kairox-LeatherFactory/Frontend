@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Scissors, Loader2, FileSpreadsheet, LockOpen, Check } from 'lucide-react';
+
 import {
   useLazyGetMaterialLotsQuery,
   useGetCuttingGridQuery,
@@ -15,6 +17,7 @@ import {
   useLazyGetClientStylesQuery,
   useLazyGetStyleMaterialSpecQuery
 } from '@/store/slices/apiSlice';
+import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
 
 const toast = {
   success: (msg) => console.log('SUCCESS:', msg),
@@ -88,11 +91,49 @@ export default function CuttingSheetSection() {
     return lines.filter(l => l.category === 'LEATHER');
   }, [specData]);
 
+  const [generateRows] = useGenerateCuttingRowsMutation();
+
+  // 📡 GET /api/v1/cutting/grid?style_id=&colour=
+  const { data: gridData, isLoading: gridLoading, error: gridError } = useGetCuttingGridQuery(
+    { style_id: styleId, colour },
+    { skip: !styleId || !colour }
+  );
+
+
+  useEffect(() => {
+    if (gridError) {
+      console.warn('Backend Grid Error 500:', gridError);
+    }
+  }, [gridError]);
+
+
+  // 📡 GET /api/v1/attendance/today
+  const { data: attendanceRes } = useGetAttendanceTodayQuery();
+  const presentWorkers = useMemo(() => {
+    const raw = Array.isArray(attendanceRes)
+      ? attendanceRes
+      : (attendanceRes?.roster || attendanceRes?.items || attendanceRes?.employees || attendanceRes?.attendance || []);
+    const gridCutters = Array.isArray(gridData?.present_cutters) ? gridData.present_cutters : [];
+    const combined = [...raw, ...gridCutters];
+
+    const uniqueMap = new Map();
+    combined.forEach(w => {
+      const id = w.employee_id || w.id || w.worker_id || w.employee_code;
+      const name = w.employee_name || w.name || w.worker_name || w.cutter_name;
+      const code = w.employee_code || w.code || '';
+      if (id && name && !uniqueMap.has(String(id))) {
+        uniqueMap.set(String(id), { id, name, code });
+      }
+    });
+    return Array.from(uniqueMap.values());
+  }, [attendanceRes, gridData]);
+
   const availableArticles = useMemo(() => {
     const lotArticles = lotsList.map(l => l.article).filter(Boolean);
     const specArticles = leatherLines.map(l => l.article).filter(Boolean);
-    return [...new Set([...lotArticles, ...specArticles])];
-  }, [leatherLines, lotsList]);
+    const savedArticle = selectedArticle ? [selectedArticle] : [];
+    return [...new Set([...specArticles, ...lotArticles, ...savedArticle])];
+  }, [leatherLines, lotsList, selectedArticle]);
 
   const availableColours = useMemo(() => {
     const lotColours = lotsList.flatMap(l => {
@@ -101,28 +142,59 @@ export default function CuttingSheetSection() {
     }).filter(Boolean);
 
     const specColours = leatherLines.map(l => l.colour || l.color).filter(Boolean);
+    const gridColours = Array.isArray(gridData?.colours) ? gridData.colours : (gridData?.colour ? [gridData.colour] : []);
+    const specExtraColours = Array.isArray(specData?.colours) ? specData.colours : [];
+    const savedColour = colour ? [colour] : [];
 
-    return [...new Set([...lotColours, ...specColours])];
-  }, [leatherLines, lotsList]);
-
-  const [generateRows] = useGenerateCuttingRowsMutation();
-
-  // 📡 GET /api/v1/cutting/grid?style_id=&colour=&work_date=
-  const { data: gridData, isLoading: gridLoading } = useGetCuttingGridQuery(
-    { style_id: styleId, colour, work_date: workDate },
-    { skip: !styleId || !colour }
-  );
+    return [...new Set([...specColours, ...gridColours, ...specExtraColours, ...lotColours, ...savedColour])];
+  }, [leatherLines, lotsList, gridData, specData, colour]);
 
   // Grid state
   const [rows, setRows] = useState([]);
   const [isLooping, setIsLooping] = useState(false);
+  const [reopenTargetRow, setReopenTargetRow] = useState(null);
+  const [reopenReasonText, setReopenReasonText] = useState('');
+  const [isMounted, setIsMounted] = useState(false);
+  const [reopenRowMutation, { isLoading: isReopeningRow }] = useReopenCuttingRowMutation();
 
-  // Sync loaded grid rows
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  const handleConfirmReopen = async () => {
+    if (!reopenTargetRow) return;
+    if (!reopenReasonText.trim()) {
+      toast.error('Please enter a reason for reopening');
+      return;
+    }
+    try {
+      const rowId = reopenTargetRow.row_id || reopenTargetRow.id;
+      const res = await reopenRowMutation({ row_id: rowId, reason: reopenReasonText.trim() }).unwrap();
+      updateRowInState(res.row || res);
+      toast.success('Row Reopened successfully');
+      setReopenTargetRow(null);
+      setReopenReasonText('');
+    } catch (err) {
+      toast.error(err?.data?.message || 'Failed to reopen row');
+    }
+  };
+
+  // Sync loaded grid rows (filtered by workDate on frontend)
   useEffect(() => {
     if (gridData?.rows && Array.isArray(gridData.rows)) {
-      setRows(gridData.rows);
+      if (workDate) {
+        const filtered = gridData.rows.filter(r => {
+          const rowDate = (r.work_date || r.date || '').slice(0, 10);
+          return !rowDate || rowDate === workDate;
+        });
+        setRows(filtered);
+      } else {
+        setRows(gridData.rows);
+      }
     }
-  }, [gridData]);
+  }, [gridData, workDate]);
+
+
 
   const handleGenerate = async () => {
     if (!styleId) {
@@ -304,7 +376,6 @@ export default function CuttingSheetSection() {
               <tr className="bg-[#475569] text-white uppercase font-black tracking-wider border-b border-slate-300">
                 <th className="p-2 sticky left-0 z-20 bg-[#334155] border-r border-slate-400 w-10 text-center">S.No</th>
                 <th className="p-2 sticky left-10 z-20 bg-[#334155] border-r border-slate-400 w-28 text-center">DATE</th>
-                <th className="p-2 border-r border-slate-400 w-32 text-center">Order</th>
                 <th className="p-2 border-r border-slate-400 w-36 text-center">Style</th>
                 <th className="p-2 border-r border-slate-400 w-32 text-center">Article</th>
                 <th className="p-2 border-r border-slate-400 w-24 text-center">Colour</th>
@@ -322,7 +393,7 @@ export default function CuttingSheetSection() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={29} className="p-12 text-center text-slate-400 font-bold bg-slate-50">
+                  <td colSpan={28} className="p-12 text-center text-slate-400 font-bold bg-slate-50">
                     No rows generated yet. Use the top bar to generate rows.
                   </td>
                 </tr>
@@ -335,6 +406,8 @@ export default function CuttingSheetSection() {
                     row={row}
                     updateRowInState={updateRowInState}
                     stylesList={stylesList}
+                    presentWorkers={presentWorkers}
+                    onOpenReopenModal={setReopenTargetRow}
                   />
                 ))
               )}
@@ -342,9 +415,10 @@ export default function CuttingSheetSection() {
             {rows.length > 0 && (
               <tfoot>
                 <tr className="bg-[#475569] text-white font-black">
-                  <td colSpan={26} className="p-2 text-right border-r border-slate-500 tracking-widest text-[13px]">
+                  <td colSpan={25} className="p-2 text-right border-r border-slate-500 tracking-widest text-[13px]">
                     GRAND TOTAL
                   </td>
+
                   <td className="p-2 text-center border-r border-slate-500 bg-[#334155] text-emerald-400 text-sm">
                     {grandTotalSkins}
                   </td>
@@ -358,11 +432,60 @@ export default function CuttingSheetSection() {
           </table>
         </div>
       </div>
+
+      {/* Modern Responsive Reopen Modal using createPortal */}
+      {isMounted && reopenTargetRow && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3 border-slate-100">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                <LockOpen className="w-4 h-4 text-amber-600" /> Reopen Cutting Row #{reopenTargetRow.sNo}
+              </h3>
+              <button
+                onClick={() => { setReopenTargetRow(null); setReopenReasonText(''); }}
+                className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 font-bold transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div>
+              <label className="text-[11px] font-black text-slate-600 uppercase tracking-wider block mb-1.5">
+                Reason for Reopening *
+              </label>
+              <textarea
+                value={reopenReasonText}
+                onChange={(e) => setReopenReasonText(e.target.value)}
+                placeholder="e.g. Need to adjust sheet DCM or correct worker assignment"
+                className="w-full h-24 p-3 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-[#c8834a] focus:bg-white transition-all resize-none"
+                autoFocus
+              />
+            </div>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => { setReopenTargetRow(null); setReopenReasonText(''); }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmReopen}
+                disabled={isReopeningRow}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 transition-colors flex items-center gap-1.5 shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {isReopeningRow ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LockOpen className="w-3.5 h-3.5" />}
+                Confirm Reopen
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
 
-const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList }) => {
+
+const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal }) => {
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
   const [updateRowMutation] = useUpdateCuttingRowMutation();
@@ -372,6 +495,17 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
 
   const [localCells, setLocalCells] = useState({});
   const [loadingCells, setLoadingCells] = useState({});
+  const [rcNo, setRcNo] = useState(row.rc_no || row.rc_number || '');
+  const [sizeVal, setSizeVal] = useState(row.size || row.size_name || '');
+
+  useEffect(() => {
+    setRcNo(row.rc_no || row.rc_number || '');
+  }, [row.rc_no, row.rc_number]);
+
+  useEffect(() => {
+    setSizeVal(row.size || row.size_name || '');
+  }, [row.size, row.size_name]);
+
 
   const isLocked = row.status === 'APPROVED' || row.status === 'ISSUED';
   const sheets = row.sheets || [];
@@ -386,9 +520,10 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
       setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
       try {
         const sheetId = existingSheet.id || existingSheet.sheet_id;
-        const res = await updateSheet({ 
-          row_id: row.row_id || row.id, 
-          sheet_id: sheetId 
+        const res = await updateSheet({
+          row_id: row.row_id || row.id,
+          sheet_id: sheetId,
+          payload: {}
         }).unwrap();
         updateRowInState(res.row || res);
         toast.success('Sheet cleared');
@@ -406,27 +541,37 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
     // 2. Value entered / updated in cell: PATCH with { dcm: numValue }
     setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
     try {
+      const lotId = row.material_lot_id || row.lot_id || row.lot?.lot_id || row.lot?.id || (typeof row.lot === 'string' ? row.lot : undefined) || (existingSheet && (existingSheet.material_lot_id || existingSheet.lot_id));
+      const sheetCode = (existingSheet && (existingSheet.code || existingSheet.sheet_code)) || row.sheet_code || (row.barcode ? `${row.barcode}-S${String(sheetIndex + 1).padStart(2, '0')}` : undefined);
+
       if (existingSheet) {
         const sheetId = existingSheet.id || existingSheet.sheet_id;
-        const res = await updateSheet({ 
-          row_id: row.row_id || row.id, 
-          sheet_id: sheetId, 
-          payload: { dcm: numValue } 
+        const res = await updateSheet({
+          row_id: row.row_id || row.id,
+          sheet_id: sheetId,
+          payload: { dcm: numValue }
         }).unwrap();
         updateRowInState(res.row || res);
         toast.success(`Sheet updated: ${numValue} dcm`);
       } else {
         const sheetPayload = {
-          sheet_code: row.sheet_code || (row.barcode ? `${row.barcode}-S${String(sheetIndex + 1).padStart(2, '0')}` : undefined),
-          material_lot_id: row.material_lot_id || row.lot_id || undefined,
           dcm: numValue,
         };
+        if (lotId) sheetPayload.material_lot_id = lotId;
+        if (sheetCode) sheetPayload.sheet_code = sheetCode;
+
         const res = await createSheet({ row_id: row.row_id || row.id, payload: sheetPayload }).unwrap();
         updateRowInState(res.row || res);
         toast.success(`Sheet created: ${numValue} dcm`);
       }
     } catch (err) {
-      toast.error(err?.data?.message || 'Failed to save sheet');
+      const errorMsg =
+        (typeof err?.data?.detail === 'string' && err.data.detail) ||
+        (Array.isArray(err?.data?.detail) && err.data.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ')) ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to save sheet';
+      toast.error(errorMsg);
       setLocalCells(prev => ({ ...prev, [sheetIndex]: existingSheet ? existingSheet.dcm : '' }));
     } finally {
       setLoadingCells(prev => ({ ...prev, [sheetIndex]: false }));
@@ -439,37 +584,61 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
     if (trimmed === (row[field] || '')) return; // No change
 
     try {
-      const res = await updateRowMutation({ row_id: row.row_id || row.id, payload: { [field]: trimmed } }).unwrap();
+      const payload = { [field]: trimmed };
+      if (field === 'rc_no') {
+        payload.rc_number = trimmed;
+        payload.rc_no = trimmed;
+      }
+      const res = await updateRowMutation({ row_id: row.row_id || row.id, payload }).unwrap();
       updateRowInState(res.row || res);
-      toast.success(`${field} updated`);
+      toast.success(`${field.toUpperCase()} updated`);
     } catch (err) {
       toast.error(err?.data?.message || `Failed to update ${field}`);
-      // The input will keep the failed typed value unless we force reset, but since it's uncontrolled defaultValue it might stay.
-      // Re-rendering happens on updateRowInState if success.
     }
   };
 
   const handleApprove = async () => {
     try {
-      const res = await approveRow(row.row_id || row.id).unwrap();
+      const rowId = row.row_id || row.id;
+
+      // Automatically save un-saved RC No or Size first
+      const trimmedRc = (rcNo || '').trim();
+      const trimmedSize = (sizeVal || '').trim();
+      const currentRc = (row.rc_no || row.rc_number || '').trim();
+      const currentSize = (row.size || row.size_name || '').trim();
+
+      if (trimmedRc !== currentRc || trimmedSize !== currentSize) {
+        const patchPayload = {};
+        if (trimmedRc !== currentRc) {
+          patchPayload.rc_no = trimmedRc;
+          patchPayload.rc_number = trimmedRc;
+        }
+        if (trimmedSize !== currentSize) {
+          patchPayload.size = trimmedSize;
+        }
+        await updateRowMutation({ row_id: rowId, payload: patchPayload }).unwrap();
+      }
+
+      const res = await approveRow(rowId).unwrap();
       updateRowInState(res.row || res);
       toast.success(res.message || 'Row Approved successfully');
     } catch (err) {
-      toast.error(err?.data?.message || 'Failed to approve row');
+      const errorMsg =
+        (typeof err?.data?.detail === 'string' && err.data.detail) ||
+        (Array.isArray(err?.data?.detail) && err.data.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ')) ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to approve row';
+      toast.error(errorMsg);
     }
   };
 
-  const handleReopen = async () => {
-    const reason = window.prompt("Reason for reopening this row?");
-    if (!reason) return;
-    try {
-      const res = await reopenRow({ row_id: row.row_id || row.id, reason }).unwrap();
-      updateRowInState(res.row || res);
-      toast.success('Row Reopened successfully');
-    } catch (err) {
-      toast.error(err?.data?.message || 'Failed to reopen row');
+  const handleReopen = () => {
+    if (onOpenReopenModal) {
+      onOpenReopenModal({ ...row, sNo });
     }
   };
+
 
   const cellInputClass = "w-full h-9 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all";
 
@@ -498,12 +667,10 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
           className="w-full h-9 px-1 text-center font-bold text-slate-700 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
         />
       </td>
-      <td className="p-2 border-r border-slate-300 bg-[#e2e8f0]/30 text-center font-bold text-slate-700">
-        {row.order_number || row.order_id || ''}
-      </td>
       <td className="p-2 border-r border-slate-300 bg-[#dcfce7]/30 text-center font-bold text-[#166534]">
         {displayStyleName}
       </td>
+
       <td className="p-0 border-r border-slate-300 bg-[#dcfce7]/30">
         <input
           type="text"
@@ -522,27 +689,59 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
           className="w-full h-9 text-center font-bold text-[#166534] bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
         />
       </td>
-      <td className="p-2 border-r border-slate-300 bg-[#f8fafc] text-center font-bold text-slate-700">
-        {row.name || ''}
+      <td className="p-0 border-r border-slate-300 bg-[#f8fafc]">
+        <select
+          value={row.cutter_employee_id || row.cutter_id || ''}
+          disabled={isLocked}
+          onChange={async (e) => {
+            const selectedId = e.target.value;
+            const selectedWorker = presentWorkers.find(w => String(w.id) === String(selectedId));
+            const payload = { cutter_employee_id: selectedId };
+            if (selectedWorker?.name) {
+              payload.cutter_name = selectedWorker.name;
+              payload.name = selectedWorker.name;
+            }
+            try {
+              const res = await updateRowMutation({ row_id: row.row_id || row.id, payload }).unwrap();
+              updateRowInState(res.row || res);
+              toast.success('Worker assigned');
+            } catch (err) {
+              toast.error(err?.data?.message || 'Failed to assign worker');
+            }
+          }}
+          className="w-full h-9 px-1 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all truncate text-xs cursor-pointer"
+        >
+          <option value="">{row.cutter_name || row.name || '-- Select Worker --'}</option>
+          {presentWorkers.map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name} {w.code ? `(${w.code})` : ''}
+            </option>
+          ))}
+        </select>
       </td>
       <td className="p-0 border-r border-slate-300 bg-white">
         <input
           type="text"
-          defaultValue={row.size || row.size_name || ''}
+          value={sizeVal}
+          onChange={(e) => setSizeVal(e.target.value)}
           disabled={isLocked}
           onBlur={(e) => handleRowCellBlur('size', e.target.value)}
           className="w-full h-9 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+          placeholder="Size"
         />
       </td>
       <td className="p-0 border-r border-slate-300 bg-white">
         <input
           type="text"
-          defaultValue={row.rc_no || ''}
+          value={rcNo}
+          onChange={(e) => setRcNo(e.target.value)}
           disabled={isLocked}
           onBlur={(e) => handleRowCellBlur('rc_no', e.target.value)}
           className="w-full h-9 text-center font-bold text-blue-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
+          placeholder="RC No"
         />
       </td>
+
 
       {/* 17 Sheet Cells */}
       {Array(17).fill(0).map((_, i) => {

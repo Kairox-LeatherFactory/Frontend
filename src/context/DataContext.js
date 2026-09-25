@@ -1,15 +1,16 @@
 'use client';
 import { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { 
-  apiGetClients, 
-  apiCreateClient, 
+import {
+  apiGetClients,
+  apiCreateClient,
   apiGetClientOrders,
   apiAddClientOrder,
   apiGetEmployees,
   apiGetOperations,
   apiGetEvents,
-  apiProductionScan,} from '@/lib/api';
+  apiProductionScan,
+} from '@/lib/api';
 
 const DataContext = createContext(null);
 
@@ -31,23 +32,29 @@ export function DataProvider({ children }) {
     setApiLoading(true);
     setApiError(null);
     try {
-      
-      const [clientsData, empData, opsData, evtsData] = await Promise.all([
+
+      const [rawClients, rawEmp, rawOps, rawEvts] = await Promise.all([
         apiGetClients(token).catch(() => []),
         apiGetEmployees(token).catch(() => []),
         apiGetOperations(token).catch(() => []),
         apiGetEvents(token).catch(() => []),
       ]);
 
+      const clientsList = Array.isArray(rawClients) ? rawClients : (rawClients?.items || rawClients?.clients || []);
+      const empList = Array.isArray(rawEmp) ? rawEmp : (rawEmp?.items || rawEmp?.employees || []);
+      const opsList = Array.isArray(rawOps) ? rawOps : (rawOps?.items || rawOps?.operations || []);
+      const evtsList = Array.isArray(rawEvts) ? rawEvts : (rawEvts?.items || rawEvts?.events || []);
+
       let allOrders = [];
-      for (const client of clientsData) {
-        const clientOrders = await apiGetClientOrders(token, client.id).catch(() => []);
+      for (const client of clientsList) {
+        const clientOrdersRaw = await apiGetClientOrders(token, client.id || client.client_id).catch(() => []);
+        const clientOrders = Array.isArray(clientOrdersRaw) ? clientOrdersRaw : (clientOrdersRaw?.items || clientOrdersRaw?.orders || []);
         allOrders.push(...clientOrders);
       }
 
-      setClients(clientsData.map((c) => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—' })));
-      
-      const mappedWorkers = empData.map((e) => ({
+      setClients(clientsList.map((c) => ({ id: c.id, key: c.name, name: c.name, country: c.country || '—' })));
+
+      const mappedWorkers = empList.map((e) => ({
         id: e.id,
         name: e.name,
         role: e.designation,
@@ -59,12 +66,12 @@ export function DataProvider({ children }) {
         employee_barcode: e.employee_barcode || `EMP-${String(e.id).slice(0, 8).toUpperCase()}`,
       }));
       setWorkers(mappedWorkers);
-      
-      setOperations(opsData);
+
+      setOperations(opsList);
       setOrders(allOrders);
 
-      const mappedEvents = evtsData.map((apiE) => {
-        const op = opsData.find((o) => o.id === apiE.operation_id);
+      const mappedEvents = evtsList.map((apiE) => {
+        const op = opsList.find((o) => o.id === apiE.operation_id);
         return {
           id: apiE.id,
           sku_id: apiE.sku_id,
@@ -88,17 +95,17 @@ export function DataProvider({ children }) {
   useEffect(() => {
     fetchFromApi();
   }, [fetchFromApi]);
-    const createClient = useCallback(async (name, companyCode, orderNumber, country) => {
+  const createClient = useCallback(async (name, companyCode, orderNumber, country) => {
     const newClient = await apiCreateClient(token, name, country, orderNumber, companyCode);
-    
+
     setClients((prev) => [
-      ...prev, 
-      { 
-        id: newClient.id, 
-        name: newClient.name,                          
-        key: newClient.code || companyCode || '—',    
-        code: newClient.code || companyCode || '—',    
-        country: newClient.country || country || '—'   
+      ...prev,
+      {
+        id: newClient.id,
+        name: newClient.name,
+        key: newClient.code || companyCode || '—',
+        code: newClient.code || companyCode || '—',
+        country: newClient.country || country || '—'
       }
     ]);
     return newClient;
@@ -119,7 +126,7 @@ export function DataProvider({ children }) {
     return newRun;
   };
 
- 
+
   const refreshData = useCallback(() => {
     return fetchFromApi();
   }, [fetchFromApi]);

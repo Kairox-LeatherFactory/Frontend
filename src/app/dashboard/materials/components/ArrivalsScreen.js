@@ -136,8 +136,8 @@ export function ArrivalsScreen({ showToast }) {
               type="button"
               onClick={() => setStatusFilter('ALL')}
               className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${statusFilter === 'ALL'
-                  ? 'bg-white text-slate-900 shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-white text-slate-900 shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
                 }`}
             >
               All
@@ -150,8 +150,8 @@ export function ArrivalsScreen({ showToast }) {
               type="button"
               onClick={() => setStatusFilter('PENDING')}
               className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${statusFilter === 'PENDING'
-                  ? 'bg-amber-500 text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-amber-500 text-white shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
                 }`}
             >
               <Clock className="w-3.5 h-3.5" /> Pending
@@ -165,8 +165,8 @@ export function ArrivalsScreen({ showToast }) {
               type="button"
               onClick={() => setStatusFilter('COMPLETED')}
               className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1.5 ${statusFilter === 'COMPLETED'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-500 hover:text-slate-800'
+                ? 'bg-emerald-600 text-white shadow-xs'
+                : 'text-slate-500 hover:text-slate-800'
                 }`}
             >
               <CheckCircle2 className="w-3.5 h-3.5" /> Completed
@@ -233,8 +233,8 @@ export function ArrivalsScreen({ showToast }) {
                   </div>
                   <span
                     className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase border ${isCompleted
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                        : 'bg-amber-50 text-amber-700 border-amber-200'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-amber-50 text-amber-700 border-amber-200'
                       }`}
                   >
                     {isCompleted ? 'COMPLETED' : (arrival.status || 'PENDING')}
