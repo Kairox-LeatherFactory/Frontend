@@ -314,10 +314,16 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         dcm: Number(s.dcm) || 0,
         barcode: s.code || s.barcode,
         note: s.note || null,
+        status: s.status || null,
         saved: true,
       }));
     return [...saved, ...localSheets].map((s, idx) => ({ ...s, sheetNo: idx + 1 }));
   }, [savedSheetsRaw, localSheets, arrival.arrived_at]);
+  // The list shows only ALLOCATED saved sheets (plus unsaved local ones); totals still use every sheet
+  const listedSheets = useMemo(
+    () => sheets.filter((s) => !s.saved || s.status === 'ALLOCATED'),
+    [sheets]
+  );
   const [currentSheetDcm, setCurrentSheetDcm] = useState('');
   const [totalSheetsCount, setTotalSheetsCount] = useState(arrival.sheet_count || '');
   // Total DCM declared on the arrival — approved + rejected must add up to this
@@ -721,8 +727,12 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
               <div className="py-7 text-center text-xs font-bold text-slate-400">
                 No sheets entered yet. Enter DCM above and click <span className="text-amber-800 font-black">+ Add</span>.
               </div>
+            ) : listedSheets.length === 0 ? (
+              <div className="py-7 text-center text-xs font-bold text-slate-400">
+                No allocated sheets.
+              </div>
             ) : (
-              sheets.map((sheet) => (
+              listedSheets.map((sheet) => (
                 <div
                   key={sheet.id || sheet.barcode}
                   className="flex items-center justify-between px-3 py-2.5 rounded-xl border bg-slate-50/50 hover:bg-amber-50/40 transition-all text-xs"
