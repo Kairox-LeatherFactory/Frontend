@@ -86,16 +86,15 @@ export const apiSlice = createApi({
       query: (payload) => ({ url: '/api/v1/production/cutting/issue', method: 'POST', body: payload })
     }),
     getCuttingGrid: builder.query({
-      query: ({ style_id, colour, work_date, date } = {}) => {
+      query: ({ style_id, colour } = {}) => {
         const qs = new URLSearchParams();
         if (style_id) qs.append('style_id', style_id);
         if (colour) qs.append('colour', colour);
-        if (work_date) qs.append('work_date', work_date);
-        else if (date) qs.append('date', date);
         return `/api/v1/cutting/grid?${qs.toString()}`;
       },
       providesTags: ['CuttingGrid']
     }),
+
     generateCuttingRows: builder.mutation({
       query: (payload) => ({ 
         url: '/api/v1/cutting/rows/generate', 
