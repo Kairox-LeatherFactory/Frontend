@@ -185,10 +185,19 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
   }
 
   return (
-    <div className="bg-white p-6 rounded-3xl shadow-sm border space-y-6 max-w-4xl mx-auto" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
+    <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
+      <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+        <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center shrink-0">
+          <PackagePlus className="w-5 h-5 text-slate-600" />
+        </div>
+        <h2 className="text-lg font-black tracking-tight text-slate-900">Add New Material</h2>
+      </div>
+
+    <div className="p-6 space-y-6">
       <div>
-        <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Step 1 — Class</div>
+        <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Step 1 — Category</div>
         <CategoryPicker
+          variant="tiles"
           category={category}
           subtype={subtype}
           onCategory={(c) => {
@@ -207,6 +216,12 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
           subtypeRequired={category === 'ACCESSORY'}
         />
       </div>
+
+      {!category && (
+        <p className="text-center py-6 text-xs font-semibold text-slate-400">
+          Pick a category above to fill in the material details.
+        </p>
+      )}
 
       {spec && (
         <div className="space-y-5 pt-4 border-t" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
@@ -231,7 +246,7 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
             </div>
           )}
 
-          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Step 2 — Fields</div>
+          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Step 2 — Details</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-black text-slate-700 block mb-1">Article / Material Name *</label>
@@ -362,6 +377,7 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
           </button>
         </div>
       )}
+    </div>
     </div>
   );
 }

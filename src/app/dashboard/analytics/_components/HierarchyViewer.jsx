@@ -23,6 +23,8 @@ import PieceTravelerCard from './levels/PieceTravelerCard';
  * @param {Object|null} props.pieceDetail - Fetched piece traveler detail payload.
  * @param {Function} props.onSelectPiece - Handler to select/inspect a specific piece code.
  * @param {boolean} props.loadingPiece - Loading indicator for piece detail fetch.
+ * @param {boolean} props.canDeleteStages - Whether the viewer may delete stage entries (DM · MD).
+ * @param {Function} props.onDeleteStage - Opens the delete dialog for one stage entry.
  * @returns {JSX.Element} Hierarchical response viewer.
  */
 export default function HierarchyViewer({
@@ -33,7 +35,17 @@ export default function HierarchyViewer({
   pieceDetail,
   onSelectPiece,
   loadingPiece,
+  canDeleteStages,
+  onDeleteStage,
 }) {
+  // Chronologically sort stage history (Leather Cutting -> Lining Cutting -> ... -> Packaging).
+  // Must run before the early return below — hooks can't be conditional.
+  const stages = pieceDetail?.stages;
+  const sortedStages = useMemo(() => {
+    if (!Array.isArray(stages)) return [];
+    return [...stages].sort((a, b) => getStageRank(a) - getStageRank(b));
+  }, [stages]);
+
   // Empty State: Prompt user to select an order from the sidebar
   if (!activeItem) {
     return (
@@ -52,12 +64,6 @@ export default function HierarchyViewer({
 
   const style = activeItem.type === 'style' ? activeItem.data : null;
   const sDetail = style ? styleDetails[style.style_id || style.id] : null;
-
-  // Chronologically sort stage history (Leather Cutting -> Lining Cutting -> ... -> Packaging)
-  const sortedStages = useMemo(() => {
-    if (!pieceDetail?.stages || !Array.isArray(pieceDetail.stages)) return [];
-    return [...pieceDetail.stages].sort((a, b) => getStageRank(a) - getStageRank(b));
-  }, [pieceDetail?.stages]);
 
   return (
     <div className="space-y-6 pb-20">
@@ -82,6 +88,8 @@ export default function HierarchyViewer({
           pieceDetail={pieceDetail}
           sortedStages={sortedStages}
           onClose={() => onSelectPiece(null)}
+          canDeleteStages={canDeleteStages}
+          onDeleteStage={onDeleteStage}
         />
       )}
     </div>

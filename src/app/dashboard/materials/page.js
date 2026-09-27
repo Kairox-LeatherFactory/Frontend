@@ -96,16 +96,16 @@ export default function MaterialsPage() {
         <LeatherByStyleScreen showToast={showToast} onOpenOrder={isDmOnly ? (p) => { setOrderPrefill(p); setScreen('orders'); } : null} />
       )}
       {screen === 'intake' && isWriter && (
-        <div className="space-y-8">
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 px-1">Step 1 — Receive Against an Existing Lot</div>
-            <ReceivingScreen showToast={showToast} prefill={receivePrefill} />
+        // Side by side on wide screens (existing | OR | new), stacked below xl
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] gap-5 items-start">
+          <ReceivingScreen showToast={showToast} prefill={receivePrefill} />
+          <div className="flex xl:flex-col items-center gap-3 xl:self-stretch" aria-hidden="true">
+            <div className="flex-1 h-px xl:h-auto xl:w-px" style={{ background: 'rgba(200,131,74,0.3)' }} />
+            <span className="w-10 h-10 rounded-full bg-white border-2 flex items-center justify-center text-[11px] font-black text-[#a86022] shadow-sm" style={{ borderColor: 'rgba(200,131,74,0.35)' }}>OR</span>
+            <div className="flex-1 h-px xl:h-auto xl:w-px" style={{ background: 'rgba(200,131,74,0.3)' }} />
           </div>
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2 px-1">Step 2 — No Matching Lot? Add a New Material</div>
-            <AddMaterialScreen showToast={showToast}
-              onDuplicate={(p) => { setReceivePrefill(p); document.getElementById('app-main')?.scrollTo({ top: 0, behavior: 'smooth' }); showToast('Already exists — Receiving above is pre-filled with it.', 'success'); }} />
-          </div>
+          <AddMaterialScreen showToast={showToast}
+            onDuplicate={(p) => { setReceivePrefill(p); document.getElementById('app-main')?.scrollTo({ top: 0, behavior: 'smooth' }); showToast('Already exists — "Add Existing Material" is pre-filled with it.', 'success'); }} />
         </div>
       )}
       {screen === 'arrivals' && isWriter && (

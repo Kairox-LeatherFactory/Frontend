@@ -75,8 +75,67 @@ export function LotPickerCombobox({ value, lots, selectedLabel, onSelect, placeh
     </div>
   );
 }
-export function CategoryPicker({ category, subtype, onCategory, onSubtype, subtypeRequired }) {
+const CATEGORY_TILES = [
+  { value: 'LEATHER', hint: 'Hides · DCM' },
+  { value: 'LINING', hint: 'Fabric · mtrs / kg' },
+  { value: 'ACCESSORY', hint: 'Buttons, zips, thread' },
+];
+
+// variant="tiles" keeps every option visible (no dropdown) — used where the
+// user is picking a class from scratch, e.g. Add New Material.
+export function CategoryPicker({ category, subtype, onCategory, onSubtype, subtypeRequired, variant = 'dropdown' }) {
 const subs = CATEGORY_SUBTYPES[category] || [];
+  if (variant === 'tiles') {
+    return (
+      <div className="space-y-3">
+        <div role="radiogroup" aria-label="Category" className="grid grid-cols-3 gap-2">
+          {CATEGORY_TILES.map((c) => {
+            const active = category === c.value;
+            return (
+              <button
+                key={c.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => onCategory(c.value)}
+                className={`relative p-3 rounded-2xl border-2 text-left transition-all cursor-pointer ${active ? 'bg-[#fff3e8] shadow-sm' : 'bg-white hover:bg-[#faf6f0]'}`}
+                style={{ borderColor: active ? '#c8834a' : 'rgba(200,131,74,0.2)' }}
+              >
+                <div className={`text-xs font-black ${active ? 'text-[#a86022]' : 'text-slate-700'}`}>{c.value}</div>
+                <div className="text-[10px] font-semibold text-slate-400 mt-0.5 truncate">{c.hint}</div>
+                {active && <Check className="absolute top-2 right-2 w-3.5 h-3.5 text-[#c8834a]" />}
+              </button>
+            );
+          })}
+        </div>
+        {subs.length > 0 && (
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-1.5">
+              Subtype {subtypeRequired ? '(required)' : '(optional → PLAIN_LINING)'}
+            </div>
+            <div role="radiogroup" aria-label="Subtype" className="flex flex-wrap gap-2">
+              {subs.map((s) => {
+                const active = subtype === s;
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => onSubtype(active && !subtypeRequired ? '' : s)}
+                    className={`h-9 px-4 rounded-full border text-[11px] font-black transition-all cursor-pointer ${active ? 'text-white shadow-sm' : 'text-slate-600 bg-white hover:bg-[#faf6f0]'}`}
+                    style={active ? { background: '#c8834a', borderColor: '#c8834a' } : { borderColor: 'rgba(200,131,74,0.25)' }}
+                  >
+                    {s}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-wrap gap-2">
       <div className="w-36">

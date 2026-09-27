@@ -84,6 +84,7 @@ export const {
   useGetClientOrdersQuery,
   useAddClientOrderMutation,
   useGetOperationsQuery,
+  useLazyGetOperationsQuery,
   useGetEventsQuery,
   useAddScanEventMutation,
 } = entryApiSlice;

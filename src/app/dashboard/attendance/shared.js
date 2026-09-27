@@ -67,11 +67,12 @@ export function fmtTime(isoUtc) {
     hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata',
   }).format(new Date(isoUtc));
 }
+// Work dates → DD/MM/YYYY. Read the calendar date straight off the string so no
+// timezone conversion can shift it by a day.
 export function fmtDate(isoDate) {
   if (!isoDate) return '—';
-  return new Intl.DateTimeFormat('en-IN', {
-    day: '2-digit', month: 'short', year: 'numeric',
-  }).format(new Date(isoDate));
+  const [y, m, d] = String(isoDate).slice(0, 10).split('-');
+  return y && m && d ? `${d}/${m}/${y}` : '—';
 }
 export function fmtDist(m) {
   if (m == null) return '—';
@@ -131,6 +132,7 @@ export function Badge({ label, type }) {
     proxy: 'bg-amber-100 text-amber-700 border-amber-200',
     active: 'bg-emerald-100 text-emerald-700 border-emerald-200',
     frozen: 'bg-slate-100 text-slate-600 border-slate-200',
+    neutral: 'bg-slate-100 text-slate-600 border-slate-200',
   };
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${map[type] || map.frozen}`}>
