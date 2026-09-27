@@ -94,6 +94,29 @@ export default function ComputationView() {
     setTimeout(() => setToastMsg(null), 3000);
   };
 
+  const handleFindRuns = async () => {
+    setFinderLoading(true);
+    setFinderSearched(true);
+    try {
+      const data = await triggerGetWageLedger({
+        order_number: finderOrderNumber || undefined,
+        style_code: finderStyleCode || undefined,
+        from_date: finderDateFrom || undefined,
+        to_date: finderDateTo || undefined,
+      }).unwrap();
+      const list = Array.isArray(data) ? data : data?.items || data?.runs || [];
+      setFinderResults(list);
+    } catch (err) {
+      console.error('Failed to find runs:', err);
+      setFinderResults([]);
+      showToast(err?.data?.detail || err?.message || 'Failed to search runs', 'error');
+    } finally {
+      setFinderLoading(false);
+    }
+  };
+
+
+
   useEffect(() => {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -104,17 +127,23 @@ export default function ComputationView() {
   // Load the picker's options lazily, only once the operator actually
   // switches to that scope — no point fetching both lists up front.
   useEffect(() => {
-    if ((scopeType === 'order' || showRunFinder) && orderOptions.length === 0) {
+    if (orderOptions.length === 0) {
       setOrderOptionsLoading(true);
       triggerGetWageOrders({}).unwrap()
-        .then((data) => setOrderOptions(Array.isArray(data) ? data : []))
+        .then((data) => {
+          const list = Array.isArray(data) ? data : (data?.items || data?.orders || data?.data || []);
+          setOrderOptions(list);
+        })
         .catch(() => setOrderOptions([]))
         .finally(() => setOrderOptionsLoading(false));
     }
     if (styleOptions.length === 0) {
       setStyleOptionsLoading(true);
       triggerGetWageStyles({}).unwrap()
-        .then((data) => setStyleOptions(Array.isArray(data) ? data : []))
+        .then((data) => {
+          const list = Array.isArray(data) ? data : (data?.items || data?.styles || data?.data || []);
+          setStyleOptions(list);
+        })
         .catch(() => setStyleOptions([]))
         .finally(() => setStyleOptionsLoading(false));
     }
@@ -231,8 +260,6 @@ export default function ComputationView() {
       setFinderLoading(false);
     }
   };
-
-
   const handlePickRun = (r) => {
     setRunActionId(r.run_id);
     setRun(r);

@@ -873,7 +873,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
   };
 
   const handleApprove = async () => {
-    const effectiveRc = (rcNo || '').trim() || (row.rc_no || row.rc_number || '').trim();
+    const effectiveRc = (rcNo || '').trim();
     if (!effectiveRc) {
       toast.error('⚠️ R.C NO is required before approving row.');
       return;
