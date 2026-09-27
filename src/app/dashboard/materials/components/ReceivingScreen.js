@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Loader2, PackagePlus, Link2, Info } from 'lucide-react';
+import { CheckCircle2, Loader2, PackagePlus, PackageCheck } from 'lucide-react';
 import { useGetMaterialLotQuery, useGetMaterialLotsQuery, useReceiveMaterialsMutation }
     from '@/store/slices/materialApiSlice';
 import { errMsg } from './shared';
@@ -36,7 +36,7 @@ export function ReceivingScreen({ showToast, prefill }) {
     const { data: lot, isLoading: lotLoading } = useGetMaterialLotQuery(lotId, { skip: !lotId });
 
     // Fallback list of leather lots if user hasn't selected one
-    const { data: leatherLotsRes } = useGetMaterialLotsQuery({ category: 'LEATHER' }, { skip: !lotId });
+    const { data: leatherLotsRes } = useGetMaterialLotsQuery({ category: 'LEATHER' }, { skip: !!lotId });
     const availableLeatherLots = leatherLotsRes?.lots || [];
 
     // Consolidated metadata (from query or prefill fallback)
@@ -148,36 +148,33 @@ export function ReceivingScreen({ showToast, prefill }) {
     }
 
     return (
-        <div className="bg-white rounded-3xl shadow-sm border overflow-hidden max-w-4xl mx-auto" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
+        <div className="bg-white rounded-3xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
             {/* Header with Title and Auto-fetch badge */}
-            <div className="p-6 pb-4 border-b flex flex-wrap items-center justify-between gap-3" style={{ borderColor: 'rgba(200,131,74,0.15)', background: '#fffdfa' }}>
-                <div>
-                    <h2 className="text-lg font-black tracking-tight" style={{ color: '#2d1f0e' }}>
-                        RECEIVE AGAINST EXISTING LOT
-                    </h2>
-                    <p className="text-xs font-medium text-slate-500 mt-0.5">
-                        Selected lot details are auto-filled from the lot directory.
-                    </p>
+            <div className="p-5 border-b border-slate-100 flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-slate-100 flex items-center justify-center shrink-0">
+                    <PackageCheck className="w-5 h-5 text-slate-600" />
                 </div>
-
-                {lotId ? (
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-black uppercase tracking-wider text-amber-800 bg-amber-50 border border-amber-300 shadow-xs">
-                        <Link2 className="w-3.5 h-3.5 text-amber-600" /> Auto-Fetched From Selected Lot
-                    </span>
-                ) : (
-                    <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-[11px] font-bold text-slate-500 bg-slate-100 border border-slate-200">
-                        <Info className="w-3.5 h-3.5 text-slate-400" /> Select a lot to top-up stock
-                    </span>
-                )}
+                <h2 className="text-lg font-black tracking-tight text-slate-900">Add Existing Material</h2>
             </div>
 
             <div className="p-6 space-y-6">
-                {/* 1. Lot Details Auto-fetched Card (4 Read-only columns as in Image 1) */}
-                <div className="rounded-2xl p-4 border grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4" style={{ background: '#fdfbf7', borderColor: 'rgba(200,131,74,0.2)' }}>
+                {/* 1. Lot Details Auto-fetched Card (2x2 read-only so it fits the half-width column) */}
+                <div className="rounded-2xl p-4 border grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ background: '#fdfbf7', borderColor: 'rgba(200,131,74,0.2)' }}>
                     <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
-                            Target Lot (Read only)
-                        </span>
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                                Target Lot (Read only)
+                            </span>
+                            {lotId && (
+                                <button
+                                    type="button"
+                                    onClick={() => { setLotId(''); setMismatch(null); }}
+                                    className="text-[10px] font-black uppercase tracking-wider text-[#c8834a] hover:underline cursor-pointer"
+                                >
+                                    Change
+                                </button>
+                            )}
+                        </div>
                         <div className="font-mono text-xs font-black text-slate-800 truncate" title={activeLotBarcode || lotId}>
                             {activeLotBarcode || (lotId ? lotId.slice(0, 14) : 'No lot selected')}
                         </div>
