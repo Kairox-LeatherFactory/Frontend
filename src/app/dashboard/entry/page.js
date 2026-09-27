@@ -26,6 +26,7 @@ import {
   Loader2,
   Store,
   ShieldAlert,
+  Truck,
 } from "lucide-react";
 import SpotlightCard from "@/components/SpotlightCard";
 import {
@@ -64,6 +65,10 @@ const CuttingSheetSection = dynamic(
 );
 const InspectionSection = dynamic(
   () => import("./components/InspectionSection"),
+  { ssr: false, loading: () => <Loader /> }
+);
+const JobWorkSection = dynamic(
+  () => import("./components/JobWorkSection"),
   { ssr: false, loading: () => <Loader /> }
 );
 
@@ -549,6 +554,18 @@ export default function ProductionLogEntry() {
           <ShieldAlert className="w-4 h-4" />
           Quality Inspection
         </button>
+        <button
+          type="button"
+          onClick={() => handleSetActiveDoor("jobwork")}
+          className="flex items-center gap-2 px-5 py-3.5 text-xs font-black whitespace-nowrap border-b-2 transition-colors cursor-pointer"
+          style={{
+            borderColor: activeDoor === "jobwork" ? "#c8834a" : "transparent",
+            color: activeDoor === "jobwork" ? "#c8834a" : "#9a7a5a",
+          }}
+        >
+          <Truck className="w-4 h-4" />
+          Job Work (Outsourcing)
+        </button>
       </div>
 
       {activeDoor === "cutting-sheet" && (
@@ -557,6 +574,10 @@ export default function ProductionLogEntry() {
 
       {activeDoor === "inspection" && (
         <InspectionSection />
+      )}
+
+      {activeDoor === "jobwork" && (
+        <JobWorkSection />
       )}
 
       {/* LOGGING FORM CARD */}
