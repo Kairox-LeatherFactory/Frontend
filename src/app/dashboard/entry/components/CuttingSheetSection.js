@@ -198,21 +198,25 @@ export default function CuttingSheetSection() {
         if (!workDate) return true;
 
         const rowDate = (r.work_date || r.date || '').slice(0, 10);
-        const isReopenedOrApproved = r.status === 'APPROVED' || r.status === 'ISSUED' || r.status === 'LOGGED' || r.status === 'REOPENED';
+        const approvedDate = (r.approved_at || r.logged_at || '').slice(0, 10);
+        const isApproved = r.status === 'APPROVED' || r.status === 'ISSUED' || r.status === 'LOGGED';
+        const isReopened = r.status === 'REOPENED';
 
         // Rule 1: Future date selected -> EMPTY (0 rows)
         if (workDate > todayStr) {
           return false;
         }
 
-        // Rule 2: Past date selected -> Show ONLY rows with REOPEN button (Approved/Logged/Issued/Reopened) for that exact past date
+        // Rule 2: Past date selected -> Show ONLY approved/reopened rows for that exact past work date
         if (workDate < todayStr) {
-          return rowDate === workDate && isReopenedOrApproved;
+          return rowDate === workDate && (isReopened || isApproved);
         }
 
-        // Rule 3: Today's date selected -> Show ONLY rows with APPROVE button (Draft/Unapproved pending rows)
+        // Rule 3: Today's date selected ->
+        // Show rows worked on today (rowDate === todayStr) OR unapproved/draft rows carried forward from past dates
         if (workDate === todayStr) {
-          return !isReopenedOrApproved;
+          if (rowDate === todayStr) return true;
+          if (rowDate < todayStr) return !isApproved && !isReopened;
         }
 
         return false;
@@ -441,18 +445,33 @@ export default function CuttingSheetSection() {
                 </tr>
               ) : (
 
-                rows.map((row, index) => (
-                  <CuttingSheetRow
-                    key={row.row_id || row.id || index}
-                    index={index}
-                    sNo={index + 1}
-                    row={row}
-                    updateRowInState={updateRowInState}
-                    stylesList={stylesList}
-                    presentWorkers={presentWorkers}
-                    onOpenReopenModal={setReopenTargetRow}
-                  />
-                ))
+                rows.map((row, index) => {
+                  const prevSize = index > 0 ? (rows[index - 1].size || rows[index - 1].size_name || '') : null;
+                  const curSize = row.size || row.size_name || '';
+                  const isNewSizeGroup = index > 0 && curSize && prevSize && curSize.toUpperCase() !== prevSize.toUpperCase();
+
+                  return (
+                    <React.Fragment key={row.row_id || row.id || index}>
+                      {isNewSizeGroup && (
+                        <tr className="bg-slate-200/80 border-y-2 border-slate-300">
+                          <td colSpan={28} className="py-1.5 px-4 text-left font-black text-[11px] text-slate-600 bg-slate-200/70 tracking-widest uppercase">
+                            ── Size: {curSize} ──
+                          </td>
+                        </tr>
+                      )}
+                      <CuttingSheetRow
+                        index={index}
+                        sNo={index + 1}
+                        row={row}
+                        updateRowInState={updateRowInState}
+                        stylesList={stylesList}
+                        presentWorkers={presentWorkers}
+                        onOpenReopenModal={setReopenTargetRow}
+                        workDate={workDate}
+                      />
+                    </React.Fragment>
+                  );
+                })
               )}
             </tbody>
             {rows.length > 0 && (
@@ -528,7 +547,7 @@ export default function CuttingSheetSection() {
 }
 
 
-const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal }) => {
+const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal, workDate }) => {
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
   const [deleteSheet] = useDeleteCuttingSheetMutation();
@@ -542,6 +561,24 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
   const [rcNo, setRcNo] = useState(row.rc_no || row.rc_number || '');
   const [sizeVal, setSizeVal] = useState(row.size || row.size_name || '');
 
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const rawRowDate = (row.work_date || row.date || '').slice(0, 10);
+  const isLocked = row.status === 'APPROVED' || row.status === 'ISSUED' || row.status === 'LOGGED';
+
+  const defaultDate = (workDate === todayStr && rawRowDate < todayStr && !isLocked)
+    ? todayStr
+    : (rawRowDate || workDate || todayStr);
+
+  const [dateVal, setDateVal] = useState(defaultDate);
+
+  useEffect(() => {
+    const curDate = (row.work_date || row.date || '').slice(0, 10);
+    const calculated = (workDate === todayStr && curDate < todayStr && !isLocked)
+      ? todayStr
+      : (curDate || workDate || todayStr);
+    setDateVal(calculated);
+  }, [row.work_date, row.date, workDate, isLocked, todayStr]);
+
   useEffect(() => {
     setRcNo(row.rc_no || row.rc_number || '');
   }, [row.rc_no, row.rc_number]);
@@ -550,8 +587,6 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
     setSizeVal(row.size || row.size_name || '');
   }, [row.size, row.size_name]);
 
-
-  const isLocked = row.status === 'APPROVED' || row.status === 'ISSUED' || row.status === 'LOGGED';
   const sheets = row.sheets || [];
 
   const handleCellBlur = async (sheetIndex, value) => {
@@ -736,8 +771,9 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
       <td className="p-0 sticky left-10 z-10 border-r border-slate-300 bg-white group-focus-within:bg-[#fefce8]">
         <input
           type="date"
-          defaultValue={row.work_date || row.date || ''}
+          value={dateVal}
           disabled={isLocked}
+          onChange={(e) => setDateVal(e.target.value)}
           onBlur={(e) => handleRowCellBlur('work_date', e.target.value)}
           className="w-full h-9 px-1 text-center font-bold text-slate-700 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300"
         />
