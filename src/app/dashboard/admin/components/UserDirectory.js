@@ -44,14 +44,30 @@ const [patchEmployeeBarcode] = usePatchEmployeeBarcodeMutation();
     }
   };
 
-  const employeesById = useMemo(() => new Map(employees.map(e => [e.id, e])), [employees]);
+  const safeUsers = useMemo(() => {
+    if (Array.isArray(users)) return users;
+    if (Array.isArray(users?.items)) return users.items;
+    if (Array.isArray(users?.users)) return users.users;
+    if (Array.isArray(users?.data)) return users.data;
+    return [];
+  }, [users]);
+
+  const safeEmployees = useMemo(() => {
+    if (Array.isArray(employees)) return employees;
+    if (Array.isArray(employees?.items)) return employees.items;
+    if (Array.isArray(employees?.employees)) return employees.employees;
+    if (Array.isArray(employees?.data)) return employees.data;
+    return [];
+  }, [employees]);
+
+  const employeesById = useMemo(() => new Map(safeEmployees.map(e => [e.id, e])), [safeEmployees]);
   const employeesByPhone = useMemo(
-    () => new Map(employees.filter(e => e.phone).map(e => [e.phone, e])),
-    [employees]
+    () => new Map(safeEmployees.filter(e => e.phone).map(e => [e.phone, e])),
+    [safeEmployees]
   );
   const employeesByName = useMemo(
-    () => new Map(employees.filter(e => e.name).map(e => [e.name.trim().toLowerCase(), e])),
-    [employees]
+    () => new Map(safeEmployees.filter(e => e.name).map(e => [e.name.trim().toLowerCase(), e])),
+    [safeEmployees]
   );
   const findMatchingEmployee = (u) =>
     employeesById.get(u.employee_id) ||
@@ -60,7 +76,7 @@ const [patchEmployeeBarcode] = usePatchEmployeeBarcodeMutation();
     (u.name && employeesByName.get(u.name.trim().toLowerCase())) ||
     null;
 
-  const filteredUsers = users.filter(u =>
+  const filteredUsers = safeUsers.filter(u =>
     !search || u.name?.toLowerCase().includes(search.toLowerCase()) || u.role?.toLowerCase().includes(search.toLowerCase())
   );
 

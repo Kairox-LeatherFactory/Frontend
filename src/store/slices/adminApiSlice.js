@@ -4,10 +4,18 @@ export const adminApiSlice = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
     getUsers: builder.query({
       query: () => '/api/v1/users',
+      transformResponse: (res) => {
+        if (Array.isArray(res)) return res;
+        return res?.items || res?.users || res?.data || [];
+      },
       providesTags: ['Users'],
     }),
     getEmployees: builder.query({
       query: () => '/api/v1/employees',
+      transformResponse: (res) => {
+        if (Array.isArray(res)) return res;
+        return res?.items || res?.employees || res?.data || [];
+      },
       providesTags: ['Employees'],
     }),
     getEmployee: builder.query({
