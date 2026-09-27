@@ -91,7 +91,9 @@ export function EmployeeDirectory({ employees, loading, showToast }) {
     }
   };
 
-  const filteredEmployees = employees.filter(emp => {
+  const safeEmployees = Array.isArray(employees) ? employees : (employees?.items || employees?.employees || employees?.data || []);
+
+  const filteredEmployees = safeEmployees.filter(emp => {
     const matchesSearch = !search || 
       emp.name?.toLowerCase().includes(search.toLowerCase()) || 
       emp.designation?.toLowerCase().includes(search.toLowerCase()) ||

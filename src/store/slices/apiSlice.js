@@ -6,7 +6,7 @@ export const apiSlice = createApi({
   baseQuery: fetchBaseQuery({
     baseUrl: '',
     prepareHeaders: (headers, { getState }) => {
-    
+
       const token = getState().auth?.token || localStorage.getItem('kairox_token');
       if (token) {
         headers.set('Authorization', `Bearer ${token}`);
@@ -96,9 +96,9 @@ export const apiSlice = createApi({
     }),
 
     generateCuttingRows: builder.mutation({
-      query: (payload) => ({ 
-        url: '/api/v1/cutting/rows/generate', 
-        method: 'POST', 
+      query: (payload) => ({
+        url: '/api/v1/cutting/rows/generate',
+        method: 'POST',
         body: payload,
         timeout: 120000 // Wait for up to 2 minutes
       }),
@@ -114,6 +114,13 @@ export const apiSlice = createApi({
     }),
     updateCuttingSheet: builder.mutation({
       query: ({ row_id, sheet_id, payload }) => ({ url: `/api/v1/cutting/rows/${row_id}/sheets/${sheet_id}`, method: 'PATCH', body: payload }),
+      invalidatesTags: ['CuttingGrid']
+    }),
+    deleteCuttingSheet: builder.mutation({
+      query: ({ row_id, sheet_id }) => ({
+        url: `/api/v1/cutting/rows/${row_id}/sheets/${sheet_id}`,
+        method: 'DELETE'
+      }),
       invalidatesTags: ['CuttingGrid']
     }),
     updateCuttingRow: builder.mutation({
@@ -132,9 +139,9 @@ export const apiSlice = createApi({
     }),
 
     reopenCuttingRow: builder.mutation({
-      query: ({ row_id, reason }) => ({ 
-        url: `/api/v1/cutting/rows/${row_id}/reopen?reason=${encodeURIComponent(reason || '')}`, 
-        method: 'POST' 
+      query: ({ row_id, reason }) => ({
+        url: `/api/v1/cutting/rows/${row_id}/reopen?reason=${encodeURIComponent(reason || '')}`,
+        method: 'POST'
       }),
       invalidatesTags: ['CuttingGrid']
     }),
@@ -418,6 +425,7 @@ export const {
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
   useUpdateCuttingSheetMutation,
+  useDeleteCuttingSheetMutation,
   useUpdateCuttingRowMutation,
   useApproveCuttingRowMutation,
   useReopenCuttingRowMutation,

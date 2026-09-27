@@ -20,9 +20,13 @@ export default function AdminDashboard() {
 
   const isHRAdmin = user === 'hr' || user === 'direct_manager' || user === 'managing_director';
   const [toast, setToast] = useState(null);
-  const { data: users = [], isLoading: usersLoading } = useGetUsersQuery();
-const { data: employees = [], isLoading: empLoading } = useGetEmployeesQuery();
-const loading = usersLoading || empLoading;
+  const { data: usersData, isLoading: usersLoading } = useGetUsersQuery();
+  const { data: employeesData, isLoading: empLoading } = useGetEmployeesQuery();
+
+  const users = Array.isArray(usersData) ? usersData : (usersData?.items || usersData?.users || usersData?.data || []);
+  const employees = Array.isArray(employeesData) ? employeesData : (employeesData?.items || employeesData?.employees || employeesData?.data || []);
+
+  const loading = usersLoading || empLoading;
   const showToast = (form, type, msg) => {
     setToast({ form, type, msg });
     setTimeout(() => setToast(null), 2500);

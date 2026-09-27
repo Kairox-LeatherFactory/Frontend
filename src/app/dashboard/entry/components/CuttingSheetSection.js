@@ -11,6 +11,7 @@ import {
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
   useUpdateCuttingSheetMutation,
+  useDeleteCuttingSheetMutation,
   useUpdateCuttingRowMutation,
   useApproveCuttingRowMutation,
   useReopenCuttingRowMutation,
@@ -95,9 +96,10 @@ export default function CuttingSheetSection() {
 
   // 📡 GET /api/v1/cutting/grid?style_id=&colour=
   const { data: gridData, isLoading: gridLoading, error: gridError } = useGetCuttingGridQuery(
-    { style_id: styleId, colour },
-    { skip: !styleId || !colour }
+    { style_id: styleId, colour: colour || undefined },
+    { skip: !styleId }
   );
+
 
 
   useEffect(() => {
@@ -430,13 +432,23 @@ export default function CuttingSheetSection() {
               </tr>
             </thead>
             <tbody>
-              {rows.length === 0 ? (
+              {gridLoading ? (
+                <tr>
+                  <td colSpan={28} className="p-12 text-center text-slate-500 font-bold bg-slate-50">
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="w-5 h-5 animate-spin text-[#c8834a]" />
+                      <span>Loading existing cutting rows...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={28} className="p-12 text-center text-slate-400 font-bold bg-slate-50">
-                    No rows generated yet. Use the top bar to generate rows.
+                    No rows found for this selection. Click Generate to create new rows.
                   </td>
                 </tr>
               ) : (
+
                 rows.map((row, index) => (
                   <CuttingSheetRow
                     key={row.row_id || row.id || index}
@@ -527,6 +539,7 @@ export default function CuttingSheetSection() {
 const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal }) => {
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
+  const [deleteSheet] = useDeleteCuttingSheetMutation();
   const [updateRowMutation] = useUpdateCuttingRowMutation();
   const [approveRow, { isLoading: isApproving }] = useApproveCuttingRowMutation();
   const [reopenRow, { isLoading: isReopening }] = useReopenCuttingRowMutation();
@@ -612,6 +625,37 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
         'Failed to save sheet';
       toast.error(errorMsg);
       setLocalCells(prev => ({ ...prev, [sheetIndex]: existingSheet ? existingSheet.dcm : '' }));
+    } finally {
+      setLoadingCells(prev => ({ ...prev, [sheetIndex]: false }));
+    }
+  };
+
+  const handleDeleteSheet = async (sheetIndex, existingSheet) => {
+    if (!existingSheet || isLocked) return;
+    const sheetId = existingSheet.id || existingSheet.sheet_id;
+    if (!sheetId) return;
+
+    setLoadingCells(prev => ({ ...prev, [sheetIndex]: true }));
+    try {
+      const res = await deleteSheet({
+        row_id: row.row_id || row.id,
+        sheet_id: sheetId
+      }).unwrap();
+      updateRowInState(res.row || res);
+      setLocalCells(prev => {
+        const next = { ...prev };
+        delete next[sheetIndex];
+        return next;
+      });
+      toast.success('Sheet deleted');
+    } catch (err) {
+      const errorMsg =
+        (typeof err?.data?.detail === 'string' && err.data.detail) ||
+        (Array.isArray(err?.data?.detail) && err.data.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ')) ||
+        err?.data?.message ||
+        err?.message ||
+        'Failed to delete sheet';
+      toast.error(errorMsg);
     } finally {
       setLoadingCells(prev => ({ ...prev, [sheetIndex]: false }));
     }
@@ -787,9 +831,10 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
         const sheet = sheets[i];
         const displayValue = localCells[i] !== undefined ? localCells[i] : (sheet ? sheet.dcm : '');
         const isSaving = loadingCells[i];
+        const hasSheet = !!sheet && (displayValue !== '' && displayValue !== null && displayValue !== undefined);
 
         return (
-          <td key={i} className="p-0 border-r border-slate-200 bg-white group-focus-within:bg-transparent relative">
+          <td key={i} className="p-0 border-r border-slate-200 bg-white group-focus-within:bg-transparent relative group/cell">
             <input
               type="number"
               step="0.01"
@@ -799,6 +844,16 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
               disabled={isLocked || isSaving}
               className={`${cellInputClass} w-16 focus:bg-white ${isSaving ? 'opacity-50' : ''}`}
             />
+            {hasSheet && !isLocked && !isSaving && (
+              <button
+                type="button"
+                onClick={() => handleDeleteSheet(i, sheet)}
+                title="Delete Sheet"
+                className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-rose-500 hover:bg-rose-700 text-white flex items-center justify-center text-[10px] font-black leading-none z-10 shadow-xs cursor-pointer"
+              >
+                ×
+              </button>
+            )}
             {isSaving && (
               <div className="absolute inset-0 flex items-center justify-center bg-white/50 pointer-events-none">
                 <Loader2 className="w-3 h-3 animate-spin text-[#c8834a]" />
