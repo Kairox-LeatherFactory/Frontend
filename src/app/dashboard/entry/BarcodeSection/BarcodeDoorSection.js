@@ -419,8 +419,12 @@ export default function BarcodeDoorSection({
 
         // If the only reason it can't log is that it requires a cut-screen
         // (consumption gate), tell the user to use the Cutting Sheet instead.
+        // The Cutting/Lining tabs ARE the cut screens (they submit with
+        // screen_context LEATHER_CUT / LINING_CUT), so the gate doesn't apply there.
+        const isCutScreen = ["Cutting", "Lining"].includes(barcodeStage) ||
+          ["Cutting", "Lining"].includes(targetStage);
         if (
-          !(barcodeStage === "Lining" || targetStage === "Lining") &&
+          !isCutScreen &&
           pieceState?.ready_to_log === false &&
           consumptionBlocked &&
           realBlockers.length === 0
