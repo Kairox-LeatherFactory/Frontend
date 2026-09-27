@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { usePageTrail } from "@/context/PageTrailContext";
 import { useSelector, useDispatch } from 'react-redux';
 import {
   setActiveDoor, setDate,
@@ -41,6 +42,15 @@ import { ExcelPreviewModal, CommitConfirmationModal } from "./components/ImportP
 import { useWorkerVerification } from "./hooks/useWorkerVerification";
 import { useBreakdownImport } from "./hooks/useBreakdownImport";
 
+const DOOR_LABELS = {
+  manual: "Manual Logger",
+  barcode: "Barcode Gun Scanner",
+  store: "Store Manager Hub",
+  breakdown: "Breakdown Review",
+  "cutting-sheet": "Cutting Sheet",
+  inspection: "Quality Inspection",
+};
+
 const Loader = () => <div className="flex items-center justify-center h-full py-20"><div className="w-6 h-6 border-2 border-[#c8834a] border-t-transparent rounded-full animate-spin" /></div>;
 
 const BarcodeDoorSection = dynamic(
@@ -76,7 +86,7 @@ const JobWorkSection = dynamic(
 export default function ProductionLogEntry() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { user, token } = useAuth();
+  const { token } = useAuth();
   const [fetchEmployees, { data: employeesData }] = useLazyGetEmployeesQuery();
   const workers = Array.isArray(employeesData) ? employeesData : (employeesData?.items || []);
   const {
@@ -109,6 +119,15 @@ export default function ProductionLogEntry() {
       ? searchParams.get("order") || null
       : null,
   ); // order_number | null — set = show the detail/release screen inline, unset = show the list
+
+  // Header path: Production Logger › <tab> › <opened breakdown PO>
+  // Quality Inspection reports its own sub-tab (Raise Inspection, DM / MD Queue, …)
+  const [inspectionView, setInspectionView] = useState(null);
+  usePageTrail([
+    DOOR_LABELS[activeDoor],
+    activeDoor === "breakdown" && selectedBreakdownOrder ? `PO ${selectedBreakdownOrder}` : null,
+    activeDoor === "inspection" ? inspectionView : null,
+  ]);
   // REDUX DATA PULL & ACTION WRAPPERS
   const successMsg = useSelector(state => state.entry.successMsg);
   const errorMsg = useSelector(state => state.entry.errorMsg);
@@ -320,72 +339,22 @@ export default function ProductionLogEntry() {
 
   return (
     <div className="w-full min-w-0 space-y-8 animate-fade-in pb-12">
-      {/* TITLE SECTION */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1
-            className="text-3xl font-black tracking-tight"
-            style={{ color: "#2d1f0e" }}
-          >
-            Shop Floor Production Logger
-          </h1>
-          <p className="font-medium mt-1" style={{ color: "#9a7a5a" }}>
-            Record work bundles completed by operators. Touch-friendly screens
-            optimized for fast, accurate floor entry.
-          </p>
-        </div>
-        <div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsx,.xlsm,.xls"
-            onChange={handleFileUpload}
-            className="hidden"
-            id="entry-file-upload"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              setUploadOrderNumberError("");
-              setShowOrderNumModal(true);
-            }}
-            disabled={uploadLoading}
-            className="h-12 py-0 px-5 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-            style={{
-              background: "transparent",
-              border: "1px solid #c8834a",
-              color: "#c8834a",
-            }}
-          >
-            {uploadLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Previewing...
-              </>
-            ) : (
-              <>
-                <FileSpreadsheet className="w-4 h-4" /> Upload Breakdown Sheet
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
       {/* BOTTOM-RIGHT TOAST NOTIFICATION */}
       {typeof window !== "undefined" &&
         createPortal(
-          <div className="fixed bottom-6 right-4 sm:right-6 z-[9999999] flex flex-col items-end gap-3 pointer-events-none max-w-sm w-full">
+          <div className="fixed bottom-6 right-4 sm:right-6 z-[9999999] flex flex-col items-end gap-3 pointer-events-none max-w-md w-full">
             {/* Success Toast */}
             {successMsg && (
-              <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-5 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-4 pointer-events-auto backdrop-blur-xl">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                   </div>
                   <div className="min-w-0">
-                    <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">
+                    <p className="font-black text-emerald-400 text-sm uppercase tracking-wider">
                       Transaction Confirmed
                     </p>
-                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">
+                    <p className="text-sm font-bold text-slate-100 mt-1 break-words line-clamp-4">
                       {successMsg}
                     </p>
                   </div>
@@ -395,23 +364,23 @@ export default function ProductionLogEntry() {
                   onClick={() => setSuccessMsg("")}
                   className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             )}
 
             {/* Commit Success Toast */}
             {commitSuccess && (
-              <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="bg-slate-900/95 text-white border-2 border-emerald-500/50 p-5 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-4 pointer-events-auto backdrop-blur-xl">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 flex items-center justify-center shrink-0">
+                    <CheckCircle2 className="w-7 h-7 text-emerald-400" />
                   </div>
                   <div className="min-w-0">
-                    <p className="font-black text-emerald-400 text-xs uppercase tracking-wider">
+                    <p className="font-black text-emerald-400 text-sm uppercase tracking-wider">
                       Import Successful
                     </p>
-                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">
+                    <p className="text-sm font-bold text-slate-100 mt-1 break-words line-clamp-4">
                       {commitSuccess}
                     </p>
                   </div>
@@ -421,23 +390,23 @@ export default function ProductionLogEntry() {
                   onClick={() => setCommitSuccess("")}
                   className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             )}
 
             {/* Error Toast */}
             {(errorMsg || uploadError) && (
-              <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-4 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-3 pointer-events-auto backdrop-blur-xl">
+              <div className="bg-slate-900/95 text-white border-2 border-rose-500/50 p-5 rounded-3xl shadow-2xl animate-fade-in flex items-center justify-between gap-4 pointer-events-auto backdrop-blur-xl">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
-                    <XCircle className="w-6 h-6 text-rose-400" />
+                  <div className="w-12 h-12 rounded-2xl bg-rose-500/20 flex items-center justify-center shrink-0">
+                    <XCircle className="w-7 h-7 text-rose-400" />
                   </div>
                   <div className="min-w-0">
-                    <p className="font-black text-rose-400 text-xs uppercase tracking-wider">
+                    <p className="font-black text-rose-400 text-sm uppercase tracking-wider">
                       Operation Failed
                     </p>
-                    <p className="text-xs font-semibold text-slate-200 mt-0.5 break-words line-clamp-3">
+                    <p className="text-sm font-bold text-slate-100 mt-1 break-words line-clamp-4">
                       {errorMsg || uploadError}
                     </p>
                   </div>
@@ -450,7 +419,7 @@ export default function ProductionLogEntry() {
                   }}
                   className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </button>
               </div>
             )}
@@ -477,11 +446,12 @@ export default function ProductionLogEntry() {
         />
       )}
 
-      {/* TOP TAB BAR (MATCHING ATTENDANCE PAGE STYLE) */}
+      {/* TOP TAB BAR (MATCHING ATTENDANCE PAGE STYLE) — tabs left, upload action right */}
       <div
-        className="flex items-center gap-1 border-b overflow-x-auto"
+        className="flex flex-col-reverse lg:flex-row lg:items-center gap-3 border-b"
         style={{ borderBottomColor: "rgba(200,131,74,0.2)" }}
       >
+      <div className="flex items-center gap-1 overflow-x-auto min-w-0 flex-1">
         <button
           type="button"
           onClick={() => handleSetActiveDoor("manual")}
@@ -568,12 +538,48 @@ export default function ProductionLogEntry() {
         </button>
       </div>
 
+        <div className="shrink-0 self-end lg:self-auto pb-0 lg:pb-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xlsm,.xls"
+            onChange={handleFileUpload}
+            className="hidden"
+            id="entry-file-upload"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              setUploadOrderNumberError("");
+              setShowOrderNumModal(true);
+            }}
+            disabled={uploadLoading}
+            className="h-10 py-0 px-4 flex items-center gap-2 font-bold text-sm rounded-xl transition-all active:scale-95 disabled:opacity-50 cursor-pointer whitespace-nowrap"
+            style={{
+              background: "transparent",
+              border: "1px solid #c8834a",
+              color: "#c8834a",
+            }}
+          >
+            {uploadLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" /> Previewing...
+              </>
+            ) : (
+              <>
+                <FileSpreadsheet className="w-4 h-4" /> Upload Breakdown Sheet
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
       {activeDoor === "cutting-sheet" && (
         <CuttingSheetSection />
       )}
 
       {activeDoor === "inspection" && (
-        <InspectionSection />
+        <InspectionSection onViewChange={setInspectionView} />
       )}
 
       {activeDoor === "jobwork" && (
@@ -587,28 +593,6 @@ export default function ProductionLogEntry() {
           style={{ border: "1px solid rgba(200,131,74,0.15)" }}
           spotlightColor="rgba(200,131,74,0.06)"
         >
-          <div
-            className="p-4 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm"
-            style={{
-              background: "#faf6f0",
-              border: "1px solid rgba(200,131,74,0.25)",
-            }}
-          >
-            <div
-              className="text-xs font-bold flex items-center gap-2"
-              style={{ color: "#4a3a2a" }}
-            >
-              <span>Logged By: </span>
-              <span
-                className="text-white px-2.5 py-1 rounded-lg font-black uppercase tracking-wider text-[11px] shadow-sm"
-                style={{ background: "#c8834a" }}
-              >
-                {user.replace("_", " ")}
-              </span>
-            </div>
-
-
-          </div>
 
           {/* TAB 2: DEDICATED BARCODE GUN SCANNER FLOW (CONTRACT V3.0) */}
           {activeDoor === "barcode" && (
@@ -702,25 +686,6 @@ export default function ProductionLogEntry() {
               />
             ) : (
               <div className="space-y-5 animate-fade-in">
-                <div>
-                  <h3
-                    className="text-lg font-black flex items-center gap-2"
-                    style={{ color: "#2d1f0e" }}
-                  >
-                    <FileSpreadsheet
-                      className="w-5 h-5"
-                      style={{ color: "#c8834a" }}
-                    />{" "}
-                    Breakdown Review
-                  </h3>
-                  <p
-                    className="text-xs font-bold mt-1"
-                    style={{ color: "#9a7a5a" }}
-                  >
-                    Pick an order to review its DRAFT styles, correct SKU lines,
-                    and release into production.
-                  </p>
-                </div>
                 <input
                   type="text"
                   value={breakdownOrderSearch}

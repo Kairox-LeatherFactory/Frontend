@@ -227,11 +227,6 @@ const result = type === 'check-in'
 
  return (
  <motion.div className="space-y-6">
- <div>
- <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Floor Command</h1>
- <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Proxy check-in / check-out for daily-wage floor workers.</p>
- </div>
-
  <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 
  {/* AUTOMATIC BARCODE GUN ATTENDANCE SCANNER HEADER BAR */}

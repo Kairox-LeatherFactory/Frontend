@@ -130,11 +130,6 @@ export default function OperationsHRView({ workers = [] }) {
 
  return (
  <motion.div className="space-y-6">
- <div>
- <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Operations &amp; HR</h1>
- <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Live roster audit and attendance corrections.</p>
- </div>
-
  <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 
  <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">

@@ -20,7 +20,8 @@ import {
   Truck,
   Pencil,
   Check,
-  X
+  X,
+  ChevronRight
 } from 'lucide-react';
 import {
   useGetMaterialArrivalsQuery,
@@ -210,71 +211,63 @@ export function ArrivalsScreen({ showToast }) {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {displayedArrivals.map((arrival) => {
-            const receiptId = arrival.receipt_id || arrival.id;
-            const isCompleted = isArrivalCompleted(arrival);
+        // Table layout matching the Lot Directory — one clickable row per arrival
+        <div className="bg-white rounded-3xl shadow-sm border overflow-x-auto" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b text-left text-[11px] font-black uppercase tracking-wider text-slate-500 bg-slate-50/60" style={{ borderColor: 'rgba(200,131,74,0.12)' }}>
+                <th className="p-3.5">Article</th>
+                <th className="p-3.5">Colour</th>
+                <th className="p-3.5">Thickness / Size</th>
+                <th className="p-3.5 text-right">Sheets</th>
+                <th className="p-3.5 text-right">Total Qty</th>
+                <th className="p-3.5">Date</th>
+                <th className="p-3.5">Status</th>
+                <th className="p-3.5 text-right">Action</th>
+                <th className="p-3.5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y" style={{ borderColor: 'rgba(200,131,74,0.08)' }}>
+              {displayedArrivals.map((arrival) => {
+                const receiptId = arrival.receipt_id || arrival.id;
+                const isCompleted = isArrivalCompleted(arrival);
+                const isLeather = arrival.category === 'LEATHER' || !arrival.category;
+                const sheetCount = arrival.declared_sheet_count ?? arrival.sheet_count;
+                const qty = arrival.total_qty || arrival.declared_qty || arrival.qty || 0;
+                const uom = arrival.uom || (isLeather ? 'dcm' : '');
+                const when = arrival.created_at || arrival.arrived_at;
 
-            return (
-              <div
-                key={receiptId}
-                onClick={() => setSelectedArrival(arrival)}
-                className="bg-white p-5 rounded-2xl border hover:border-[#c8834a] transition-all shadow-sm hover:shadow-md cursor-pointer space-y-4 group relative"
-                style={{ borderColor: 'rgba(200,131,74,0.2)' }}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">
-                      {receiptId}
-                    </span>
-                    <h4 className="text-base font-black text-slate-800 group-hover:text-[#c8834a] transition-colors mt-1">
-                      {arrival.article}
-                    </h4>
-                  </div>
-                  <span
-                    className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase border ${isCompleted
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}
+                return (
+                  <tr
+                    key={receiptId}
+                    onClick={() => setSelectedArrival(arrival)}
+                    className="cursor-pointer hover:bg-amber-50/40 transition-colors"
                   >
-                    {isCompleted ? 'COMPLETED' : (arrival.status || 'PENDING')}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 bg-slate-50/80 p-3 rounded-xl border border-slate-100 text-xs">
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Colour</span>
-                    <span className="font-black text-slate-800">{arrival.colour}</span>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase block">Total Quantity</span>
-                    <span className="font-black text-amber-900">
-                      {arrival.total_qty || arrival.declared_qty || arrival.qty || 0} {arrival.category === 'LEATHER' || !arrival.category ? 'DCM' : ''}
-                    </span>
-                  </div>
-                  {(arrival.declared_sheet_count ?? arrival.sheet_count) != null && (
-                    <div className="mt-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Sheets</span>
-                      <span className="font-black text-slate-700">{arrival.declared_sheet_count ?? arrival.sheet_count} Sheets</span>
-                    </div>
-                  )}
-                  {arrival.thickness && (
-                    <div className="mt-1">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Thickness</span>
-                      <span className="font-black text-slate-700">{arrival.thickness}</span>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between pt-1 text-[11px] font-bold text-slate-400">
-                  <span>{arrival.created_at ? new Date(arrival.created_at).toLocaleDateString() : 'Recent Arrival'}</span>
-                  <span className="text-[#c8834a] group-hover:underline flex items-center gap-1 font-black">
-                    {isCompleted ? 'View Sheets →' : 'Enter Sheets & Inspect →'}
-                  </span>
-                </div>
-              </div>
-            );
-          })}
+                    <td className="p-3.5 font-black text-slate-800">{arrival.article || '—'}</td>
+                    <td className="p-3.5 text-slate-600 font-bold">{arrival.colour || '—'}</td>
+                    <td className="p-3.5 text-slate-500 font-medium">{arrival.thickness || arrival.size || '—'}</td>
+                    <td className="p-3.5 text-right font-bold text-slate-700">{sheetCount ?? '—'}</td>
+                    <td className="p-3.5 text-right font-bold text-slate-700">{qty} {uom}</td>
+                    <td className="p-3.5 text-slate-500 font-medium">{when ? new Date(when).toLocaleDateString('en-GB') : '—'}</td>
+                    <td className="p-3.5">
+                      <span
+                        className="text-[10px] font-black px-2 py-0.5 rounded-md uppercase border"
+                        style={isCompleted
+                          ? { background: '#faf6f0', borderColor: 'rgba(200,131,74,0.25)', color: '#2d1f0e' }
+                          : { background: '#ffffff', borderColor: '#c8834a', color: '#a86022' }}
+                      >
+                        {isCompleted ? 'Completed' : (arrival.status || 'Pending')}
+                      </span>
+                    </td>
+                    <td className="p-3.5 text-right font-black whitespace-nowrap" style={{ color: '#c8834a' }}>
+                      {isCompleted ? 'View Sheets' : 'Enter Sheets'}
+                    </td>
+                    <td className="p-3.5 text-right"><ChevronRight className="w-4 h-4 text-slate-300 inline" /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

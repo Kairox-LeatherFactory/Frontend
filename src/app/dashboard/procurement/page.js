@@ -52,13 +52,7 @@ export default function ProcurementOverview() {
   return (
     <div className="space-y-7 max-w-6xl mx-auto pb-12">
       {/* Header + Start New Submission Action */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl bg-white border" style={{ borderColor: 'rgba(200,131,74,.15)' }}>
-        <div>
-          <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">KairoX Procurement · Control Center</p>
-          <h1 className="text-3xl font-black mt-1" style={{ color: '#2d1f0e' }}>Procurement Overview</h1>
-          <p className="text-sm text-slate-500 mt-1">Manage intake, BOMs, inventory checks, and production tracking.</p>
-        </div>
-
+      <div className="flex justify-end">
         <Link
           href="/dashboard/procurement/intake"
           className="px-5 py-3 rounded-2xl bg-[#2d1f0e] text-white text-xs font-black hover:bg-[#3d2b1a] transition-all shadow-md flex items-center justify-center gap-2 shrink-0"

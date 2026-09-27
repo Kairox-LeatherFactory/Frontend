@@ -20,6 +20,8 @@ import {
   useLazyGetStyleMaterialSpecQuery
 } from '@/store/slices/apiSlice';
 import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
+import { useDispatch } from 'react-redux';
+import { setMessages } from '@/store/slices/entrySlice';
 
 const toastListeners = new Set();
 
@@ -28,9 +30,21 @@ const toast = {
   error: (msg) => toastListeners.forEach(fn => fn({ type: 'error', message: msg })),
   warning: (msg) => toastListeners.forEach(fn => fn({ type: 'warning', message: msg }))
 };
+const sizeAnchorId = (s) => `cs-size-${String(s).replace(/[^A-Za-z0-9]/g, '_')}`;
+const rowSize = (row) => String(row?.size || row?.size_name || '').toUpperCase();
 
+// Messages go to the Production Logger's own bottom-right toast (entry slice
+// successMsg / errorMsg) — never a browser alert() pop-up.
+function useLoggerToast() {
+  const dispatch = useDispatch();
+  return useMemo(() => ({
+    success: (msg) => dispatch(setMessages({ success: msg, error: '' })),
+    error: (msg) => dispatch(setMessages({ error: msg, success: '' })),
+  }), [dispatch]);
+}
 
 export default function CuttingSheetSection() {
+  const toast = useLoggerToast();
   // -- Lazy queries: fire only when dropdown is focused/opened --
   const [fetchLots, { data: lots }] = useLazyGetMaterialLotsQuery();
   const lotsList = Array.isArray(lots) ? lots : lots?.lots || lots?.items || [];
@@ -95,6 +109,31 @@ export default function CuttingSheetSection() {
     return lines.filter(l => l.category === 'LEATHER');
   }, [specData]);
 
+  // Picking a style fills in the rest: article from the style itself, colour
+  // from the style's leather spec line. Both stay editable. The ref drops a
+  // slow spec response if the user has already switched to another style.
+  const latestStyleRef = useRef(styleId);
+  const handleStyleChange = async (newStyleId) => {
+    latestStyleRef.current = newStyleId;
+    setStyleId(newStyleId);
+    const style = stylesList.find((s) => (s.id || s.style_id || s.style_code) === newStyleId);
+    setSelectedArticle(style?.article || '');
+    setColour('');
+    if (!newStyleId) return;
+    try {
+      const spec = await fetchSpec(newStyleId).unwrap();
+      if (latestStyleRef.current !== newStyleId) return;
+      const lines = Array.isArray(spec) ? spec : spec?.lines || [];
+      const leatherColour = lines
+        .filter((l) => l.category === 'LEATHER')
+        .map((l) => l.colour || l.color)
+        .find(Boolean);
+      if (leatherColour) setColour(leatherColour);
+    } catch {
+      // no spec yet — colour stays for a manual pick
+    }
+  };
+
   const [generateRows] = useGenerateCuttingRowsMutation();
 
   // 📡 GET /api/v1/cutting/grid?style_id=&colour=
@@ -157,6 +196,61 @@ export default function CuttingSheetSection() {
   // Grid state
   const [rows, setRows] = useState([]);
   const [isLooping, setIsLooping] = useState(false);
+
+  // Size index: row count per size (sorted S → 3XL) and the first row of each
+  // size, which carries the scroll anchor the right-hand panel jumps to.
+  const { sizeIndex, firstRowOfSize } = useMemo(() => {
+    const counts = new Map();
+    const first = new Map();
+    rows.forEach((r, i) => {
+      const s = rowSize(r);
+      if (!s) return;
+      counts.set(s, (counts.get(s) || 0) + 1);
+      if (!first.has(s)) first.set(s, i);
+    });
+    return {
+      sizeIndex: [...counts.entries()]
+        .map(([size, count]) => ({ size, count }))
+        .sort((a, b) => sizeRank(a.size) - sizeRank(b.size)),
+      firstRowOfSize: first,
+    };
+  }, [rows]);
+  const showSizeIndex = sizeIndex.length > 1;
+  const jumpTo = (id) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // Scroll-spy: the size whose divider has most recently passed the upper
+  // third of the screen is the one on view — the panel highlights it. Listens
+  // in the capture phase so it catches the dashboard's own scroll container.
+  const [activeSize, setActiveSize] = useState(null);
+  useEffect(() => {
+    if (!showSizeIndex) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      const anchors = sizeIndex
+        .map(({ size }) => ({ size, el: document.getElementById(sizeAnchorId(size)) }))
+        .filter((a) => a.el)
+        .map((a) => ({ size: a.size, top: a.el.getBoundingClientRect().top }))
+        .sort((a, b) => a.top - b.top);
+      if (anchors.length === 0) return;
+      const threshold = window.innerHeight * 0.35;
+      let current = anchors[0].size;
+      for (const a of anchors) {
+        if (a.top > threshold) break;
+        current = a.size;
+      }
+      setActiveSize(current);
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(update); };
+    document.addEventListener('scroll', onScroll, { capture: true, passive: true });
+    window.addEventListener('resize', onScroll);
+    frame = requestAnimationFrame(update);
+    return () => {
+      document.removeEventListener('scroll', onScroll, { capture: true });
+      window.removeEventListener('resize', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [showSizeIndex, sizeIndex]);
   const [reopenTargetRow, setReopenTargetRow] = useState(null);
   const [reopenReasonText, setReopenReasonText] = useState('');
   const [printBarcodeRow, setPrintBarcodeRow] = useState(null);
@@ -259,6 +353,7 @@ export default function CuttingSheetSection() {
       };
 
       let lastMessage = '';
+      const allWarnings = [];
 
       while (keepGenerating) {
         const res = await generateRows(payload).unwrap();
@@ -272,7 +367,7 @@ export default function CuttingSheetSection() {
           totalGenerated += createdThisBatch;
 
           if (res.warnings && res.warnings.length > 0) {
-            res.warnings.forEach(w => toast.warning(w));
+            allWarnings.push(...res.warnings);
           }
 
           // If the backend returns less than what we asked for, it means it's done
@@ -288,10 +383,12 @@ export default function CuttingSheetSection() {
         }
       }
 
+      // One toast slot — fold any warnings into the final message so they aren't lost
+      const warningText = allWarnings.length > 0 ? ` ⚠ ${allWarnings.join(' · ')}` : '';
       if (totalGenerated > 0) {
-        toast.success(`Generated a total of ${totalGenerated} rows successfully`);
+        toast.success(`Generated a total of ${totalGenerated} rows successfully.${warningText}`);
       } else {
-        toast.success(lastMessage || 'No new rows to generate.');
+        toast.success(`${lastMessage || 'No new rows to generate.'}${warningText}`);
       }
     } catch (err) {
       console.error('Failed to generate rows:', err);
@@ -349,7 +446,7 @@ export default function CuttingSheetSection() {
               PTE Cutting Grid
             </h2>
             <p className="text-[10px] text-slate-400 font-bold mt-1">
-              Use Generate to create rows. Cells save automatically on blur.
+              Pick a style — its article and colour fill in automatically. Then press Generate.
             </p>
           </div>
 
@@ -362,7 +459,7 @@ export default function CuttingSheetSection() {
             />
             <select
               value={styleId}
-              onChange={(e) => { setStyleId(e.target.value); setSelectedArticle(''); setColour(''); }}
+              onChange={(e) => handleStyleChange(e.target.value)}
               onFocus={() => fetchStyles()}
               className="px-3 py-2 w-32 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
             >
@@ -409,8 +506,8 @@ export default function CuttingSheetSection() {
         </div>
       </div>
 
-      {/* Table Container */}
-      <div className="flex-1 overflow-auto p-4 z-0 relative">
+      {/* Table Container — extra right padding on desktop keeps the size panel off the Approve column */}
+      <div id="cs-grid-top" className={`flex-1 overflow-auto p-4 z-0 relative scroll-mt-4 ${showSizeIndex ? 'lg:pr-24' : ''}`}>
         <div className="bg-white rounded-lg shadow-sm border border-slate-300 inline-block min-w-full">
           <table className="w-full text-left border-collapse whitespace-nowrap">
             <thead>
@@ -450,14 +547,16 @@ export default function CuttingSheetSection() {
               ) : (
 
                 rows.map((row, index) => {
-                  const prevSize = index > 0 ? (rows[index - 1].size || rows[index - 1].size_name || '') : null;
-                  const curSize = row.size || row.size_name || '';
-                  const isNewSizeGroup = index > 0 && curSize && prevSize && curSize.toUpperCase() !== prevSize.toUpperCase();
+                  const curSize = rowSize(row);
+                  // Divider before every size group (the first one too) — it is
+                  // also the jump target for the size panel on its first occurrence
+                  const isNewSizeGroup = curSize && (index === 0 || curSize !== rowSize(rows[index - 1]));
+                  const isAnchor = firstRowOfSize.get(curSize) === index;
 
                   return (
                     <React.Fragment key={row.row_id || row.id || index}>
                       {isNewSizeGroup && (
-                        <tr className="bg-slate-200/80 border-y-2 border-slate-300">
+                        <tr id={isAnchor ? sizeAnchorId(curSize) : undefined} className="bg-slate-200/80 border-y-2 border-slate-300 scroll-mt-4">
                           <td colSpan={28} className="py-1.5 px-4 text-left font-black text-[11px] text-slate-600 bg-slate-200/70 tracking-widest uppercase">
                             ── Size: {curSize} ──
                           </td>
@@ -499,6 +598,47 @@ export default function CuttingSheetSection() {
           </table>
         </div>
       </div>
+
+      {/* Size index — fixed to the screen's right edge (portalled so the grid's
+          overflow-hidden wrapper can't clip it); click a size to jump to it */}
+      {isMounted && showSizeIndex && createPortal(
+        <nav
+          aria-label="Jump to size"
+          className="hidden lg:flex fixed right-3 top-1/2 -translate-y-1/2 z-40 flex-col items-center gap-1 p-1.5 rounded-2xl bg-white/95 backdrop-blur border shadow-lg max-h-[80vh] overflow-y-auto"
+          style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+        >
+          <button
+            type="button"
+            onClick={() => jumpTo('cs-grid-top')}
+            title="Back to top"
+            className="w-14 py-1.5 rounded-xl flex items-center justify-center transition-colors hover:bg-[#faf6f0] cursor-pointer"
+            style={{ color: '#9a7a5a' }}
+          >
+            <ArrowUp className="w-4 h-4" />
+          </button>
+          <span className="text-[9px] font-black uppercase tracking-wider pb-0.5" style={{ color: '#9a7a5a' }}>Size</span>
+          {sizeIndex.map(({ size, count }) => {
+            const isActive = activeSize === size;
+            return (
+              <button
+                key={size}
+                type="button"
+                onClick={() => { setActiveSize(size); jumpTo(sizeAnchorId(size)); }}
+                title={`Jump to ${size} — ${count} row(s)`}
+                aria-current={isActive ? 'true' : undefined}
+                className={`w-14 py-1.5 rounded-xl border transition-all active:scale-95 cursor-pointer ${isActive ? 'shadow-md' : 'hover:bg-[#faf6f0] hover:border-[#c8834a]'}`}
+                style={isActive
+                  ? { background: '#c8834a', borderColor: '#c8834a' }
+                  : { borderColor: 'rgba(200,131,74,0.15)' }}
+              >
+                <span className="block text-xs font-black" style={{ color: isActive ? '#ffffff' : '#2d1f0e' }}>{size}</span>
+                <span className="block text-[9px] font-bold" style={{ color: isActive ? 'rgba(255,255,255,0.85)' : '#9a7a5a' }}>{count}</span>
+              </button>
+            );
+          })}
+        </nav>,
+        document.body
+      )}
 
       {/* Modern Responsive Reopen Modal using createPortal */}
       {isMounted && reopenTargetRow && createPortal(
@@ -563,7 +703,8 @@ export default function CuttingSheetSection() {
 }
 
 
-const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal, onApproveSuccess, workDate }) => {
+const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal, workDate }) => {
+  const toast = useLoggerToast();
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
   const [deleteSheet] = useDeleteCuttingSheetMutation();

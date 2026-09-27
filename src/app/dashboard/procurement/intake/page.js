@@ -576,9 +576,7 @@ export default function ProcurementIntakePage() {
       {/* Header + Client Selection Dropdown */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 p-5 rounded-3xl bg-white border" style={{ borderColor: 'rgba(200,131,74,.15)' }}>
         <div>
-          <p className="text-xs font-black uppercase tracking-widest" style={{ color: '#c8834a' }}>Procurement · Stage 1</p>
-          <h1 className="text-3xl font-black mt-1" style={{ color: '#c8834a' }}>Submission Workspace</h1>
-          <p className="text-sm font-medium mt-1" style={{ color: '#9a7a5a' }}>
+          <p className="text-sm font-medium" style={{ color: '#9a7a5a' }}>
             {submissionId ? (
               <>Active Client: <strong className="text-[#c8834a]">{activeClient?.name}</strong> · Submission ID: <span className="font-mono text-xs text-[#c8834a]">{submissionId}</span></>
             ) : (

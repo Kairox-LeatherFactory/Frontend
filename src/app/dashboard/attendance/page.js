@@ -7,6 +7,7 @@ import {
   CalendarDays,Building2,QrCode
 } from 'lucide-react';
 import { useGetEmployeesQuery } from '@/store/slices/attendanceApiSlice';
+import { usePageTrail } from '@/context/PageTrailContext';
 
 import { motion} from 'framer-motion';
 import {
@@ -62,6 +63,9 @@ console.log(employeesData,"employeesData",shouldFetchEmployees)
   }, [employeesData, dispatch]);
 
 
+
+ // Header path: Attendance › <tab>
+ usePageTrail([tabs.find((t) => t.key === activeTab)?.label]);
 
  const refreshWorkers = () => {
  setWorkerRefreshKey(k => k + 1);

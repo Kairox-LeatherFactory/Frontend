@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   ShieldAlert,
   CheckCircle2,
@@ -43,8 +43,25 @@ const PRODUCTION_STAGES = [
   "PACKING"
 ];
 
-export default function InspectionSection({ onGoBack }) {
-  const [activeTab, setActiveTab] = useState("raise"); // "raise" | "dm-queue" | "history" | "responsibility"
+const INSPECTION_VIEW_LABELS = {
+  raise: "Raise Inspection",
+  "dm-queue": "DM / MD Queue",
+  responsibility: "Worker Responsibility",
+  damage: "Product Damage",
+  history: "Piece History",
+};
+
+// LEATHER_CUTTING → "LEATHER CUTTING"
+const fmtStage = (s) => (s ? String(s).replace(/_/g, " ") : "—");
+
+export default function InspectionSection({ onGoBack, onViewChange }) {
+  const [activeTab, setActiveTab] = useState("raise"); // "raise" | "dm-queue" | "responsibility" | "damage" | "history"
+
+  // Report the open sub-tab so the header path reads
+  // "Production Logger › Quality Inspection › <sub-tab>"
+  useEffect(() => {
+    onViewChange?.(INSPECTION_VIEW_LABELS[activeTab]);
+  }, [activeTab, onViewChange]);
 
   // --------------------------------------------------
   // 1. RAISE INSPECTION FORM STATE
@@ -238,21 +255,27 @@ export default function InspectionSection({ onGoBack }) {
   // --------------------------------------------------
   const { data: responsibilityList = [], isLoading: isRespLoading } = useGetWorkerResponsibilityQuery("");
 
+  // --------------------------------------------------
+  // 4b. PRODUCT DAMAGE — GET /inspections (all statuses) filtered to PRODUCT_DAMAGE;
+  // /inspections/responsibility never includes damage by design.
+  // --------------------------------------------------
+  const [damageFilter, setDamageFilter] = useState("ALL");
+  const { data: allInspections = [], isLoading: isDamageLoading } = useGetInspectionsQuery(
+    { status: "", limit: 200 },
+    { skip: activeTab !== "damage" }
+  );
+  const damageItems = useMemo(
+    () => (Array.isArray(allInspections) ? allInspections : allInspections?.items || [])
+      .filter((i) => i.defect_type === "PRODUCT_DAMAGE")
+      .filter((i) => damageFilter === "ALL" || (i.status || "PENDING") === damageFilter),
+    [allInspections, damageFilter]
+  );
+
   return (
     <div className="w-full space-y-6">
-      {/* SECTION HEADER & SUB-TABS */}
-      <div className="bg-white border border-amber-900/10 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center border border-amber-500/20 text-amber-700">
-            <ShieldAlert className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-black text-slate-800 tracking-tight">Quality Inspection</h2>
-          </div>
-        </div>
-
-        {/* SUB TABS */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl self-start md:self-auto overflow-x-auto max-w-full">
+      {/* SUB-TABS — the section title is shown in the app header path */}
+      <div className="flex">
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full">
           <button
             onClick={() => setActiveTab("raise")}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === "raise"
@@ -289,6 +312,17 @@ export default function InspectionSection({ onGoBack }) {
           >
             <User className="w-3.5 h-3.5" />
             Worker Responsibility
+          </button>
+
+          <button
+            onClick={() => setActiveTab("damage")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === "damage"
+                ? "bg-white text-amber-800 shadow-sm"
+                : "text-slate-600 hover:text-slate-900"
+              }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Product Damage
           </button>
 
           <button
@@ -807,6 +841,82 @@ export default function InspectionSection({ onGoBack }) {
                       <td className="p-3 text-center">
                         <span className="px-2.5 py-1 bg-rose-100 text-rose-800 rounded-full font-black">
                           {row.rejections}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================================== */}
+      {/* TAB 3b: PRODUCT DAMAGE — the non-workmanship rejections. The            */}
+      {/* responsibility read is WORKMANSHIP-only, so these come from the         */}
+      {/* inspections list filtered on defect_type.                               */}
+      {/* ======================================================================== */}
+      {activeTab === "damage" && (
+        <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <h3 className="text-base font-black text-slate-800 flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              Product Damage
+              {!isDamageLoading && (
+                <span className="text-[11px] font-bold text-slate-400">({damageItems.length})</span>
+              )}
+            </h3>
+
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
+              {["ALL", "PENDING", "APPROVED", "DECLINED"].map((st) => (
+                <button
+                  key={st}
+                  onClick={() => setDamageFilter(st)}
+                  className={`px-3 py-1 rounded-lg text-xs font-black transition-all ${damageFilter === st
+                      ? "bg-white text-slate-800 shadow-sm"
+                      : "text-slate-500 hover:text-slate-800"
+                    }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {isDamageLoading ? (
+            <div className="py-12 text-center">
+              <Loader2 className="w-8 h-8 animate-spin text-amber-600 mx-auto" />
+            </div>
+          ) : damageItems.length === 0 ? (
+            <div className="py-8 text-center text-slate-500 text-xs font-semibold">
+              No product damage records found{damageFilter !== "ALL" ? ` with status ${damageFilter}` : ""}.
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-black uppercase text-slate-600">
+                    <th className="p-3">Piece</th>
+                    <th className="p-3">Found At Stage</th>
+                    <th className="p-3">Action</th>
+                    <th className="p-3">Reason</th>
+                    <th className="p-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-xs font-bold text-slate-800">
+                  {damageItems.map((item, idx) => (
+                    <tr key={item.id || item.inspection_id || idx} className="hover:bg-slate-50">
+                      <td className="p-3 font-mono">{item.piece_code || item.piece_barcode || item.barcode || "—"}</td>
+                      <td className="p-3 uppercase">{fmtStage(item.found_at_stage)}</td>
+                      <td className="p-3 uppercase">
+                        {item.action || "—"}
+                        {item.action === "REDO" && item.return_to_stage ? ` → ${fmtStage(item.return_to_stage)}` : ""}
+                      </td>
+                      <td className="p-3 font-medium text-slate-600">{item.reason || "—"}</td>
+                      <td className="p-3">
+                        <span className="px-2.5 py-1 bg-slate-100 text-slate-700 rounded-full font-black text-[10px] uppercase">
+                          {item.status || "PENDING"}
                         </span>
                       </td>
                     </tr>

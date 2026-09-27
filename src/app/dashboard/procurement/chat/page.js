@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { ArrowLeft, Bot, Send, Loader2 } from 'lucide-react';
+import { ArrowLeft, Send, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
@@ -31,13 +31,6 @@ export default function ProcurementChat() {
       <Link href="/dashboard/procurement" className="flex items-center gap-2 text-xs font-black text-slate-500">
         <ArrowLeft className="w-4 h-4" /> Procurement
       </Link>
-      <div>
-        <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Intelligence</p>
-        <h1 className="text-3xl font-black mt-1 flex items-center gap-2">
-          <Bot className="w-7 h-7 text-[#c8834a]" /> Factory Chat
-        </h1>
-        <p className="text-xs text-slate-500 mt-1">Deterministic mock of `POST /chat`; structured data is rendered below the answer.</p>
-      </div>
 
       <SpotlightCard className="p-5 rounded-3xl bg-white min-h-[420px] flex flex-col" spotlightColor="rgba(200,131,74,.04)" style={{ border: '1px solid rgba(200,131,74,.15)' }}>
         <div className="flex-1 space-y-3">

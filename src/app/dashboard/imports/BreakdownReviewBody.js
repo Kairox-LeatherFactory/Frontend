@@ -132,22 +132,17 @@ const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, sty
     <div className="space-y-8 animate-fade-in pb-16">
       <Toast msg={toastMsg} type={toastType} />
 
-      <div>
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            className="flex items-center gap-1.5 text-xs font-bold mb-2 hover:underline cursor-pointer"
-            style={{ color: '#c8834a' }}
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> {backLabel}
-          </button>
-        )}
-        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Breakdown Review &amp; Release</h1>
-        <p className="font-medium mt-1 text-sm" style={{ color: '#9a7a5a' }}>
-          Uploaded styles land here as PENDING — nothing is barcoded until you approve and release them.
-        </p>
-      </div>
+      {/* Title comes from the app header (path); only the back link stays here */}
+      {onBack && (
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-2 h-11 px-4 rounded-xl border bg-white text-sm font-bold shadow-sm transition-all cursor-pointer hover:bg-[#faf6f0] hover:-translate-x-0.5 active:scale-95"
+          style={{ color: '#a86022', borderColor: 'rgba(200,131,74,0.45)' }}
+        >
+          <ArrowLeft className="w-5 h-5" /> {backLabel}
+        </button>
+      )}
 
       {/* ── Order search ── */}
       <div className="bg-white p-5 rounded-3xl shadow-sm border flex gap-3" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>

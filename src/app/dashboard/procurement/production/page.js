@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { ArrowLeft, Factory, CheckCircle2, Play, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Play, Loader2, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
@@ -42,14 +42,7 @@ export default function ProductionBoard() {
         <ArrowLeft className="w-4 h-4" /> Procurement
       </Link>
 
-      <div className="flex justify-between items-end">
-        <div>
-          <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Procurement · Production Bridge</p>
-          <h1 className="text-3xl font-black mt-1 flex items-center gap-2">
-            <Factory className="w-7 h-7 text-[#c8834a]" /> Production Board
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">Nine-rung state machine. Release is a deliberate human go/no-go before Phase 1 takes over.</p>
-        </div>
+      <div className="flex justify-end items-end">
         <button onClick={load} className="p-2 rounded-xl border">
           <RefreshCw className="w-4 h-4" />
         </button>
