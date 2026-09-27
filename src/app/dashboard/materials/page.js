@@ -1,6 +1,7 @@
 'use client';
 import { useState,useCallback} from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { usePageTrail } from '@/context/PageTrailContext';
 import { Toast, STOCK_READERS, LOT_WRITERS, DM_ONLY} from './components/shared';
 import {LotListScreen }from './components/LotListScreen';
 import { AddMaterialScreen } from './components/AddMaterialScreen';
@@ -28,6 +29,9 @@ export default function MaterialsPage() {
   const [orderPrefill, setOrderPrefill] = useState(null);
 
   const showToast = useCallback((msg, type) => setToast({ msg, type }), []);
+
+  // Header path: Material Stock › <tab>
+  usePageTrail([SCREENS.find((s) => s.id === screen)?.label]);
 
   const isReader = STOCK_READERS.includes(user);
   const isWriter = LOT_WRITERS.includes(user);
@@ -61,13 +65,6 @@ export default function MaterialsPage() {
   return (
     <div className="space-y-6 animate-fade-in pb-16">
       <Toast msg={toast?.msg} type={toast?.type} onClose={() => setToast(null)} />
-
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight flex items-center gap-2" style={{ color: '#2d1f0e' }}><Package className="w-7 h-7" style={{ color: '#c8834a' }} /> Material Stock</h1>
-          <p className="font-medium mt-1 text-sm" style={{ color: '#9a7a5a' }}>Lots, receiving and supplier orders — the human-driven stock system, not the BOM-driven inventory module.</p>
-        </div>
-      </div>
 
       <div className="flex gap-2 flex-wrap border-b pb-3" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         {visibleScreens.map((s) => {

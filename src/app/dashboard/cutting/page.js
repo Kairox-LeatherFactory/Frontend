@@ -1,8 +1,7 @@
 'use client';
 import { useState, useMemo } from 'react';
-import { 
-  Scissors, Plus, Trash2, FileSpreadsheet, Save, RefreshCw, CheckCircle2, 
-  Layers, Calculator, ChevronRight, AlertCircle, Sparkles, User, Calendar
+import {
+  Plus, Trash2, FileSpreadsheet, Save, RefreshCw, CheckCircle2, Layers, Calculator, ChevronRight, AlertCircle, Sparkles, User, Calendar,
 } from 'lucide-react';
 import { 
   useGetMaterialLotsQuery, 
@@ -242,21 +241,7 @@ export default function CuttingGridPage() {
       <div className="bg-slate-900 rounded-[2.5rem] p-6 sm:p-8 text-white shadow-2xl relative overflow-hidden border border-slate-800">
         <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
         
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div>
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl text-white shadow-lg">
-                <Scissors className="w-6 h-6" />
-              </div>
-              <div>
-                <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Cutting Grid Engine</h1>
-                <p className="text-xs text-amber-200/70 font-medium mt-0.5">
-                  Multi-Sheet Hide-by-Hide Leather Consumption &amp; Pattern Layout Management
-                </p>
-              </div>
-            </div>
-          </div>
-
+        <div className="flex flex-col md:flex-row md:items-center justify-end gap-6 relative z-10">
           <div className="flex flex-wrap items-center gap-4">
             <div className="flex items-center gap-2 bg-slate-800/80 px-4 py-2.5 rounded-2xl border border-slate-700">
               <Calendar className="w-4 h-4 text-amber-400" />

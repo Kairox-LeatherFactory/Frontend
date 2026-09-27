@@ -30,10 +30,9 @@ export default function OrderLevelCard({ group, treeData }) {
 
       {/* Card Body */}
       <div className="p-6">
-        <p className="text-2xl font-black" style={{ color: '#c8834a' }}>
+        <p className="text-2xl font-black mb-5" style={{ color: '#c8834a' }}>
           {group.client}
         </p>
-        <p className="text-sm text-slate-400 font-mono mt-1 mb-5">{group.rawId}</p>
 
         {/* 3 Metric Pills: PO Number, Styles Count, Pieces Count */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">

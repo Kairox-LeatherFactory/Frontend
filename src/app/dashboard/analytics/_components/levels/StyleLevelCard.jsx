@@ -62,9 +62,6 @@ export default function StyleLevelCard({
                 ({style.article || sDetail?.article || 'Standard Article'})
               </span>
             </p>
-            <p className="text-xs text-slate-400 font-mono mt-1">
-              {style.style_id || style.id}
-            </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="px-3 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-200">

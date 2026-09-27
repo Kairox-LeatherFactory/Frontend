@@ -38,12 +38,6 @@ export default function GarmentTracer() {
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-fade-in">
       
-      {/* ─── TITLE SECTION ─── */}
-      <div>
-        <h1 className="text-3xl font-black text-slate-900 tracking-tight">Garment QC Tracer</h1>
-        <p className="text-slate-500 font-medium">Verify production accountability chains. Search Garment QR/Barcode IDs to audit stage-by-stage inspections.</p>
-      </div>
-
       {/* ─── SEARCH INPUT BLOCK (Target 48px) ─── */}
       <div className="card p-6 bg-white border border-blue-100 shadow-xl space-y-6">
         <h3 className="text-sm font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">

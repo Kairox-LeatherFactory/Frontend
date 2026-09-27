@@ -245,7 +245,7 @@ const [loginApi]=useLoginMutation();
       }
 
       setIsSuccess(true);
-      login(backendRole, data.access_token);
+      login(backendRole, data.access_token, data.name);
       // Real page navigation (not router.push's client-side SPA transition) —
       // browsers key their "Save password?" prompt off a genuine navigation
       // following the form submit, so this is what reliably triggers it.

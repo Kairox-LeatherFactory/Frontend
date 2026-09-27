@@ -64,7 +64,6 @@ export default function PieceTravelerCard({
               {pieceDetail.bundle_id ||
                 pieceDetail.piece_code ||
                 pieceDetail.code ||
-                pieceDetail.piece_id ||
                 selectedPieceCode}
             </p>
             <div className="flex flex-wrap items-center gap-3 mt-2">

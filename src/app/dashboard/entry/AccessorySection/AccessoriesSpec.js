@@ -2,13 +2,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight, Copy, Truck, PackageCheck,
+  CheckCircle2, XCircle, AlertTriangle, Loader2, ChevronDown, ChevronRight, Truck, PackageCheck,
 } from 'lucide-react';
 import {
   useLazyGetStyleMaterialSpecQuery,
   usePutStyleMaterialSpecMutation,
   useConfirmStyleMaterialSpecMutation,
-  useCopyStyleMaterialSpecMutation,
   useLazyGetStyleMaterialRequirementQuery,
   useRecordMaterialIssueMutation,
   useIssueAccessoryKitMutation,
@@ -26,8 +25,6 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
   const [noAccessories, setNoAccessories] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [confirmWarnings, setConfirmWarnings] = useState([]);
-  const [copyFromInput, setCopyFromInput] = useState('');
-  const [copying, setCopying] = useState(false);
   const [requirementOpen, setRequirementOpen] = useState(false);
   const [requirement, setRequirement] = useState(null);
   const [requirementLoading, setRequirementLoading] = useState(false);
@@ -36,7 +33,6 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
   const [triggerGetStyleMaterialSpec] = useLazyGetStyleMaterialSpecQuery();
   const [putStyleMaterialSpec] = usePutStyleMaterialSpecMutation();
   const [confirmStyleMaterialSpec] = useConfirmStyleMaterialSpecMutation();
-  const [copyStyleMaterialSpec] = useCopyStyleMaterialSpecMutation();
   const [triggerGetStyleMaterialRequirement] = useLazyGetStyleMaterialRequirementQuery();
   const [recordMaterialIssue] = useRecordMaterialIssueMutation();
 
@@ -75,21 +71,6 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
       showToast(e.message || 'Failed to confirm material spec.', 'error');
     } finally {
       setConfirming(false);
-    }
-  };
-
-  const handleCopyFrom = async () => {
-    if (!copyFromInput.trim()) return;
-    setCopying(true);
-    try {
-      const res = await copyStyleMaterialSpec({ styleId: styleId, fromStyleId: copyFromInput.trim().unwrap() });
-      showToast(res.message || 'Copied material spec from that style.', 'success');
-      setCopyFromInput('');
-      await load();
-    } catch (e) {
-      showToast(e.message || 'Copy failed.', 'error');
-    } finally {
-      setCopying(false);
     }
   };
 
@@ -145,72 +126,59 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
   const requirementLines = requirement?.lines || [];
 
   return (
-    <div className="mt-3 p-4 rounded-xl bg-white border space-y-4" style={{ borderColor: 'rgba(124,58,237,0.2)', background: 'linear-gradient(180deg, rgba(124,58,237,0.04), transparent)' }}>
+    <div className="mt-3 p-4 rounded-xl bg-white border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-black uppercase tracking-widest text-violet-600">Material Spec</span>
-          {spec.confirmed ? (
-            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" /> Confirmed
-            </span>
-          ) : (
-            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-700">Not confirmed</span>
-          )}
+          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#a86022' }}>Material Spec</span>
+          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded border flex items-center gap-1" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.25)', color: spec.confirmed ? '#2d1f0e' : '#9a7a5a' }}>
+            {spec.confirmed && <CheckCircle2 className="w-3 h-3" />} {spec.confirmed ? 'Confirmed' : 'Not confirmed'}
+          </span>
           {spec.no_accessories_declared && (
-            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-500">No accessories needed</span>
+            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded border" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.25)', color: '#9a7a5a' }}>No accessories needed</span>
           )}
         </div>
       </div>
 
-      {spec.release_blockers?.length > 0 && (
-        <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 space-y-0.5">
-          {spec.release_blockers.map((b, i) => <p key={i} className="text-[11px] font-bold text-rose-700">⚠ {b}</p>)}
-        </div>
-      )}
-      {confirmWarnings.length > 0 && (
-        <div className="p-2.5 rounded-lg bg-amber-50 border border-amber-200 space-y-0.5">
-          {confirmWarnings.map((w, i) => <p key={i} className="text-[11px] font-bold text-amber-700">ℹ {w}</p>)}
+      {(spec.release_blockers?.length > 0 || confirmWarnings.length > 0) && (
+        <div className="p-2.5 rounded-lg border space-y-0.5" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.3)' }}>
+          {(spec.release_blockers || []).map((b, i) => <p key={`b${i}`} className="text-[11px] font-bold" style={{ color: '#a86022' }}>⚠ {b}</p>)}
+          {confirmWarnings.map((w, i) => <p key={`w${i}`} className="text-[11px] font-bold" style={{ color: '#9a7a5a' }}>ℹ {w}</p>)}
         </div>
       )}
 
       <MaterialCategorySection
-        category="LEATHER" label="Leather" accentColor="#b45309"
+        category="LEATHER" label="Leather" accentColor="#c8834a"
         lines={leatherLines} styleId={styleId} token={token} showToast={showToast} canEdit={canEdit} onChanged={load} pieceCount={pieceCount}
         subtypes={null} showThickness minimalFields
         defaultForm={{ article: '', colour: '', thickness: '', qty_per_piece: '', sku_id: '', material_lot_id: '' }}
       />
 
       <MaterialCategorySection
-        category="LINING" label="Lining" accentColor="#2563eb"
+        category="LINING" label="Lining" accentColor="#c8834a"
         lines={liningLines} styleId={styleId} token={token} showToast={showToast} canEdit={canEdit} onChanged={load} pieceCount={pieceCount}
         subtypes={LINING_SUBTYPES} showThickness minimalFields
         defaultForm={{ subtype: LINING_SUBTYPES[0], article: '', colour: '', thickness: '', size: '', qty_per_piece: '', sku_id: '', material_lot_id: '' }}
       />
 
       <MaterialCategorySection
-        category="ACCESSORY" label="Accessories" accentColor="#7c3aed"
+        category="ACCESSORY" label="Accessories" accentColor="#c8834a"
         lines={accessoryLines} styleId={styleId} token={token} showToast={showToast} canEdit={canEdit} onChanged={load} pieceCount={pieceCount}
-        subtypes={ACCESSORY_SUBTYPES} showThickness={false}
+        subtypes={ACCESSORY_SUBTYPES} showThickness={false} allowColour={false}
         defaultForm={{ subtype: ACCESSORY_SUBTYPES[0], article: '', colour: '', size: '', qty_per_piece: '', sku_id: '', material_lot_id: '' }}
       />
 
       {canEdit && (
         <>
-          <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-100">
-            <input value={copyFromInput} onChange={(e) => setCopyFromInput(e.target.value)} placeholder="Copy from style code/ID…" className="h-8 px-2 border rounded-lg font-bold text-xs flex-1 min-w-[10rem] mt-3" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
-            <button onClick={handleCopyFrom} disabled={copying || !copyFromInput.trim()} className="h-8 px-3 rounded-lg font-black text-[11px] uppercase bg-white border text-slate-600 flex items-center gap-1.5 disabled:opacity-50 mt-3" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
-              {copying ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Copy className="w-3.5 h-3.5" />} Copy
-            </button>
-          </div>
+          <div className="border-t border-slate-100" />
 
           {accessoryLines.length === 0 && (
             <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 pt-1">
-              <input type="checkbox" checked={noAccessories} onChange={(e) => setNoAccessories(e.target.checked)} className="w-3.5 h-3.5 accent-violet-600" />
+              <input type="checkbox" checked={noAccessories} onChange={(e) => setNoAccessories(e.target.checked)} className="w-3.5 h-3.5 accent-[#c8834a]" />
               This style takes no accessories
             </label>
           )}
 
-          <button onClick={handleConfirm} disabled={confirming || (accessoryLines.length === 0 && !noAccessories)} className="h-9 px-4 rounded-lg font-black text-[11px] uppercase text-white flex items-center gap-1.5 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #7c3aed, #a78bfa)' }}>
+          <button onClick={handleConfirm} disabled={confirming || (accessoryLines.length === 0 && !noAccessories)} className="h-9 px-4 rounded-lg font-black text-[11px] uppercase text-white flex items-center gap-1.5 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
             {confirming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Confirm Material Spec
           </button>
         </>
@@ -228,19 +196,19 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
           ) : (
             <div className="pt-2 space-y-1.5">
               {requirementLines.map((l) => (
-                <div key={l.spec_id || `${l.article}-${l.colour}-${l.size}`} className={`flex flex-wrap items-center gap-2 p-2 rounded-lg text-[11px] font-bold ${l.short_by > 0 ? 'bg-rose-50 border border-rose-200' : 'bg-emerald-50 border border-emerald-200'}`}>
+                <div key={l.spec_id || `${l.article}-${l.colour}-${l.size}`} className="flex flex-wrap items-center gap-2 p-2 rounded-lg border text-[11px] font-bold" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.2)' }}>
                   <span className="font-mono text-slate-700">{l.article} {l.colour ? `· ${l.colour}` : ''} {l.size ? `· ${l.size}` : ''}</span>
                   <span className="text-slate-500">needs {l.total_required ?? l.pieces} {l.uom}</span>
                   <span className="text-slate-500">avail {l.available ?? l.lot?.available ?? 0}</span>
                   {l.short_by > 0 ? (
                     <>
-                      <span className="text-rose-700">short {l.short_by}</span>
+                      <span className="font-black" style={{ color: '#a86022' }}>⚠ short {l.short_by}</span>
                       <button onClick={() => handleOrder(l)} disabled={orderingKey === (l.spec_id || l.article)} className="ml-auto h-7 px-2.5 rounded-lg font-black text-[10px] uppercase text-white flex items-center gap-1 disabled:opacity-50" style={{ background: '#c8834a' }}>
                         {orderingKey === (l.spec_id || l.article) ? <Loader2 className="w-3 h-3 animate-spin" /> : <Truck className="w-3 h-3" />} Order
                       </button>
                     </>
                   ) : (
-                    <span className="ml-auto text-emerald-700">✓ covered</span>
+                    <span className="ml-auto" style={{ color: '#2d1f0e' }}>✓ covered</span>
                   )}
                 </div>
               ))}

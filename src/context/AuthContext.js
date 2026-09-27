@@ -41,6 +41,7 @@ export const ROLE_OPERATIONS = {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // null = logged out
   const [token, setToken] = useState(null); // JWT access token from backend
+  const [userName, setUserName] = useState(''); // display name from the login response
   const [isLoaded, setIsLoaded] = useState(false);
 const dispatch=useDispatch();
   // Load persisted auth state on client-side mount
@@ -51,6 +52,7 @@ const dispatch=useDispatch();
     if (storedUser && storedToken) {
       setUser(storedUser);
       setToken(storedToken);
+      setUserName(localStorage.getItem('kairox_user_name') || '');
         dispatch(setAuthCredentials({
           user: storedUser,
           token: storedToken
@@ -59,9 +61,12 @@ const dispatch=useDispatch();
     setIsLoaded(true);
   }, [dispatch]);
 
-  const login = (role, accessToken = null) => {
+  const login = (role, accessToken = null, name = '') => {
     setUser(role);
     localStorage.setItem('kairox_user', role);
+    setUserName(name || '');
+    if (name) localStorage.setItem('kairox_user_name', name);
+    else localStorage.removeItem('kairox_user_name');
 
     if (accessToken) {
       setToken(accessToken);
@@ -76,8 +81,10 @@ const dispatch=useDispatch();
   const logout = () => {
     setUser(null);
     setToken(null);
+    setUserName('');
     localStorage.removeItem('kairox_user');
     localStorage.removeItem('kairox_token');
+    localStorage.removeItem('kairox_user_name');
     dispatch(reduxLogout());
   };
 
@@ -87,7 +94,7 @@ const dispatch=useDispatch();
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, ROLES, ROLE_OPERATIONS }}>
+    <AuthContext.Provider value={{ user, userName, token, login, logout, ROLES, ROLE_OPERATIONS }}>
       {children}
     </AuthContext.Provider>
   );

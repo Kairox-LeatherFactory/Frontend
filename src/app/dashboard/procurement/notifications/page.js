@@ -26,11 +26,6 @@ export default function Notifications() {
       <Link href="/dashboard/procurement" className="flex items-center gap-2 text-xs font-black text-slate-500">
         <ArrowLeft className="w-4 h-4" /> Procurement
       </Link>
-      <div>
-        <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Notifications</p>
-        <h1 className="text-3xl font-black mt-1">Procurement Inbox</h1>
-        <p className="text-xs text-slate-500 mt-1">Mock of the notification list/open contract. SSE can be connected later without changing this UI.</p>
-      </div>
       {!rows ? (
         <div className="p-12 text-center">
           <Loader2 className="w-7 h-7 animate-spin mx-auto text-[#c8834a]" />

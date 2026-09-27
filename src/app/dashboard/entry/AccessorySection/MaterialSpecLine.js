@@ -58,9 +58,9 @@ const [deleteStyleMaterialSpecLine] = useDeleteStyleMaterialSpecLineMutation();
     const unresolved = line.resolution === 'NONE' || line.resolution === 'AMBIGUOUS';
 
     return (
-        <div className={`flex flex-wrap items-center gap-2 p-2.5 rounded-lg border text-xs ${unresolved ? 'bg-rose-50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
-            {line.subtype && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-500 shrink-0">{line.subtype}</span>}
-            {isOverride && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-600 shrink-0">SKU override</span>}
+        <div className="flex flex-wrap items-center gap-2 p-2.5 rounded-lg border text-xs" style={{ background: '#faf6f0', borderColor: unresolved ? 'rgba(200,131,74,0.45)' : 'rgba(200,131,74,0.2)' }}>
+            {line.subtype && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-white border shrink-0" style={{ borderColor: 'rgba(200,131,74,0.25)', color: '#9a7a5a' }}>{line.subtype}</span>}
+            {isOverride && <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-white border shrink-0" style={{ borderColor: 'rgba(200,131,74,0.25)', color: '#9a7a5a' }}>SKU override</span>}
             {editing ? (
                 <input value={article} onChange={(e) => setArticle(e.target.value)} className="w-24 h-7 px-1.5 border rounded font-bold" style={{ borderColor: 'rgba(200,131,74,0.3)' }} placeholder="Article" />
             ) : (
@@ -91,16 +91,16 @@ const [deleteStyleMaterialSpecLine] = useDeleteStyleMaterialSpecLineMutation();
                 <span className="font-black" style={{ color: '#c8834a' }}>{line.qty_per_piece} {line.uom || 'pcs'} / piece</span>
             )}
             {!editing && Number(pieceCount) > 0 && (
-                <span className="text-[10px] font-black text-violet-700 bg-violet-50 border border-violet-200 px-1.5 py-0.5 rounded" title={`${line.qty_per_piece} ${line.uom || 'pcs'}/piece × ${pieceCount} pieces ordered`}>
+                <span className="text-[10px] font-black bg-white border px-1.5 py-0.5 rounded" style={{ color: '#2d1f0e', borderColor: 'rgba(200,131,74,0.25)' }} title={`${line.qty_per_piece} ${line.uom || 'pcs'}/piece × ${pieceCount} pieces ordered`}>
                     = {(Number(line.qty_per_piece) || 0) * Number(pieceCount)} {line.uom || 'pcs'} total for this style
                 </span>
             )}
             {lot && <span className="text-[10px] font-bold text-slate-400">on hand {lot.on_hand ?? '—'} · avail {lot.available ?? '—'}</span>}
-            {unresolved && <span className="text-[10px] font-black text-rose-600">⚠ no stock lot resolves this line</span>}
+            {unresolved && <span className="text-[10px] font-black" style={{ color: '#a86022' }}>⚠ no stock lot resolves this line</span>}
             {canEdit && (
                 <div className="flex items-center gap-1.5 ml-auto shrink-0">
                     {editing ? (
-                        <button onClick={handleSave} disabled={saving} className="p-1.5 rounded-lg bg-emerald-500 text-white disabled:opacity-50">
+                        <button onClick={handleSave} disabled={saving} className="p-1.5 rounded-lg text-white disabled:opacity-50" style={{ background: '#c8834a' }}>
                             {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
                         </button>
                     ) : (

@@ -136,12 +136,6 @@ export default function StyleStageProgress() {
   return (
     <div className="space-y-8 animate-fade-in">
 
-      {/* ─── TITLE SECTION ─── */}
-      <div>
-        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Stage-Spread Progress</h1>
-        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Drill down Order → Style → Piece to see stage-by-stage progress and full piece history.</p>
-      </div>
-
       {/* ─── 3 SEARCHABLE DROPDOWNS ─── */}
       <div className="flex flex-col sm:flex-row gap-4">
         <SearchCombobox
@@ -207,17 +201,17 @@ export default function StyleStageProgress() {
                   <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Total Qty</span>
                   <p className="text-xl font-black mt-1" style={{ color: '#2d1f0e' }}>{orderDetail.total_quantity ?? '—'}</p>
                 </div>
-                <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-700">Completed Qty</span>
-                  <p className="text-xl font-black mt-1 text-emerald-800">{orderCompletedQty ?? '—'}</p>
+                <div className="p-4 rounded-2xl bg-[#faf6f0] border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+                  <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Completed Qty</span>
+                  <p className="text-xl font-black mt-1" style={{ color: '#2d1f0e' }}>{orderCompletedQty ?? '—'}</p>
                 </div>
-                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-700">Balance Qty</span>
-                  <p className="text-xl font-black mt-1 text-amber-800">{orderBalanceQty ?? '—'}</p>
+                <div className="p-4 rounded-2xl bg-[#faf6f0] border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+                  <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Balance Qty</span>
+                  <p className="text-xl font-black mt-1" style={{ color: '#2d1f0e' }}>{orderBalanceQty ?? '—'}</p>
                 </div>
-                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-100 col-span-2">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-rose-700 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Bottleneck Stage</span>
-                  <p className="text-xl font-black mt-1 text-rose-800 truncate">{orderDetail.blocked_stage || 'None — flowing freely'}</p>
+                <div className="p-4 rounded-2xl bg-[#faf6f0] border col-span-2" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+                  <span className="text-[10px] font-black uppercase tracking-wider flex items-center justify-center gap-1" style={{ color: '#9a7a5a' }}><AlertTriangle className="w-3 h-3" /> Bottleneck Stage</span>
+                  <p className="text-xl font-black mt-1 truncate" style={{ color: '#2d1f0e' }}>{orderDetail.blocked_stage ? orderDetail.blocked_stage.replace(/_/g, ' ') : 'None — flowing freely'}</p>
                 </div>
               </div>
 
@@ -235,7 +229,7 @@ export default function StyleStageProgress() {
                     <tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
                       {orderDetail.stages.map((s, i) => (
                         <tr key={i}>
-                          <td className="py-3 px-2 font-bold" style={{ color: '#2d1f0e' }}>{s.label || s.stage_label || s.stage || s.stage_code}</td>
+                          <td className="py-3 px-2 font-bold uppercase" style={{ color: '#2d1f0e' }}>{s.label || s.stage_label || s.stage || s.stage_code}</td>
                           <td className="py-3 px-2 font-black" style={{ color: '#c8834a' }}>{s.completed ?? s.count ?? s.qty ?? s.pieces ?? s.pending ?? 0}</td>
                           <td className="py-3 px-2 font-bold text-slate-500">{s.pct != null ? `${s.pct}%` : '—'}</td>
                           <td className="py-3 px-2"><StageBadge state={s.status} /></td>
@@ -322,7 +316,7 @@ export default function StyleStageProgress() {
                         const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
                         return (
                           <tr key={i}>
-                            <td className="py-3 px-2 font-bold" style={{ color: '#2d1f0e' }}>{s.label || s.stage_label || s.stage || s.stage_code}</td>
+                            <td className="py-3 px-2 font-bold uppercase" style={{ color: '#2d1f0e' }}>{s.label || s.stage_label || s.stage || s.stage_code}</td>
                             <td className="py-3 px-2 font-black" style={{ color: '#c8834a' }}>{completed}</td>
                             <td className="py-3 px-2 font-bold text-slate-500">{pct}%</td>
                           </tr>
@@ -384,7 +378,7 @@ export default function StyleStageProgress() {
                       >
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-black text-sm" style={{ color: h.is_store_overlay ? '#1d4ed8' : '#2d1f0e' }}>
+                            <span className="font-black text-sm uppercase" style={{ color: h.is_store_overlay ? '#1d4ed8' : '#2d1f0e' }}>
                               {h.label || h.stage}
                             </span>
                             {h.is_store_overlay && (

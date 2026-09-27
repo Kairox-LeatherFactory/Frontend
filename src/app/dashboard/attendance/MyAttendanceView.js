@@ -119,11 +119,6 @@ export default function MyAttendanceView() {
 
  return (
  <motion.div className="space-y-6">
- <div>
- <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>My Attendance</h1>
- <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Track your shift status and review personal attendance history.</p>
- </div>
-
  <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 
  {/* Hero row — Managing Director */}

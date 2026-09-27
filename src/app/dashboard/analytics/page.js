@@ -1,6 +1,6 @@
 'use client';
 import { motion } from 'framer-motion';
-import { TrendingUp, Warehouse } from 'lucide-react';
+import { Warehouse } from 'lucide-react';
 import { tabFade } from './_lib/constants';
 import OrdersExplorer from './_components/OrdersExplorer';
 
@@ -40,35 +40,7 @@ export default function AnalyticsDashboard() {
         }}
       />
 
-      {/* Page Header: Title, Live Pulse Dot, Subtitle */}
-      <div className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 relative z-10">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-md shadow-[#c8834a]/20"
-              style={{
-                background: 'linear-gradient(135deg, #c8834a, #a0622e)',
-              }}
-            >
-              <TrendingUp className="w-5 h-5 text-white" />
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-              <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">
-                Live
-              </span>
-            </div>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-black tracking-tight text-[#2d1f0e] mb-1">
-            Analytics &amp; Operations
-          </h1>
-          <p className="text-slate-500 font-medium text-sm">
-            Live factory intelligence and order exploration.
-          </p>
-        </div>
-      </div>
-
-      {/* Main Content Area */}
+      {/* Main Content Area — page title is shown in the app header */}
       <motion.div
         variants={tabFade}
         initial="hidden"

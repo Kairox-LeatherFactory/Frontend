@@ -12,6 +12,7 @@ import ScreenSafeSelect from './ScreenSafeSelect';
 export default function MaterialCategorySection({
   category, label, accentColor, lines, styleId, token, showToast, canEdit, onChanged, pieceCount,
   subtypes, showThickness, defaultForm, minimalFields,
+  allowColour = true, // Accessories have no "+ Add Colour" shortcut
 }) {
   const [showForm, setShowForm] = useState(false);
   const [showColourForm, setShowColourForm] = useState(false);
@@ -131,7 +132,7 @@ export default function MaterialCategorySection({
   return (
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: accentColor }}>{label}</span>
+        <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#a86022' }}>{label}</span>
         <span className="text-[10px] font-bold text-slate-400">{lines.length} line(s)</span>
       </div>
       {lines.length === 0 ? (
@@ -195,9 +196,9 @@ export default function MaterialCategorySection({
             </div>
           </div>
         ) : showColourForm ? (
-          <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 flex flex-wrap items-center gap-2">
-            <span className="text-xs font-black text-amber-900 flex items-center gap-1">
-              <Palette className="w-3.5 h-3.5 text-amber-700" /> Set Colour:
+          <div className="p-3 rounded-xl border flex flex-wrap items-center gap-2" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.25)' }}>
+            <span className="text-xs font-black flex items-center gap-1" style={{ color: '#2d1f0e' }}>
+              <Palette className="w-3.5 h-3.5" style={{ color: '#c8834a' }} /> Set Colour:
             </span>
             <input
               type="text"
@@ -205,7 +206,7 @@ export default function MaterialCategorySection({
               // Colours are stored in capitals — uppercase as the user types
               onChange={(e) => setColourInput(e.target.value.toUpperCase())}
               placeholder="Enter Colour (e.g. BLACK, PINE GREEN)"
-              className="h-8 px-3 border rounded-lg font-bold text-xs bg-white text-slate-800 flex-1 min-w-[12rem] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+              className="h-8 px-3 border rounded-lg font-bold text-xs bg-white text-slate-800 flex-1 min-w-[12rem] focus:outline-none focus:ring-2 focus:ring-[#c8834a]/20"
               style={{ borderColor: 'rgba(200,131,74,0.3)' }}
               autoFocus
             />
@@ -213,7 +214,8 @@ export default function MaterialCategorySection({
               type="button"
               onClick={handleSaveColour}
               disabled={savingColour}
-              className="h-8 px-3.5 rounded-lg font-black text-[11px] uppercase text-white bg-amber-700 hover:bg-amber-800 disabled:opacity-50 flex items-center gap-1.5"
+              className="h-8 px-3.5 rounded-lg font-black text-[11px] uppercase text-white hover:brightness-105 disabled:opacity-50 flex items-center gap-1.5"
+              style={{ background: '#c8834a' }}
             >
               {savingColour ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />} Save Colour
             </button>
@@ -230,17 +232,20 @@ export default function MaterialCategorySection({
             <button onClick={() => setShowForm(true)} className="h-8 px-3 rounded-lg font-black text-[11px] uppercase bg-white border flex items-center gap-1.5" style={{ borderColor: accentColor, color: accentColor }}>
               <Plus className="w-3.5 h-3.5" /> Add {label.toLowerCase()}
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                const currentColour = (lines && lines[0]?.colour) || '';
-                setColourInput(currentColour);
-                setShowColourForm(true);
-              }}
-              className="h-8 px-3 rounded-lg font-black text-[11px] uppercase bg-amber-50 border border-amber-300 text-amber-900 flex items-center gap-1.5 hover:bg-amber-100 transition-all shadow-xs"
-            >
-              <Palette className="w-3.5 h-3.5 text-amber-700" /> + Add Colour
-            </button>
+            {allowColour && (
+              <button
+                type="button"
+                onClick={() => {
+                  const currentColour = (lines && lines[0]?.colour) || '';
+                  setColourInput(currentColour);
+                  setShowColourForm(true);
+                }}
+                className="h-8 px-3 rounded-lg font-black text-[11px] uppercase bg-white border flex items-center gap-1.5 hover:bg-[#faf6f0] transition-all"
+                style={{ borderColor: accentColor, color: accentColor }}
+              >
+                <Palette className="w-3.5 h-3.5" /> Add Colour
+              </button>
+            )}
           </div>
         )
       )}

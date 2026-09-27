@@ -4,34 +4,7 @@ import { useState, useMemo, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Boxes,
-  Layers,
-  Sparkles,
-  TrendingUp,
-  AlertTriangle,
-  RefreshCw,
-  Search,
-  Download,
-  Filter,
-  CheckCircle2,
-  Clock,
-  User,
-  Package,
-  Eye,
-  X,
-  Plus,
-  BarChart3,
-  Calendar,
-  Activity,
-  ArrowRight,
-  ShieldCheck,
-  Zap,
-  Tag,
-  QrCode,
-  FileSpreadsheet,
-  PauseCircle,
-  Archive,
-  Shirt,
+  Layers, Sparkles, TrendingUp, AlertTriangle, RefreshCw, Search, Download, Filter, CheckCircle2, Clock, User, Package, Eye, X, Plus, BarChart3, Calendar, Activity, ArrowRight, ShieldCheck, Zap, Tag, QrCode, FileSpreadsheet, PauseCircle, Archive, Shirt,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -577,18 +550,8 @@ function StoreDashboardContent() {
       </AnimatePresence>
 
       {/* ─── TOP ACTION BANNER (Full Width) ─── */}
-      <div className="w-full bg-white p-5 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3.5">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#0891b2] to-[#0e7490] flex items-center justify-center text-white shadow-md">
-            <Boxes className="w-5 h-5" />
-          </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-[#1e293b] tracking-tight">Store Manager Operations Dashboard</h1>
-            <p className="text-xs text-[#64748b] font-medium">Drawer Movement, Intermediate Storage &bull; Materials: <strong className="text-[#0891b2]">Leather &bull; Lining &bull; Both</strong></p>
-          </div>
-        </div>
-
-        {/* Action Controls */}
+      <div className="w-full flex flex-col md:flex-row md:items-center justify-end gap-4">
+        {/* Action Controls — page title is shown in the app header */}
         <div className="flex items-center flex-wrap gap-2.5">
           <button
             onClick={() => { setRefreshKey((k) => k + 1); triggerToast('🔄 Refreshing store data from server...'); }}

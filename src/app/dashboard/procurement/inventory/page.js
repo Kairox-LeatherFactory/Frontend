@@ -209,14 +209,9 @@ export default function InventoryPage() {
       {/* HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <Link href="/dashboard/procurement" className="flex items-center gap-2 text-xs font-black text-amber-900/60 hover:text-[#c8834a] transition-colors mb-4 w-fit">
+          <Link href="/dashboard/procurement" className="flex items-center gap-2 text-xs font-black text-amber-900/60 hover:text-[#c8834a] transition-colors w-fit">
             <ArrowLeft className="w-4 h-4" /> Back to Orders
           </Link>
-          <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Procurement · Phase 4</p>
-          <h1 className="text-3xl font-black mt-1 text-[#2d1f0e]">Inventory Control</h1>
-          <p className="text-xs text-amber-900/60 mt-1 font-medium max-w-xl">
-            Check missing materials against warehouse stock before purchasing. Upload stock reports from external systems.
-          </p>
         </div>
         
         <div className="flex items-center gap-3">

@@ -198,19 +198,7 @@ export default function SupplierPOPage() {
         <Link href="/dashboard/procurement/inventory" className="flex items-center gap-1.5 text-xs font-bold mb-3 w-fit transition-opacity hover:opacity-70" style={{ color: '#9a7a5a' }}>
           <ArrowLeft className="w-3.5 h-3.5" /> Back to Inventory Check
         </Link>
-        <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-          <div>
-            <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>
-              Procurement · Stage 5 — Supplier PO Workflow
-            </p>
-            <h1 className="text-3xl font-black tracking-tight flex items-center gap-3" style={{ color: '#2d1f0e' }}>
-              <ShoppingCart className="w-8 h-8" style={{ color: '#c8834a' }} /> Purchase Orders & Suppliers
-            </h1>
-            <p className="font-medium mt-0.5" style={{ color: '#9a7a5a' }}>
-              Auto-generated POs, supplier candidate matching, tax calculations, and routed approval workflows.
-            </p>
-          </div>
-
+        <div className="flex flex-col md:flex-row md:items-start md:justify-end gap-4">
           <div className="flex items-center gap-2">
             <button
               onClick={loadData}

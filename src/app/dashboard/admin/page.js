@@ -5,8 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useGetUsersQuery, useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
 
 import {
-  CheckCircle2, Users,Factory,
-  ShieldCheck, Lock, AlertCircle, Building2
+  CheckCircle2, Users, Factory, Lock, AlertCircle, Building2,
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { staggerContainer, fadeUpItem} from '@/lib/motionVariants';
@@ -75,18 +74,6 @@ export default function AdminDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* ─── HEADER ─── */}
-      <motion.div variants={fadeUpItem}>
-        <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>Platform Administration</p>
-        <h1 className="text-3xl font-black tracking-tight flex items-center gap-3" style={{ color: '#2d1f0e' }}>
-          <ShieldCheck className="w-8 h-8" style={{ color: '#c8834a' }} />
-          Admin &amp; User Management
-        </h1>
-        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>
-          Register factory floor employees and provision system login accounts.
-        </p>
-      </motion.div>
 
       {/* ─── STATS STRIP ─── */}
       <motion.div className="grid grid-cols-2 sm:grid-cols-3 gap-4" variants={staggerContainer}>

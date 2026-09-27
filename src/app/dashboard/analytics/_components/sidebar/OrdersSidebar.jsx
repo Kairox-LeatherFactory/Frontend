@@ -243,7 +243,7 @@ export default function OrdersSidebar({
                                         : 'text-slate-500 group-hover:text-slate-700'
                                     }`}
                                   >
-                                    {pieceCode}
+                                    {piece.bundle_id || piece.piece_code || `Piece #${piece.seq}`}
                                   </span>
                                   <span
                                     className="ml-auto text-[10px] font-bold shrink-0"

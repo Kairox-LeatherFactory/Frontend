@@ -2,7 +2,6 @@ import { Lato, Playfair_Display } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { DataProvider } from '@/context/DataContext';
-import CustomCursor from '@/components/CustomCursor';
 import NumberInputWheelGuard from '@/components/NumberInputWheelGuard';
 import ReduxProvider from '@/store/ReduxProvider';
 const lato = Lato({
@@ -31,7 +30,6 @@ export default function RootLayout({ children }) {
         <ReduxProvider>
           <AuthProvider>
             <DataProvider>
-              <CustomCursor />
               <NumberInputWheelGuard />
               {children}
             </DataProvider>
