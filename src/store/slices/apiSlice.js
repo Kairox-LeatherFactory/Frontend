@@ -31,6 +31,11 @@ export const apiSlice = createApi({
       }),
     }),
 
+    // GET /auth/me — the signed-in user's own row (name, role, employee_id)
+    getMe: builder.query({
+      query: () => '/api/v1/auth/me',
+    }),
+
     // --- BARCODE APIs ---
     barcodeResolve: builder.query({
       query: (code) => `/api/v1/barcode/resolve?code=${encodeURIComponent(code)}`
@@ -423,6 +428,7 @@ export const {
   useLoginMutation,
   useBarcodeResolveQuery,
   useLazyBarcodeResolveQuery,
+  useGetMeQuery,
   useGetBarcodeOrdersQuery,
   useLazyGetBarcodeOrdersQuery,
   useGetPieceStateQuery,

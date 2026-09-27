@@ -1,10 +1,13 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link, { useLinkStatus } from 'next/link';
 import { useAuth } from '@/context/AuthContext';
+import { useGetMeQuery } from '@/store/slices/apiSlice';
+import { PageTrailProvider } from '@/context/PageTrailContext';
 import {
+  ChevronRight,
   Factory,
   LayoutDashboard,
   ClipboardPen,
@@ -181,13 +184,67 @@ function NavPendingBar() {
   );
 }
 
+// Header title per route (longest prefix wins). Pages don't repeat their title
+// in the body — this is the one place it is shown.
+const PAGE_TITLES = {
+  '/dashboard/analytics': 'Analytics & Operations',
+  '/dashboard/entry': 'Production Logger',
+  '/dashboard/progress': 'Stage-Spread Progress',
+  '/dashboard/orders': 'Client Directory',
+  '/dashboard/wages': 'Payroll Command',
+  '/dashboard/materials': 'Material Stock',
+  '/dashboard/attendance': 'Attendance',
+  '/dashboard/barcode': 'Barcode Management',
+  '/dashboard/procurement': 'Procurement Overview',
+  '/dashboard/procurement/intake': 'Submission Workspace',
+  '/dashboard/procurement/inventory': 'Inventory Control',
+  '/dashboard/procurement/po': 'Purchase Orders & Suppliers',
+  '/dashboard/procurement/bom': 'Material Breakdown (BOM)',
+  '/dashboard/procurement/chat': 'Factory Chat',
+  '/dashboard/procurement/notifications': 'Procurement Inbox',
+  '/dashboard/procurement/production': 'Production Board',
+  '/dashboard/admin': 'Admin & User Management',
+  '/dashboard/imports': 'Breakdown Review & Release',
+  '/dashboard/cutting': 'Cutting Grid Engine',
+  '/dashboard/chat': 'AI Operations Assistant',
+  '/dashboard/settings': 'Security Settings',
+  '/dashboard/simulator': 'Delay Impact Simulator',
+  '/dashboard/tracer': 'Garment QC Tracer',
+  '/dashboard/dashboards/dm': 'Direct Manager Operations Dashboard',
+  '/dashboard/dashboards/cutting': 'Cutting Floor Operations Dashboard',
+  '/dashboard/dashboards/lining': 'Lining Floor Operations Dashboard',
+  '/dashboard/dashboards/stitching': 'Stitching Floor Operations Dashboard',
+  '/dashboard/dashboards/store': 'Store Manager Operations Dashboard',
+};
+
+// /dashboard itself renders the signed-in role's own dashboard (see dashboard/page.js)
+const HOME_TITLES = {
+  direct_manager: 'Direct Manager Operations Dashboard',
+  managing_director: 'Direct Manager Operations Dashboard',
+  hr: 'Direct Manager Operations Dashboard',
+  cutting_manager: 'Cutting Floor Operations Dashboard',
+  lining_manager: 'Lining Floor Operations Dashboard',
+  stitching_manager: 'Stitching Floor Operations Dashboard',
+  store_manager: 'Store Manager Operations Dashboard',
+  store_scan: 'Store Manager Operations Dashboard',
+};
+
+function getPageTitle(pathname, role) {
+  if (pathname === '/dashboard') return HOME_TITLES[role] || 'Cutting Floor Operations Dashboard';
+  const match = Object.keys(PAGE_TITLES)
+    .filter((path) => pathname === path || pathname.startsWith(path + '/'))
+    .sort((a, b) => b.length - a.length)[0];
+  return match ? PAGE_TITLES[match] : 'Dashboard';
+}
+
 export default function DashboardLayout({ children }) {
-  const { user, logout, ROLES } = useAuth();
+  const { user, userName: storedName, logout, ROLES } = useAuth();
 
   const router = useRouter();
   const pathname = usePathname();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [pageTrail, setPageTrail] = useState([]);
   const [pendingPoCount, setPendingPoCount] = useState(0);
 
   // --------------------------------------------------
@@ -343,6 +400,12 @@ export default function DashboardLayout({ children }) {
       label: 'Viewer',
       color: 'bg-slate-100 text-slate-700',
     };
+
+  // Sessions from before the name was stored at login fall back to /auth/me
+  const { data: me } = useGetMeQuery(undefined, { skip: !user || !!storedName });
+  const userName = storedName || me?.name || '';
+
+  const pageTitle = getPageTitle(pathname, user);
 
   // --------------------------------------------------
   // Loading state while auth is resolving
@@ -525,73 +588,56 @@ export default function DashboardLayout({ children }) {
               <Menu className="w-6 h-6" />
             </button>
 
-            {(() => {
-              let title = 'Shop Floor Command';
-              let subtitle = 'Production, wages, and compliance tracking';
-
-              const isCutting = pathname === '/dashboard/dashboards/cutting' || (pathname === '/dashboard' && user === 'cutting_manager');
-              const isLining = pathname === '/dashboard/dashboards/lining' || (pathname === '/dashboard' && user === 'lining_manager');
-              const isStitching = pathname === '/dashboard/dashboards/stitching' || (pathname === '/dashboard' && user === 'stitching_manager');
-              const isDM = pathname === '/dashboard/dashboards/dm' || (pathname === '/dashboard' && ['direct_manager', 'managing_director', 'hr'].includes(user));
-
-              if (isLining) {
-                title = 'Lining Floor Operations Dashboard';
-                subtitle = 'Piece & Style Traceability • Standard Unit: Decimeter (DCM / dm²) & Meters';
-              } else if (isCutting) {
-                title = 'Cutting Floor Operations Dashboard';
-                subtitle = 'Piece & Style Traceability • Standard Unit: Decimeter (DCM / dm²)';
-              } else if (isStitching) {
-                title = 'Stitching Floor Operations Dashboard';
-                subtitle = 'Pre-Store: Fusing → Pasting • Post-Store: Line Stitch → Shell Stitch → Final Finish';
-              } else if (isDM) {
-                title = 'Direct Manager Operations Dashboard';
-                subtitle = 'Executive Command • Real-time Factory Pipeline, Department Queues & Traceability';
-              }
-
-              return (
-                <div className="hidden sm:block">
-                  <h2
-                    className="text-xl font-bold"
-                    style={{
-                      color: '#3d2b1a',
-                    }}
-                  >
-                    {title}
-                  </h2>
-
-                  <p
-                    className="text-xs"
-                    style={{
-                      color: '#9a8a7a',
-                    }}
-                  >
-                    {subtitle}
-                  </p>
-                </div>
-              );
-            })()}
+            {/* The page title lives here — pages no longer repeat it in their body.
+                Pages with tabs/sub-views append to it like a folder path
+                (usePageTrail). Phones show only the deepest level. */}
+            <h1 className="flex items-center gap-1.5 min-w-0 text-lg sm:text-xl font-bold">
+              <span
+                className={`truncate ${pageTrail.length ? 'hidden sm:inline' : ''}`}
+                style={{ color: pageTrail.length ? '#9a8a7a' : '#3d2b1a' }}
+              >
+                {pageTitle}
+              </span>
+              {pageTrail.map((crumb, i) => {
+                const isLast = i === pageTrail.length - 1;
+                return (
+                  <Fragment key={`${i}-${crumb}`}>
+                    <ChevronRight className="hidden sm:block w-4 h-4 shrink-0" style={{ color: '#c8b8a8' }} />
+                    <span
+                      className={`truncate ${isLast ? '' : 'hidden sm:inline'}`}
+                      style={{ color: isLast ? '#3d2b1a' : '#9a8a7a' }}
+                    >
+                      {crumb}
+                    </span>
+                  </Fragment>
+                );
+              })}
+            </h1>
           </div>
 
           {/* User section */}
 
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
+              {userName && (
+                <p
+                  className="text-sm font-bold uppercase"
+                  style={{
+                    color: '#2d1f0e',
+                  }}
+                >
+                  {userName}
+                </p>
+              )}
+
               <p
-                className="text-xs font-bold tracking-wide uppercase"
+                className="text-xs font-semibold"
                 style={{
                   color: '#9a8a7a',
                 }}
               >
-                Active Persona
+                {roleInfo.label}
               </p>
-
-              <div className="flex items-center gap-1.5 mt-0.5 justify-end">
-                <span
-                  className={`badge ${roleInfo.color}`}
-                >
-                  {roleInfo.label}
-                </span>
-              </div>
             </div>
 
             {/* Logout */}
@@ -623,7 +669,9 @@ export default function DashboardLayout({ children }) {
           style={{ background: '#faf6f0' }}
         >
           <div className="p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full mx-auto relative">
-            {children}
+            <PageTrailProvider value={setPageTrail}>
+              {children}
+            </PageTrailProvider>
           </div>
         </main>
       </div>

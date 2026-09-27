@@ -142,9 +142,7 @@ export default function BOMReviewPage() {
 
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
         <div>
-          <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">Procurement · Phase 3</p>
-          <h1 className="text-3xl font-black mt-1 text-[#2d1f0e]">Material Breakdown (BOM)</h1>
-          <p className="text-xs text-amber-900/60 mt-1 font-medium">
+          <p className="text-xs text-amber-900/60 font-medium">
             Order Style ID: <span className="font-mono text-amber-800 bg-amber-50 px-1 rounded">{bom.order_style_id || id}</span> · Revision {bom.revision || 1} · Order Qty: {bom.order_qty || 500} items
           </p>
         </div>

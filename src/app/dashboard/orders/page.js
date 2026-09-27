@@ -7,7 +7,7 @@ import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { staggerContainer, fadeUpItem } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
-import { useGetClientsQuery, useCreateClientMutation, useUpdateClientMutation } from '@/store/slices/clientApiSlice';
+import { useGetClientsQuery, useCreateClientMutation, useUpdateClientMutation, useGetClientOrdersQuery } from '@/store/slices/clientApiSlice';
 
 // POST /clients only takes name, country and order_number; everything else is
 // written afterwards with PATCH /clients/{id} (partial update).
@@ -32,6 +32,30 @@ const apiErrText = (err, fallback) => {
   if (Array.isArray(d)) return d.map((x) => x.msg).join(', ');
   return (typeof d === 'string' && d) || err?.message || fallback;
 };
+
+// GET /clients carries no orders — each card reads its own client's orders
+// (GET /clients/{id}/orders, cached per client by RTK Query).
+function ClientOrderNumbers({ clientId }) {
+  const { data: orders = [], isLoading, isError } = useGetClientOrdersQuery(clientId, { skip: !clientId });
+
+  if (isLoading) return <Loader2 className="w-3.5 h-3.5 animate-spin" style={{ color: '#c8834a' }} />;
+  if (isError || orders.length === 0) {
+    return <span className="font-extrabold" style={{ color: '#2d1f0e' }}>—</span>;
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {orders.map((o) => (
+        <span
+          key={o.id || o.order_number}
+          className="px-2 py-0.5 rounded-md text-[11px] font-black"
+          style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.25)', color: '#2d1f0e' }}
+        >
+          {o.order_number}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 export default function OrdersTreeBrowser() {
   const { data: clientsData = [], isLoading: apiLoading } = useGetClientsQuery();
@@ -204,12 +228,6 @@ export default function OrdersTreeBrowser() {
         document.body
       )}
 
-      {/* ─── TITLE SECTION ─── */}
-      <motion.div variants={fadeUpItem}>
-        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Client Directory</h1>
-        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Manage active client accounts and associated purchase orders.</p>
-      </motion.div>
-
       {apiLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="w-8 h-8 animate-spin text-amber-600" />
@@ -315,6 +333,10 @@ export default function OrdersTreeBrowser() {
                         <div>
                           <span className="text-[9px] font-bold block uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Country</span>
                           <span className="font-extrabold" style={{ color: '#2d1f0e' }}>{client.country || 'International'}</span>
+                        </div>
+                        <div className="col-span-2">
+                          <span className="text-[9px] font-bold block uppercase tracking-wider mb-1" style={{ color: '#9a7a5a' }}>Order Number</span>
+                          <ClientOrderNumbers clientId={client.id} />
                         </div>
                       </div>
                     </div>
