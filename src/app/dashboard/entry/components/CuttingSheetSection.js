@@ -3,7 +3,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import JsBarcode from 'jsbarcode';
-import { Scissors, Loader2, FileSpreadsheet, LockOpen, Check, Barcode, Printer } from 'lucide-react';
+import { Scissors, Loader2, FileSpreadsheet, LockOpen, Check, Barcode, Printer, ArrowUp } from 'lucide-react';
 
 import {
   useLazyGetMaterialLotsQuery,
@@ -699,6 +699,7 @@ export default function CuttingSheetSection() {
       {isMounted && printBarcodeRow && (
         <CuttingBarcodePrintModal
           rowData={printBarcodeRow}
+          stylesList={stylesList}
           onClose={() => setPrintBarcodeRow(null)}
         />
       )}
@@ -710,7 +711,7 @@ export default function CuttingSheetSection() {
 }
 
 
-const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal, workDate }) => {
+const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal, onApproveSuccess, workDate }) => {
   const toast = useLoggerToast();
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
@@ -1125,21 +1126,50 @@ function BarcodeSticker({ code }) {
   return <svg ref={svgRef} className="mx-auto max-w-[280px] h-12" />;
 }
 
-function CuttingBarcodePrintModal({ rowData, onClose }) {
+const isUuidString = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(str || '').trim());
+
+function CuttingBarcodePrintModal({ rowData, stylesList = [], onClose }) {
   if (!rowData) return null;
 
   const displayRc = rowData.rc_no || rowData.rc_number || '';
   const displayArticle = rowData.article || '';
-  const displayStyle = rowData.style_name || rowData.style_code || rowData.style_id || '';
+
+  const matchingStyle = stylesList?.find(s =>
+    (s.id && s.id === rowData.style_id) ||
+    (s.style_id && s.style_id === rowData.style_id) ||
+    (s.style_code && s.style_code === rowData.style_id)
+  );
+
+  const rawStyle = rowData.style_name || rowData.style_code || matchingStyle?.style_name || matchingStyle?.name || matchingStyle?.style_code || (isUuidString(rowData.style_id) ? '' : rowData.style_id) || '';
+  const displayStyle = isUuidString(rawStyle) ? '' : rawStyle;
+
   const displayColor = rowData.colour || rowData.color || '';
   const displaySize = rowData.size || rowData.size_name || '';
   const displaySno = String(rowData.sNo || rowData.seq || '001').padStart(3, '0');
 
-  const pieceCode = rowData.piece_code || rowData.barcode || (displayRc ? `PC-${displayRc}` : `PC-${displaySno}`);
+  const explicitShort =
+    rowData.short_code ||
+    rowData.shortCode ||
+    rowData.short ||
+    rowData.piece?.short_code ||
+    rowData.piece?.shortCode;
 
-  const subtitleStr = [displayRc, displayArticle, displayStyle, displayColor, displaySize, displaySno]
-    .filter(Boolean)
-    .join(' - ');
+  let pieceCode = '';
+  if (explicitShort) {
+    pieceCode = String(explicitShort);
+  } else if (rowData.code && String(rowData.code).length <= 15) {
+    pieceCode = String(rowData.code);
+  } else if (displayRc) {
+    pieceCode = `PC-${displayRc}`;
+  } else if (rowData.barcode && String(rowData.barcode).length <= 15) {
+    pieceCode = String(rowData.barcode);
+  } else {
+    pieceCode = `PC-${displaySno}`;
+  }
+
+  const subtitleStr = [displayStyle, displayArticle, displayColor, displaySize, displaySno]
+    .filter(val => val && !isUuidString(val))
+    .join(' · ');
 
   useEffect(() => {
     const handleAfterPrint = () => {
@@ -1228,9 +1258,14 @@ function CuttingBarcodePrintModal({ rowData, onClose }) {
                 <BarcodeSticker code={pieceCode} />
               </div>
 
-              {/* Piece Code */}
-              <div className="font-mono text-sm font-black tracking-wider text-slate-900 uppercase">
+              {/* Piece Code (Short Code) */}
+              <div className="font-mono text-xs font-black tracking-wider text-slate-900 uppercase">
                 {pieceCode}
+              </div>
+
+              {/* Spec Subtitle Line */}
+              <div className="text-[9px] font-bold text-slate-600 tracking-tight leading-tight uppercase px-1">
+                {subtitleStr}
               </div>
             </div>
           </div>

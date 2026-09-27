@@ -326,7 +326,7 @@ export default function JobWorkSection() {
                 <th className="p-4">Stage</th>
                 <th className="p-4">Dispatched / Expected</th>
                 <th className="p-4 text-center">Pieces</th>
-                <th className="p-4 text-center">Rejects & Short</th>
+                <th className="p-4 text-center">Remaining</th>
                 <th className="p-4 text-right">Rate / Pc</th>
                 <th className="p-4 text-right">Total Cost</th>
                 <th className="p-4 text-center">Status</th>
