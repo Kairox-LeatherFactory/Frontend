@@ -29,13 +29,87 @@ import {
   useReceiveJobWorkMutation,
 } from '@/store/slices/jobWorkApiSlice';
 import { useGetOperationsQuery } from '@/store/slices/clientApiSlice';
+import { useAuth } from '@/context/AuthContext';
+import { useLazyBarcodeResolveQuery, useLazyGetPieceStateQuery } from '@/store/slices/apiSlice';
 
-const toast = {
-  success: (msg) => alert('✅ ' + msg),
-  error: (msg) => alert('❌ ' + msg),
-};
+const isUuid = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(str || '').trim());
+
+async function resolveSingleCode(code, triggerBarcodeResolve, triggerGetPieceState) {
+  const clean = String(code || '').trim();
+  if (!clean) return null;
+  if (isUuid(clean)) return clean;
+
+  try {
+    const res = await triggerBarcodeResolve(clean).unwrap();
+    const resolved = res?.piece?.piece_id || res?.piece?.id || res?.piece_id || res?.id || res?.data?.piece_id;
+    if (resolved) return resolved;
+  } catch (e) { }
+
+  try {
+    const stateRes = await triggerGetPieceState({ code: clean }).unwrap();
+    const stateResolved = stateRes?.piece?.piece_id || stateRes?.piece?.id || stateRes?.piece_id || stateRes?.id;
+    if (stateResolved) return stateResolved;
+  } catch (e) { }
+
+  return clean;
+}
+
+async function resolvePieceCodesToIds(codes, triggerBarcodeResolve, triggerGetPieceState) {
+  const resolvedIds = [];
+  for (const rawCode of codes) {
+    const code = String(rawCode || '').trim();
+    if (!code) continue;
+
+    if (isUuid(code)) {
+      resolvedIds.push(code);
+    } else {
+      const resolvedId = await resolveSingleCode(code, triggerBarcodeResolve, triggerGetPieceState);
+      resolvedIds.push(resolvedId || code);
+    }
+  }
+  return resolvedIds;
+}
 
 export default function JobWorkSection() {
+  const { user } = useAuth();
+
+  // Floating Toast notification state
+  const [toastState, setToastState] = useState(null);
+
+  const showToast = (type, msg) => {
+    setToastState({ type, msg });
+    setTimeout(() => {
+      setToastState((curr) => (curr?.msg === msg ? null : curr));
+    }, 4000);
+  };
+
+  const toast = useMemo(
+    () => ({
+      success: (msg) => showToast('success', msg),
+      error: (msg) => showToast('error', msg),
+      warning: (msg) => showToast('warning', msg),
+    }),
+    []
+  );
+
+  // Role permissions based on API specification:
+  // Superusers (Managing Director, Direct Manager) can dispatch, receive & manage vendors
+  const canManageJobWork = user === 'managing_director' || user === 'direct_manager';
+
+  // Roles allowed to view Job Work ledger
+  const ALLOWED_VIEW_ROLES = [
+    'managing_director',
+    'direct_manager',
+    'hr',
+    'cutting_manager',
+    'lining_manager',
+    'stitching_manager',
+    'store_manager',
+    'store_scan',
+    'supervisor'
+  ];
+  const canViewJobWork = ALLOWED_VIEW_ROLES.includes(user);
+
   // Filters & Tabs state
   const [statusFilter, setStatusFilter] = useState('');
   const [vendorFilter, setVendorFilter] = useState('');
@@ -92,6 +166,19 @@ export default function JobWorkSection() {
     );
   }, [jobList, searchQuery]);
 
+  if (!canViewJobWork) {
+    return (
+      <div className="w-full bg-rose-50 border border-rose-200 rounded-3xl p-8 text-center space-y-3 my-4">
+        <AlertTriangle className="w-10 h-10 text-rose-500 mx-auto" />
+        <h3 className="text-lg font-black text-rose-800">Access Restricted</h3>
+        <p className="text-xs text-rose-700 max-w-lg mx-auto font-medium">
+          Your role (<span className="font-bold">{user || 'employee'}</span>) is not permitted to view Job Work dispatches.
+          Allowed roles: Cutting Manager, Direct Manager, HR, Lining Manager, Managing Director, Stitching Manager, Store Manager, Supervisor.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full space-y-6 animate-fade-in">
       {/* HEADER BAR */}
@@ -106,16 +193,32 @@ export default function JobWorkSection() {
         {/* PRIMARY ACTIONS */}
         <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
           <button
-            onClick={() => setShowVendorModal(true)}
-            className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 border border-slate-300/60 cursor-pointer"
+            onClick={() => {
+              if (!canManageJobWork) {
+                toast.error('Permission Denied: Only Direct Manager or Managing Director can manage vendors.');
+                return;
+              }
+              setShowVendorModal(true);
+            }}
+            disabled={!canManageJobWork}
+            title={!canManageJobWork ? 'Requires Direct Manager or Managing Director role' : ''}
+            className="flex-1 sm:flex-initial px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 border border-slate-300/60 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             <Building2 className="w-4 h-4 text-slate-600" />
             Manage Vendors
           </button>
 
           <button
-            onClick={() => setShowDispatchModal(true)}
-            className="flex-1 sm:flex-initial px-4 py-2.5 bg-[#c8834a] hover:bg-[#b0713d] text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer"
+            onClick={() => {
+              if (!canManageJobWork) {
+                toast.error('Permission Denied: Only Direct Manager or Managing Director can dispatch job work.');
+                return;
+              }
+              setShowDispatchModal(true);
+            }}
+            disabled={!canManageJobWork}
+            title={!canManageJobWork ? 'Requires Direct Manager or Managing Director role' : ''}
+            className="flex-1 sm:flex-initial px-4 py-2.5 bg-[#c8834a] hover:bg-[#b0713d] text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             Dispatch Job
@@ -317,8 +420,8 @@ export default function JobWorkSection() {
                       <td className="p-4 text-center">
                         <div className="flex flex-col items-center gap-1">
                           <span className={`px-2.5 py-1 rounded-full text-[10px] font-black tracking-wider uppercase border ${isCompleted
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-amber-50 text-amber-700 border-amber-200'
                             }`}>
                             {job.status || 'DISPATCHED'}
                           </span>
@@ -333,10 +436,15 @@ export default function JobWorkSection() {
                       <td className="p-4 text-center">
                         <button
                           onClick={() => {
+                            if (!canManageJobWork) {
+                              toast.error('Permission Denied: Only Direct Manager or Managing Director can receive job work.');
+                              return;
+                            }
                             setSelectedJobForReceive(job);
                             setShowReceiveModal(true);
                           }}
-                          disabled={isCompleted}
+                          disabled={isCompleted || !canManageJobWork}
+                          title={!canManageJobWork ? 'Requires Direct Manager or Managing Director role' : ''}
                           className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] rounded-xl transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer flex items-center gap-1 mx-auto"
                         >
                           <PackageCheck className="w-3.5 h-3.5" />
@@ -356,6 +464,7 @@ export default function JobWorkSection() {
       {showDispatchModal && (
         <DispatchJobModal
           vendorsList={vendorsList}
+          toast={toast}
           onClose={() => setShowDispatchModal(false)}
           onSuccess={() => {
             setShowDispatchModal(false);
@@ -368,6 +477,7 @@ export default function JobWorkSection() {
       {showReceiveModal && selectedJobForReceive && (
         <ReceiveJobModal
           job={selectedJobForReceive}
+          toast={toast}
           onClose={() => {
             setShowReceiveModal(false);
             setSelectedJobForReceive(null);
@@ -384,8 +494,44 @@ export default function JobWorkSection() {
       {showVendorModal && (
         <VendorManagementModal
           vendorsList={vendorsList}
+          toast={toast}
           onClose={() => setShowVendorModal(false)}
         />
+      )}
+
+      {/* FLOATING TOAST NOTIFICATION */}
+      {toastState && createPortal(
+        <div className="fixed top-6 right-6 z-[999999] flex items-start gap-3 px-5 py-4 rounded-2xl shadow-2xl border text-xs font-bold transition-all animate-bounce-in max-w-md bg-white border-slate-200/80">
+          {toastState.type === 'success' && (
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 font-black text-sm">
+              ✓
+            </div>
+          )}
+          {toastState.type === 'error' && (
+            <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 font-black text-sm">
+              ✕
+            </div>
+          )}
+          {toastState.type === 'warning' && (
+            <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 font-black text-sm">
+              ⚠️
+            </div>
+          )}
+          <div className="flex-1 pr-1">
+            <p className={`font-black text-xs uppercase tracking-wider ${toastState.type === 'success' ? 'text-emerald-800' : toastState.type === 'error' ? 'text-rose-800' : 'text-amber-800'
+              }`}>
+              {toastState.type === 'success' ? 'Success' : toastState.type === 'error' ? 'Error' : 'Warning'}
+            </p>
+            <p className="text-slate-600 font-semibold text-xs mt-0.5 leading-snug">{toastState.msg}</p>
+          </div>
+          <button
+            onClick={() => setToastState(null)}
+            className="text-slate-400 hover:text-slate-600 text-sm font-bold p-1 rounded-lg hover:bg-slate-100 transition-colors"
+          >
+            ✕
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -394,8 +540,12 @@ export default function JobWorkSection() {
 // ==========================================
 // 1. DISPATCH JOB MODAL COMPONENT
 // ==========================================
-function DispatchJobModal({ vendorsList, onClose, onSuccess }) {
-  const [dispatchMutation, { isLoading }] = useDispatchJobWorkMutation();
+function DispatchJobModal({ vendorsList, toast, onClose, onSuccess }) {
+  const [dispatchMutation, { isLoading: isDispatching }] = useDispatchJobWorkMutation();
+  const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
+  const [triggerGetPieceState] = useLazyGetPieceStateQuery();
+  const [isResolving, setIsResolving] = useState(false);
+
   const { data: operationsData } = useGetOperationsQuery();
 
   const operationsList = useMemo(() => {
@@ -436,14 +586,44 @@ function DispatchJobModal({ vendorsList, onClose, onSuccess }) {
     }
   }, []);
 
-  const handleAppendPieceId = (code) => {
+  const handleAppendPieceId = async (code) => {
     const clean = String(code || '').trim();
     if (!clean) return;
-    setPieceIdsText((prev) => {
-      const existing = prev.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-      if (existing.includes(clean)) return prev;
-      return prev ? `${prev}\n${clean}` : clean;
-    });
+
+    setIsResolving(true);
+    try {
+      const targetPieceId = await resolveSingleCode(clean, triggerBarcodeResolve, triggerGetPieceState);
+      if (targetPieceId && targetPieceId !== clean) {
+        toast.success(`Matched Code '${clean}' ➔ ${targetPieceId.slice(0, 13)}...`);
+      } else if (!isUuid(clean)) {
+        toast.warning(`Lookup failed for '${clean}', using entered code.`);
+      }
+
+      setPieceIdsText((prev) => {
+        const existing = prev.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        if (existing.includes(targetPieceId)) return prev;
+        return prev ? `${prev}\n${targetPieceId}` : targetPieceId;
+      });
+    } catch (err) {
+      setPieceIdsText((prev) => (prev ? `${prev}\n${clean}` : clean));
+    } finally {
+      setIsResolving(false);
+    }
+  };
+
+  const handleBatchResolve = async () => {
+    const rawCodes = pieceIdsText.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+    if (rawCodes.length === 0) return;
+    setIsResolving(true);
+    try {
+      const resolvedList = await resolvePieceCodesToIds(rawCodes, triggerBarcodeResolve, triggerGetPieceState);
+      setPieceIdsText(resolvedList.join('\n'));
+      toast.success(`Resolved ${resolvedList.length} code(s) to Piece IDs!`);
+    } catch (err) {
+      toast.error('Failed to resolve piece codes');
+    } finally {
+      setIsResolving(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -457,15 +637,29 @@ function DispatchJobModal({ vendorsList, onClose, onSuccess }) {
       return;
     }
 
-    const pieceIds = pieceIdsText
+    const rawPieceCodes = pieceIdsText
       .split(/[\n,]+/)
       .map((id) => id.trim())
       .filter(Boolean);
 
+    setIsResolving(true);
+    let resolvedPieceIds = [];
+    try {
+      resolvedPieceIds = await resolvePieceCodesToIds(
+        rawPieceCodes,
+        triggerBarcodeResolve,
+        triggerGetPieceState
+      );
+    } catch (err) {
+      toast.error('Failed to match piece codes to Piece IDs');
+      setIsResolving(false);
+      return;
+    }
+
     const payload = {
       vendor_id: vendorId,
       stage: stage.trim(),
-      piece_ids: pieceIds.length > 0 ? pieceIds : undefined,
+      piece_ids: resolvedPieceIds.length > 0 ? resolvedPieceIds : undefined,
       expected_back: expectedBack || null,
       rate_per_piece: ratePerPiece ? parseFloat(ratePerPiece) : null,
       currency: currency || 'INR',
@@ -478,8 +672,12 @@ function DispatchJobModal({ vendorsList, onClose, onSuccess }) {
       onSuccess();
     } catch (err) {
       toast.error(err?.data?.detail || err?.data?.message || 'Failed to dispatch jobwork');
+    } finally {
+      setIsResolving(false);
     }
   };
+
+  const isLoading = isDispatching || isResolving;
 
   return createPortal(
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
@@ -567,13 +765,25 @@ function DispatchJobModal({ vendorsList, onClose, onSuccess }) {
           </div>
 
           <div>
-            <label className="text-[11px] font-black text-slate-600 uppercase tracking-wider block mb-1">
-              Piece IDs
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-black text-slate-600 uppercase tracking-wider">
+                Piece Codes / Barcodes (Matched to Piece ID)
+              </label>
+              {pieceIdsText.trim() && (
+                <button
+                  type="button"
+                  onClick={handleBatchResolve}
+                  disabled={isResolving}
+                  className="text-[10px] font-black text-amber-800 bg-amber-100 hover:bg-amber-200 px-2 py-0.5 rounded-lg transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                >
+                  ⚡ Resolve Codes to IDs
+                </button>
+              )}
+            </div>
             <textarea
               value={pieceIdsText}
               onChange={(e) => setPieceIdsText(e.target.value)}
-              placeholder="Scanned piece IDs will appear here automatically..."
+              placeholder="Scanned piece codes / barcodes (e.g. PC-2222PQ) will auto-resolve to Piece IDs immediately..."
               rows={3}
               className="w-full p-3 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-[#c8834a] focus:bg-white transition-all resize-none"
             />
@@ -658,32 +868,60 @@ function DispatchJobModal({ vendorsList, onClose, onSuccess }) {
 // ==========================================
 // 2. RECEIVE JOB MODAL COMPONENT
 // ==========================================
-function ReceiveJobModal({ job, onClose, onSuccess }) {
-  const [receiveMutation, { isLoading }] = useReceiveJobWorkMutation();
+function ReceiveJobModal({ job, toast, onClose, onSuccess }) {
+  const [receiveMutation, { isLoading: isReceiving }] = useReceiveJobWorkMutation();
+  const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
+  const [triggerGetPieceState] = useLazyGetPieceStateQuery();
+  const [isResolving, setIsResolving] = useState(false);
 
   const [returnedPieceIds, setReturnedPieceIds] = useState('');
   const [rejectedPieceIds, setRejectedPieceIds] = useState('');
   const [shortPieceIds, setShortPieceIds] = useState('');
   const [workDate, setWorkDate] = useState(new Date().toISOString().slice(0, 10));
 
-  const [scannedBarcodeInput, setScannedBarcodeInput] = useState('');
-  const [showCameraScan, setShowCameraScan] = useState(false);
-  const gunScanInputRef = useRef(null);
+  const [returnedBarcodeInput, setReturnedBarcodeInput] = useState('');
+  const [rejectedBarcodeInput, setRejectedBarcodeInput] = useState('');
+  const [shortageBarcodeInput, setShortageBarcodeInput] = useState('');
+
+  const [cameraScanTarget, setCameraScanTarget] = useState(null); // null | 'returned' | 'rejected' | 'shortage'
+  const returnedGunRef = useRef(null);
 
   useEffect(() => {
-    if (gunScanInputRef.current) {
-      gunScanInputRef.current.focus();
+    if (returnedGunRef.current) {
+      returnedGunRef.current.focus();
     }
   }, []);
 
-  const handleAppendPieceId = (code) => {
+  const handleAppendPieceId = async (code, category = 'returned') => {
     const clean = String(code || '').trim();
     if (!clean) return;
-    setReturnedPieceIds((prev) => {
-      const existing = prev.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
-      if (existing.includes(clean)) return prev;
-      return prev ? `${prev}\n${clean}` : clean;
-    });
+
+    setIsResolving(true);
+    try {
+      const targetPieceId = await resolveSingleCode(clean, triggerBarcodeResolve, triggerGetPieceState);
+      if (targetPieceId && targetPieceId !== clean) {
+        toast.success(`Matched Code '${clean}' ➔ ${targetPieceId.slice(0, 13)}...`);
+      } else if (!isUuid(clean)) {
+        toast.warning(`Lookup failed for '${clean}', using entered code.`);
+      }
+
+      const updateState = (prev) => {
+        const existing = prev.split(/[\n,]+/).map(s => s.trim()).filter(Boolean);
+        if (existing.includes(targetPieceId)) return prev;
+        return prev ? `${prev}\n${targetPieceId}` : targetPieceId;
+      };
+
+      if (category === 'returned') setReturnedPieceIds(updateState);
+      else if (category === 'rejected') setRejectedPieceIds(updateState);
+      else if (category === 'shortage') setShortPieceIds(updateState);
+    } catch (err) {
+      const fallbackUpdate = (prev) => (prev ? `${prev}\n${clean}` : clean);
+      if (category === 'returned') setReturnedPieceIds(fallbackUpdate);
+      else if (category === 'rejected') setRejectedPieceIds(fallbackUpdate);
+      else if (category === 'shortage') setShortPieceIds(fallbackUpdate);
+    } finally {
+      setIsResolving(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -695,26 +933,35 @@ function ReceiveJobModal({ job, onClose, onSuccess }) {
         .map((id) => id.trim())
         .filter(Boolean);
 
-    const payload = {
-      piece_ids: parseIds(returnedPieceIds),
-      rejected_ids: parseIds(rejectedPieceIds),
-      short_ids: parseIds(shortPieceIds),
-      work_date: workDate || null,
-    };
-
+    setIsResolving(true);
     try {
+      const returnedIds = await resolvePieceCodesToIds(parseIds(returnedPieceIds), triggerBarcodeResolve, triggerGetPieceState);
+      const rejectedIds = await resolvePieceCodesToIds(parseIds(rejectedPieceIds), triggerBarcodeResolve, triggerGetPieceState);
+      const shortIds = await resolvePieceCodesToIds(parseIds(shortPieceIds), triggerBarcodeResolve, triggerGetPieceState);
+
+      const payload = {
+        piece_ids: returnedIds,
+        rejected_ids: rejectedIds,
+        short_ids: shortIds,
+        work_date: workDate || null,
+      };
+
       await receiveMutation({ job_id: job.job_id, payload }).unwrap();
       toast.success('Garments received & vendor stage logged!');
       onSuccess();
     } catch (err) {
       toast.error(err?.data?.detail || err?.data?.message || 'Failed to receive garments');
+    } finally {
+      setIsResolving(false);
     }
   };
 
+  const isLoading = isReceiving || isResolving;
+
   return createPortal(
     <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 space-y-5">
-        <div className="flex items-center justify-between border-b pb-4 border-slate-100">
+      <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 w-full max-w-lg p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between border-b pb-3 border-slate-100 sticky top-0 bg-white z-10">
           <div>
             <h3 className="text-base font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
               <PackageCheck className="w-5 h-5 text-emerald-600" /> Book Garments Back In
@@ -731,86 +978,143 @@ function ReceiveJobModal({ job, onClose, onSuccess }) {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* BARCODE GUN SCANNER & CAMERA TRIGGER */}
-          <div className="relative">
-            <input
-              ref={gunScanInputRef}
-              type="text"
-              value={scannedBarcodeInput}
-              onChange={(e) => setScannedBarcodeInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  const code = scannedBarcodeInput.trim();
-                  if (code) {
-                    handleAppendPieceId(code);
-                    setScannedBarcodeInput('');
-                  }
-                }
-              }}
-              placeholder="Point Barcode Gun & Scan Returned Piece ID..."
-              className="w-full h-11 pl-10 pr-24 text-xs font-black bg-emerald-50/60 border-2 border-emerald-300 rounded-xl outline-none focus:bg-white focus:ring-2 focus:ring-emerald-500 transition-all"
-            />
-            <Barcode className="w-4 h-4 text-emerald-600 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <button
-              type="button"
-              onClick={() => setShowCameraScan(true)}
-              title="Scan with Camera"
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors flex items-center justify-center cursor-pointer shadow-sm"
-            >
-              <Camera className="w-4 h-4" />
-            </button>
-          </div>
-
-          <div>
-            <label className="text-[11px] font-black text-emerald-700 uppercase tracking-wider block mb-1">
-              Returned Piece IDs
+        <form onSubmit={handleSubmit} className="space-y-3 font-sans">
+          {/* 1. RETURNED PIECES SCANNER & TEXTAREA */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-black text-emerald-800 uppercase tracking-wider block">
+              Returned Pieces (Good)
             </label>
+            <div className="relative">
+              <input
+                ref={returnedGunRef}
+                type="text"
+                value={returnedBarcodeInput}
+                onChange={(e) => setReturnedBarcodeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const code = returnedBarcodeInput.trim();
+                    if (code) {
+                      handleAppendPieceId(code, 'returned');
+                      setReturnedBarcodeInput('');
+                    }
+                  }
+                }}
+                placeholder="Scan returned piece barcode..."
+                className="w-full h-9 pl-9 pr-10 text-xs font-semibold bg-emerald-50/50 border border-emerald-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+              />
+              <Barcode className="w-4 h-4 text-emerald-600 absolute left-3 top-1/2 -translate-y-1/2" />
+              <button
+                type="button"
+                onClick={() => setCameraScanTarget('returned')}
+                title="Scan Returned Piece with Camera"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <textarea
               value={returnedPieceIds}
               onChange={(e) => setReturnedPieceIds(e.target.value)}
-              placeholder="Paste Piece UUIDs returned in good condition..."
-              rows={3}
-              className="w-full p-3 text-xs font-semibold bg-emerald-50/50 border border-emerald-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all resize-none"
+              placeholder="Returned piece IDs..."
+              rows={2}
+              className="w-full p-2 text-xs font-mono bg-emerald-50/20 border border-emerald-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all resize-none"
             />
           </div>
 
-          <div>
-            <label className="text-[11px] font-black text-rose-700 uppercase tracking-wider block mb-1">
-              Rejected Piece IDs
+          {/* 2. REJECTED PIECES SCANNER & TEXTAREA */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-black text-rose-800 uppercase tracking-wider block">
+              Rejected Pieces
             </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={rejectedBarcodeInput}
+                onChange={(e) => setRejectedBarcodeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const code = rejectedBarcodeInput.trim();
+                    if (code) {
+                      handleAppendPieceId(code, 'rejected');
+                      setRejectedBarcodeInput('');
+                    }
+                  }
+                }}
+                placeholder="Scan rejected piece barcode..."
+                className="w-full h-9 pl-9 pr-10 text-xs font-semibold bg-rose-50/50 border border-rose-300 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 transition-all"
+              />
+              <Barcode className="w-4 h-4 text-rose-600 absolute left-3 top-1/2 -translate-y-1/2" />
+              <button
+                type="button"
+                onClick={() => setCameraScanTarget('rejected')}
+                title="Scan Rejected Piece with Camera"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <textarea
               value={rejectedPieceIds}
               onChange={(e) => setRejectedPieceIds(e.target.value)}
-              placeholder="Paste Piece UUIDs rejected..."
+              placeholder="Rejected piece IDs..."
               rows={2}
-              className="w-full p-3 text-xs font-semibold bg-rose-50/50 border border-rose-300 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white transition-all resize-none"
+              className="w-full p-2 text-xs font-mono bg-rose-50/20 border border-rose-200 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 transition-all resize-none"
             />
           </div>
 
-          <div>
-            <label className="text-[11px] font-black text-amber-700 uppercase tracking-wider block mb-1">
-              Shortage Piece IDs
+          {/* 3. SHORTAGE PIECES SCANNER & TEXTAREA */}
+          <div className="space-y-1">
+            <label className="text-[11px] font-black text-amber-800 uppercase tracking-wider block">
+              Shortage Pieces
             </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={shortageBarcodeInput}
+                onChange={(e) => setShortageBarcodeInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const code = shortageBarcodeInput.trim();
+                    if (code) {
+                      handleAppendPieceId(code, 'shortage');
+                      setShortageBarcodeInput('');
+                    }
+                  }
+                }}
+                placeholder="Scan shortage piece barcode..."
+                className="w-full h-9 pl-9 pr-10 text-xs font-semibold bg-amber-50/50 border border-amber-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+              />
+              <Barcode className="w-4 h-4 text-amber-600 absolute left-3 top-1/2 -translate-y-1/2" />
+              <button
+                type="button"
+                onClick={() => setCameraScanTarget('shortage')}
+                title="Scan Shortage Piece with Camera"
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+              >
+                <Camera className="w-3.5 h-3.5" />
+              </button>
+            </div>
             <textarea
               value={shortPieceIds}
               onChange={(e) => setShortPieceIds(e.target.value)}
-              placeholder="Paste Piece UUIDs missing..."
+              placeholder="Shortage piece IDs..."
               rows={2}
-              className="w-full p-3 text-xs font-semibold bg-amber-50/50 border border-amber-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition-all resize-none"
+              className="w-full p-2 text-xs font-mono bg-amber-50/20 border border-amber-200 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 transition-all resize-none"
             />
           </div>
 
           <div>
-            <label className="text-[11px] font-black text-slate-600 uppercase tracking-wider block mb-1">
+            <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">
               Work Date
             </label>
             <input
               type="date"
               value={workDate}
               onChange={(e) => setWorkDate(e.target.value)}
-              className="w-full h-11 px-3.5 text-xs font-bold bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
+              className="w-full h-9 px-3 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
             />
           </div>
 
@@ -834,12 +1138,12 @@ function ReceiveJobModal({ job, onClose, onSuccess }) {
         </form>
 
         {/* MOBILE CAMERA SCANNER MODAL */}
-        {showCameraScan && (
+        {cameraScanTarget && (
           <CameraScannerModal
-            title="Scan Returned Piece Barcode"
-            onClose={() => setShowCameraScan(false)}
+            title={`Scan ${cameraScanTarget.toUpperCase()} Piece Barcode`}
+            onClose={() => setCameraScanTarget(null)}
             onScan={(code) => {
-              handleAppendPieceId(code);
+              handleAppendPieceId(code, cameraScanTarget);
             }}
           />
         )}
@@ -852,7 +1156,7 @@ function ReceiveJobModal({ job, onClose, onSuccess }) {
 // ==========================================
 // 3. VENDOR MANAGEMENT MODAL COMPONENT
 // ==========================================
-function VendorManagementModal({ vendorsList, onClose }) {
+function VendorManagementModal({ vendorsList, toast, onClose }) {
   const [createVendor, { isLoading }] = useCreateJobWorkVendorMutation();
 
   const [name, setName] = useState('');
