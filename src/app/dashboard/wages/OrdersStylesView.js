@@ -13,10 +13,10 @@ import {
 
 import { Loader2, Save, History, X, Search, Briefcase, Filter, Warehouse } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
-import { Toast } from './shared';
+import { Toast, SearchCombobox } from './shared';
 export default function OrdersStylesView() {
    const { data: wageOrdersData, isLoading: ordersLoading } = useGetWageOrdersQuery();
-  const orders = useMemo(() => Array.isArray(wageOrdersData) ? wageOrdersData : [], [wageOrdersData]);
+  const orders = useMemo(() => Array.isArray(wageOrdersData) ? wageOrdersData : (wageOrdersData?.items || wageOrdersData?.orders || wageOrdersData?.data || []), [wageOrdersData]);
 
   const [triggerGetWageStyles, { isLoading: stylesLoading }] = useLazyGetWageStylesQuery();
   const [triggerGetRateSheet] = useLazyGetRateSheetQuery();
@@ -360,15 +360,32 @@ export default function OrdersStylesView() {
   // ── LEVEL 1: ORDER CARDS (Default View) ──
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="relative w-full bg-white/80 backdrop-blur-md p-2 rounded-3xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-        <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-        <input
-          type="text"
-          placeholder="Search by Order Number..."
-          value={orderSearch}
-          onChange={(e) => setOrderSearch(e.target.value)}
-          className="w-full h-12 pl-14 pr-4 bg-transparent border-none text-sm font-bold text-slate-800 focus:outline-none placeholder-slate-400"
-        />
+      <div className="flex flex-col sm:flex-row items-center gap-3 bg-white/80 backdrop-blur-md p-3 rounded-3xl shadow-sm border relative z-30" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search by Order Number..."
+            value={orderSearch}
+            onChange={(e) => setOrderSearch(e.target.value)}
+            className="w-full h-12 pl-12 pr-4 bg-transparent border-none text-sm font-bold text-slate-800 focus:outline-none placeholder-slate-400"
+          />
+        </div>
+        <div className="w-full sm:w-80">
+          <SearchCombobox
+            placeholder="Select from Orders Dropdown..."
+            value={selectedOrder?.order_number || ''}
+            options={orders}
+            getKey={(o) => o.order_number}
+            getLabel={(o) => `PO ${o.order_number}`}
+            getSub={(o) => `${o.styles} styles · ${o.qty_ordered ?? '—'} pcs`}
+            onSelect={(o) => {
+              if (o) handleSelectOrder(o);
+            }}
+            loading={ordersLoading}
+            allowClear
+          />
+        </div>
       </div>
 
       {ordersLoading ? (

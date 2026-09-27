@@ -63,11 +63,11 @@ export default function LedgerView({ isActive }) {
   useEffect(() => {
     loadLedger();
     triggerGetWageOrders({}).unwrap()
-      .then((data) => setOrderOptions(Array.isArray(data) ? data : []))
+      .then((data) => setOrderOptions(Array.isArray(data) ? data : (data?.items || data?.orders || data?.data || [])))
       .catch(() => setOrderOptions([]))
       .finally(() => setOrderOptionsLoading(false));
     triggerGetWageStyles({}).unwrap()
-      .then((data) => setStyleOptions(Array.isArray(data) ? data : []))
+      .then((data) => setStyleOptions(Array.isArray(data) ? data : (data?.items || data?.styles || data?.data || [])))
       .catch(() => setStyleOptions([]))
       .finally(() => setStyleOptionsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps

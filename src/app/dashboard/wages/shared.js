@@ -61,7 +61,7 @@ export function SearchCombobox({ placeholder, value, options, getKey, getLabel, 
   const selectedOption = options.find((o) => getKey(o) === value);
 
   return (
-    <div className="relative flex-1" ref={ref}>
+    <div className="relative flex-1 z-30" ref={ref}>
       <button
         type="button"
         disabled={disabled}
@@ -76,7 +76,7 @@ export function SearchCombobox({ placeholder, value, options, getKey, getLabel, 
       </button>
 
       {isOpen && !disabled && (
-        <div className="absolute z-50 top-[calc(100%+6px)] left-0 w-full min-w-[260px] bg-white border-2 rounded-2xl shadow-2xl p-2.5 space-y-2" style={{ borderColor: '#c8834a' }}>
+        <div className="absolute z-[100] top-[calc(100%+6px)] right-0 w-full min-w-[260px] bg-white border-2 rounded-2xl shadow-2xl p-2.5 space-y-2" style={{ borderColor: '#c8834a' }}>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: '#9a7a5a' }} />
             <input
