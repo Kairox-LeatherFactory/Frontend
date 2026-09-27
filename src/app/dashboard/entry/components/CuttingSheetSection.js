@@ -198,7 +198,7 @@ export default function CuttingSheetSection() {
         if (!workDate) return true;
 
         const rowDate = (r.work_date || r.date || '').slice(0, 10);
-        const isApproved = r.status === 'APPROVED' || r.status === 'ISSUED';
+        const isApproved = r.status === 'APPROVED' || r.status === 'ISSUED' || r.status === 'LOGGED';
         const isReopenedOrActive = r.status === 'REOPENED' || r.status === 'IN_PROGRESS' || !r.status;
 
         // Rule 1: Future date selected -> EMPTY (0 rows)
@@ -206,20 +206,20 @@ export default function CuttingSheetSection() {
           return false;
         }
 
-        // Rule 2: Past date selected -> Show ONLY Reopened/Active rows for that exact past date
+        // Rule 2: Past date selected -> Show rows for that exact past date
         if (workDate < todayStr) {
-          return rowDate === workDate && isReopenedOrActive;
+          return rowDate === workDate;
         }
 
         // Rule 3: Today's date selected (workDate === todayStr)
         if (workDate === todayStr) {
-          // a) Rows created today: show ALL rows (both Approved & Reopened)
+          // a) Rows created today: show ALL rows
           if (rowDate === todayStr) {
             return true;
           }
-          // b) Rows created on earlier dates: show ONLY APPROVED rows
+          // b) Rows created on earlier dates: show ONLY UNAPPROVED (DRAFT/Pending) rows
           if (rowDate < todayStr) {
-            return isApproved;
+            return !isApproved && r.status !== 'REOPENED';
           }
         }
 
@@ -559,7 +559,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
   }, [row.size, row.size_name]);
 
 
-  const isLocked = row.status === 'APPROVED' || row.status === 'ISSUED';
+  const isLocked = row.status === 'APPROVED' || row.status === 'ISSUED' || row.status === 'LOGGED';
   const sheets = row.sheets || [];
 
   const handleCellBlur = async (sheetIndex, value) => {
@@ -729,7 +729,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
   const totalSqft = sheets.reduce((acc, curr) => acc + (parseFloat(curr.dcm) || 0), 0).toFixed(2);
 
   let rowClass = "excel-row transition-colors border-b border-slate-200 group relative bg-white hover:bg-slate-50";
-  if (row.status === 'APPROVED' || row.status === 'ISSUED') {
+  if (row.status === 'APPROVED' || row.status === 'ISSUED' || row.status === 'LOGGED') {
     rowClass = "excel-row bg-emerald-50 hover:bg-emerald-100 border-b border-emerald-200 group relative";
   }
 
