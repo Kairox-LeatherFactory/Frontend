@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Scissors, Loader2, FileSpreadsheet, LockOpen, Check } from 'lucide-react';
+import JsBarcode from 'jsbarcode';
+import { Scissors, Loader2, FileSpreadsheet, LockOpen, Check, Barcode, Printer } from 'lucide-react';
 
 import {
   useLazyGetMaterialLotsQuery,
@@ -20,10 +21,12 @@ import {
 } from '@/store/slices/apiSlice';
 import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
 
+const toastListeners = new Set();
+
 const toast = {
-  success: (msg) => console.log('SUCCESS:', msg),
-  error: (msg) => window.alert('ERROR: ' + msg),
-  warning: (msg) => console.warn('WARNING:', msg)
+  success: (msg) => toastListeners.forEach(fn => fn({ type: 'success', message: msg })),
+  error: (msg) => toastListeners.forEach(fn => fn({ type: 'error', message: msg })),
+  warning: (msg) => toastListeners.forEach(fn => fn({ type: 'warning', message: msg }))
 };
 
 
@@ -156,6 +159,7 @@ export default function CuttingSheetSection() {
   const [isLooping, setIsLooping] = useState(false);
   const [reopenTargetRow, setReopenTargetRow] = useState(null);
   const [reopenReasonText, setReopenReasonText] = useState('');
+  const [printBarcodeRow, setPrintBarcodeRow] = useState(null);
   const [isMounted, setIsMounted] = useState(false);
   const [reopenRowMutation, { isLoading: isReopeningRow }] = useReopenCuttingRowMutation();
 
@@ -416,7 +420,7 @@ export default function CuttingSheetSection() {
                 <th className="p-2 border-r border-slate-400 w-36 text-center">Style</th>
                 <th className="p-2 border-r border-slate-400 w-32 text-center">Article</th>
                 <th className="p-2 border-r border-slate-400 w-24 text-center">Colour</th>
-                <th className="p-2 border-r border-slate-400 w-32 text-center">Name</th>
+                <th className="p-2 border-r border-slate-400 min-w-[150px] w-40 text-center">Name</th>
                 <th className="p-2 border-r border-slate-400 w-16 text-center">Size</th>
                 <th className="p-2 border-r border-slate-400 w-20 text-center">R.C.NO</th>
                 {Array(17).fill(0).map((_, i) => (
@@ -467,6 +471,7 @@ export default function CuttingSheetSection() {
                         stylesList={stylesList}
                         presentWorkers={presentWorkers}
                         onOpenReopenModal={setReopenTargetRow}
+                        onApproveSuccess={setPrintBarcodeRow}
                         workDate={workDate}
                       />
                     </React.Fragment>
@@ -542,12 +547,23 @@ export default function CuttingSheetSection() {
         </div>,
         document.body
       )}
+
+      {/* Piece Code Barcode Print Modal using createPortal */}
+      {isMounted && printBarcodeRow && (
+        <CuttingBarcodePrintModal
+          rowData={printBarcodeRow}
+          onClose={() => setPrintBarcodeRow(null)}
+        />
+      )}
+
+      {/* Floating UI Toast Container */}
+      {isMounted && <GlobalToastContainer />}
     </div>
   );
 }
 
 
-const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal, workDate }) => {
+const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal, onApproveSuccess, workDate }) => {
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
   const [deleteSheet] = useDeleteCuttingSheetMutation();
@@ -708,6 +724,12 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
   };
 
   const handleApprove = async () => {
+    const effectiveRc = (rcNo || '').trim() || (row.rc_no || row.rc_number || '').trim();
+    if (!effectiveRc) {
+      toast.error('⚠️ R.C NO is required before approving row.');
+      return;
+    }
+
     try {
       const rowId = row.row_id || row.id;
 
@@ -730,8 +752,18 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
       }
 
       const res = await approveRow(rowId).unwrap();
-      updateRowInState(res.row || res);
+      const updatedRow = res.row || res;
+      updateRowInState(updatedRow);
       toast.success(res.message || 'Row Approved successfully');
+
+      if (onApproveSuccess) {
+        onApproveSuccess({
+          ...row,
+          ...updatedRow,
+          rc_no: effectiveRc,
+          sNo
+        });
+      }
     } catch (err) {
       const errorMsg =
         (typeof err?.data?.detail === 'string' && err.data.detail) ||
@@ -820,9 +852,9 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
               toast.error(err?.data?.message || 'Failed to assign worker');
             }
           }}
-          className="w-full h-9 px-1 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all truncate text-xs cursor-pointer"
+          className="w-full h-9 px-2 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all text-xs cursor-pointer min-w-[140px]"
         >
-          <option value="">{row.cutter_name || row.name || '-- Select Worker --'}</option>
+          <option value="">-- Select --</option>
           {presentWorkers.map((w) => (
             <option key={w.id} value={w.id}>
               {w.name} {w.code ? `(${w.code})` : ''}
@@ -922,3 +954,211 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
     </tr>
   );
 });
+
+function BarcodeSticker({ code }) {
+  const svgRef = useRef(null);
+
+  useEffect(() => {
+    if (svgRef.current && code) {
+      try {
+        JsBarcode(svgRef.current, code, {
+          format: 'CODE128',
+          width: 1.8,
+          height: 48,
+          displayValue: false,
+          margin: 0,
+        });
+      } catch (err) {
+        console.error('JsBarcode render error:', err);
+      }
+    }
+  }, [code]);
+
+  return <svg ref={svgRef} className="mx-auto max-w-[280px] h-12" />;
+}
+
+function CuttingBarcodePrintModal({ rowData, onClose }) {
+  if (!rowData) return null;
+
+  const displayRc = rowData.rc_no || rowData.rc_number || '';
+  const displayArticle = rowData.article || '';
+  const displayStyle = rowData.style_name || rowData.style_code || rowData.style_id || '';
+  const displayColor = rowData.colour || rowData.color || '';
+  const displaySize = rowData.size || rowData.size_name || '';
+  const displaySno = String(rowData.sNo || rowData.seq || '001').padStart(3, '0');
+
+  const pieceCode = rowData.piece_code || rowData.barcode || (displayRc ? `PC-${displayRc}` : `PC-${displaySno}`);
+
+  const subtitleStr = [displayRc, displayArticle, displayStyle, displayColor, displaySize, displaySno]
+    .filter(Boolean)
+    .join(' - ');
+
+  useEffect(() => {
+    const handleAfterPrint = () => {
+      if (onClose) onClose();
+    };
+    window.addEventListener('afterprint', handleAfterPrint);
+    return () => {
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, [onClose]);
+
+  const handlePrint = () => {
+    window.print();
+    setTimeout(() => {
+      if (onClose) onClose();
+    }, 150);
+  };
+
+  return createPortal(
+    <div id="cutting-barcode-print-wrapper" className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+      <style>{`
+        @media print {
+          @page {
+            size: auto;
+            margin: 5mm;
+          }
+          body > * {
+            display: none !important;
+          }
+          body > #cutting-barcode-print-wrapper {
+            display: block !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            height: auto !important;
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+          #cutting-barcode-print-wrapper .print-hide {
+            display: none !important;
+          }
+          #printable-barcode-ticket {
+            display: block !important;
+            border: 1px dashed #64748b !important;
+            border-radius: 12px !important;
+            padding: 14px 16px !important;
+            margin: 10px !important;
+            width: 360px !important;
+            background: #ffffff !important;
+            box-shadow: none !important;
+          }
+        }
+      `}</style>
+
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden print:shadow-none print:border-none print:w-full print:p-0">
+        {/* Modal Header (hidden on print) */}
+        <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white px-6 py-4 flex items-center justify-between print:hidden print-hide">
+          <div className="flex items-center gap-2">
+            <Barcode className="w-5 h-5 text-emerald-400" />
+            <h3 className="font-bold text-base">Print Barcode Ticket?</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-white text-lg font-bold w-7 h-7 rounded-full flex items-center justify-center transition-colors cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Modal Content / Ticket Preview */}
+        <div className="p-6 space-y-5 text-center">
+          <p className="text-xs text-slate-500 font-medium print:hidden print-hide">
+            Barcode ticket preview for approved cutting row:
+          </p>
+
+          {/* Exact Barcode Ticket Box matching user screenshot */}
+          <div className="flex justify-center">
+            <div
+              id="printable-barcode-ticket"
+              className="border border-dashed border-slate-400 rounded-xl p-4 bg-white text-center w-[360px] max-w-full space-y-1.5 shadow-2xs"
+            >
+              {/* SVG Barcode */}
+              <div className="flex justify-center pt-1">
+                <BarcodeSticker code={pieceCode} />
+              </div>
+
+              {/* Piece Code */}
+              <div className="font-mono text-sm font-black tracking-wider text-slate-900 uppercase">
+                {pieceCode}
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons (hidden on print) */}
+          <div className="flex items-center gap-3 pt-2 print:hidden print-hide">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase rounded-xl transition-all border border-slate-300 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+            >
+              <Printer className="w-4 h-4" />
+              Print Barcode
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function GlobalToastContainer() {
+  const [toastItem, setToastItem] = useState(null);
+
+  useEffect(() => {
+    let timer;
+    const handler = (item) => {
+      setToastItem(item);
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        setToastItem(null);
+      }, 3500);
+    };
+    toastListeners.add(handler);
+    return () => {
+      toastListeners.delete(handler);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
+
+  if (!toastItem) return null;
+
+  const bgClasses = {
+    error: 'bg-rose-950/90 text-rose-100 border-rose-700 shadow-rose-950/40',
+    success: 'bg-emerald-950/90 text-emerald-100 border-emerald-700 shadow-emerald-950/40',
+    warning: 'bg-amber-950/90 text-amber-100 border-amber-700 shadow-amber-950/40'
+  };
+
+  const icons = {
+    error: '⚠️',
+    success: '✅',
+    warning: '⚡'
+  };
+
+  return createPortal(
+    <div className="fixed bottom-6 right-6 z-[999999] flex items-center gap-3 animate-fade-in print:hidden">
+      <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl border backdrop-blur-md shadow-2xl text-xs font-bold ${bgClasses[toastItem.type] || bgClasses.error}`}>
+        <span className="text-base">{icons[toastItem.type] || 'ℹ️'}</span>
+        <span className="leading-snug">{toastItem.message}</span>
+        <button
+          type="button"
+          onClick={() => setToastItem(null)}
+          className="ml-2 text-white/70 hover:text-white font-black text-sm transition-colors cursor-pointer"
+        >
+          ✕
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
