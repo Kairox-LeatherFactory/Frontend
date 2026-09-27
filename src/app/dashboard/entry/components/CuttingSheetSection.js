@@ -198,29 +198,21 @@ export default function CuttingSheetSection() {
         if (!workDate) return true;
 
         const rowDate = (r.work_date || r.date || '').slice(0, 10);
-        const isApproved = r.status === 'APPROVED' || r.status === 'ISSUED' || r.status === 'LOGGED';
-        const isReopenedOrActive = r.status === 'REOPENED' || r.status === 'IN_PROGRESS' || !r.status;
+        const isReopenedOrApproved = r.status === 'APPROVED' || r.status === 'ISSUED' || r.status === 'LOGGED' || r.status === 'REOPENED';
 
         // Rule 1: Future date selected -> EMPTY (0 rows)
         if (workDate > todayStr) {
           return false;
         }
 
-        // Rule 2: Past date selected -> Show rows for that exact past date
+        // Rule 2: Past date selected -> Show ONLY rows with REOPEN button (Approved/Logged/Issued/Reopened) for that exact past date
         if (workDate < todayStr) {
-          return rowDate === workDate;
+          return rowDate === workDate && isReopenedOrApproved;
         }
 
-        // Rule 3: Today's date selected (workDate === todayStr)
+        // Rule 3: Today's date selected -> Show ONLY rows with APPROVE button (Draft/Unapproved pending rows)
         if (workDate === todayStr) {
-          // a) Rows created today: show ALL rows
-          if (rowDate === todayStr) {
-            return true;
-          }
-          // b) Rows created on earlier dates: show ONLY UNAPPROVED (DRAFT/Pending) rows
-          if (rowDate < todayStr) {
-            return !isApproved && r.status !== 'REOPENED';
-          }
+          return !isReopenedOrApproved;
         }
 
         return false;
