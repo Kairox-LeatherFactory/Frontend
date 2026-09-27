@@ -1,21 +1,98 @@
 "use client";
 import {
-  Lock,
-  CheckCircle2,
   Barcode,
-  Check,
-  Layers,
-  PackageCheck,
-  ChevronRight,
-  ChevronDown,
   Camera,
-  Send,
-  RefreshCw,
-  X,
+  Check,
+  CheckCircle2,
+  Clock,
+  FlaskConical,
+  Hash,
+  Layers,
   Loader2,
+  Lock,
+  RefreshCw,
+  ScanLine,
+  Search,
+  Send,
+  Store,
+  UserCheck,
+  X,
 } from "lucide-react";
 import { CameraScannerModal, WorkerPickerDropdown } from "../shared";
 import StoreNotCheckedInModal from "./StoreNotCheckedInModal";
+import { getStoreParts } from "./storeParts";
+
+// Leather hide outline (lucide has no hide shape)
+function HideIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" className={className} aria-hidden="true">
+      <path d="M7 3c1.2 1 2.6 1.5 5 1.5S15.8 4 17 3l2 2c-.6 1.6-.4 3.1 1 4.5-1 1.6-1 3.4 0 5-1.4 1.4-1.6 2.9-1 4.5l-2 2c-1.2-1-2.6-1.5-5-1.5S8.2 20 7 21l-2-2c.6-1.6.4-3.1-1-4.5 1-1.6 1-3.4 0-5 1.4-1.4 1.6-2.9 1-4.5z" />
+    </svg>
+  );
+}
+
+// Four-hole button — stands in for the accessories kit
+function ButtonIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="9.5" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="14.5" cy="9.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="9.5" cy="14.5" r="1.1" fill="currentColor" stroke="none" />
+      <circle cx="14.5" cy="14.5" r="1.1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+// Store state badge colours (waiting grey · merged blue · holding amber · both teal · received green · sended purple)
+const STATE_BADGE = {
+  waiting: "bg-slate-100 text-slate-600 border-slate-200",
+  merged: "bg-blue-50 text-blue-700 border-blue-200",
+  holding_leather: "bg-amber-50 text-amber-700 border-amber-200",
+  holding_lining: "bg-amber-50 text-amber-700 border-amber-200",
+  holding_both: "bg-teal-50 text-teal-700 border-teal-200",
+  received: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  sended: "bg-purple-50 text-purple-700 border-purple-200",
+};
+
+const PART_STATUS = {
+  in: { text: "In store", box: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "text-emerald-700" },
+  awaiting: { text: "Awaiting", box: "bg-amber-50 text-amber-600 border-amber-200", label: "text-amber-700" },
+  na: { text: "Not needed", box: "bg-slate-50 text-slate-400 border-slate-200", label: "text-slate-400" },
+};
+
+// Same statuses, as chips on the dark last-scan panel
+const LAST_SCAN_CHIP = {
+  in: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  awaiting: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  na: "bg-white/5 text-white/40 border-white/10",
+};
+
+function PartCell({ Icon, status }) {
+  const s = PART_STATUS[status];
+  return (
+    <td className="px-4 py-4 align-middle">
+      <div className="flex items-center gap-2.5">
+        <span className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${s.box}`}>
+          <Icon className="w-[18px] h-[18px]" />
+        </span>
+        <span className={`text-xs font-black ${s.label}`}>{s.text}</span>
+      </div>
+    </td>
+  );
+}
+
+function StatCard({ Icon, label, value, iconClass }) {
+  return (
+    <div className="rounded-2xl border bg-white px-3.5 py-2.5 flex items-center gap-2.5 min-w-0" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
+      <Icon className={`w-5 h-5 shrink-0 ${iconClass}`} />
+      <div className="min-w-0">
+        <div className="text-[11px] font-bold text-slate-500 truncate">{label}</div>
+        <div className="text-lg font-black text-[#2d1f0e] leading-tight">{value}</div>
+      </div>
+    </div>
+  );
+}
 
 export default function StoreHubForm({
   barcodeWorker,
@@ -31,23 +108,21 @@ export default function StoreHubForm({
   setCameraScanTarget,
   workers,
   mounted,
-  storePieceInput,
-  setStorePieceInput,
   storeCurrentScan,
   setStoreCurrentScan,
   storeApiLoading,
+  storePieces,
   filteredStorePieces,
   storeTotal,
   storeFilterType,
   setStoreFilterType,
   storePieceSearch,
   setStorePieceSearch,
-  expandedPiece,
-  setExpandedPiece,
   pieceLookupInput,
   setPieceLookupInput,
   handleFindPiece,
   selectedPieces,
+  setSelectedPieces,
   togglePieceSelection,
   batchSending,
   handleBatchSendPieces,
@@ -57,9 +132,44 @@ export default function StoreHubForm({
   fetchLivePieces,
   storeLoading,
   storeInputRef,
-  handleStoreVerify,
   handleStoreScanInput,
+  lastScan,
+  mockAvailable,
+  useMock,
+  toggleMock,
 }) {
+  // Tab counts from the loaded pieces; "Store" shows the backend's total
+  const counts = { LEATHER: 0, LINING: 0, ACCESSORIES: 0, COMPLETE: 0, awaiting: 0, sent: 0 };
+  storePieces.forEach((piece) => {
+    const p = getStoreParts(piece);
+    if (p.leather) counts.LEATHER += 1;
+    if (p.lining) counts.LINING += 1;
+    if (p.accessories) counts.ACCESSORIES += 1;
+    if (p.sent) counts.sent += 1;
+    else if (p.complete) counts.COMPLETE += 1;
+    else counts.awaiting += 1;
+  });
+  const totalInStore = storeTotal || storePieces.length;
+
+  const tabs = [
+    { key: "All", label: "Store", Icon: Store, count: totalInStore },
+    { key: "LEATHER", label: "Leather", Icon: HideIcon, count: counts.LEATHER },
+    { key: "LINING", label: "Lining", Icon: Layers, count: counts.LINING },
+    { key: "ACCESSORIES", label: "Accessories", Icon: ButtonIcon, count: counts.ACCESSORIES },
+  ];
+  const activeTab = ["LEATHER", "LINING", "ACCESSORIES", "COMPLETE"].includes(storeFilterType) ? storeFilterType : "All";
+
+  const visiblePieces = filteredStorePieces.slice(0, storeVisibleCount);
+  const selectableIds = visiblePieces.filter((piece) => !getStoreParts(piece).sent).map((piece) => piece.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedPieces.has(id));
+  const toggleSelectAll = () => {
+    setSelectedPieces(allSelected ? new Set() : new Set(selectableIds));
+  };
+
+  // Everything below the worker card stays locked until a worker is verified
+  const locked = !barcodeWorker;
+  const lastParts = lastScan ? getStoreParts(lastScan) : null;
+
   return (
     <>
       {cameraScanTarget === "store" && (
@@ -73,217 +183,279 @@ export default function StoreHubForm({
           }}
         />
       )}
-      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+
+      <StoreNotCheckedInModal
+        mounted={mounted}
+        barcodeNotCheckedInModal={barcodeNotCheckedInModal}
+        setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal}
+        workerInputRef={workerInputRef}
+      />
+
+      <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        {/* ── Worker verification — must be done first ───────────── */}
         <div
-          className="p-6 rounded-3xl shadow-lg relative overflow-hidden space-y-5"
-          style={{
-            background: "linear-gradient(135deg, #1c1207, #2d1f0e)",
-            border: "1px solid rgba(200,131,74,0.3)",
-          }}
+          className="rounded-3xl shadow-lg relative overflow-hidden p-5 sm:p-6"
+          style={{ background: "linear-gradient(135deg, #3d2b1a 0%, #2d1f0e 100%)", border: "1px solid rgba(200,131,74,0.3)" }}
         >
           <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#c8834a]/20 pb-4 relative z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center text-[#f5d4a4] font-black text-sm shadow-inner">
-                1
+          {barcodeWorker ? (
+            <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-4 min-w-0">
+                <span className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 shrink-0">
+                  <UserCheck className="w-6 h-6" />
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center flex-wrap gap-2">
+                    <h3 className="font-extrabold text-white text-base truncate">{barcodeWorker.name}</h3>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      Verified
+                    </span>
+                  </div>
+                  <p className="text-xs text-[#e2d5c3]/70 mt-0.5 truncate">
+                    <span className="font-mono">{barcodeWorker.employee_barcode || barcodeWorker.id}</span>
+                    {" · "}
+                    {barcodeWorker.designation || "Store"}
+                  </p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-base font-extrabold text-white flex items-center gap-2">
-                  Store Worker Verification
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#c8834a]/30 text-[#f5d4a4]">
-                    Mandatory First
-                  </span>
-                </h3>
-                <p className="text-xs text-[#e2d5c3]/80">
-                  Scan Worker ID Badge / Card (e.g. EMP-000123) to unlock Store Hub scanning
-                </p>
-              </div>
-            </div>
-
-            {barcodeWorker && (
               <button
                 type="button"
                 onClick={() => {
                   setBarcodeWorker(null);
                   setBarcodeWorkerInput("");
                 }}
-                className="text-xs font-black text-amber-200/80 hover:text-white px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 transition-all cursor-pointer"
+                className="self-start sm:self-center text-xs font-black text-[#f5d4a4] hover:text-white px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all cursor-pointer"
               >
                 Change Worker
               </button>
-            )}
-          </div>
-
-          {!barcodeWorker ? (
-            <div className="space-y-4 relative z-10">
-              <div className="flex flex-col sm:flex-row gap-3">
+            </div>
+          ) : (
+            <div className="relative space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-[#f5e6d3] text-[#5a3518] shadow-inner">
+                  <UserCheck className="w-6 h-6" />
+                </div>
+                <h3 className="text-lg sm:text-xl font-extrabold text-white">Worker Verification</h3>
+              </div>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleVerifyBarcodeWorker();
+                }}
+                className="flex flex-col sm:flex-row gap-3"
+              >
                 <div className="relative flex-1">
-                  {!barcodeWorkerInput && (
-                    <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
-                  )}
+                  <Barcode className="w-6 h-6 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     ref={workerInputRef}
                     type="text"
-                    placeholder="Scan or type Worker ID (e.g. EMP-000123)..."
+                    placeholder="Scan or type worker ID (e.g. EMP-000123)…"
                     value={barcodeWorkerInput}
                     onChange={(e) => setBarcodeWorkerInput(e.target.value)}
                     autoFocus
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        handleVerifyBarcodeWorker();
-                      }
-                    }}
-                    style={{
-                      paddingLeft: barcodeWorkerInput ? "1rem" : "3.25rem",
-                      paddingRight: "3rem",
-                    }}
-                    className="w-full h-14 bg-white/10 text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border-2 border-[#c8834a]/40 rounded-2xl focus:outline-none focus:border-[#f5d4a4] transition-all"
+                    className="w-full h-14 pl-14 pr-14 sm:pr-4 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border border-[#e2d5c3]/30 rounded-2xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setCameraScanTarget("worker")}
-                    className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/50 hover:bg-[#c8834a]/50 active:scale-95 transition-all cursor-pointer z-10"
-                    title="Scan Worker Barcode with Mobile Camera"
+                    className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/50 active:scale-95 transition-all cursor-pointer"
+                    title="Scan with camera"
                   >
                     <Camera className="w-5 h-5" />
                   </button>
                 </div>
                 <button
-                  type="button"
-                  onClick={() => handleVerifyBarcodeWorker()}
+                  type="submit"
                   disabled={barcodeWorkerChecking || !barcodeWorkerInput.trim()}
-                  className="h-14 px-6 rounded-2xl font-black text-sm text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
+                  className="h-14 px-8 rounded-2xl font-black text-sm text-[#2d1f0e] bg-gradient-to-br from-[#f5d4a4] to-[#d99a62] hover:brightness-105 active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  {barcodeWorkerChecking ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Check className="w-4 h-4" />
-                  )}
-                  Verify Worker ID
+                  {barcodeWorkerChecking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
+                  Verify
                 </button>
-              </div>
-
-              <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-xs text-[#e2d5c3]/70">
-                <span className="shrink-0">Or select active worker:</span>
-                <WorkerPickerDropdown
-                  workers={workers}
-                  onSelect={handleVerifyBarcodeWorker}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="p-4 rounded-2xl bg-[#c8834a]/15 border border-[#c8834a]/40 flex items-center justify-between relative z-10">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-400 font-bold">
-                  ✓
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-black text-white text-sm">
-                      {barcodeWorker.name}
-                    </h4>
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      Verified Operator
-                    </span>
-                  </div>
-                  <p className="text-xs text-[#f5d4a4] font-medium mt-0.5">
-                    ID: <strong className="font-mono">{barcodeWorker.employee_barcode || barcodeWorker.id}</strong> · {barcodeWorker.designation || "Store Craftsman"}
-                  </p>
-                </div>
+              </form>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-[#e2d5c3]/70">
+                <span className="shrink-0 font-bold">Or select worker:</span>
+                <WorkerPickerDropdown workers={workers} onSelect={handleVerifyBarcodeWorker} />
               </div>
             </div>
           )}
         </div>
-        
-        <StoreNotCheckedInModal
-          mounted={mounted}
-          barcodeNotCheckedInModal={barcodeNotCheckedInModal}
-          setBarcodeNotCheckedInModal={setBarcodeNotCheckedInModal}
-          workerInputRef={workerInputRef}
-        />
 
-        {/* Header & Metrics */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-4">
-          <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
-            <div className="text-xs text-slate-500 font-bold mb-1">Total Pieces in Store</div>
-            <div className="text-2xl font-black text-slate-800">{storeTotal}</div>
+        {locked && (
+          <div className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
+            <Lock className="w-4 h-4 text-amber-700 shrink-0" />
+            Verify a worker to unlock scanning
           </div>
-          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 shadow-sm flex flex-col items-center justify-center">
-            <div className="text-xs text-emerald-600 font-bold mb-1">Active Batches</div>
-            <div className="text-2xl font-black text-emerald-700">
-              {filteredStorePieces.length}
-            </div>
-          </div>
-        </div>
+        )}
 
-        {/* Barcode Scanner */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm space-y-4">
-          <div className="flex-1 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">
-                Store Verification Gateway
-              </h3>
-            </div>
+        {/* ── Locked (non-interactive, dimmed) until a worker is verified ── */}
+        <div
+          inert={locked}
+          aria-disabled={locked}
+          className={`space-y-5 transition-all duration-300 ${locked ? "opacity-45 grayscale-[35%] select-none" : ""}`}
+        >
+          {/* ── Piece scanner ─────────────────────────────────────── */}
+          <div
+            className="rounded-3xl shadow-xl relative overflow-hidden grid grid-cols-1 xl:grid-cols-[1fr_340px]"
+            style={{ background: "linear-gradient(135deg, #2d1f0e 0%, #1c1207 100%)", border: "1px solid rgba(200,131,74,0.25)" }}
+          >
+            <div className="absolute -left-20 -top-20 w-56 h-56 bg-[#c8834a]/10 rounded-full blur-3xl pointer-events-none" />
 
-            <div className="flex flex-col gap-4 mt-2">
-              <div className="relative">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1.5 block">
-                  Scanner Input
-                </label>
-                {!barcodeWorker && (
-                  <div className="p-3 mb-2 bg-amber-100/90 border border-amber-300/80 rounded-xl text-amber-900 text-xs font-bold flex items-center justify-center gap-2 shadow-sm">
-                    <Lock className="w-4 h-4 text-amber-700 shrink-0" />
-                    <span>Scan &amp; Verify Worker ID in Step 1 Banner above to Unlock Store Scanner</span>
-                  </div>
-                )}
-                <form
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    handleStoreScanInput(storeCurrentScan.trim());
-                  }}
-                  className="relative flex items-center"
-                >
-                  {!storeCurrentScan && (
-                    <Barcode className="w-5 h-5 text-[#c8834a] absolute left-4 pointer-events-none transition-opacity duration-200" />
-                  )}
+            <div className="relative p-5 sm:p-6 space-y-5">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 bg-[#f5e6d3] text-[#5a3518] shadow-inner">
+                  <Store className="w-7 h-7" />
+                </div>
+                <h3 className="text-lg sm:text-xl font-extrabold text-white">Store Scanner</h3>
+              </div>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleStoreScanInput(storeCurrentScan.trim());
+                }}
+                className="flex flex-col sm:flex-row gap-3"
+              >
+                <div className="relative flex-1">
+                  <Barcode className="w-6 h-6 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     ref={storeInputRef}
                     type="text"
                     inputMode="text"
                     enterKeyHint="go"
-                    placeholder={
-                      !barcodeWorker
-                        ? "Scan Worker ID in Step 1 Banner above..."
-                        : "Scan Piece Barcode..."
-                    }
+                    placeholder="Scan or type piece barcode…"
                     value={storeCurrentScan}
                     onChange={(e) => setStoreCurrentScan(e.target.value)}
-                    disabled={!barcodeWorker || storeApiLoading}
-                    style={{
-                      paddingLeft: storeCurrentScan ? "1rem" : "3.25rem",
-                      paddingRight: "3rem",
-                    }}
-                    className="w-full h-16 bg-slate-50 font-mono font-bold text-lg text-[#2d1f0e] border-2 border-slate-200 focus:border-[#c8834a] focus:bg-white shadow-inner rounded-xl outline-none transition-all disabled:opacity-50"
+                    disabled={locked || storeApiLoading}
+                    className="w-full h-14 pl-14 pr-14 sm:pr-4 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border border-[#e2d5c3]/30 rounded-2xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
                   />
                   <button
                     type="button"
                     onClick={() => setCameraScanTarget("store")}
-                    className="sm:hidden absolute right-3 text-[#c8834a] bg-amber-50 border border-[#c8834a]/30 hover:bg-amber-100 p-2 rounded-xl transition-all active:scale-95 cursor-pointer z-10"
-                    title="Scan Piece with Mobile Camera"
+                    className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/50 active:scale-95 transition-all cursor-pointer"
+                    title="Scan with camera"
                   >
                     <Camera className="w-5 h-5" />
                   </button>
-                </form>
-              </div>
+                </div>
+                <button
+                  type="submit"
+                  disabled={locked || storeApiLoading || !storeCurrentScan.trim()}
+                  className="h-14 px-8 rounded-2xl font-black text-sm text-[#2d1f0e] bg-gradient-to-br from-[#f5d4a4] to-[#d99a62] hover:brightness-105 active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {storeApiLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ScanLine className="w-5 h-5" />}
+                  Scan
+                </button>
+              </form>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden mt-6">
-              <div className="bg-slate-50 border-b border-slate-200 px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <h3 className="font-black text-slate-800 flex items-center gap-2">
-                  <Layers className="w-5 h-5 text-[#c8834a]" />
-                  Store Inventory
+            {/* Last scan result */}
+            <div className="relative p-5 sm:p-6 border-t xl:border-t-0 xl:border-l border-[#c8834a]/20">
+              <div className="h-full rounded-2xl bg-white/[0.04] border border-white/10 p-4 flex flex-col gap-3">
+                <div className="flex items-center gap-2 text-[#f5d4a4]">
+                  <ScanLine className="w-4 h-4" />
+                  <span className="text-xs font-black uppercase tracking-wider">Last Scan</span>
+                </div>
+                {lastScan ? (
+                  <>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono font-black text-white text-base truncate">{lastScan.piece_code || lastScan.code}</span>
+                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-[#f5d4a4] border border-white/15 shrink-0">
+                        {lastScan.holding || (lastParts.state ? lastParts.state.replace(/_/g, " ").toUpperCase() : "—")}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        ["Leather", lastParts.leather ? "in" : "awaiting"],
+                        ["Lining", !lastParts.liningNeeded ? "na" : lastParts.lining ? "in" : "awaiting"],
+                        ["Accessories", lastParts.accessories ? "in" : "awaiting"],
+                      ].map(([label, status]) => (
+                        <span key={label} className={`inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg border ${LAST_SCAN_CHIP[status]}`}>
+                          {status === "in" ? <Check className="w-3 h-3" /> : status === "awaiting" ? <Clock className="w-3 h-3" /> : <X className="w-3 h-3" />}
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                    {lastScan.next_action && (
+                      <p className="text-xs text-[#e2d5c3]/75 leading-relaxed">{lastScan.next_action}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-xs font-bold text-[#e2d5c3]/45">No scans yet</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Filter tabs + complete sets ─────────────────────────── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-[1.25fr_1fr_1fr_1fr_1.35fr] gap-3">
+            {tabs.map(({ key, label, Icon, count }) => {
+              const active = activeTab === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setStoreFilterType(key)}
+                  className={`h-16 px-4 rounded-2xl border flex items-center gap-3 text-left transition-all cursor-pointer ${
+                    active
+                      ? "text-white border-transparent shadow-lg"
+                      : "bg-white text-[#3d2b1a] hover:border-[#c8834a]/50 hover:shadow-sm"
+                  }`}
+                  style={active ? { background: "linear-gradient(135deg, #3d2b1a, #1c1207)" } : { borderColor: "rgba(200,131,74,0.18)" }}
+                >
+                  <Icon className={`w-6 h-6 shrink-0 ${active ? "text-[#f5d4a4]" : "text-[#8a5a2e]"}`} />
+                  <span className={`flex-1 truncate ${active ? "font-extrabold text-base" : "font-bold text-sm"}`}>{label}</span>
+                  <span
+                    className={`min-w-7 h-7 px-2 rounded-full flex items-center justify-center text-xs font-black ${
+                      active ? "bg-[#c8834a]/35 text-[#f5d4a4]" : "bg-[#f4ece3] text-[#5a3518]"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setStoreFilterType("COMPLETE")}
+              className={`col-span-2 sm:col-span-4 xl:col-span-1 h-16 px-4 rounded-2xl border flex items-center gap-3 text-left transition-all cursor-pointer bg-emerald-50/80 border-emerald-200 hover:border-emerald-400 ${
+                activeTab === "COMPLETE" ? "ring-2 ring-emerald-500/60" : ""
+              }`}
+            >
+              <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                <Check className="w-5 h-5" strokeWidth={3} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-xs font-bold text-emerald-800 truncate">Complete Sets</span>
+                <span className="block text-lg font-black text-emerald-900 leading-tight">{counts.COMPLETE}</span>
+              </span>
+            </button>
+          </div>
+
+          {/* ── Inventory ───────────────────────────────────────────── */}
+          <div className="bg-white rounded-3xl border shadow-sm p-4 sm:p-6 space-y-5" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+              <div className="flex items-center gap-4 min-w-0">
+                <div className="w-14 h-14 rounded-2xl bg-[#faf6f0] border flex items-center justify-center text-[#5a3518] shrink-0" style={{ borderColor: "rgba(200,131,74,0.2)" }}>
+                  <Store className="w-7 h-7" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center flex-wrap gap-2">
+                    <h3 className="text-lg sm:text-xl font-extrabold text-[#2d1f0e]">Store Inventory</h3>
+                    {mockAvailable && (
+                      <button
+                        type="button"
+                        onClick={toggleMock}
+                        title="Development only — switch between sample and live store data"
+                        className={`inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${
+                          useMock ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                        }`}
+                      >
+                        <FlaskConical className="w-3 h-3" />
+                        {useMock ? "Mock data" : "Live data"}
+                      </button>
+                    )}
+                  </div>
                   {storePieceSearch && (
                     <button
                       type="button"
@@ -291,196 +463,191 @@ export default function StoreHubForm({
                         setStorePieceSearch("");
                         setPieceLookupInput("");
                       }}
-                      className="ml-1 flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-full bg-[#c8834a]/15 text-[#8a5a2a] hover:bg-[#c8834a]/25 cursor-pointer"
+                      className="mt-1 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-full bg-[#c8834a]/15 text-[#8a5a2a] hover:bg-[#c8834a]/25 cursor-pointer"
                     >
                       Filtered: {storePieceSearch} <X className="w-3 h-3" />
                     </button>
                   )}
-                </h3>
-
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-                  <div className="relative w-full sm:flex-1 sm:min-w-[220px]">
-                    <PackageCheck className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#c8834a]" />
-                    <input
-                      type="text"
-                      value={pieceLookupInput}
-                      onChange={(e) => setPieceLookupInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleFindPiece();
-                        }
-                      }}
-                      placeholder="Search Piece Code..."
-                      className="w-full pl-9 pr-16 py-2.5 bg-amber-50/50 border border-[#c8834a]/30 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a] shadow-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleFindPiece}
-                      disabled={!pieceLookupInput.trim()}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1.5 rounded-md bg-[#c8834a] text-white text-[10px] font-black disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed flex items-center gap-1"
-                    >
-                      Find
-                    </button>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={storeFilterType}
-                      onChange={(e) => setStoreFilterType(e.target.value)}
-                      className="flex-1 sm:flex-none px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none focus:border-[#c8834a]"
-                    >
-                      <option value="All">All States</option>
-                      <option value="WAITING_LINING">Waiting Lining</option>
-                      <option value="READY_TO_STITCH">Ready to Stitch</option>
-                      <option value="SENDED">Sended</option>
-                    </select>
-                    <button
-                      type="button"
-                      onClick={fetchLivePieces}
-                      disabled={storeLoading}
-                      className="shrink-0 px-3 py-1.5 bg-[#c8834a] hover:bg-[#b07038] text-white font-bold text-xs rounded-lg flex items-center gap-1.5 transition-all shadow-sm cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${storeLoading ? "animate-spin" : ""}`} />
-                      <span className="hidden sm:inline">Refresh</span>
-                    </button>
-                  </div>
                 </div>
               </div>
 
-              {selectedPieces.size > 0 && (
-                <div className="mx-4 my-3 p-3 rounded-xl bg-indigo-50 border-2 border-indigo-300 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
-                  <div className="flex items-center gap-2">
-                    <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-black flex items-center justify-center">
-                      {selectedPieces.size}
-                    </span>
-                    <span className="text-sm font-black text-indigo-800">
-                      {selectedPieces.size} Piece{selectedPieces.size > 1 ? "s" : ""} Selected
-                    </span>
-                  </div>
-                  <div className="flex items-center flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleBatchSendPieces()}
-                      disabled={batchSending}
-                      className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-lg flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                    >
-                      {batchSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                      Send to Line Stitching
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div className="divide-y divide-slate-100">
-                {filteredStorePieces.length === 0 && !storeLoading && (
-                  <div className="p-8 text-center text-slate-400 text-sm font-bold italic">
-                    No pieces found matching the current filters.
-                  </div>
-                )}
-                {filteredStorePieces.slice(0, storeVisibleCount).map((piece) => {
-                  const isExpanded = expandedPiece === piece.id;
-                  const isChecked = selectedPieces.has(piece.id);
-                  return (
-                    <div
-                      key={piece.id}
-                      className={`transition-colors hover:bg-slate-50 ${isChecked ? "bg-indigo-50/50" : ""}`}
-                    >
-                      <div className="px-3 sm:px-5 py-3 sm:py-4 flex items-start sm:items-center gap-2 sm:gap-0 cursor-pointer">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            togglePieceSelection(piece.id);
-                          }}
-                          className={`w-5 h-5 rounded border-2 flex-shrink-0 flex items-center justify-center mr-2 sm:mr-3 mt-0.5 sm:mt-0 transition-all ${
-                            isChecked
-                              ? "bg-indigo-600 border-indigo-600 text-white"
-                              : "border-slate-300 bg-white hover:border-indigo-400"
-                          }`}
-                        >
-                          {isChecked && <Check className="w-3 h-3" />}
-                        </button>
-                        <div
-                          onClick={() => setExpandedPiece(isExpanded ? null : piece.id)}
-                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between flex-1 min-w-0 gap-2"
-                        >
-                          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                            <div className="min-w-0">
-                              <div className="font-black text-slate-800 text-sm flex items-center flex-wrap gap-1.5">
-                                {piece.code || piece.id}
-                                <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-1.5 py-0.5 rounded">
-                                  State: {piece.store_state || "UNKNOWN"}
-                                </span>
-                              </div>
-                              <div className="text-xs font-bold text-slate-500 mt-0.5 truncate">
-                                {piece.style_name || "—"} / {piece.order_number || "—"}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3 sm:gap-4 ml-[3rem] sm:ml-0 shrink-0">
-                            {isExpanded ? (
-                              <ChevronDown className="w-5 h-5 text-slate-400" />
-                            ) : (
-                              <ChevronRight className="w-5 h-5 text-slate-400" />
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="px-5 pb-5 pt-2 bg-slate-50/50 border-t border-slate-100">
-                          <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-sm space-y-4">
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
-                                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Order</div>
-                                <div className="text-xs font-black text-slate-800 mt-0.5">{piece.order_number}</div>
-                              </div>
-                              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
-                                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Style</div>
-                                <div className="text-xs font-black text-slate-800 mt-0.5">{piece.style_name}</div>
-                              </div>
-                              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60">
-                                <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Color / Size</div>
-                                <div className="text-xs font-black text-slate-800 mt-0.5">{piece.color} / {piece.size}</div>
-                              </div>
-                            </div>
-                            <div className="pt-2">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleBatchSendPieces([piece.id]);
-                                }}
-                                disabled={batchSending || piece.store_state === "SENDED"}
-                                className="w-full h-10 rounded-lg font-black text-xs text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                              >
-                                {batchSending ? (
-                                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                ) : (
-                                  <Send className="w-3.5 h-3.5" />
-                                )}
-                                {piece.store_state === "SENDED" ? "Already Sent" : "Send to Line Stitching"}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-                {filteredStorePieces.length > storeVisibleCount && (
-                  <div ref={lastPieceElementRef} className="p-4 flex justify-center">
-                    <button
-                      onClick={() => setStoreVisibleCount((v) => v + 50)}
-                      className="px-6 py-2 bg-[#f4ece3] hover:bg-[#e8decb] text-[#c8834a] font-bold text-xs rounded-lg transition-colors cursor-pointer"
-                    >
-                      Load More ({filteredStorePieces.length - storeVisibleCount} remaining)
-                    </button>
-                  </div>
-                )}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 xl:w-[560px]">
+                <StatCard Icon={Hash} label="Total" value={totalInStore} iconClass="text-[#8a5a2e]" />
+                <StatCard Icon={Clock} label="Awaiting" value={counts.awaiting} iconClass="text-amber-600" />
+                <StatCard Icon={CheckCircle2} label="Complete" value={counts.COMPLETE} iconClass="text-emerald-600" />
+                <StatCard Icon={Send} label="Sent" value={counts.sent} iconClass="text-purple-600" />
               </div>
             </div>
+
+            {/* Search / refresh / send selected */}
+            <div className="flex flex-col md:flex-row md:items-center gap-3">
+              <div className="relative flex-1 md:max-w-md">
+                <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#c8834a]" />
+                <input
+                  type="text"
+                  value={pieceLookupInput}
+                  onChange={(e) => setPieceLookupInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleFindPiece();
+                    }
+                  }}
+                  placeholder="Search piece code…"
+                  className="w-full h-11 pl-10 pr-20 bg-[#faf6f0] border rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-[#c8834a] focus:bg-white transition-all"
+                  style={{ borderColor: "rgba(200,131,74,0.25)" }}
+                />
+                <button
+                  type="button"
+                  onClick={handleFindPiece}
+                  disabled={!pieceLookupInput.trim()}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 h-8 px-3 rounded-lg bg-[#c8834a] text-white text-xs font-black disabled:opacity-40 cursor-pointer disabled:cursor-not-allowed"
+                >
+                  Find
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={fetchLivePieces}
+                disabled={storeLoading}
+                className="h-11 px-4 rounded-xl border bg-white text-[#5a3518] font-bold text-xs flex items-center justify-center gap-2 hover:bg-[#faf6f0] transition-all cursor-pointer disabled:opacity-50"
+                style={{ borderColor: "rgba(200,131,74,0.25)" }}
+              >
+                <RefreshCw className={`w-4 h-4 ${storeLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </button>
+              {selectedPieces.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleBatchSendPieces()}
+                  disabled={batchSending}
+                  className="md:ml-auto h-11 px-5 rounded-xl font-black text-xs text-white flex items-center justify-center gap-2 shadow-md hover:brightness-110 transition-all cursor-pointer disabled:opacity-50"
+                  style={{ background: "linear-gradient(135deg, #8a5a2e, #5a3518)" }}
+                >
+                  {batchSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  Send {selectedPieces.size} to Line Stitching
+                </button>
+              )}
+            </div>
+
+            {/* Table */}
+            <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
+              <table className="w-full min-w-[900px] text-left">
+                <thead className="bg-[#faf6f0] text-[11px] font-black uppercase tracking-wider text-[#5a3518]/80">
+                  <tr>
+                    <th className="w-12 px-4 py-3.5">
+                      <button
+                        type="button"
+                        onClick={toggleSelectAll}
+                        disabled={selectableIds.length === 0}
+                        aria-label="Select all"
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all disabled:opacity-40 ${
+                          allSelected ? "bg-[#8a5a2e] border-[#8a5a2e] text-white" : "border-slate-300 bg-white hover:border-[#c8834a]"
+                        }`}
+                      >
+                        {allSelected && <Check className="w-3 h-3" />}
+                      </button>
+                    </th>
+                    <th className="w-12 px-2 py-3.5">#</th>
+                    <th className="px-4 py-3.5">Barcode / SKU</th>
+                    <th className="px-4 py-3.5">Leather</th>
+                    <th className="px-4 py-3.5">Lining</th>
+                    <th className="px-4 py-3.5">Accessories</th>
+                    <th className="px-4 py-3.5">Status</th>
+                    <th className="px-4 py-3.5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#c8834a]/10">
+                  {visiblePieces.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-4 py-12 text-center text-sm font-bold text-slate-400">
+                        {storeLoading ? (
+                          <span className="inline-flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" /> Loading pieces…
+                          </span>
+                        ) : (
+                          "No pieces found."
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                  {visiblePieces.map((piece, idx) => {
+                    const parts = getStoreParts(piece);
+                    const isChecked = selectedPieces.has(piece.id);
+                    const stateLabel = parts.state === "sended" ? "SENT" : piece.holding || (parts.state ? parts.state.replace(/_/g, " ").toUpperCase() : "UNKNOWN");
+                    return (
+                      <tr key={piece.id} className={`transition-colors ${isChecked ? "bg-[#c8834a]/[0.06]" : "hover:bg-[#faf6f0]/70"}`}>
+                        <td className="px-4 py-4 align-middle">
+                          <button
+                            type="button"
+                            onClick={() => togglePieceSelection(piece.id)}
+                            disabled={parts.sent}
+                            aria-label={`Select ${piece.code || piece.id}`}
+                            className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
+                              isChecked ? "bg-[#8a5a2e] border-[#8a5a2e] text-white" : "border-slate-300 bg-white hover:border-[#c8834a]"
+                            }`}
+                          >
+                            {isChecked && <Check className="w-3 h-3" />}
+                          </button>
+                        </td>
+                        <td className="px-2 py-4 align-middle text-sm font-black text-[#3d2b1a]">{idx + 1}</td>
+                        <td className="px-4 py-4 align-middle">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <Barcode className="w-7 h-7 text-[#5a3518] shrink-0" />
+                            <div className="min-w-0">
+                              <div className="font-mono font-black text-sm text-[#2d1f0e] truncate">{piece.code || piece.id}</div>
+                              <div className="text-xs font-medium text-slate-500 truncate">
+                                {[piece.style_name, piece.order_number].filter(Boolean).join(" · ") || "—"}
+                              </div>
+                              {(piece.color || piece.size) && (
+                                <div className="text-xs font-medium text-slate-400 truncate">
+                                  {[piece.color, piece.size].filter(Boolean).join(" · ")}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <PartCell Icon={HideIcon} status={parts.leather ? "in" : "awaiting"} />
+                        <PartCell Icon={Layers} status={!parts.liningNeeded ? "na" : parts.lining ? "in" : "awaiting"} />
+                        <PartCell Icon={ButtonIcon} status={parts.accessories ? "in" : "awaiting"} />
+                        <td className="px-4 py-4 align-middle max-w-[240px]">
+                          <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md border ${STATE_BADGE[parts.state] || STATE_BADGE.waiting}`}>
+                            {stateLabel}
+                          </span>
+                          {piece.next_action && !parts.sent && (
+                            <p className="text-[11px] font-medium text-slate-500 mt-1 line-clamp-2">{piece.next_action}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 align-middle text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleBatchSendPieces([piece.id])}
+                            disabled={batchSending || parts.sent}
+                            className="h-10 px-4 rounded-xl border bg-[#faf6f0] text-[#5a3518] font-bold text-xs inline-flex items-center gap-2 hover:bg-[#f4ece3] hover:border-[#c8834a]/50 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            style={{ borderColor: "rgba(200,131,74,0.3)" }}
+                          >
+                            {parts.sent ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                            {parts.sent ? "Sent" : "Send"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredStorePieces.length > storeVisibleCount && (
+              <div ref={lastPieceElementRef} className="flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setStoreVisibleCount((v) => v + 50)}
+                  className="px-6 py-2.5 bg-[#f4ece3] hover:bg-[#e8decb] text-[#8a5a2e] font-bold text-xs rounded-xl transition-colors cursor-pointer"
+                >
+                  Load More ({filteredStorePieces.length - storeVisibleCount} remaining)
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>

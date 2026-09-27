@@ -115,6 +115,13 @@ export const materialApiSlice = apiSlice.injectEndpoints({
             providesTags: (result, error, id) => [{ type: 'MaterialLot', id }],
         }),
 
+        // GET /api/v1/procurement/suppliers — lots only carry supplier_id, so names are looked up here
+        getSuppliers: builder.query({
+            query: () => '/api/v1/procurement/suppliers',
+            transformResponse: (res) => (Array.isArray(res) ? res : res?.suppliers || res?.items || []),
+            keepUnusedDataFor: 600,
+        }),
+
         // GET /api/v1/materials/leather-by-style
         getLeatherByStyle: builder.query({
             query: (params = {}) => `/api/v1/materials/leather-by-style?${new URLSearchParams(params).toString()}`,
@@ -221,6 +228,7 @@ export const {
     usePatchSupplierOrderMutation,
     usePatchSupplierOrderSpecMutation,
     useGetMaterialLotHistoryQuery,
+    useGetSuppliersQuery,
     useGetLeatherByStyleQuery,
     useGetPieceConsumptionQuery,
     useLazyGetPieceConsumptionQuery,

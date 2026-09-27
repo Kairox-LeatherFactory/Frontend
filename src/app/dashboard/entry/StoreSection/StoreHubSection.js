@@ -11,13 +11,14 @@ import {
 } from "@/store/slices/apiSlice";
 
 import StoreHubForm from "./StoreHubForm";
+import { matchesStoreTab, getStoreParts } from "./storeParts";
+import { MOCK_STORE_ENABLED, MOCK_STORE_PIECES } from "./mockStorePieces";
 import { useSelector, useDispatch } from 'react-redux';
-import { 
-  setStorePieceInput as reduxSetStorePieceInput, 
-  setStoreCurrentScan as reduxSetStoreCurrentScan, 
-  setStoreFilters, 
-  setExpandedPiece as reduxSetExpandedPiece, 
-  setPieceLookupInput as reduxSetPieceLookupInput, 
+import {
+  setStorePieceInput as reduxSetStorePieceInput,
+  setStoreCurrentScan as reduxSetStoreCurrentScan,
+  setStoreFilters,
+  setPieceLookupInput as reduxSetPieceLookupInput,
 } from '@/store/slices/storeHubSlice';
 
 export default function StoreHubSection({
@@ -51,6 +52,12 @@ export default function StoreHubSection({
   const [selectedPieces, setSelectedPieces] = useState(new Set());
   const [batchSending, setBatchSending] = useState(false);
   const [storeTotal, setStoreTotal] = useState(0);
+  // Response of the most recent piece scan, shown beside the scanner
+  const [lastScan, setLastScan] = useState(null);
+
+  // Dev-only preview: sample garments instead of the live list (never on in a production build)
+  const [useMock, setUseMock] = useState(MOCK_STORE_ENABLED);
+  const [mockPieces, setMockPieces] = useState(MOCK_STORE_PIECES);
 
   const dispatch = useDispatch();
   const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
@@ -62,12 +69,10 @@ export default function StoreHubSection({
   const storeCurrentScan = useSelector(state => state.storeHub.storeCurrentScan);
   const storeFilterType = useSelector(state => state.storeHub.storeFilterType);
   const storePieceSearch = useSelector(state => state.storeHub.storeDrawerSearch); // Reusing Redux field
-  const expandedPiece = useSelector(state => state.storeHub.expandedDrawer); // Reusing Redux field
   const pieceLookupInput = useSelector(state => state.storeHub.pieceLookupInput);
 
   const setStorePieceInput = (val) => dispatch(reduxSetStorePieceInput(val));
   const setStoreCurrentScan = (val) => dispatch(reduxSetStoreCurrentScan(val));
-  const setExpandedPiece = (val) => dispatch(reduxSetExpandedPiece(val));
   const setPieceLookupInput = (val) => dispatch(reduxSetPieceLookupInput(val));
   const setStoreFilterType = (val) => dispatch(setStoreFilters({ type: val }));
   const setStorePieceSearch = (val) => dispatch(setStoreFilters({ search: val }));
@@ -122,7 +127,23 @@ export default function StoreHubSection({
          setStoreApiLoading(false);
          return;
       }
-      
+
+      if (useMock) {
+        const match = mockPieces.find((p) => (p.code || "").toLowerCase() === pieceVal.toLowerCase());
+        if (!match) {
+          setStoreReceiveStatus("pending");
+          setErrorMsg(`'${pieceVal}' is not in the mock data (try ${mockPieces[0]?.code}).`);
+        } else {
+          setLastScan({ ...match, piece_code: match.code });
+          setStoreReceiveStatus("received");
+          setSuccessMsg(`Mock scan: ${match.code} (${match.holding})`);
+          setStorePieceInput("");
+          setStoreCurrentScan("");
+          setTimeout(() => storeInputRef.current?.focus(), 150);
+        }
+        return;
+      }
+
       const payload = {};
       if (barcodeWorker) {
         if (barcodeWorker.employee_barcode || barcodeWorker.barcode) {
@@ -140,6 +161,7 @@ export default function StoreHubSection({
       }
 
       const res = await storeScan(payload).unwrap();
+      setLastScan(res);
       setStoreReceiveStatus("received");
       setSuccessMsg(`Piece scan logged successfully! (${res.state || "OK"})`);
 
@@ -185,6 +207,20 @@ export default function StoreHubSection({
   const handleBatchSendPieces = async (explicitPieceIds) => {
     const sourceIds = explicitPieceIds || Array.from(selectedPieces);
     if (sourceIds.length === 0) return;
+
+    if (useMock) {
+      // Mirror the real partial accept: only complete garments leave the store
+      const ready = new Set(
+        mockPieces.filter((p) => sourceIds.includes(p.id) && getStoreParts(p).complete && !getStoreParts(p).sent).map((p) => p.id)
+      );
+      setMockPieces((prev) => prev.map((p) => (ready.has(p.id) ? { ...p, store_state: "sended", sent: true, next_action: null } : p)));
+      const notReady = sourceIds.length - ready.size;
+      if (ready.size > 0) setSuccessMsg(`Mock: sent ${ready.size} piece(s)${notReady ? ` · ${notReady} not ready` : ""}.`);
+      else setErrorMsg(`Mock: ${notReady} piece(s) not ready to send.`);
+      setSelectedPieces(new Set());
+      return;
+    }
+
     setBatchSending(true);
     try {
       await storeSend({ piece_ids: sourceIds }).unwrap();
@@ -205,8 +241,19 @@ export default function StoreHubSection({
     setStorePieceSearch(val);
   };
 
-  const filteredStorePieces = storePieces.filter((p) => {
-    if (storeFilterType !== "All" && p.store_state !== storeFilterType.toUpperCase()) {
+  const shownPieces = useMock ? mockPieces : storePieces;
+  const shownTotal = useMock ? mockPieces.length : storeTotal;
+
+  // Switching data source clears anything tied to the other one
+  const toggleMock = () => {
+    setUseMock((v) => !v);
+    setSelectedPieces(new Set());
+    setLastScan(null);
+  };
+
+  const filteredStorePieces = shownPieces.filter((p) => {
+    // Store / Leather / Lining / Accessories / Complete Sets tabs
+    if (!matchesStoreTab(p, storeFilterType)) {
       return false;
     }
     if (storePieceSearch) {
@@ -241,18 +288,20 @@ export default function StoreHubSection({
       setStoreCurrentScan={setStoreCurrentScan}
       
       storeApiLoading={storeApiLoading}
-      storePieces={storePieces}
+      storePieces={shownPieces}
       filteredStorePieces={filteredStorePieces}
-      storeTotal={storeTotal}
+      storeTotal={shownTotal}
+      lastScan={lastScan}
+
+      mockAvailable={MOCK_STORE_ENABLED}
+      useMock={useMock}
+      toggleMock={toggleMock}
       
       storeFilterType={storeFilterType}
       setStoreFilterType={setStoreFilterType}
       storePieceSearch={storePieceSearch}
       setStorePieceSearch={setStorePieceSearch}
-      
-      expandedPiece={expandedPiece}
-      setExpandedPiece={setExpandedPiece}
-      
+
       pieceLookupInput={pieceLookupInput}
       setPieceLookupInput={setPieceLookupInput}
       handleFindPiece={handleFindPiece}
@@ -267,8 +316,8 @@ export default function StoreHubSection({
       setStoreVisibleCount={setStoreVisibleCount}
       lastPieceElementRef={lastPieceElementRef}
       
-      fetchLivePieces={fetchLivePieces}
-      storeLoading={storeLoading}
+      fetchLivePieces={useMock ? () => setMockPieces(MOCK_STORE_PIECES) : fetchLivePieces}
+      storeLoading={useMock ? false : storeLoading}
       storeInputRef={storeInputRef}
       
       handleStoreVerify={handleStoreVerify}

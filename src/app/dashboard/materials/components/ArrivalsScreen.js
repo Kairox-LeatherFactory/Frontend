@@ -252,10 +252,10 @@ export function ArrivalsScreen({ showToast }) {
                       {arrival.total_qty || arrival.declared_qty || arrival.qty || 0} {arrival.category === 'LEATHER' || !arrival.category ? 'DCM' : ''}
                     </span>
                   </div>
-                  {arrival.sheet_count !== undefined && (
+                  {(arrival.declared_sheet_count ?? arrival.sheet_count) != null && (
                     <div className="mt-1">
                       <span className="text-[10px] font-bold text-slate-400 uppercase block">Sheets</span>
-                      <span className="font-black text-slate-700">{arrival.sheet_count} Sheets</span>
+                      <span className="font-black text-slate-700">{arrival.declared_sheet_count ?? arrival.sheet_count} Sheets</span>
                     </div>
                   )}
                   {arrival.thickness && (
@@ -314,12 +314,24 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         dcm: Number(s.dcm) || 0,
         barcode: s.code || s.barcode,
         note: s.note || null,
+        status: s.status || null,
         saved: true,
       }));
     return [...saved, ...localSheets].map((s, idx) => ({ ...s, sheetNo: idx + 1 }));
   }, [savedSheetsRaw, localSheets, arrival.arrived_at]);
+  // The sheets added on this arrival (approved sheets): IN_STOCK saved sheets plus unsaved local ones —
+  // ALLOCATED / CONSUMED are hidden. Numbered from 1 within this list.
+  const listedSheets = useMemo(
+    () => sheets
+      .filter((s) => !s.saved || s.status === 'IN_STOCK')
+      .map((s, idx) => ({ ...s, sheetNo: idx + 1 })),
+    [sheets]
+  );
   const [currentSheetDcm, setCurrentSheetDcm] = useState('');
-  const [totalSheetsCount, setTotalSheetsCount] = useState(arrival.sheet_count || '');
+  // Total Sheets is fixed at the count entered in Add Stock — adding sheets never changes it
+  // The arrival response carries it as declared_sheet_count
+  const [totalSheetsCount, setTotalSheetsCount] = useState(arrival.declared_sheet_count || arrival.sheet_count || '');
+  const declaredSheetCount = parseInt(totalSheetsCount, 10) || 0;
   // Total DCM declared on the arrival — approved + rejected must add up to this
   const declaredTotal = Number(arrival.declared_qty || arrival.total_qty) || 0;
   const [approvedQty, setApprovedQty] = useState(
@@ -353,9 +365,10 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
   const [thickness, setThickness] = useState(arrival.thickness || '0.6MM');
   const [note, setNote] = useState(arrival.note || '');
 
+  // In-stock sheets only — drives Sheets DCM, the remaining/over badge, progress and the complete check
   const totalSheetsDcm = useMemo(() => {
-    return sheets.reduce((sum, s) => sum + (Number(s.dcm) || 0), 0);
-  }, [sheets]);
+    return listedSheets.reduce((sum, s) => sum + (Number(s.dcm) || 0), 0);
+  }, [listedSheets]);
 
   // Sheets are verified against the approved qty once entered, otherwise the declared total
   const approvedNum = Number(approvedQty) || 0;
@@ -384,7 +397,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
       return;
     }
 
-    const nextIndex = sheets.length + 1;
+    const nextIndex = listedSheets.length + 1;
     const newSheet = {
       id: `sheet-${Date.now()}-${nextIndex}`,
       sheetNo: nextIndex,
@@ -492,9 +505,8 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
     }
 
     try {
-      const computedSheetCount = sheets.length > 0
-        ? sheets.length
-        : (totalSheetsCount ? parseInt(totalSheetsCount, 10) : 0);
+      // Keep the Total Sheets entered in Add Stock; fall back to the sheets added here if none was entered
+      const computedSheetCount = declaredSheetCount || listedSheets.length;
 
       const payload = {
         receiptId,
@@ -691,7 +703,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         {!isAlreadyCompleted && (
           <form onSubmit={handleAddSheet} className="flex flex-wrap items-center gap-2.5">
             <span className="text-xs font-black text-slate-700 min-w-[100px] shrink-0">
-              Sheet {sheets.length + 1} &nbsp;|&nbsp; DCM
+              Sheet {listedSheets.length + 1} &nbsp;|&nbsp; DCM
             </span>
             <div className="flex-1 min-w-[200px]">
               <input
@@ -717,12 +729,12 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         {/* Grid: Left = Sheet list | Right = Clean Summary Box */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start pt-2">
           <div className="md:col-span-7 bg-white rounded-2xl border p-3 shadow-xs space-y-2 max-h-[240px] overflow-y-auto" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
-            {sheets.length === 0 ? (
+            {listedSheets.length === 0 ? (
               <div className="py-7 text-center text-xs font-bold text-slate-400">
                 No sheets entered yet. Enter DCM above and click <span className="text-amber-800 font-black">+ Add</span>.
               </div>
             ) : (
-              sheets.map((sheet) => (
+              listedSheets.map((sheet) => (
                 <div
                   key={sheet.id || sheet.barcode}
                   className="flex items-center justify-between px-3 py-2.5 rounded-xl border bg-slate-50/50 hover:bg-amber-50/40 transition-all text-xs"
@@ -808,7 +820,14 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">TOTAL SHEETS</span>
-                <span className="text-xl font-black text-slate-800">{sheets.length}</span>
+                <span className="text-xl font-black text-slate-800">{declaredSheetCount || '—'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase tracking-wider text-emerald-700">APPROVED SHEETS</span>
+                <span className={`text-sm font-black ${declaredSheetCount && listedSheets.length > declaredSheetCount ? 'text-red-600' : 'text-emerald-700'}`}>
+                  {listedSheets.length}
+                  {declaredSheetCount > 0 && <span className="text-[10px] text-slate-400"> / {declaredSheetCount}</span>}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-black uppercase tracking-wider text-slate-500">TOTAL DCM</span>
@@ -862,7 +881,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         <div className="pt-2">
           <div className="flex items-center justify-between text-xs font-black mb-1.5">
             <span className={isMatching ? 'text-emerald-700 flex items-center gap-1' : 'text-slate-600'}>
-              {`${sheets.length} sheets entered (${totalSheetsDcm} / ${targetDcm || 0} DCM)`}
+              {`${listedSheets.length} in-stock sheets (${totalSheetsDcm} / ${targetDcm || 0} DCM)`}
             </span>
             <span className="font-bold text-slate-500 text-[11px]">{progressPercent}%</span>
           </div>

@@ -99,7 +99,9 @@ export async function apiGetEmployees(token) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to fetch employees (${res.status})`);
-  return res.json();
+  // Backend wraps the list as { items: [...] } — always hand back a plain array
+  const data = await res.json();
+  return Array.isArray(data) ? data : data?.items || [];
 }
 
 /**

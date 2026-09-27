@@ -1,32 +1,38 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Lock, Pencil, Loader2, ArrowUpRight, ArrowDownRight, PackagePlus, Trash2 } from 'lucide-react';
-import { usePatchMaterialLotMutation, useAdjustMaterialLotMutation, useRetireMaterialLotMutation, useGetMaterialLotHistoryQuery }
+import { X, Lock, Pencil, Loader2, PackagePlus, Trash2 } from 'lucide-react';
+import { usePatchMaterialLotMutation, useRetireMaterialLotMutation, useGetMaterialLotHistoryQuery, useGetSuppliersQuery }
  from '@/store/slices/materialApiSlice';
 import { errMsg, Tile } from './shared';
 export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjust, onReceive }) {
    const [patchMaterialLot] = usePatchMaterialLotMutation();
-  const [adjustMaterialLot] = useAdjustMaterialLotMutation();
   const [retireMaterialLot] = useRetireMaterialLotMutation();
-  
+
   const { data: historyRes, isLoading: historyLoading } = useGetMaterialLotHistoryQuery(lot?.lot_id, { skip: !lot?.lot_id });
+
   const historyEvents = Array.isArray(historyRes)
     ? historyRes
     : (historyRes?.events || historyRes?.history || historyRes?.items || []);
 
     const [editing, setEditing] = useState(false);
+
+  // Show the supplier by name — the lot itself only carries supplier_id (the edit form picks by name too)
+  const { data: suppliers = [] } = useGetSuppliersQuery(undefined, {
+    skip: !(editing || (lot?.supplier_id && !lot?.supplier_name)),
+  });
+  const supplierIdOf = (s) => s.id || s.supplier_id;
+  const supplierName = lot.supplier_name
+    || suppliers.find((s) => supplierIdOf(s) === lot.supplier_id)?.name
+    || null;
   const [form, setForm] = useState({});
   const [saving, setSaving] = useState(false);
-  const [adjusting, setAdjusting] = useState(false);
-  const [delta, setDelta] = useState('');
-  const [reason, setReason] = useState('');
   const [confirmRetire, setConfirmRetire] = useState(false);
   const [retiring, setRetiring] = useState(false);
 
   useEffect(() => {
     setForm(Object.fromEntries((lot.editable_fields || []).map((f) => [f, lot[f] ?? ''])));
-    setEditing(false); setAdjusting(false); setDelta(''); setReason(''); setConfirmRetire(false);
+    setEditing(false); setConfirmRetire(false);
   }, [lot.lot_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
@@ -38,18 +44,6 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
       setEditing(false);
       onChanged();
     } catch (e) { showToast(errMsg(e), 'error'); } finally { setSaving(false); }
-  };
-
-  const handleAdjust = async (sign) => {
-    const n = Number(delta);
-    if (!n) { showToast('Enter a non-zero amount.', 'error'); return; }
-    setAdjusting(true);
-    try {
-     await adjustMaterialLot({ lotId: lot.lot_id, delta: sign * Math.abs(n), reason }).unwrap();
-      showToast('Stock adjusted.', 'success');
-      setDelta(''); setReason('');
-      onChanged();
-    } catch (e) { showToast(errMsg(e), 'error'); } finally { setAdjusting(false); }
   };
 
   const handleRetire = async () => {
@@ -106,8 +100,21 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
                 <>
                   {(lot.editable_fields || []).map((f) => (
                     <div key={f} className="flex items-center gap-2">
-                      <span className="text-[10px] font-bold text-slate-400 w-24 shrink-0 capitalize">{f.replace('_', ' ')}</span>
-                      <input value={form[f] ?? ''} onChange={(e) => setForm((p) => ({ ...p, [f]: e.target.value }))} className="flex-1 h-8 px-2 border rounded-lg text-xs font-bold bg-white" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+                      <span className="text-[10px] font-bold text-slate-400 w-24 shrink-0 capitalize">{f === 'supplier_id' ? 'Supplier' : f.replace('_', ' ')}</span>
+                      {f === 'supplier_id' && suppliers.length > 0 ? (
+                        // Pick the supplier by name; the id is what gets saved
+                        <select value={form[f] ?? ''} onChange={(e) => setForm((p) => ({ ...p, [f]: e.target.value }))} className="flex-1 h-8 px-2 border rounded-lg text-xs font-bold bg-white" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+                          <option value="">— No supplier —</option>
+                          {form[f] && !suppliers.some((s) => supplierIdOf(s) === form[f]) && (
+                            <option value={form[f]}>{supplierName || 'Current supplier'}</option>
+                          )}
+                          {suppliers.map((s) => (
+                            <option key={supplierIdOf(s)} value={supplierIdOf(s)}>{s.name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input value={form[f] ?? ''} onChange={(e) => setForm((p) => ({ ...p, [f]: e.target.value }))} className="flex-1 h-8 px-2 border rounded-lg text-xs font-bold bg-white" style={{ borderColor: 'rgba(200,131,74,0.2)' }} />
+                      )}
                     </div>
                   ))}
                   <div className="flex gap-2 pt-1">
@@ -116,23 +123,8 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
                   </div>
                 </>
               ) : (
-                <div className="text-xs font-bold text-slate-600">Supplier: {lot.supplier_name || lot.supplier_id || '—'}{lot.supplier_name && lot.supplier_id ? ` (${lot.supplier_id})` : ''}</div>
+                <div className="text-xs font-bold text-slate-600">Supplier: {supplierName || '—'}</div>
               )}
-            </div>
-          )}
-
-          {lot.is_active && canAdjust && (
-            <div className="p-3.5 rounded-2xl bg-amber-50/60 border border-amber-200/80 space-y-2.5">
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 block">Stock Correction (+ / − Movement)</span>
-                <p className="text-[10px] text-slate-500 font-medium">Record a manual addition or removal with a required reason.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <input type="number" step="any" placeholder="Amount" value={delta} onChange={(e) => setDelta(e.target.value)} className="w-28 h-8 px-2.5 border rounded-lg text-xs font-bold bg-white" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
-                <button onClick={() => handleAdjust(1)} disabled={adjusting || !delta || !reason.trim()} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 flex items-center gap-1"><ArrowUpRight className="w-3.5 h-3.5" /> + Add</button>
-                <button onClick={() => handleAdjust(-1)} disabled={adjusting || !delta || !reason.trim()} className="h-8 px-3 rounded-lg font-black text-[10px] uppercase text-white bg-red-600 hover:bg-red-700 disabled:opacity-40 flex items-center gap-1"><ArrowDownRight className="w-3.5 h-3.5" /> − Remove</button>
-              </div>
-              <input placeholder="Reason (required: count error, damaged hide, etc.)…" value={reason} onChange={(e) => setReason(e.target.value)} className="w-full h-8 px-2.5 border rounded-lg text-xs font-bold bg-white" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
             </div>
           )}
 

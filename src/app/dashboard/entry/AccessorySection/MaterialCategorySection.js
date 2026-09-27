@@ -171,7 +171,7 @@ export default function MaterialCategorySection({
               {!minimalFields && (
                 <>
                   <input value={form.article} onChange={(e) => { setForm((f) => ({ ...f, article: e.target.value })); setSelectedLotId('__custom__'); }} placeholder={category === 'LEATHER' ? 'Article (e.g. SUEDE-A32)' : 'Article'} className="h-8 px-2 border rounded-lg font-bold text-xs flex-1 min-w-[8rem]" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
-                  <input value={form.colour} onChange={(e) => setForm((f) => ({ ...f, colour: e.target.value }))} placeholder="Colour" className="h-8 px-2 border rounded-lg font-bold text-xs w-24" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
+                  <input value={form.colour} onChange={(e) => setForm((f) => ({ ...f, colour: e.target.value.toUpperCase() }))} placeholder="Colour" className="h-8 px-2 border rounded-lg font-bold text-xs w-24" style={{ borderColor: 'rgba(200,131,74,0.3)' }} />
                 </>
               )}
               {showThickness ? (
@@ -202,7 +202,8 @@ export default function MaterialCategorySection({
             <input
               type="text"
               value={colourInput}
-              onChange={(e) => setColourInput(e.target.value)}
+              // Colours are stored in capitals — uppercase as the user types
+              onChange={(e) => setColourInput(e.target.value.toUpperCase())}
               placeholder="Enter Colour (e.g. BLACK, PINE GREEN)"
               className="h-8 px-3 border rounded-lg font-bold text-xs bg-white text-slate-800 flex-1 min-w-[12rem] focus:outline-none focus:ring-2 focus:ring-amber-500/20"
               style={{ borderColor: 'rgba(200,131,74,0.3)' }}

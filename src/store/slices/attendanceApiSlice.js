@@ -37,6 +37,8 @@ apiSlice.injectEndpoints({
 // 5. Get All Employees (For Floor Command)
     getEmployees: builder.query({
       query: () => '/api/v1/employees',
+      // Backend wraps the list as { items: [...] } — always hand back a plain array
+      transformResponse: (res) => (Array.isArray(res) ? res : res?.items || []),
       providesTags: ['Employee']
     }),
     // 6. Get Today's Overall Attendance (For Floor Command & HR)

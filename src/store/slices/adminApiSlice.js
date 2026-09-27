@@ -12,10 +12,8 @@ export const adminApiSlice = apiSlice.injectEndpoints({
     }),
     getEmployees: builder.query({
       query: () => '/api/v1/employees',
-      transformResponse: (res) => {
-        if (Array.isArray(res)) return res;
-        return res?.items || res?.employees || res?.data || [];
-      },
+      // Backend wraps the list as { items: [...] } — always hand back a plain array
+      transformResponse: (res) => (Array.isArray(res) ? res : res?.items || []),
       providesTags: ['Employees'],
     }),
     getEmployee: builder.query({
