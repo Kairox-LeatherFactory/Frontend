@@ -12,12 +12,17 @@ import {
 
 import {
   Loader2, Warehouse, Package, Activity,
-  AlertTriangle, User, Calendar, Boxes, Layers,
+  AlertTriangle, User, Calendar, Boxes, Layers, Trash2,
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
+import DeleteStageEventModal, { STAGE_DELETE_ROLES, isDeletableStage, stageEventId } from '@/components/DeleteStageEventModal';
+import { useAuth } from '@/context/AuthContext';
 import { SearchCombobox, StageBadge } from './shared';
 
 export default function StyleStageProgress() {
+  const { user } = useAuth();
+  const canDeleteStages = STAGE_DELETE_ROLES.includes(user);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
 
   // ── Level 1: Orders ──
@@ -107,6 +112,15 @@ export default function StyleStageProgress() {
       .catch(() => setPieceDetail(null));
   }, [selectedPieceCode]);
 
+
+  // A deleted stage changes the piece's history and the style/order counts —
+  // re-pull all three levels that are on screen.
+  const refreshAfterStageDelete = () => {
+    setDeleteTarget(null);
+    if (selectedPieceCode) triggerGetPieceDetail(selectedPieceCode).unwrap().then(setPieceDetail).catch(() => {});
+    if (selectedStyleId) triggerGetStyleDetail(selectedStyleId).unwrap().then(setStyleDetail).catch(() => {});
+    if (selectedOrderId) triggerGetOrderDetail(selectedOrderId).unwrap().then(setOrderDetail).catch(() => {});
+  };
 
   const selectedOrder = orderOptions.find((o) => o.order_id === selectedOrderId);
   const selectedStyle = styleOptions.find((s) => s.style_id === selectedStyleId);
@@ -388,9 +402,33 @@ export default function StyleStageProgress() {
                             </div>
                           )}
                         </div>
-                        <div className="text-right text-slate-400 shrink-0 flex items-center gap-1.5">
-                          <Calendar className="w-3 h-3" />
-                          <span className="text-xs font-bold">{h.work_date || '—'}</span>
+                        <div className="shrink-0 flex items-center gap-3">
+                          <div className="text-right text-slate-400 flex items-center gap-1.5">
+                            <Calendar className="w-3 h-3" />
+                            <span className="text-xs font-bold">{h.work_date || '—'}</span>
+                          </div>
+                          {canDeleteStages && isDeletableStage(h) && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const opt = pieceOptions.find((p) => p.piece_code === selectedPieceCode);
+                                setDeleteTarget({
+                                  eventId: stageEventId(h),
+                                  stageCode: h.stage,
+                                  stageLabel: h.label || h.stage,
+                                  employee: h.employee || h.employee_name,
+                                  workDate: h.work_date,
+                                  pieceCode: pieceDetail.piece_code || selectedPieceCode,
+                                  pieceId: pieceDetail.piece_id || opt?.piece_id,
+                                  skuId: pieceDetail.sku_id || opt?.sku_id,
+                                });
+                              }}
+                              title="Delete this stage entry"
+                              className="p-1.5 rounded-md text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     ))
@@ -406,6 +444,11 @@ export default function StyleStageProgress() {
         </SpotlightCard>
       )}
 
+      <DeleteStageEventModal
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={refreshAfterStageDelete}
+      />
     </div>
   );
 }

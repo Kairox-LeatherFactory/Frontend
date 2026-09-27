@@ -1,5 +1,6 @@
 'use client';
-import { Activity, Loader2 } from 'lucide-react';
+import { Activity, Loader2, Trash2 } from 'lucide-react';
+import { isDeletableStage, stageEventId } from '@/components/DeleteStageEventModal';
 import { formatLoggedTime } from '../../_lib/helpers';
 
 /**
@@ -16,6 +17,8 @@ import { formatLoggedTime } from '../../_lib/helpers';
  * @param {Object|null} props.pieceDetail - Complete piece traveler payload from the API.
  * @param {Array<Object>} props.sortedStages - Chronologically sorted production stage records.
  * @param {Function} props.onClose - Callback to dismiss the piece traveler view: `() => void`.
+ * @param {boolean} props.canDeleteStages - Whether the viewer may delete stage entries (DM · MD).
+ * @param {Function} props.onDeleteStage - Opens the delete dialog: `(target) => void`.
  * @returns {JSX.Element} Level 3 piece traveler journey card.
  */
 export default function PieceTravelerCard({
@@ -24,6 +27,8 @@ export default function PieceTravelerCard({
   pieceDetail,
   sortedStages,
   onClose,
+  canDeleteStages,
+  onDeleteStage,
 }) {
   if (!selectedPieceCode) return null;
 
@@ -125,11 +130,32 @@ export default function PieceTravelerCard({
                       By {st.employee_name || st.worker_name || 'N/A'}
                     </div>
                   </div>
-                  <div className="text-right text-slate-400 shrink-0">
-                    <div className="font-bold text-sm">{st.work_date || st.date}</div>
-                    <div className="text-xs mt-0.5">
-                      {formatLoggedTime(st.logged_at, st.time)}
+                  <div className="shrink-0 flex items-center gap-3">
+                    <div className="text-right text-slate-400">
+                      <div className="font-bold text-sm">{st.work_date || st.date}</div>
+                      <div className="text-xs mt-0.5">
+                        {formatLoggedTime(st.logged_at, st.time)}
+                      </div>
                     </div>
+                    {canDeleteStages && onDeleteStage && isDeletableStage(st) && (
+                      <button
+                        type="button"
+                        onClick={() => onDeleteStage({
+                          eventId: stageEventId(st),
+                          stageCode: st.stage_code || st.stage,
+                          stageLabel: st.label || st.stage_label || st.stage_name || st.stage || st.stage_code,
+                          employee: st.employee_name || st.worker_name,
+                          workDate: st.work_date || st.date,
+                          pieceCode: pieceDetail.piece_code || pieceDetail.bundle_id || selectedPieceCode,
+                          pieceId: pieceDetail.piece_id,
+                          skuId: pieceDetail.sku_id,
+                        })}
+                        title="Delete this stage entry"
+                        className="p-1.5 rounded-md text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

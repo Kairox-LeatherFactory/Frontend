@@ -13,7 +13,6 @@ import {
 import {
   useLazyBarcodeResolveQuery,
   useLazyGetBarcodeOrdersQuery,
-  useDeleteProductionEventMutation
 } from "@/store/slices/apiSlice";
 import { useGetEmployeesQuery, useLazyGetEmployeesQuery } from '@/store/slices/adminApiSlice';
 import {
@@ -94,8 +93,6 @@ export default function ProductionLogEntry() {
   const dispatch = useDispatch();
   const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
   const [triggerGetBarcodeOrders] = useLazyGetBarcodeOrdersQuery();
-  const [deleteProductionEvent] = useDeleteProductionEventMutation();
-  const [testDeleteId, setTestDeleteId] = useState('');
 
   const date = useSelector(state => state.entry.date);
   const activeDoor = useSelector(state => state.entry.activeDoor);
@@ -323,32 +320,6 @@ export default function ProductionLogEntry() {
 
   return (
     <div className="w-full min-w-0 space-y-8 animate-fade-in pb-12">
-      {/* TEMP TEST DELETE API */}
-      <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-4">
-        <span className="font-bold text-rose-800 text-sm">Test Delete API (§0.10):</span>
-        <input
-          type="text"
-          placeholder="Enter event ID (e.g. evt_123)"
-          className="border border-rose-300 rounded-md px-3 py-1 text-sm outline-none w-64"
-          value={testDeleteId}
-          onChange={(e) => setTestDeleteId(e.target.value)}
-        />
-        <button
-          onClick={async () => {
-            if (!testDeleteId) return;
-            try {
-              await deleteProductionEvent(testDeleteId).unwrap();
-              alert("✅ Delete success! Event ID: " + testDeleteId);
-            } catch (err) {
-              alert("❌ Delete failed: " + (err.data?.detail || err.message || "Error"));
-            }
-          }}
-          className="bg-rose-600 text-white px-4 py-1.5 rounded-md text-sm font-bold hover:bg-rose-700"
-        >
-          Fire DELETE
-        </button>
-      </div>
-
       {/* TITLE SECTION */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>

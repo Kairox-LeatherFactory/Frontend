@@ -154,9 +154,26 @@ export const apiSlice = createApi({
       }),
       invalidatesTags: (result, error, { id }) => [{ type: 'Production', id }]
     }),
+    // GET /production/events — the raw event feed; each row carries its id.
+    // Stage-history reads don't expose event ids, so deletes look them up here.
+    getProductionEvents: builder.query({
+      query: (params = {}) => {
+        const qs = new URLSearchParams();
+        for (const key of ['sku_id', 'employee_id', 'start', 'end']) {
+          if (params[key]) qs.append(key, params[key]);
+        }
+        return `/api/v1/production/events?${qs.toString()}`;
+      },
+      transformResponse: (res) => (Array.isArray(res) ? res : res?.items || [])
+    }),
+    // DM · MD only. reason is required — the API 422s without it. 409 when the
+    // event sits inside a CLOSED payroll run (fix via a payroll adjustment).
     deleteProductionEvent: builder.mutation({
-      query: (id) => ({ url: `/api/v1/production/events/${id}`, method: 'DELETE' }),
-      invalidatesTags: (result, error, id) => [{ type: 'Production', id }]
+      query: ({ id, reason }) => ({
+        url: `/api/v1/production/events/${encodeURIComponent(id)}?reason=${encodeURIComponent(reason)}`,
+        method: 'DELETE'
+      }),
+      invalidatesTags: (result, error, { id }) => [{ type: 'Production', id }]
     }),
 
 
@@ -432,6 +449,7 @@ export const {
   useReopenCuttingRowMutation,
   useReassignProductionEventMutation,
   useDeleteProductionEventMutation,
+  useLazyGetProductionEventsQuery,
   useStoreScanMutation,
   useStoreSendMutation,
   useListStorePiecesQuery,

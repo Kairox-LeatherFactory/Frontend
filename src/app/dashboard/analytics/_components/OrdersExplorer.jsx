@@ -9,6 +9,7 @@ import {
   apiGetStyleDetail,
   apiGetPieceDetail,
 } from '@/lib/api';
+import DeleteStageEventModal, { STAGE_DELETE_ROLES } from '@/components/DeleteStageEventModal';
 import { glassPanelStyle } from '../_lib/constants';
 import OrdersSidebar from './sidebar/OrdersSidebar';
 import HierarchyViewer from './HierarchyViewer';
@@ -27,7 +28,9 @@ import HierarchyViewer from './HierarchyViewer';
  * @returns {JSX.Element} Full orders explorer interface.
  */
 export default function OrdersExplorer() {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
+  const canDeleteStages = STAGE_DELETE_ROLES.includes(user);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const [exploreData, setExploreData] = useState(null);
   const [loadingExplore, setLoadingExplore] = useState(true);
@@ -237,6 +240,24 @@ export default function OrdersExplorer() {
   };
 
   /**
+   * After a stage entry is deleted: re-pull the piece traveler and the style's
+   * piece list, since both show that stage.
+   */
+  const refreshAfterStageDelete = () => {
+    setDeleteTarget(null);
+    if (selectedPieceCode) handleSelectPiece(selectedPieceCode);
+    const style = activeItem?.type === 'style' ? activeItem.data : activeItem?.parentStyle;
+    const styleId = style?.style_id || style?.id;
+    if (styleId) {
+      apiGetStyleDetail(token, styleId)
+        .then((detailData) => {
+          if (detailData) setStyleDetails((prev) => ({ ...prev, [styleId]: detailData }));
+        })
+        .catch(console.error);
+    }
+  };
+
+  /**
    * Selection handler when clicking a piece link in the left sidebar tree.
    */
   const handleSelectPieceItem = (piece, style, group) => {
@@ -398,9 +419,17 @@ export default function OrdersExplorer() {
             loadingStyleDetail={loadingStyleDetail}
             loadingTree={loadingTree}
             loadingPiece={loadingPiece}
+            canDeleteStages={canDeleteStages}
+            onDeleteStage={setDeleteTarget}
           />
         </div>
       </div>
+
+      <DeleteStageEventModal
+        target={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onDeleted={refreshAfterStageDelete}
+      />
     </div>
   );
 }

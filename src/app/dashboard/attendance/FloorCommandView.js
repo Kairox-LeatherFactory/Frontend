@@ -3,7 +3,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Users, Search, CheckSquare, Square, X,
-  UserPlus, Loader2, Barcode, QrCode, Check, Camera,
+  Loader2, Barcode, QrCode, Check, Camera,
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
@@ -11,25 +11,19 @@ import { motion } from 'framer-motion';
 import { CameraScanner,normalizeRosterArray, Badge, AlertBanner } from './shared';
 import { 
   useGetAttendanceTodayQuery, 
-  useScanCheckInMutation, 
-  useAddEmployeeMutation, 
+  useScanCheckInMutation,
   useProxyCheckInMutation, 
   useProxyCheckOutMutation
 } from 
 '@/store/slices/attendanceApiSlice';
 
-export default function FloorCommandView({ workers = [], onWorkerAdded, isSecurity }) {
+export default function FloorCommandView({ workers = [], isSecurity }) {
  const [search, setSearch] = useState('');
  const [selected, setSelected] = useState(new Set());
  const scanLockRef = useRef(false);
  const [actionLoading, setActionLoading] = useState(false);
  const [alert, setAlert] = useState(null);
  const [diffModal, setDiffModal] = useState(null);
-
- const [addModal, setAddModal] = useState(false);
- const [addForm, setAddForm] = useState({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '', password: '' });
- const [addLoading, setAddLoading] = useState(false);
- const [isOther, setIsOther] = useState(false);
 
  const [showCamera, setShowCamera] = useState(false);
 
@@ -46,7 +40,6 @@ export default function FloorCommandView({ workers = [], onWorkerAdded, isSecuri
   const rosterArray = useMemo(() => normalizeRosterArray(rosterDataRaw), [rosterDataRaw]);
 
   const [scanCheckInApi] = useScanCheckInMutation();
-  const [addEmployeeApi] = useAddEmployeeMutation();
   const [proxyCheckInApi] = useProxyCheckInMutation();
   const [proxyCheckOutApi] = useProxyCheckOutMutation();
 
@@ -177,45 +170,6 @@ const response = await scanCheckInApi(payload).unwrap();
  if (type === 'success') setTimeout(() => setAlert(null), 6000);
  };
 
- const handleAddWorker = async () => {
- const { name, phone, designation, wage_type, daily_rate, password } = addForm;
- if (!name.trim() || !designation.trim()) {
- showAlert('warning', 'Name and designation are required.');
- return;
- }
- if (wage_type === 'monthly' && !phone.trim()) {
- showAlert('warning', 'Phone number is required for monthly employees.');
- return;
- }
- if (phone.trim() && phone.trim().length !== 10) {
- showAlert('warning', 'Phone number must be exactly 10 digits.');
- return;
- }
- setAddLoading(true);
- try {
- const payload = {
- name: name.trim(),
- designation: designation.trim(),
- wage_type: wage_type,
- phone: phone.trim() || null,
- daily_rate: daily_rate ? parseFloat(daily_rate) : null,
- };
-await addEmployeeApi(payload).unwrap();
-
-
- showAlert('success', `Worker "${name}" onboarded to floor roster.`);
- setAddModal(false);
- setAddForm({ name: '', phone: '', designation: '', wage_type: 'piece_rate', daily_rate: '' });
- setIsOther(false);
- if (onWorkerAdded)
- onWorkerAdded();
- } catch (e) {
- showAlert('error', typeof e === 'string' ? e : e.message || 'Failed to add worker.');
- } finally {
- setAddLoading(false);
- }
- };
-
  const dailyWorkers = useMemo(() => {
    return normalizeRosterArray(workers);
  }, [workers]);
@@ -273,17 +227,9 @@ const result = type === 'check-in'
 
  return (
  <motion.div className="space-y-6">
- <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
  <div>
  <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Floor Command</h1>
  <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Proxy check-in / check-out for daily-wage floor workers.</p>
- </div>
- <div className="flex items-center gap-2 self-start sm:self-auto">
- <button onClick={() => setAddModal(true)}
- className="btn-primary h-10 px-4 text-xs font-black flex items-center gap-2 cursor-pointer relative z-20">
- <UserPlus className="w-4 h-4" /> Add Worker
- </button>
- </div>
  </div>
 
  <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
@@ -407,14 +353,13 @@ const result = type === 'check-in'
  : <Square className="w-4 h-4" style={{ color: '#d1d5db' }} />}
  </td>
  <td className="p-3">
- <span className="block font-black" style={{ color: '#2d1f0e' }}>{w.name}</span>
- <span className="block text-[10px] font-mono" style={{ color: '#9a7a5a' }}>{String(w.id).slice(0, 8)}…</span>
+ <span className="block text-sm font-black uppercase" style={{ color: '#2d1f0e' }}>{w.name}</span>
  </td>
  <td className="p-3 font-semibold" style={{ color: '#a86022' }}>{w.designation || '—'}</td>
  <td className="p-3 relative">
  <Badge
  label={isPieceRate ? 'Daily Wage' : 'Monthly'}
- type={isPieceRate ? 'proxy' : 'active'}
+ type="neutral"
  />
  {isSelected &&  (
  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-20" onClick={(e) => e.stopPropagation()}>
@@ -472,125 +417,6 @@ const result = type === 'check-in'
  )}
  </div>
  <button onClick={() => setDiffModal(null)} className="btn-primary w-full h-11 sm:h-10 text-xs font-black cursor-pointer relative z-30 pointer-events-auto">Done</button>
- </>
- )}
- </AnimatedModal>
-
- {/* Add floor worker modal */}
- <AnimatedModal
- isOpen={addModal}
- onClose={() => setAddModal(false)}
- panelClassName="space-y-4 w-full max-w-md"
- panelStyle={{ backgroundColor: '#ffffff', borderRadius: '24px', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)', border: '1px solid #e2e8f0', maxHeight: '90vh', overflowY: 'auto', padding: '24px' }}
- >
- {addModal && (
- <>
- <div className="flex-shrink-0 flex items-center justify-between pb-3 border-b border-slate-100">
- <h3 id="add-worker-title" className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
- <UserPlus className="w-5 h-5 text-blue-600" /> Add Floor Worker
- </h3>
- <button onClick={() => setAddModal(false)} className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer relative z-50">
- <X className="w-5 h-5" aria-label="Close modal" />
- </button>
- </div>
-
- <div className="space-y-4">
- <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-left">
- <div className="sm:col-span-2">
- <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Full Name *</label>
- <input type="text" value={addForm.name} placeholder="e.g. Ramesh Kumar"
- onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
- className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text" />
- </div>
- <div>
- <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Designation *</label>
- <select
- value={isOther ? 'Other' : addForm.designation}
- onChange={(e) => {
- const val = e.target.value;
- if (val === 'Other') {
- setIsOther(true);
- setAddForm((f) => ({ ...f, designation: '' }));
- } else {
- setIsOther(false);
- setAddForm((f) => ({ ...f, designation: val }));
- }
- }}
- className="input-field w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a] relative z-20 cursor-pointer"
- >
- <option value="" disabled>Select Designation</option>
- <option value="Cutting">Cutting</option>
- <option value="Fusing">Fusing</option>
- <option value="Pasting">Pasting</option>
- <option value="Shell stitch">Shell stitch</option>
- <option value="Lining attach">Lining attach</option>
- <option value="Lining stitch">Lining stitch</option>
- <option value="Final finish">Final finish</option>
- <option value="Supervisor">Supervisor</option>
- <option value="Other">Other (Custom)</option>
- </select>
- </div>
-
- {isOther && (
- <div className="sm:col-span-2 animate-fade-in">
- <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Custom Designation *</label>
- <input
- type="text"
- value={addForm.designation}
- placeholder="Type here"
- required
- onChange={(e) => setAddForm((f) => ({ ...f, designation: e.target.value }))}
- className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text"
- />
- </div>
- )}
- <div>
- <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Wage Type</label>
- <select value={addForm.wage_type}
- onChange={(e) => setAddForm(f => ({ ...f, wage_type: e.target.value, password: '' }))}
- className="input-field w-full h-10 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a] relative z-20 cursor-pointer">
- <option value="piece_rate">Piece Rate / Daily Wage</option>
- <option value="monthly">Monthly Salary</option>
- </select>
- </div>
- {addForm.wage_type === 'monthly' ? (
- <>
- <div>
- <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Phone Number *</label>
- <input type="tel" inputMode="numeric" pattern="[0-9]*" value={addForm.phone} placeholder="10-digit mobile number"
- maxLength={10}
- onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
- className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text" />
- </div>
- </>
- ) : (
- <>
- <div>
- <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Phone Number (Optional)</label>
- <input type="tel" inputMode="numeric" pattern="[0-9]*" value={addForm.phone} placeholder="Optional for daily workers"
- maxLength={10}
- onChange={(e) => setAddForm((f) => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
- className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text" />
- </div>
- <div>
- <label className="input-label text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Daily Rate (₹)</label>
- <input type="number" inputMode="decimal" placeholder="e.g. 500" value={addForm.daily_rate}
- onChange={(e) => setAddForm((f) => ({ ...f, daily_rate: e.target.value }))}
- className="input-field w-full h-10 px-3.5 text-xs font-semibold text-slate-900 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-[#c8834a] bg-white relative z-20 cursor-text" />
- </div>
- </>
- )}
- </div>
- </div>
-
- <div className="flex-shrink-0 flex gap-3 pt-3 border-t border-slate-100 relative z-30">
- <button onClick={() => setAddModal(false)} type="button" className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center pointer-events-auto">Cancel</button>
- <button onClick={handleAddWorker} disabled={addLoading} type="button"
- className="flex-1 py-3 px-4 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 pointer-events-auto"
- style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
- {addLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Adding...</> : <><UserPlus className="w-4 h-4" /> Add Worker</>}
- </button>
- </div>
  </>
  )}
  </AnimatedModal>
