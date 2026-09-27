@@ -30,6 +30,13 @@ const toast = {
   error: (msg) => toastListeners.forEach(fn => fn({ type: 'error', message: msg })),
   warning: (msg) => toastListeners.forEach(fn => fn({ type: 'warning', message: msg }))
 };
+const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', 'XXXL', '3XL', '4XL', '5XL'];
+const sizeRank = (s) => {
+  const i = SIZE_ORDER.indexOf(s);
+  if (i >= 0) return i;
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? 100 + n : 1000;
+};
 const sizeAnchorId = (s) => `cs-size-${String(s).replace(/[^A-Za-z0-9]/g, '_')}`;
 const rowSize = (row) => String(row?.size || row?.size_name || '').toUpperCase();
 
