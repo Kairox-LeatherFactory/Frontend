@@ -275,66 +275,36 @@ export default function InspectionSection({ onGoBack, onViewChange }) {
     <div className="w-full space-y-6">
       {/* SUB-TABS — the section title is shown in the app header path */}
       <div className="flex">
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full">
-          <button
-            onClick={() => setActiveTab("raise")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === "raise"
-                ? "bg-white text-amber-800 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-              }`}
-          >
-            <ShieldAlert className="w-3.5 h-3.5" />
-            Raise Inspection
-          </button>
-
-          <button
-            onClick={() => setActiveTab("dm-queue")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap relative ${activeTab === "dm-queue"
-                ? "bg-white text-amber-800 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-              }`}
-          >
-            <ClipboardList className="w-3.5 h-3.5" />
-            DM / MD Queue
-            {queueItems.length > 0 && queueFilter === "PENDING" && (
-              <span className="ml-1 px-1.5 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black">
-                {queueItems.length}
-              </span>
-            )}
-          </button>
-
-          <button
-            onClick={() => setActiveTab("responsibility")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === "responsibility"
-                ? "bg-white text-amber-800 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-              }`}
-          >
-            <User className="w-3.5 h-3.5" />
-            Worker Responsibility
-          </button>
-
-          <button
-            onClick={() => setActiveTab("damage")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === "damage"
-                ? "bg-white text-amber-800 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-              }`}
-          >
-            <AlertTriangle className="w-3.5 h-3.5" />
-            Product Damage
-          </button>
-
-          <button
-            onClick={() => setActiveTab("history")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 whitespace-nowrap ${activeTab === "history"
-                ? "bg-white text-amber-800 shadow-sm"
-                : "text-slate-600 hover:text-slate-900"
-              }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            Piece History
-          </button>
+        <div className="flex items-center gap-1 p-1.5 rounded-full bg-white/60 backdrop-blur-md shadow-sm border overflow-x-auto max-w-full" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          {[
+            { id: "raise", label: "Raise Inspection", icon: ShieldAlert },
+            { id: "dm-queue", label: "DM / MD Queue", icon: ClipboardList, badge: queueItems.length > 0 && queueFilter === "PENDING" ? queueItems.length : null },
+            { id: "responsibility", label: "Worker Responsibility", icon: User },
+            { id: "damage", label: "Product Damage", icon: AlertTriangle },
+            { id: "history", label: "Piece History", icon: History }
+          ].map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 sm:px-5 py-2 sm:py-2.5 rounded-full font-bold text-xs sm:text-sm transition-all duration-300 whitespace-nowrap ${isActive
+                  ? 'bg-white shadow-md'
+                  : 'hover:bg-white/40 opacity-70 hover:opacity-100'
+                  }`}
+                style={isActive ? { color: '#c8834a' } : { color: '#4a3a2a' }}
+              >
+                <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isActive ? 'scale-110' : 'scale-100'} transition-transform shrink-0`} />
+                <span>{tab.label}</span>
+                {tab.badge && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-rose-500 text-white rounded-full text-[10px] font-black">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 

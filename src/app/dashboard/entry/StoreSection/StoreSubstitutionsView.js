@@ -63,110 +63,105 @@ export default function StoreSubstitutionsView({ canApproveSubstitutions = true,
       )}
 
       {!isFetching && requests.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {requests.map((req) => {
-            const reqStatus = (req.status || "").toUpperCase();
-            const isPending = reqStatus === "PENDING";
-            const isApproved = reqStatus === "APPROVED";
-            const isRejected = reqStatus === "REJECTED";
-            const isLoading = actionLoadingId === req.request_id;
+        <div className="rounded-2xl border overflow-x-auto bg-white" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
+          <table className="w-full min-w-[920px] text-left">
+            <thead className="bg-white border-b border-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
+              <tr>
+                <th className="px-4 py-3.5">Piece Code / Article</th>
+                <th className="px-4 py-3.5">Garment → Packet</th>
+                <th className="px-4 py-3.5">Reason</th>
+                <th className="px-4 py-3.5">Status</th>
+                <th className="px-4 py-3.5 text-right w-[350px]">Action / Note</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[#c8834a]/10">
+              {requests.map((req) => {
+                const reqStatus = (req.status || "").toUpperCase();
+                const isPending = reqStatus === "PENDING";
+                const isApproved = reqStatus === "APPROVED";
+                const isRejected = reqStatus === "REJECTED";
+                const isLoading = actionLoadingId === req.request_id;
 
-            return (
-              <div
-                key={req.request_id}
-                className={`p-5 rounded-2xl border transition-all ${isPending
-                    ? "bg-[#faf6f0] border-[#c8834a]/30"
-                    : isApproved
-                      ? "bg-emerald-50 border-emerald-200"
-                      : "bg-rose-50 border-rose-200"
-                  }`}
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200/60">
-                  <div className="flex items-center gap-3">
-                    <Package className="w-5 h-5 text-[#8a5a2e]" />
-                    <div>
-                      <span className="font-mono font-black text-slate-900 text-sm">{req.piece_code}</span>
-                      <div className="text-xs font-bold text-slate-600 mt-0.5">
-                        Article: <span className="text-[#3d2b1a]">{req.article || "Accessory Packet"}</span>
+                return (
+                  <tr key={req.request_id} className={`transition-colors hover:bg-slate-50/50 ${isPending ? "bg-[#faf6f0]/30" : ""}`}>
+                    <td className="px-4 py-4 align-top">
+                      <div className="font-mono font-black text-slate-900 text-sm">{req.piece_code}</div>
+                      <div className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-wider">{req.article || "Accessory Packet"}</div>
+                    </td>
+                    
+                    <td className="px-4 py-4 align-top">
+                      <div className="flex items-center gap-2">
+                        <span className="text-amber-700 font-bold text-xs">{req.garment_size || "M"}</span>
+                        <span className="text-slate-400 text-xs">→</span>
+                        <span className="text-purple-700 font-bold text-xs">{req.lot_size || "L"}</span>
                       </div>
-                    </div>
-                  </div>
+                    </td>
 
-                  <div className="flex items-center gap-2">
-                    <div className="px-3 py-1 rounded-xl bg-white border border-slate-200 text-xs font-black text-slate-700">
-                      Garment: <span className="text-amber-700 font-bold">{req.garment_size || "M"}</span> → Packet:{" "}
-                      <span className="text-purple-700 font-bold">{req.lot_size || "L"}</span>
-                    </div>
-                    <span
-                      className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${isPending
-                          ? "bg-amber-100 text-amber-800 border-amber-300"
-                          : isApproved
-                            ? "bg-emerald-100 text-emerald-800 border-emerald-300"
-                            : "bg-rose-100 text-rose-800 border-rose-300"
-                        }`}
-                    >
-                      {req.status}
-                    </span>
-                  </div>
-                </div>
-
-                {req.substitution_reason && (
-                  <p className="text-xs font-medium text-slate-600 mt-3 flex items-center gap-1.5 bg-white p-2.5 rounded-lg border border-slate-200/60 shadow-sm">
-                    <FileText className="w-3.5 h-3.5 text-[#8a5a2e] shrink-0" />
-                    <span className="leading-relaxed">{req.substitution_reason}</span>
-                  </p>
-                )}
-
-                {isPending ? (
-                  <div className="mt-4 pt-3 border-t border-slate-200/60 space-y-2">
-                    {!canApproveSubstitutions && (
-                      <p className="text-[11px] font-bold text-amber-800 bg-amber-100/80 px-3 py-1.5 rounded-lg">
-                        🔒 Substitution decisions are reserved for Direct Manager (DM) & Managing Director (MD).
+                    <td className="px-4 py-4 align-top">
+                      <p className="text-xs font-medium text-slate-600 max-w-[200px] leading-relaxed truncate" title={req.substitution_reason || "-"}>
+                        {req.substitution_reason || "-"}
                       </p>
-                    )}
-                    <div className="flex flex-col sm:flex-row items-center gap-3">
-                      <input
-                        type="text"
-                        disabled={!canApproveSubstitutions}
-                        placeholder={canApproveSubstitutions ? "Add decision note (optional)…" : "DM / MD approval required"}
-                        value={noteInputs[req.request_id] || ""}
-                        onChange={(e) => setNoteInputs({ ...noteInputs, [req.request_id]: e.target.value })}
-                        className="w-full sm:flex-1 h-10 px-3 rounded-xl border bg-white text-xs font-bold outline-none focus:border-[#c8834a] disabled:opacity-60 disabled:bg-slate-100"
-                        style={{ borderColor: "rgba(200,131,74,0.25)" }}
-                      />
-                      <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                        <button
-                          type="button"
-                          onClick={() => handleReject(req.request_id)}
-                          disabled={isLoading || !canApproveSubstitutions}
-                          className="h-10 px-4 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <XCircle className="w-3.5 h-3.5" />}
-                          Reject
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleApprove(req.request_id)}
-                          disabled={isLoading || !canApproveSubstitutions}
-                          className="h-10 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                          Approve
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-3 text-xs text-slate-500 flex items-center justify-between bg-white px-3 py-2 rounded-lg border border-slate-100">
-                    <span>
-                      Decided by: <strong className="text-slate-800">{req.decided_by || "Manager"}</strong>
-                    </span>
-                    {req.decision_note && <span className="italic">"{req.decision_note}"</span>}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                    </td>
+
+                    <td className="px-4 py-4 align-top">
+                      <span
+                        className={`inline-flex px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
+                          isPending
+                            ? "bg-amber-100 text-amber-800 border-amber-300"
+                            : isApproved
+                              ? "bg-emerald-100 text-emerald-800 border-emerald-300"
+                              : "bg-rose-100 text-rose-800 border-rose-300"
+                        }`}
+                      >
+                        {req.status}
+                      </span>
+                    </td>
+
+                    <td className="px-4 py-4 align-top text-right">
+                      {isPending ? (
+                        <div className="flex flex-col gap-2">
+                          <input
+                            type="text"
+                            disabled={!canApproveSubstitutions}
+                            placeholder={canApproveSubstitutions ? "Add decision note (optional)…" : "DM/MD approval needed"}
+                            value={noteInputs[req.request_id] || ""}
+                            onChange={(e) => setNoteInputs({ ...noteInputs, [req.request_id]: e.target.value })}
+                            className="w-full h-9 px-3 rounded-xl border bg-white text-xs font-bold outline-none focus:border-[#c8834a] disabled:opacity-60 disabled:bg-slate-100"
+                            style={{ borderColor: "rgba(200,131,74,0.25)" }}
+                          />
+                          <div className="flex items-center gap-2 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleReject(req.request_id)}
+                              disabled={isLoading || !canApproveSubstitutions}
+                              className="h-8 px-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 font-extrabold text-[10px] uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+                            >
+                              {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+                              Reject
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleApprove(req.request_id)}
+                              disabled={isLoading || !canApproveSubstitutions}
+                              className="h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] uppercase flex items-center justify-center gap-1.5 transition-all cursor-pointer disabled:opacity-40"
+                            >
+                              {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
+                              Approve
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1 items-end text-xs text-slate-500">
+                          <div>Decided by: <strong className="text-slate-800">{req.decided_by || "Manager"}</strong></div>
+                          {req.decision_note && <div className="italic text-[11px]">"{req.decision_note}"</div>}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
