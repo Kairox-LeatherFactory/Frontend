@@ -667,14 +667,6 @@ export default function StoreHubForm({
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="min-w-0">
                               <div className="font-mono font-black text-sm text-[#2d1f0e] truncate">{pCode}</div>
-                              <div className="text-xs font-medium text-slate-500 truncate">
-                                {[piece.style_name, piece.order_number].filter(Boolean).join(" · ") || "—"}
-                              </div>
-                              {(piece.color || piece.size) && (
-                                <div className="text-xs font-medium text-slate-400 truncate">
-                                  {[piece.color, piece.size].filter(Boolean).join(" · ")}
-                                </div>
-                              )}
                             </div>
                           </div>
                         </td>
