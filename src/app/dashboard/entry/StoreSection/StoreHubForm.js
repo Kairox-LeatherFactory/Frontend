@@ -617,16 +617,17 @@ export default function StoreHubForm({
                   )}
                   {visiblePieces.map((piece, idx) => {
                     const parts = getStoreParts(piece);
-                    const isChecked = selectedPieces.has(piece.id);
+                    const pCode = piece.piece_code || piece.code || piece.barcode || piece.piece_id || piece.id;
+                    const isChecked = selectedPieces.has(piece.id || pCode);
                     const stateLabel = parts.state === "sended" ? "SENT" : piece.holding || (parts.state ? parts.state.replace(/_/g, " ").toUpperCase() : "UNKNOWN");
                     return (
-                      <tr key={piece.id} className={`transition-colors ${isChecked ? "bg-[#c8834a]/[0.06]" : "hover:bg-[#faf6f0]/70"}`}>
+                      <tr key={piece.id || pCode} className={`transition-colors ${isChecked ? "bg-[#c8834a]/[0.06]" : "hover:bg-[#faf6f0]/70"}`}>
                         <td className="px-4 py-4 align-middle">
                           <button
                             type="button"
-                            onClick={() => togglePieceSelection(piece.id)}
+                            onClick={() => togglePieceSelection(piece.id || pCode)}
                             disabled={parts.sent}
-                            aria-label={`Select ${piece.code || piece.id}`}
+                            aria-label={`Select ${pCode}`}
                             className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
                               isChecked ? "bg-[#8a5a2e] border-[#8a5a2e] text-white" : "border-slate-300 bg-white hover:border-[#c8834a]"
                             }`}
@@ -639,7 +640,7 @@ export default function StoreHubForm({
                           <div className="flex items-center gap-3 min-w-0">
                             <Barcode className="w-7 h-7 text-[#5a3518] shrink-0" />
                             <div className="min-w-0">
-                              <div className="font-mono font-black text-sm text-[#2d1f0e] truncate">{piece.code || piece.id}</div>
+                              <div className="font-mono font-black text-sm text-[#2d1f0e] truncate">{pCode}</div>
                               <div className="text-xs font-medium text-slate-500 truncate">
                                 {[piece.style_name, piece.order_number].filter(Boolean).join(" · ") || "—"}
                               </div>
@@ -666,7 +667,10 @@ export default function StoreHubForm({
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              onClick={() => setInspectPieceCode(piece.code || piece.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setInspectPieceCode(pCode);
+                              }}
                               title="Inspect merged materials spec & issue ledger"
                               className="h-10 px-3 rounded-xl border bg-white text-slate-700 hover:bg-slate-50 font-extrabold text-xs inline-flex items-center gap-1.5 transition-all cursor-pointer"
                               style={{ borderColor: "rgba(200,131,74,0.3)" }}
