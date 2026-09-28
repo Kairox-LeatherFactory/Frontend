@@ -222,7 +222,7 @@ const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, sty
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-black text-base" style={{ color: '#2d1f0e' }}>{style.style_name || style.style_code}</h3>
                         <StatusBadge status={style.production_status} />
-                        {style.needs_lining && <span className="text-[9px] font-black uppercase text-blue-600 bg-blue-50 border border-blue-200 px-1.5 py-0.5 rounded">Needs Lining</span>}
+                        {style.needs_lining && <span className="text-[9px] font-black uppercase text-[#8a4e1d] bg-[#fdf6ee] border border-[#e8ceb5] px-2 py-0.5 rounded-md shadow-2xs">Needs Lining</span>}
                       </div>
                       <p className="text-[11px] font-bold text-slate-400 mt-0.5">{style.style_code} · {style.article} · {style.sku_count} SKUs · {style.qty_ordered} pcs</p>
                       {style.released_at && (
