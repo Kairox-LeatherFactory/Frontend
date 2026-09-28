@@ -552,7 +552,7 @@ export default function CuttingSheetSection() {
             {isFetchingGrid && rows.length > 0 && (
               <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold animate-pulse whitespace-nowrap">
                 <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                <span>Loading next 50 rows... ({accumulatedGridData.rows.length} fetched)</span>
+                <span>Loading...</span>
               </div>
             )}
             <input
@@ -638,7 +638,7 @@ export default function CuttingSheetSection() {
                   <td colSpan={28} className="p-12 text-center text-slate-500 font-bold bg-slate-50">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="w-5 h-5 animate-spin text-[#c8834a]" />
-                      <span>Loading cutting grid (50 rows per batch)...</span>
+                      <span>Loading cutting grid...</span>
                     </div>
                   </td>
                 </tr>
