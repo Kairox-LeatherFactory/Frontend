@@ -160,6 +160,7 @@ export default function StoreHubSection({
 
       if (lotVal) {
         payload.lot_barcode = lotVal;
+        payload.part = "accessory";
       }
 
       const res = await storeScan(payload).unwrap();
