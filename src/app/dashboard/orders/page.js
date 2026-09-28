@@ -297,7 +297,7 @@ export default function OrdersTreeBrowser() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <div className="flex justify-between items-start gap-2">
-                            <h4 className="text-sm font-black leading-tight truncate" style={{ color: '#2d1f0e' }}>{client.name}</h4>
+                            <h4 className="text-sm font-black leading-tight truncate uppercase" style={{ color: '#2d1f0e' }}>{client.name}</h4>
                             
                             {/* Deactivation Toggle */}
                             {user === 'direct_manager' && client.id && !client.id.startsWith('cli_') ? (
@@ -328,11 +328,11 @@ export default function OrdersTreeBrowser() {
                       <div className="pt-3 grid grid-cols-2 gap-4 text-xs font-semibold" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
                         <div>
                           <span className="text-[9px] font-bold block uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Company Code</span>
-                          <span className="font-extrabold" style={{ color: '#2d1f0e' }}>{client.code || '—'}</span>
+                          <span className="font-extrabold uppercase" style={{ color: '#2d1f0e' }}>{client.code || '—'}</span>
                         </div>
                         <div>
                           <span className="text-[9px] font-bold block uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Country</span>
-                          <span className="font-extrabold" style={{ color: '#2d1f0e' }}>{client.country || 'International'}</span>
+                          <span className="font-extrabold uppercase" style={{ color: '#2d1f0e' }}>{client.country || 'International'}</span>
                         </div>
                         <div className="col-span-2">
                           <span className="text-[9px] font-bold block uppercase tracking-wider mb-1" style={{ color: '#9a7a5a' }}>Order Number</span>

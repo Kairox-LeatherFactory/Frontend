@@ -49,6 +49,7 @@ const DOOR_LABELS = {
   breakdown: "Breakdown Review",
   "cutting-sheet": "Cutting Sheet",
   inspection: "Quality Inspection",
+  jobwork:"Job Work"
 };
 
 const Loader = () => <div className="flex items-center justify-center h-full py-20"><div className="w-6 h-6 border-2 border-[#c8834a] border-t-transparent rounded-full animate-spin" /></div>;
@@ -486,7 +487,7 @@ export default function ProductionLogEntry() {
               color: activeDoor === "store" ? "#c8834a" : "#9a7a5a",
             }}
           >
-            <Store className="w-4 h-4" />✨ Store Manager Hub
+            <Store className="w-4 h-4" /> Store Manager Hub
           </button>
         )}
         <button
@@ -534,7 +535,7 @@ export default function ProductionLogEntry() {
           }}
         >
           <Truck className="w-4 h-4" />
-          Job Work (Outsourcing)
+          Job Work
         </button>
       </div>
 
@@ -732,10 +733,10 @@ export default function ProductionLogEntry() {
                           </div>
                           <div>
                             <p
-                              className="text-sm font-bold"
+                              className="text-sm font-bold uppercase"
                               style={{ color: "#4a3a2a" }}
                             >
-                              {o.client_name}
+                              {o.client_name?.toUpperCase()}
                             </p>
                           </div>
                         </div>

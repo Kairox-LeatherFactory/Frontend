@@ -87,14 +87,14 @@ export function AdminSelect({ value, options, onChange, placeholder }) {
 }
 
 export const ROLE_COLORS = {
-  direct_manager: { bg: '#fff9f0', color: '#c8834a', border: 'rgba(200,131,74,0.3)', label: 'Direct Manager' },
-  cutting_manager: { bg: '#eff6ff', color: '#2563eb', border: 'rgba(37,99,235,0.2)', label: 'Cutting Manager' },
-  lining_manager: { bg: '#fff1f2', color: '#e11d48', border: 'rgba(225,29,72,0.2)', label: 'Lining Manager' },
-  stitching_manager: { bg: '#f5f3ff', color: '#7c3aed', border: 'rgba(124,58,237,0.2)', label: 'Stitching Manager' },
-  hr_admin: { bg: '#f0fdf4', color: '#16a34a', border: 'rgba(22,163,74,0.2)', label: 'HR Admin' },
-  client_viewer: { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: 'Client Viewer' },
-  viewer: { bg: '#f1f5f9', color: '#64748b', border: 'rgba(100,116,139,0.15)', label: 'Viewer' },
-  employee: { bg: '#ecfdf5', color: '#059669', border: 'rgba(5,150,105,0.15)', label: 'Employee' },
+  direct_manager: { bg: '#faf6f0', color: '#a86022', border: 'rgba(200,131,74,0.25)', label: 'Direct Manager' },
+  cutting_manager: { bg: '#faf6f0', color: '#a86022', border: 'rgba(200,131,74,0.25)', label: 'Cutting Manager' },
+  lining_manager: { bg: '#faf6f0', color: '#a86022', border: 'rgba(200,131,74,0.25)', label: 'Lining Manager' },
+  stitching_manager: { bg: '#faf6f0', color: '#a86022', border: 'rgba(200,131,74,0.25)', label: 'Stitching Manager' },
+  hr_admin: { bg: '#faf6f0', color: '#a86022', border: 'rgba(200,131,74,0.25)', label: 'HR Admin' },
+  client_viewer: { bg: '#faf6f0', color: '#a86022', border: 'rgba(200,131,74,0.25)', label: 'Client Viewer' },
+  viewer: { bg: '#faf6f0', color: '#a86022', border: 'rgba(200,131,74,0.25)', label: 'Viewer' },
+  employee: { bg: '#faf6f0', color: '#a86022', border: 'rgba(200,131,74,0.25)', label: 'Employee' },
 };
 
 export function EmployeeIdCardModal({ employee, onClose }) {

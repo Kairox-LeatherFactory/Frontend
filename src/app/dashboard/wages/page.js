@@ -24,7 +24,7 @@ export default function PieceRatesAndWages() {
   return (
     <div className="space-y-8 animate-fade-in pb-16">
       {/* ─── PREMIUM HEADER & NAVIGATION ─── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-end gap-6 relative z-10">
+      <div className="flex flex-col md:flex-row md:items-center justify-start gap-6 relative z-10">
         {/* ─── PILL NAVIGATION ─── (page title is shown in the app header) */}
         <div className="flex items-center gap-1 p-1.5 rounded-full bg-white/60 backdrop-blur-md shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
           {WAGE_TABS.map(tab => {

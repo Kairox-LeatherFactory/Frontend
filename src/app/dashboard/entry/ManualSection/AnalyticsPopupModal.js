@@ -184,7 +184,7 @@ export default function AnalyticsPopupModal({
             </h3>
             <p className="text-xs text-slate-500 font-medium mt-1">
               {currentSelectedSku
-                ? `${currentSelectedSku.style_name} (PO: ${currentSelectedSku.order_number})`
+                ? `${String(currentSelectedSku.style_name || '').toUpperCase()} (PO: ${String(currentSelectedSku.order_number || '').toUpperCase()})`
                 : 'Loading...'}
             </p>
           </div>
