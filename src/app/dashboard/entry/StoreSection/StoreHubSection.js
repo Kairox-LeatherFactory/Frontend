@@ -84,7 +84,6 @@ export default function StoreHubSection({
 
   const [storeVisibleCount, setStoreVisibleCount] = useState(50);
   const [storeLotInput, setStoreLotInput] = useState("");
-  const [substitutionsModalOpen, setSubstitutionsModalOpen] = useState(false);
   const [inspectPieceCode, setInspectPieceCode] = useState(null);
   const [manualIssueModalOpen, setManualIssueModalOpen] = useState(false);
 
@@ -282,8 +281,6 @@ export default function StoreHubSection({
       canScanAndSend={canScanAndSend}
       canRecordManualIssue={canRecordManualIssue}
 
-      substitutionsModalOpen={substitutionsModalOpen}
-      setSubstitutionsModalOpen={setSubstitutionsModalOpen}
       inspectPieceCode={inspectPieceCode}
       setInspectPieceCode={setInspectPieceCode}
       manualIssueModalOpen={manualIssueModalOpen}

@@ -60,7 +60,7 @@ export default function StoreManualIssueModal({ isOpen, onClose, barcodeWorker, 
               <Wrench className="w-5 h-5" />
             </span>
             <div>
-              <h3 className="font-extrabold text-base">Record Manual Off-Spec Issue</h3>
+              <h3 className="font-extrabold text-base">Raise Issue</h3>
               <p className="text-xs text-[#e2d5c3]/70">Escape hatch for materials issued outside frozen spec</p>
             </div>
           </div>
