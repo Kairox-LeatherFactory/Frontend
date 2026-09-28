@@ -15,7 +15,7 @@ export const apiSlice = createApi({
     },
   }),
   tagTypes: ['Attendance', 'Employee', 'SKU', 'Piece',
-    'Store', 'StoreList',
+    'Store', 'StoreList', 'StoreSubstitutions',
     'AccessorySpec', 'AccessoryRequirement',
     'WageOrder', 'WageStyle', 'WageRate', 'WageRun',
     'WageLedger', 'MaterialLot', 'MaterialSpec', 'MaterialStock', 'MaterialArrival', 'SupplierOrder', 'Users', 'Employees',
@@ -92,10 +92,13 @@ export const apiSlice = createApi({
       query: (payload) => ({ url: '/api/v1/production/cutting/issue', method: 'POST', body: payload })
     }),
     getCuttingGrid: builder.query({
-      query: ({ style_id, colour } = {}) => {
+      query: (params = {}) => {
+        const p = typeof params === 'object' && params !== null ? params : {};
         const qs = new URLSearchParams();
-        if (style_id) qs.append('style_id', style_id);
-        if (colour) qs.append('colour', colour);
+        if (p.style_id) qs.append('style_id', p.style_id);
+        if (p.colour) qs.append('colour', p.colour);
+        qs.append('limit', p.limit || 50);
+        if (p.offset !== undefined && p.offset !== null) qs.append('offset', p.offset);
         return `/api/v1/cutting/grid?${qs.toString()}`;
       },
       providesTags: ['CuttingGrid']
@@ -185,10 +188,17 @@ export const apiSlice = createApi({
     // --- STORE HUB APIs ---
     storeScan: builder.mutation({
       query: (scanData) => ({ url: '/api/v1/store/scan', method: 'POST', body: scanData }),
-      invalidatesTags: ['Store', 'StoreList']
+      invalidatesTags: ['Store', 'StoreList', 'StoreSubstitutions']
     }),
     storeSend: builder.mutation({
-      query: ({ piece_ids }) => ({ url: '/api/v1/store/send', method: 'POST', body: { piece_ids } }),
+      query: ({ piece_ids, piece_barcodes }) => ({
+        url: '/api/v1/store/send',
+        method: 'POST',
+        body: {
+          ...(piece_ids ? { piece_ids } : {}),
+          ...(piece_barcodes ? { piece_barcodes } : {})
+        }
+      }),
       invalidatesTags: ['Store', 'StoreList']
     }),
     listStorePieces: builder.query({
@@ -197,6 +207,7 @@ export const apiSlice = createApi({
         qs.append('limit', params.limit || 500);
         if (params.code) qs.append('code', params.code);
         if (params.state) qs.append('state', params.state);
+        if (params.style_id) qs.append('style_id', params.style_id);
         if (params.offset) qs.append('offset', params.offset);
         return `/api/v1/store/pieces?${qs.toString()}`;
       },
@@ -205,6 +216,36 @@ export const apiSlice = createApi({
     getStorePiece: builder.query({
       query: (pieceCode) => `/api/v1/store/pieces/${encodeURIComponent(pieceCode)}`,
       providesTags: (result, error, id) => [{ type: 'Store', id }]
+    }),
+    getPieceMaterials: builder.query({
+      query: (pieceCode) => `/api/v1/store/pieces/${encodeURIComponent(pieceCode)}/materials`,
+      providesTags: (result, error, id) => [{ type: 'Store', id }]
+    }),
+    listStoreSubstitutions: builder.query({
+      query: (params = {}) => {
+        const qs = new URLSearchParams();
+        if (params.status) qs.append('status', params.status);
+        if (params.limit) qs.append('limit', params.limit || 200);
+        if (params.offset) qs.append('offset', params.offset || 0);
+        return `/api/v1/store/substitutions?${qs.toString()}`;
+      },
+      providesTags: ['StoreSubstitutions']
+    }),
+    approveStoreSubstitution: builder.mutation({
+      query: ({ requestId, note }) => ({
+        url: `/api/v1/store/substitutions/${encodeURIComponent(requestId)}/approve`,
+        method: 'POST',
+        body: { note: note || null }
+      }),
+      invalidatesTags: ['Store', 'StoreList', 'StoreSubstitutions']
+    }),
+    rejectStoreSubstitution: builder.mutation({
+      query: ({ requestId, note }) => ({
+        url: `/api/v1/store/substitutions/${encodeURIComponent(requestId)}/reject`,
+        method: 'POST',
+        body: { note: note || null }
+      }),
+      invalidatesTags: ['Store', 'StoreList', 'StoreSubstitutions']
     }),
 
     // --- ACCESSORY APIs ---
@@ -462,6 +503,12 @@ export const {
   useLazyListStorePiecesQuery,
   useGetStorePieceQuery,
   useLazyGetStorePieceQuery,
+  useGetPieceMaterialsQuery,
+  useLazyGetPieceMaterialsQuery,
+  useListStoreSubstitutionsQuery,
+  useLazyListStoreSubstitutionsQuery,
+  useApproveStoreSubstitutionMutation,
+  useRejectStoreSubstitutionMutation,
   useGetStyleMaterialSpecQuery,
   useLazyGetStyleMaterialSpecQuery,
   usePutStyleMaterialSpecMutation,

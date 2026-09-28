@@ -1,6 +1,4 @@
-// Development-only sample garments for previewing the Store Hub without live store data.
-// Shaped like GET /api/v1/store/pieces rows; only used when NODE_ENV is "development".
-export const MOCK_STORE_ENABLED = process.env.NODE_ENV === "development";
+export const MOCK_STORE_ENABLED = false;
 
 export const MOCK_STORE_PIECES = [
   {

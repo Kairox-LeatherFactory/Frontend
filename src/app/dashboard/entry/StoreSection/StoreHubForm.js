@@ -5,11 +5,15 @@ import {
   Check,
   CheckCircle2,
   Clock,
+  Eye,
   FlaskConical,
   Hash,
   Layers,
   Loader2,
   Lock,
+  Package,
+  AlertTriangle,
+  Wrench,
   RefreshCw,
   ScanLine,
   Search,
@@ -20,9 +24,12 @@ import {
 } from "lucide-react";
 import { CameraScannerModal, WorkerPickerDropdown } from "../shared";
 import StoreNotCheckedInModal from "./StoreNotCheckedInModal";
+import StoreSubstitutionsModal from "./StoreSubstitutionsModal";
+import StorePieceMaterialsModal from "./StorePieceMaterialsModal";
+import StoreManualIssueModal from "./StoreManualIssueModal";
 import { getStoreParts } from "./storeParts";
 
-// Leather hide outline (lucide has no hide shape)
+// Leather hide outline
 function HideIcon({ className }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" className={className} aria-hidden="true">
@@ -31,7 +38,7 @@ function HideIcon({ className }) {
   );
 }
 
-// Four-hole button — stands in for the accessories kit
+// Four-hole button
 function ButtonIcon({ className }) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={className} aria-hidden="true">
@@ -44,7 +51,6 @@ function ButtonIcon({ className }) {
   );
 }
 
-// Store state badge colours (waiting grey · merged blue · holding amber · both teal · received green · sended purple)
 const STATE_BADGE = {
   waiting: "bg-slate-100 text-slate-600 border-slate-200",
   merged: "bg-blue-50 text-blue-700 border-blue-200",
@@ -61,7 +67,6 @@ const PART_STATUS = {
   na: { text: "Not needed", box: "bg-slate-50 text-slate-400 border-slate-200", label: "text-slate-400" },
 };
 
-// Same statuses, as chips on the dark last-scan panel
 const LAST_SCAN_CHIP = {
   in: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
   awaiting: "bg-amber-500/15 text-amber-300 border-amber-500/30",
@@ -108,8 +113,24 @@ export default function StoreHubForm({
   setCameraScanTarget,
   workers,
   mounted,
+  storePieceInput,
+  setStorePieceInput,
   storeCurrentScan,
   setStoreCurrentScan,
+  storeLotInput,
+  setStoreLotInput,
+  userRole,
+  canApproveSubstitutions,
+  canScanAndSend,
+  canRecordManualIssue,
+  substitutionsModalOpen,
+  setSubstitutionsModalOpen,
+  inspectPieceCode,
+  setInspectPieceCode,
+  manualIssueModalOpen,
+  setManualIssueModalOpen,
+  setSuccessMsg,
+  setErrorMsg,
   storeApiLoading,
   storePieces,
   filteredStorePieces,
@@ -132,13 +153,13 @@ export default function StoreHubForm({
   fetchLivePieces,
   storeLoading,
   storeInputRef,
+  handleStoreVerify,
   handleStoreScanInput,
   lastScan,
   mockAvailable,
   useMock,
   toggleMock,
 }) {
-  // Tab counts from the loaded pieces; "Store" shows the backend's total
   const counts = { LEATHER: 0, LINING: 0, ACCESSORIES: 0, COMPLETE: 0, awaiting: 0, sent: 0 };
   storePieces.forEach((piece) => {
     const p = getStoreParts(piece);
@@ -166,7 +187,6 @@ export default function StoreHubForm({
     setSelectedPieces(allSelected ? new Set() : new Set(selectableIds));
   };
 
-  // Everything below the worker card stays locked until a worker is verified
   const locked = !barcodeWorker;
   const lastParts = lastScan ? getStoreParts(lastScan) : null;
 
@@ -191,61 +211,104 @@ export default function StoreHubForm({
         workerInputRef={workerInputRef}
       />
 
-      <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-500">
-        {/* ── Worker verification — must be done first ───────────── */}
+      <StoreSubstitutionsModal
+        isOpen={substitutionsModalOpen}
+        onClose={() => setSubstitutionsModalOpen(false)}
+        canApproveSubstitutions={canApproveSubstitutions}
+        setSuccessMsg={setSuccessMsg}
+        setErrorMsg={setErrorMsg}
+      />
+
+      <StorePieceMaterialsModal
+        isOpen={!!inspectPieceCode}
+        pieceCode={inspectPieceCode}
+        onClose={() => setInspectPieceCode(null)}
+      />
+
+      <StoreManualIssueModal
+        isOpen={manualIssueModalOpen}
+        onClose={() => setManualIssueModalOpen(false)}
+        barcodeWorker={barcodeWorker}
+        setSuccessMsg={setSuccessMsg}
+        setErrorMsg={setErrorMsg}
+      />
+
+      <div className="space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-400">
+        {/* Sleek Compact Worker Verification Bar */}
         <div
-          className="rounded-3xl shadow-lg relative overflow-hidden p-5 sm:p-6"
+          className="rounded-2xl shadow-md p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-white"
           style={{ background: "linear-gradient(135deg, #3d2b1a 0%, #2d1f0e 100%)", border: "1px solid rgba(200,131,74,0.3)" }}
         >
-          <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
           {barcodeWorker ? (
-            <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-4 min-w-0">
-                <span className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 shrink-0">
-                  <UserCheck className="w-6 h-6" />
-                </span>
+            <>
+              <div className="flex items-center gap-3 min-w-0">
                 <div className="min-w-0">
-                  <div className="flex items-center flex-wrap gap-2">
-                    <h3 className="font-extrabold text-white text-base truncate">{barcodeWorker.name}</h3>
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-extrabold text-white text-sm truncate">{barcodeWorker.name}</h3>
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
                       Verified
                     </span>
                   </div>
-                  <p className="text-xs text-[#e2d5c3]/70 mt-0.5 truncate">
-                    <span className="font-mono">{barcodeWorker.employee_barcode || barcodeWorker.id}</span>
-                    {" · "}
-                    {barcodeWorker.designation || "Store"}
+                  <p className="text-xs text-[#e2d5c3]/70 font-mono truncate">
+                    {barcodeWorker.employee_barcode || barcodeWorker.id} · {barcodeWorker.designation || "Store"}
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setBarcodeWorker(null);
-                  setBarcodeWorkerInput("");
-                }}
-                className="self-start sm:self-center text-xs font-black text-[#f5d4a4] hover:text-white px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition-all cursor-pointer"
-              >
-                Change Worker
-              </button>
-            </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setSubstitutionsModalOpen(true)}
+                  className="text-xs font-black text-amber-200 hover:text-white px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 transition-all cursor-pointer flex items-center gap-1.5"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-300" />
+                  Substitutions Queue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!canRecordManualIssue) {
+                      setErrorMsg("🔒 Off-spec issue recording is allowed for Store Manager, Direct Manager, or Managing Director only.");
+                      return;
+                    }
+                    setManualIssueModalOpen(true);
+                  }}
+                  className={`text-xs font-black px-3 py-1.5 rounded-xl border transition-all flex items-center gap-1.5 ${
+                    canRecordManualIssue
+                      ? "text-[#f5d4a4] hover:text-white bg-white/10 hover:bg-white/20 border-white/15 cursor-pointer"
+                      : "text-slate-400 bg-white/5 border-white/10 cursor-not-allowed opacity-60"
+                  }`}
+                >
+                  <Wrench className="w-3.5 h-3.5 text-[#f5d4a4]" />
+                  Off-Spec Issue
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBarcodeWorker(null);
+                    setBarcodeWorkerInput("");
+                  }}
+                  className="text-xs font-bold text-[#e2d5c3]/70 hover:text-white px-2.5 py-1.5 transition-colors cursor-pointer"
+                >
+                  Change Worker
+                </button>
+              </div>
+            </>
           ) : (
-            <div className="relative space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 bg-[#f5e6d3] text-[#5a3518] shadow-inner">
-                  <UserCheck className="w-6 h-6" />
-                </div>
-                <h3 className="text-lg sm:text-xl font-extrabold text-white">Worker Verification</h3>
+            <div className="w-full space-y-3">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-extrabold text-white">Worker Verification</h3>
               </div>
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleVerifyBarcodeWorker();
                 }}
-                className="flex flex-col sm:flex-row gap-3"
+                className="flex flex-col sm:flex-row gap-2.5"
               >
                 <div className="relative flex-1">
-                  <Barcode className="w-6 h-6 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     ref={workerInputRef}
                     type="text"
@@ -253,24 +316,24 @@ export default function StoreHubForm({
                     value={barcodeWorkerInput}
                     onChange={(e) => setBarcodeWorkerInput(e.target.value)}
                     autoFocus
-                    className="w-full h-14 pl-14 pr-14 sm:pr-4 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border border-[#e2d5c3]/30 rounded-2xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all"
+                    className="w-full h-11 pl-11 pr-11 sm:pr-3 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setCameraScanTarget("worker")}
-                    className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/50 active:scale-95 transition-all cursor-pointer"
+                    className="sm:hidden absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-[#c8834a]/30 text-[#f5d4a4]"
                     title="Scan with camera"
                   >
-                    <Camera className="w-5 h-5" />
+                    <Camera className="w-4 h-4" />
                   </button>
                 </div>
                 <button
                   type="submit"
                   disabled={barcodeWorkerChecking || !barcodeWorkerInput.trim()}
-                  className="h-14 px-8 rounded-2xl font-black text-sm text-[#2d1f0e] bg-gradient-to-br from-[#f5d4a4] to-[#d99a62] hover:brightness-105 active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="h-11 px-6 rounded-xl font-black text-xs text-[#2d1f0e] bg-gradient-to-br from-[#f5d4a4] to-[#d99a62] hover:brightness-105 transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                 >
-                  {barcodeWorkerChecking ? <Loader2 className="w-5 h-5 animate-spin" /> : <Check className="w-5 h-5" />}
-                  Verify
+                  {barcodeWorkerChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  Verify Worker
                 </button>
               </form>
               <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-[#e2d5c3]/70">
@@ -282,112 +345,103 @@ export default function StoreHubForm({
         </div>
 
         {locked && (
-          <div className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
+          <div className="flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
             <Lock className="w-4 h-4 text-amber-700 shrink-0" />
             Verify a worker to unlock scanning
           </div>
         )}
 
-        {/* ── Locked (non-interactive, dimmed) until a worker is verified ── */}
         <div
           inert={locked}
           aria-disabled={locked}
-          className={`space-y-5 transition-all duration-300 ${locked ? "opacity-45 grayscale-[35%] select-none" : ""}`}
+          className={`space-y-4 transition-all duration-300 ${locked ? "opacity-45 grayscale-[35%] select-none" : ""}`}
         >
-          {/* ── Piece scanner ─────────────────────────────────────── */}
+          {/* Compact Leather Brown Store Scanner */}
           <div
-            className="rounded-3xl shadow-xl relative overflow-hidden grid grid-cols-1 xl:grid-cols-[1fr_340px]"
+            className="rounded-2xl p-4 sm:p-5 shadow-lg space-y-4 text-white relative overflow-hidden"
             style={{ background: "linear-gradient(135deg, #2d1f0e 0%, #1c1207 100%)", border: "1px solid rgba(200,131,74,0.25)" }}
           >
-            <div className="absolute -left-20 -top-20 w-56 h-56 bg-[#c8834a]/10 rounded-full blur-3xl pointer-events-none" />
-
-            <div className="relative p-5 sm:p-6 space-y-5">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0 bg-[#f5e6d3] text-[#5a3518] shadow-inner">
-                  <Store className="w-7 h-7" />
-                </div>
-                <h3 className="text-lg sm:text-xl font-extrabold text-white">Store Scanner</h3>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-extrabold text-white">Store Scanner (Two-Scan Merge)</h3>
+                <p className="text-xs font-medium text-[#e2d5c3]/70">Scan worker & garment piece barcode to merge into store</p>
               </div>
 
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  handleStoreScanInput(storeCurrentScan.trim());
-                }}
-                className="flex flex-col sm:flex-row gap-3"
-              >
-                <div className="relative flex-1">
-                  <Barcode className="w-6 h-6 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    ref={storeInputRef}
-                    type="text"
-                    inputMode="text"
-                    enterKeyHint="go"
-                    placeholder="Scan or type piece barcode…"
-                    value={storeCurrentScan}
-                    onChange={(e) => setStoreCurrentScan(e.target.value)}
-                    disabled={locked || storeApiLoading}
-                    className="w-full h-14 pl-14 pr-14 sm:pr-4 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border border-[#e2d5c3]/30 rounded-2xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setCameraScanTarget("store")}
-                    className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/50 active:scale-95 transition-all cursor-pointer"
-                    title="Scan with camera"
-                  >
-                    <Camera className="w-5 h-5" />
-                  </button>
+              {/* Compact Last Scan Result Pill */}
+              {lastScan && (
+                <div className="hidden md:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/[0.06] border border-white/15">
+                  <ScanLine className="w-4 h-4 text-[#f5d4a4]" />
+                  <div className="text-xs">
+                    <span className="font-mono font-black text-white">{lastScan.piece_code || lastScan.code}</span>
+                    <span className="ml-2 font-bold text-[#f5d4a4]">({lastScan.holding || "SCANNED"})</span>
+                  </div>
                 </div>
+              )}
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleStoreScanInput(storeCurrentScan.trim());
+              }}
+              className="flex flex-col lg:flex-row items-center gap-3"
+            >
+              <div className="relative flex-1 w-full">
+                <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  ref={storeInputRef}
+                  type="text"
+                  placeholder="Scan piece barcode (PC-100231)…"
+                  value={storeCurrentScan}
+                  onChange={(e) => setStoreCurrentScan(e.target.value)}
+                  disabled={locked || storeApiLoading}
+                  className="w-full h-11 pl-11 pr-11 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
+                />
                 <button
-                  type="submit"
-                  disabled={locked || storeApiLoading || !storeCurrentScan.trim()}
-                  className="h-14 px-8 rounded-2xl font-black text-sm text-[#2d1f0e] bg-gradient-to-br from-[#f5d4a4] to-[#d99a62] hover:brightness-105 active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  type="button"
+                  onClick={() => setCameraScanTarget("store")}
+                  className="sm:hidden absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-[#c8834a]/30 text-[#f5d4a4]"
                 >
-                  {storeApiLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <ScanLine className="w-5 h-5" />}
-                  Scan
+                  <Camera className="w-4 h-4" />
                 </button>
-              </form>
-            </div>
-
-            {/* Last scan result */}
-            <div className="relative p-5 sm:p-6 border-t xl:border-t-0 xl:border-l border-[#c8834a]/20">
-              <div className="h-full rounded-2xl bg-white/[0.04] border border-white/10 p-4 flex flex-col gap-3">
-                <div className="flex items-center gap-2 text-[#f5d4a4]">
-                  <ScanLine className="w-4 h-4" />
-                  <span className="text-xs font-black uppercase tracking-wider">Last Scan</span>
-                </div>
-                {lastScan ? (
-                  <>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-mono font-black text-white text-base truncate">{lastScan.piece_code || lastScan.code}</span>
-                      <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/10 text-[#f5d4a4] border border-white/15 shrink-0">
-                        {lastScan.holding || (lastParts.state ? lastParts.state.replace(/_/g, " ").toUpperCase() : "—")}
-                      </span>
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        ["Leather", lastParts.leather ? "in" : "awaiting"],
-                        ["Lining", !lastParts.liningNeeded ? "na" : lastParts.lining ? "in" : "awaiting"],
-                        ["Accessories", lastParts.accessories ? "in" : "awaiting"],
-                      ].map(([label, status]) => (
-                        <span key={label} className={`inline-flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-lg border ${LAST_SCAN_CHIP[status]}`}>
-                          {status === "in" ? <Check className="w-3 h-3" /> : status === "awaiting" ? <Clock className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                          {label}
-                        </span>
-                      ))}
-                    </div>
-                    {lastScan.next_action && (
-                      <p className="text-xs text-[#e2d5c3]/75 leading-relaxed">{lastScan.next_action}</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-xs font-bold text-[#e2d5c3]/45">No scans yet</p>
-                )}
               </div>
-            </div>
+
+              <div className="relative flex-1 w-full">
+                <Package className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Optional packet barcode (LOT-ACC-…)…"
+                  value={storeLotInput}
+                  onChange={(e) => setStoreLotInput(e.target.value)}
+                  disabled={locked || storeApiLoading}
+                  className="w-full h-11 pl-11 pr-3 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={locked || storeApiLoading || !storeCurrentScan.trim() || !canScanAndSend}
+                title={!canScanAndSend ? "🔒 Store scanning is restricted for your role" : ""}
+                className="w-full lg:w-auto h-11 px-7 rounded-xl font-black text-xs text-[#2d1f0e] bg-gradient-to-br from-[#f5d4a4] to-[#d99a62] hover:brightness-105 transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
+              >
+                {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanLine className="w-4 h-4" />}
+                Log Scan
+              </button>
+            </form>
+
+            {/* Mobile / Inline last scan result */}
+            {lastScan && (
+              <div className="md:hidden flex items-center justify-between p-2.5 rounded-xl bg-white/[0.06] border border-white/15 text-xs">
+                <div className="flex items-center gap-2">
+                  <ScanLine className="w-4 h-4 text-[#f5d4a4]" />
+                  <span className="font-mono font-black text-white">{lastScan.piece_code || lastScan.code}</span>
+                </div>
+                <span className="font-extrabold text-[#f5d4a4]">{lastScan.holding || "SCANNED"}</span>
+              </div>
+            )}
           </div>
 
-          {/* ── Filter tabs + complete sets ─────────────────────────── */}
+          {/* Filter Tabs */}
           <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-[1.25fr_1fr_1fr_1fr_1.35fr] gap-3">
             {tabs.map(({ key, label, Icon, count }) => {
               const active = activeTab === key;
@@ -432,7 +486,7 @@ export default function StoreHubForm({
             </button>
           </div>
 
-          {/* ── Inventory ───────────────────────────────────────────── */}
+          {/* Table */}
           <div className="bg-white rounded-3xl border shadow-sm p-4 sm:p-6 space-y-5" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-0">
@@ -442,19 +496,6 @@ export default function StoreHubForm({
                 <div className="min-w-0">
                   <div className="flex items-center flex-wrap gap-2">
                     <h3 className="text-lg sm:text-xl font-extrabold text-[#2d1f0e]">Store Inventory</h3>
-                    {mockAvailable && (
-                      <button
-                        type="button"
-                        onClick={toggleMock}
-                        title="Development only — switch between sample and live store data"
-                        className={`inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider px-2.5 py-1 rounded-full border cursor-pointer transition-colors ${
-                          useMock ? "bg-violet-50 text-violet-700 border-violet-200 hover:bg-violet-100" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
-                        }`}
-                      >
-                        <FlaskConical className="w-3 h-3" />
-                        {useMock ? "Mock data" : "Live data"}
-                      </button>
-                    )}
                   </div>
                   {storePieceSearch && (
                     <button
@@ -479,7 +520,7 @@ export default function StoreHubForm({
               </div>
             </div>
 
-            {/* Search / refresh / send selected */}
+            {/* Search & Actions */}
             <div className="flex flex-col md:flex-row md:items-center gap-3">
               <div className="relative flex-1 md:max-w-md">
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-[#c8834a]" />
@@ -506,6 +547,7 @@ export default function StoreHubForm({
                   Find
                 </button>
               </div>
+
               <button
                 type="button"
                 onClick={fetchLivePieces}
@@ -516,12 +558,14 @@ export default function StoreHubForm({
                 <RefreshCw className={`w-4 h-4 ${storeLoading ? "animate-spin" : ""}`} />
                 Refresh
               </button>
+
               {selectedPieces.size > 0 && (
                 <button
                   type="button"
                   onClick={() => handleBatchSendPieces()}
-                  disabled={batchSending}
-                  className="md:ml-auto h-11 px-5 rounded-xl font-black text-xs text-white flex items-center justify-center gap-2 shadow-md hover:brightness-110 transition-all cursor-pointer disabled:opacity-50"
+                  disabled={batchSending || !canScanAndSend}
+                  title={!canScanAndSend ? "🔒 Releasing garments to stitching is restricted for your role" : ""}
+                  className="md:ml-auto h-11 px-5 rounded-xl font-black text-xs text-white flex items-center justify-center gap-2 shadow-md hover:brightness-110 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{ background: "linear-gradient(135deg, #8a5a2e, #5a3518)" }}
                 >
                   {batchSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
@@ -532,7 +576,7 @@ export default function StoreHubForm({
 
             {/* Table */}
             <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
-              <table className="w-full min-w-[900px] text-left">
+              <table className="w-full min-w-[920px] text-left">
                 <thead className="bg-[#faf6f0] text-[11px] font-black uppercase tracking-wider text-[#5a3518]/80">
                   <tr>
                     <th className="w-12 px-4 py-3.5">
@@ -619,16 +663,29 @@ export default function StoreHubForm({
                           )}
                         </td>
                         <td className="px-4 py-4 align-middle text-right">
-                          <button
-                            type="button"
-                            onClick={() => handleBatchSendPieces([piece.id])}
-                            disabled={batchSending || parts.sent}
-                            className="h-10 px-4 rounded-xl border bg-[#faf6f0] text-[#5a3518] font-bold text-xs inline-flex items-center gap-2 hover:bg-[#f4ece3] hover:border-[#c8834a]/50 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                            style={{ borderColor: "rgba(200,131,74,0.3)" }}
-                          >
-                            {parts.sent ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-                            {parts.sent ? "Sent" : "Send"}
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setInspectPieceCode(piece.code || piece.id)}
+                              title="Inspect merged materials spec & issue ledger"
+                              className="h-10 px-3 rounded-xl border bg-white text-slate-700 hover:bg-slate-50 font-extrabold text-xs inline-flex items-center gap-1.5 transition-all cursor-pointer"
+                              style={{ borderColor: "rgba(200,131,74,0.3)" }}
+                            >
+                              <Eye className="w-4 h-4 text-[#8a5a2e]" />
+                              Inspect
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleBatchSendPieces([piece.id])}
+                              disabled={batchSending || parts.sent || !canScanAndSend}
+                              title={!canScanAndSend ? "🔒 Releasing garments to stitching is restricted for your role" : ""}
+                              className="h-10 px-4 rounded-xl border bg-[#faf6f0] text-[#5a3518] font-bold text-xs inline-flex items-center gap-2 hover:bg-[#f4ece3] hover:border-[#c8834a]/50 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                              style={{ borderColor: "rgba(200,131,74,0.3)" }}
+                            >
+                              {parts.sent ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+                              {parts.sent ? "Sent" : "Send"}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );
