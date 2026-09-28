@@ -53,18 +53,18 @@ function ButtonIcon({ className }) {
 
 const STATE_BADGE = {
   waiting: "bg-slate-100 text-slate-600 border-slate-200",
-  merged: "bg-blue-50 text-blue-700 border-blue-200",
+  merged: "bg-stone-50 text-stone-700 border-stone-200",
   holding_leather: "bg-amber-50 text-amber-700 border-amber-200",
   holding_lining: "bg-amber-50 text-amber-700 border-amber-200",
   holding_both: "bg-teal-50 text-teal-700 border-teal-200",
   received: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  sended: "bg-purple-50 text-purple-700 border-purple-200",
+  sended: "bg-[#faf6f0] text-[#8a5a2e] border-[#c8834a]/30",
 };
 
 const PART_STATUS = {
-  in: { text: "In store", box: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "text-emerald-700" },
-  awaiting: { text: "Awaiting", box: "bg-amber-50 text-amber-600 border-amber-200", label: "text-amber-700" },
-  na: { text: "Not needed", box: "bg-slate-50 text-slate-400 border-slate-200", label: "text-slate-400" },
+  in: { text: "IN STORE", box: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "text-emerald-700" },
+  awaiting: { text: "AWAITING", box: "bg-amber-50 text-amber-600 border-amber-200", label: "text-amber-700" },
+  na: { text: "NOT NEEDED", box: "bg-slate-50 text-slate-400 border-slate-200", label: "text-slate-400" },
 };
 
 const LAST_SCAN_CHIP = {
@@ -82,14 +82,11 @@ function PartCell({ status }) {
   );
 }
 
-function StatCard({ Icon, label, value, iconClass }) {
+function StatCard({ label, value }) {
   return (
-    <div className="rounded-2xl border bg-white px-3.5 py-2.5 flex items-center gap-2.5 min-w-0" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
-      <Icon className={`w-5 h-5 shrink-0 ${iconClass}`} />
-      <div className="min-w-0">
-        <div className="text-[11px] font-bold text-slate-500 truncate">{label}</div>
-        <div className="text-lg font-black text-[#2d1f0e] leading-tight">{value}</div>
-      </div>
+    <div className="rounded-2xl border bg-white px-3.5 py-2.5 flex flex-col items-center justify-center min-w-0" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
+      <div className="text-[11px] font-bold text-slate-500 truncate text-center">{label}</div>
+      <div className="text-lg font-black text-[#2d1f0e] leading-tight text-center">{value}</div>
     </div>
   );
 }
@@ -487,7 +484,7 @@ export default function StoreHubForm({
               <span className={`text-sm ${activeTab === "SUBSTITUTIONS" ? "font-extrabold" : "font-bold"}`}>Substitutions Queue</span>
             </button>
 
-            <button
+            {/* <button
               type="button"
               onClick={() => setStoreFilterType("COMPLETE")}
               className={`h-10 px-5 rounded-full flex items-center justify-center gap-2.5 whitespace-nowrap transition-all cursor-pointer ${
@@ -507,7 +504,7 @@ export default function StoreHubForm({
                   {counts.COMPLETE}
                 </span>
               )}
-            </button>
+            </button> */}
           </div>
 
           {/* Content Area */}
@@ -544,10 +541,10 @@ export default function StoreHubForm({
               </div>
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 xl:w-[560px]">
-                <StatCard Icon={Hash} label="Total" value={totalInStore} iconClass="text-[#8a5a2e]" />
-                <StatCard Icon={Clock} label="Awaiting" value={counts.awaiting} iconClass="text-amber-600" />
-                <StatCard Icon={CheckCircle2} label="Complete" value={counts.COMPLETE} iconClass="text-emerald-600" />
-                <StatCard Icon={Send} label="Sent" value={counts.sent} iconClass="text-purple-600" />
+                <StatCard label="Total" value={totalInStore} />
+                <StatCard label="Awaiting" value={counts.awaiting} />
+                <StatCard label="Complete" value={counts.COMPLETE} />
+                <StatCard label="Sent" value={counts.sent} />
               </div>
             </div>
 
@@ -623,7 +620,6 @@ export default function StoreHubForm({
                         {allSelected && <Check className="w-3 h-3" />}
                       </button>
                     </th>
-                    <th className="w-12 px-2 py-3.5">#</th>
                     <th className="px-4 py-3.5">Barcode / SKU</th>
                     <th className="px-4 py-3.5">Leather</th>
                     <th className="px-4 py-3.5">Lining</th>
@@ -635,7 +631,7 @@ export default function StoreHubForm({
                 <tbody className="divide-y divide-[#c8834a]/10">
                   {visiblePieces.length === 0 && (
                     <tr>
-                      <td colSpan={8} className="px-4 py-12 text-center text-sm font-bold text-slate-400">
+                      <td colSpan={7} className="px-4 py-12 text-center text-sm font-bold text-slate-400">
                         {storeLoading ? (
                           <span className="inline-flex items-center gap-2">
                             <Loader2 className="w-4 h-4 animate-spin" /> Loading pieces…
@@ -667,7 +663,6 @@ export default function StoreHubForm({
                             {isChecked && <Check className="w-3 h-3" />}
                           </button>
                         </td>
-                        <td className="px-2 py-4 align-middle text-sm font-black text-[#3d2b1a]">{idx + 1}</td>
                         <td className="px-4 py-4 align-middle">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="min-w-0">
