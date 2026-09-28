@@ -24,7 +24,7 @@ import {
 } from "lucide-react";
 import { CameraScannerModal, WorkerPickerDropdown } from "../shared";
 import StoreNotCheckedInModal from "./StoreNotCheckedInModal";
-import StoreSubstitutionsModal from "./StoreSubstitutionsModal";
+import StoreSubstitutionsView from "./StoreSubstitutionsView";
 import StorePieceMaterialsModal from "./StorePieceMaterialsModal";
 import StoreManualIssueModal from "./StoreManualIssueModal";
 import { getStoreParts } from "./storeParts";
@@ -73,16 +73,11 @@ const LAST_SCAN_CHIP = {
   na: "bg-white/5 text-white/40 border-white/10",
 };
 
-function PartCell({ Icon, status }) {
+function PartCell({ status }) {
   const s = PART_STATUS[status];
   return (
     <td className="px-4 py-4 align-middle">
-      <div className="flex items-center gap-2.5">
-        <span className={`w-9 h-9 rounded-xl border flex items-center justify-center shrink-0 ${s.box}`}>
-          <Icon className="w-[18px] h-[18px]" />
-        </span>
-        <span className={`text-xs font-black ${s.label}`}>{s.text}</span>
-      </div>
+      <span className={`text-xs font-bold ${s.label}`}>{s.text}</span>
     </td>
   );
 }
@@ -178,7 +173,7 @@ export default function StoreHubForm({
     { key: "LINING", label: "Lining", Icon: Layers, count: counts.LINING },
     { key: "ACCESSORIES", label: "Accessories", Icon: ButtonIcon, count: counts.ACCESSORIES },
   ];
-  const activeTab = ["LEATHER", "LINING", "ACCESSORIES", "COMPLETE"].includes(storeFilterType) ? storeFilterType : "All";
+  const activeTab = ["LEATHER", "LINING", "ACCESSORIES", "COMPLETE", "SUBSTITUTIONS"].includes(storeFilterType) ? storeFilterType : "All";
 
   const visiblePieces = filteredStorePieces.slice(0, storeVisibleCount);
   const selectableIds = visiblePieces.filter((piece) => !getStoreParts(piece).sent).map((piece) => piece.id || piece.piece_id);
@@ -211,14 +206,6 @@ export default function StoreHubForm({
         workerInputRef={workerInputRef}
       />
 
-      <StoreSubstitutionsModal
-        isOpen={substitutionsModalOpen}
-        onClose={() => setSubstitutionsModalOpen(false)}
-        canApproveSubstitutions={canApproveSubstitutions}
-        setSuccessMsg={setSuccessMsg}
-        setErrorMsg={setErrorMsg}
-      />
-
       <StorePieceMaterialsModal
         isOpen={!!inspectPieceCode}
         pieceCode={inspectPieceCode}
@@ -234,13 +221,14 @@ export default function StoreHubForm({
       />
 
       <div className="space-y-4 animate-in fade-in slide-in-from-bottom-3 duration-400">
-        {/* Sleek Compact Worker Verification Bar */}
+        {/* Worker Verification (Matching Barcode Gun Scanner) */}
         <div
-          className="rounded-2xl shadow-md p-3.5 sm:px-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-white"
-          style={{ background: "linear-gradient(135deg, #3d2b1a 0%, #2d1f0e 100%)", border: "1px solid rgba(200,131,74,0.3)" }}
+          className="p-6 rounded-3xl shadow-lg relative overflow-hidden space-y-5 text-white"
+          style={{ background: "linear-gradient(135deg, #1c1207, #2d1f0e)", border: "1px solid rgba(200,131,74,0.3)" }}
         >
+          <div className="absolute -right-16 -top-16 w-48 h-48 bg-[#c8834a]/15 rounded-full blur-3xl pointer-events-none" />
           {barcodeWorker ? (
-            <>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -259,14 +247,6 @@ export default function StoreHubForm({
               <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
-                  onClick={() => setSubstitutionsModalOpen(true)}
-                  className="text-xs font-black text-amber-200 hover:text-white px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 transition-all cursor-pointer flex items-center gap-1.5"
-                >
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-300" />
-                  Substitutions Queue
-                </button>
-                <button
-                  type="button"
                   onClick={() => {
                     if (!canRecordManualIssue) {
                       setErrorMsg("🔒 Off-spec issue recording is allowed for Store Manager, Direct Manager, or Managing Director only.");
@@ -281,7 +261,7 @@ export default function StoreHubForm({
                   }`}
                 >
                   <Wrench className="w-3.5 h-3.5 text-[#f5d4a4]" />
-                  Off-Spec Issue
+                  Raise issue
                 </button>
                 <button
                   type="button"
@@ -294,50 +274,71 @@ export default function StoreHubForm({
                   Change Worker
                 </button>
               </div>
-            </>
+            </div>
           ) : (
-            <div className="w-full space-y-3">
+            <div className="w-full space-y-4 relative z-10">
               <div className="flex items-center gap-3">
-                <h3 className="text-sm font-extrabold text-white">Worker Verification</h3>
+                <div className="w-10 h-10 rounded-2xl bg-[#c8834a]/20 border border-[#c8834a]/40 flex items-center justify-center text-[#f5d4a4] font-black text-sm shadow-inner shrink-0">
+                  1
+                </div>
+                <div>
+                  <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                    Worker Barcode Verification
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#c8834a]/30 text-[#f5d4a4]">
+                      Step 1
+                    </span>
+                  </h3>
+                  <p className="text-xs text-[#e2d5c3]/80">
+                    Scan Worker ID Badge / Card (e.g. EMP-000123) to verify Check-In status
+                  </p>
+                </div>
               </div>
+              
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
                   handleVerifyBarcodeWorker();
                 }}
-                className="flex flex-col sm:flex-row gap-2.5"
+                className="flex flex-col sm:flex-row gap-3 pt-2"
               >
                 <div className="relative flex-1">
-                  <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  {!barcodeWorkerInput && (
+                    <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-4 top-1/2 -translate-y-1/2 pointer-events-none transition-opacity duration-200" />
+                  )}
                   <input
                     ref={workerInputRef}
                     type="text"
-                    placeholder="Scan or type worker ID (e.g. EMP-000123)…"
+                    placeholder="Scan or type Worker ID (e.g. EMP-000123)..."
                     value={barcodeWorkerInput}
                     onChange={(e) => setBarcodeWorkerInput(e.target.value)}
                     autoFocus
-                    className="w-full h-11 pl-11 pr-11 sm:pr-3 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all"
+                    style={{
+                      paddingLeft: barcodeWorkerInput ? "1rem" : "3.25rem",
+                      paddingRight: "3rem",
+                    }}
+                    className="w-full h-14 bg-white/10 text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-base border-2 border-[#c8834a]/40 rounded-2xl focus:outline-none focus:border-[#f5d4a4] transition-all"
                   />
                   <button
                     type="button"
                     onClick={() => setCameraScanTarget("worker")}
-                    className="sm:hidden absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-[#c8834a]/30 text-[#f5d4a4]"
+                    className="sm:hidden absolute right-3 top-1/2 -translate-y-1/2 p-2 rounded-xl bg-[#c8834a]/30 text-[#f5d4a4] border border-[#c8834a]/50 hover:bg-[#c8834a]/50 active:scale-95 transition-all cursor-pointer z-10"
                     title="Scan with camera"
                   >
-                    <Camera className="w-4 h-4" />
+                    <Camera className="w-5 h-5" />
                   </button>
                 </div>
                 <button
                   type="submit"
                   disabled={barcodeWorkerChecking || !barcodeWorkerInput.trim()}
-                  className="h-11 px-6 rounded-xl font-black text-xs text-[#2d1f0e] bg-gradient-to-br from-[#f5d4a4] to-[#d99a62] hover:brightness-105 transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                  className="h-14 px-6 rounded-2xl font-black text-sm text-[#1c1207] bg-gradient-to-r from-[#e8a06a] to-[#c8834a] hover:brightness-110 active:scale-95 transition-all shadow-lg cursor-pointer disabled:opacity-40 flex items-center justify-center gap-2"
                 >
                   {barcodeWorkerChecking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  Verify Worker
+                  Verify Worker ID
                 </button>
               </form>
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-[#e2d5c3]/70">
-                <span className="shrink-0 font-bold">Or select worker:</span>
+              
+              <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2 text-xs text-[#e2d5c3]/70">
+                <span className="shrink-0">Or select active worker:</span>
                 <WorkerPickerDropdown workers={workers} onSelect={handleVerifyBarcodeWorker} />
               </div>
             </div>
@@ -410,7 +411,7 @@ export default function StoreHubForm({
                 <Package className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
-                  placeholder="Optional packet barcode (LOT-ACC-…)…"
+                  placeholder="Accessory Barcode…"
                   value={storeLotInput}
                   onChange={(e) => setStoreLotInput(e.target.value)}
                   disabled={locked || storeApiLoading}
@@ -442,7 +443,7 @@ export default function StoreHubForm({
           </div>
 
           {/* Filter Tabs */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-[1.25fr_1fr_1fr_1fr_1.35fr] gap-3">
+          <div className="inline-flex items-center p-1.5 bg-[#faf6f0] border rounded-full overflow-x-auto gap-1" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
             {tabs.map(({ key, label, Icon, count }) => {
               const active = activeTab === key;
               return (
@@ -450,43 +451,73 @@ export default function StoreHubForm({
                   key={key}
                   type="button"
                   onClick={() => setStoreFilterType(key)}
-                  className={`h-16 px-4 rounded-2xl border flex items-center gap-3 text-left transition-all cursor-pointer ${
+                  className={`h-10 px-5 rounded-full flex items-center justify-center gap-2.5 whitespace-nowrap transition-all cursor-pointer ${
                     active
-                      ? "text-white border-transparent shadow-lg"
-                      : "bg-white text-[#3d2b1a] hover:border-[#c8834a]/50 hover:shadow-sm"
+                      ? "bg-white shadow-sm text-[#c8834a] ring-1 ring-slate-200/50"
+                      : "text-slate-500 hover:text-[#5a3518] hover:bg-white/50"
                   }`}
-                  style={active ? { background: "linear-gradient(135deg, #3d2b1a, #1c1207)" } : { borderColor: "rgba(200,131,74,0.18)" }}
                 >
-                  <Icon className={`w-6 h-6 shrink-0 ${active ? "text-[#f5d4a4]" : "text-[#8a5a2e]"}`} />
-                  <span className={`flex-1 truncate ${active ? "font-extrabold text-base" : "font-bold text-sm"}`}>{label}</span>
-                  <span
-                    className={`min-w-7 h-7 px-2 rounded-full flex items-center justify-center text-xs font-black ${
-                      active ? "bg-[#c8834a]/35 text-[#f5d4a4]" : "bg-[#f4ece3] text-[#5a3518]"
-                    }`}
-                  >
-                    {count}
-                  </span>
+                  <Icon className={`w-4 h-4 shrink-0 ${active ? "text-[#c8834a]" : "text-slate-400"}`} />
+                  <span className={`text-sm ${active ? "font-extrabold" : "font-bold"}`}>{label}</span>
+                  {count > 0 && (
+                    <span
+                      className={`ml-1 h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                        active ? "bg-[#c8834a]/10 text-[#c8834a]" : "bg-slate-200/50 text-slate-500"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  )}
                 </button>
               );
             })}
+            
+            <div className="w-px h-6 bg-[#e2d5c3]/50 mx-1 shrink-0" />
+            
+            <button
+              type="button"
+              onClick={() => setStoreFilterType("SUBSTITUTIONS")}
+              className={`h-10 px-5 rounded-full flex items-center justify-center gap-2.5 whitespace-nowrap transition-all cursor-pointer ${
+                activeTab === "SUBSTITUTIONS"
+                  ? "bg-white shadow-sm text-amber-600 ring-1 ring-slate-200/50"
+                  : "text-slate-500 hover:text-amber-700 hover:bg-white/50"
+              }`}
+            >
+              <AlertTriangle className={`w-4 h-4 shrink-0 ${activeTab === "SUBSTITUTIONS" ? "text-amber-500" : "text-slate-400"}`} strokeWidth={3} />
+              <span className={`text-sm ${activeTab === "SUBSTITUTIONS" ? "font-extrabold" : "font-bold"}`}>Substitutions Queue</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setStoreFilterType("COMPLETE")}
-              className={`col-span-2 sm:col-span-4 xl:col-span-1 h-16 px-4 rounded-2xl border flex items-center gap-3 text-left transition-all cursor-pointer bg-emerald-50/80 border-emerald-200 hover:border-emerald-400 ${
-                activeTab === "COMPLETE" ? "ring-2 ring-emerald-500/60" : ""
+              className={`h-10 px-5 rounded-full flex items-center justify-center gap-2.5 whitespace-nowrap transition-all cursor-pointer ${
+                activeTab === "COMPLETE"
+                  ? "bg-white shadow-sm text-emerald-600 ring-1 ring-slate-200/50"
+                  : "text-slate-500 hover:text-emerald-700 hover:bg-white/50"
               }`}
             >
-              <span className="w-9 h-9 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                <Check className="w-5 h-5" strokeWidth={3} />
-              </span>
-              <span className="min-w-0">
-                <span className="block text-xs font-bold text-emerald-800 truncate">Complete Sets</span>
-                <span className="block text-lg font-black text-emerald-900 leading-tight">{counts.COMPLETE}</span>
-              </span>
+              <Check className={`w-4 h-4 shrink-0 ${activeTab === "COMPLETE" ? "text-emerald-500" : "text-slate-400"}`} strokeWidth={3} />
+              <span className={`text-sm ${activeTab === "COMPLETE" ? "font-extrabold" : "font-bold"}`}>Complete Sets</span>
+              {counts.COMPLETE > 0 && (
+                <span
+                  className={`ml-1 h-5 px-1.5 rounded-full flex items-center justify-center text-[10px] font-black ${
+                    activeTab === "COMPLETE" ? "bg-emerald-50 text-emerald-600" : "bg-slate-200/50 text-slate-500"
+                  }`}
+                >
+                  {counts.COMPLETE}
+                </span>
+              )}
             </button>
           </div>
 
-          {/* Table */}
+          {/* Content Area */}
+          {activeTab === "SUBSTITUTIONS" ? (
+            <StoreSubstitutionsView
+              canApproveSubstitutions={canApproveSubstitutions}
+              setSuccessMsg={setSuccessMsg}
+              setErrorMsg={setErrorMsg}
+            />
+          ) : (
           <div className="bg-white rounded-3xl border shadow-sm p-4 sm:p-6 space-y-5" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
             <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
               <div className="flex items-center gap-4 min-w-0">
@@ -573,11 +604,11 @@ export default function StoreHubForm({
                 </button>
               )}
             </div>
-
+            
             {/* Table */}
-            <div className="rounded-2xl border overflow-x-auto" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
+            <div className="rounded-2xl border overflow-x-auto bg-white" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
               <table className="w-full min-w-[920px] text-left">
-                <thead className="bg-[#faf6f0] text-[11px] font-black uppercase tracking-wider text-[#5a3518]/80">
+                <thead className="bg-white border-b border-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-400">
                   <tr>
                     <th className="w-12 px-4 py-3.5">
                       <button
@@ -639,7 +670,6 @@ export default function StoreHubForm({
                         <td className="px-2 py-4 align-middle text-sm font-black text-[#3d2b1a]">{idx + 1}</td>
                         <td className="px-4 py-4 align-middle">
                           <div className="flex items-center gap-3 min-w-0">
-                            <Barcode className="w-7 h-7 text-[#5a3518] shrink-0" />
                             <div className="min-w-0">
                               <div className="font-mono font-black text-sm text-[#2d1f0e] truncate">{pCode}</div>
                               <div className="text-xs font-medium text-slate-500 truncate">
@@ -653,9 +683,9 @@ export default function StoreHubForm({
                             </div>
                           </div>
                         </td>
-                        <PartCell Icon={HideIcon} status={parts.leather ? "in" : "awaiting"} />
-                        <PartCell Icon={Layers} status={!parts.liningNeeded ? "na" : parts.lining ? "in" : "awaiting"} />
-                        <PartCell Icon={ButtonIcon} status={parts.accessories ? "in" : "awaiting"} />
+                        <PartCell status={parts.leather ? "in" : "awaiting"} />
+                        <PartCell status={!parts.liningNeeded ? "na" : parts.lining ? "in" : "awaiting"} />
+                        <PartCell status={parts.accessories ? "in" : "awaiting"} />
                         <td className="px-4 py-4 align-middle max-w-[240px]">
                           <span className={`inline-block text-[10px] font-black uppercase tracking-wider px-2 py-1 rounded-md border ${STATE_BADGE[parts.state] || STATE_BADGE.waiting}`}>
                             {stateLabel}
@@ -711,6 +741,7 @@ export default function StoreHubForm({
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </>

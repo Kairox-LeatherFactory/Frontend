@@ -27,7 +27,7 @@ export default function StoreSubstitutionsModal({ isOpen, onClose, canApproveSub
   if (!isOpen) return null;
 
   const requests = liveData?.requests || (Array.isArray(liveData) ? liveData : []);
-  const pendingCount = requests.filter((r) => r.status === "PENDING").length;
+  const pendingCount = requests.filter((r) => (r.status || "").toUpperCase() === "PENDING").length;
 
   const handleApprove = async (reqId) => {
     setActionLoadingId(reqId);
@@ -104,9 +104,10 @@ export default function StoreSubstitutionsModal({ isOpen, onClose, canApproveSub
 
           {!isFetching &&
             requests.map((req) => {
-              const isPending = req.status === "PENDING";
-              const isApproved = req.status === "APPROVED";
-              const isRejected = req.status === "REJECTED";
+              const reqStatus = (req.status || "").toUpperCase();
+              const isPending = reqStatus === "PENDING";
+              const isApproved = reqStatus === "APPROVED";
+              const isRejected = reqStatus === "REJECTED";
               const isLoading = actionLoadingId === req.request_id;
 
               return (
