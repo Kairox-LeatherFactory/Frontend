@@ -110,7 +110,7 @@ const [loadingExplore, setLoadingExplore] = useState(true);
     if (exploreData && exploreData.clients) {
       exploreData.clients.forEach(client => {
         client.orders?.forEach(order => {
-          const orderName = `${client.client_name} (PO: ${order.order_number})`;
+          const orderName = `${String(client.client_name || '').toUpperCase()} (PO: ${String(order.order_number || '').toUpperCase()})`;
           groups.push({
             id: orderName,
             rawId: order.order_id,
@@ -125,7 +125,7 @@ const [loadingExplore, setLoadingExplore] = useState(true);
       orders.forEach((styleOrder) => {
         const poNum = styleOrder?.po_number || styleOrder?.order_number || styleOrder?.id || 'ORD-101';
         const clientName = styleOrder?.client || styleOrder?.client_name || 'Client';
-        const orderName = `${clientName} (PO: ${poNum})`;
+        const orderName = `${String(clientName || '').toUpperCase()} (PO: ${String(poNum || '').toUpperCase()})`;
 
         if (!mapGroups[orderName]) {
           mapGroups[orderName] = {
@@ -246,7 +246,7 @@ const [loadingExplore, setLoadingExplore] = useState(true);
           );
 
           if (matchedStyle) {
-            const orderName = `${client.client_name} (PO: ${order.order_number})`;
+            const orderName = `${String(client.client_name || '').toUpperCase()} (PO: ${String(order.order_number || '').toUpperCase()})`;
             targetGroup = {
               id: orderName,
               rawId: order.order_id,
@@ -259,7 +259,7 @@ const [loadingExplore, setLoadingExplore] = useState(true);
           }
         } else {
           // Order-only link — match just by order number
-          const orderName = `${client.client_name} (PO: ${order.order_number})`;
+          const orderName = `${String(client.client_name || '').toUpperCase()} (PO: ${String(order.order_number || '').toUpperCase()})`;
           targetGroup = {
             id: orderName,
             rawId: order.order_id,

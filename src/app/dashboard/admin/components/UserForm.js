@@ -14,13 +14,13 @@ export function CreateUserForm({onSuccess, toast, showToast }) {
 const [createUser] = useCreateUserMutation();
 
   const [userForm, setUserForm] = useState({
-    name: '', phone: '', email: '', role: '', password: '', employee_id: ''
+    name: '', phone: '', role: '', password: ''
   });
   const [isSubmittingUser, setIsSubmittingUser] = useState(false);
   // Handle Add User Login Submission
     const handleCreateUser = async (e) => {
       e.preventDefault();
-      const { name, phone, password, role, email, employee_id } = userForm;
+      const { name, phone, password, role } = userForm;
       if (!name.trim() || !phone.trim() || !password.trim()) {
         showToast('user', 'error', 'Name, Phone, and Password are required.');
         return;
@@ -37,13 +37,11 @@ const [createUser] = useCreateUserMutation();
           phone: phone.trim(),
           password: password,
           role: role,
-          email: email.trim() || null,
-          employee_id: employee_id.trim() || null,
         };
   
         await createUser(payload).unwrap();
         showToast('user', 'success', `User account login for "${name}" created successfully.`);
-        setUserForm({ name: '', phone: '', email: '', role: '', password: '', employee_id: '' });
+        setUserForm({ name: '', phone: '', role: '', password: '' });
       } catch (err) {
         showToast('user', 'error', err.message || 'Failed to create user login.');
       } finally {
@@ -104,24 +102,6 @@ const [createUser] = useCreateUserMutation();
                       { value: 'security', label: 'Security' },
                     ]}
                   />
-                </Field>
-              </div>
-              <div className="sm:col-span-2">
-                <Field label="Email (Optional)">
-                  <input type="email" className={inputCls}
-                    value={userForm.email}
-                    placeholder="e.g. priya@factory.local"
-                    onChange={e => setUserForm({ ...userForm, email: e.target.value })} />
-                </Field>
-              </div>
-
-              <div className="sm:col-span-2">
-                <Field label="Link to Employee Record (Optional)" hint="Employee ID — links this login to a payroll worker record">
-                  <input type="number" className={inputCls}
-                    value={userForm.employee_id}
-                    placeholder="e.g. 42 (from Factory Workers Directory)"
-                    min="1"
-                    onChange={e => setUserForm({ ...userForm, employee_id: e.target.value })} />
                 </Field>
               </div>
             </div>

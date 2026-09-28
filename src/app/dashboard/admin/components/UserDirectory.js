@@ -110,27 +110,26 @@ const [patchEmployeeBarcode] = usePatchEmployeeBarcodeMutation();
           <div className="w-full overflow-x-auto rounded-2xl border bg-white shadow-sm" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
 
             {/*                                                                           */}
-            <table className="w-full min-w-[700px] text-left text-xs whitespace-nowrap">
+            <table className="w-full text-left text-xs whitespace-nowrap">
               <thead>
                 <tr className="font-black uppercase tracking-wider text-[10px]" style={{ background: '#faf6f0', borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
-                  <th className="p-3 pl-5">User / Employee</th>
-                  <th className="p-3">Role</th>
-                  <th className="p-3">Barcode Tag (Contract v3.0)</th>
-                  <th className="p-3">Phone</th>
-                  <th className="p-3">Status</th>
-                  <th className="p-3 pr-5 text-right">Barcode Actions</th>
+                  <th className="p-3 pl-5 w-[30%]">User Name</th>
+                  <th className="p-3 w-[22%]">Role</th>
+                  <th className="p-3 w-[20%]">Phone</th>
+                  <th className="p-3 w-[18%]">Status</th>
+                  <th className="p-3 pr-5 text-right whitespace-nowrap">Barcode Actions</th>
                 </tr>
               </thead>
               <motion.tbody variants={rowStagger} initial="hidden" animate="show">
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-14 text-center font-semibold" style={{ color: '#9a7a5a' }}>
+                    <td colSpan={5} className="py-14 text-center font-semibold" style={{ color: '#9a7a5a' }}>
                       <Users className="w-10 h-10 mx-auto mb-2 opacity-30" />
                       No users found.
                     </td>
                   </tr>
                 ) : filteredUsers.map(u => {
-                  const roleCfg = ROLE_COLORS[u.role] || { bg: '#faf6f0', color: '#9a7a5a', border: 'rgba(200,131,74,0.15)', label: u.role };
+                  const roleCfg = ROLE_COLORS[u.role] || { bg: '#faf6f0', color: '#a86022', border: 'rgba(200,131,74,0.25)', label: u.role };
                   const barcodeTag = u.employee_barcode || findMatchingEmployee(u)?.employee_barcode || `EMP-${String(u.id || '000000').padStart(6, '0')}`;
                   const empId = u.id || u.employee_id;
                   const isActionLoading = barcodeActionLoading[empId];
@@ -138,34 +137,16 @@ const [patchEmployeeBarcode] = usePatchEmployeeBarcodeMutation();
                   return (
                     <motion.tr key={u.id} variants={fadeUpItem} className="border-b hover:bg-[#fcfaf8] transition-colors text-xs" style={{ borderColor: 'rgba(200,131,74,0.07)' }}>
 
-                      {/* User Name & Avatar */}
+                      {/* User Name */}
                       <td className="p-3 pl-5">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-black text-white flex-shrink-0"
-                            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
-                            {(u.name || '?')[0].toUpperCase()}
-                          </div>
-                          <div>
-                            <span className="font-black block" style={{ color: '#2d1f0e' }}>{u.name}</span>
-                            <span className="text-[10px] text-slate-400 font-mono">ID: #{u.id}</span>
-                          </div>
-                        </div>
+                        <span className="font-black block text-sm" style={{ color: '#2d1f0e' }}>{u.name}</span>
                       </td>
 
-                      {/* Role Badge */}
+                      {/* Role Label */}
                       <td className="p-3">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase"
-                          style={{ background: roleCfg.bg, color: roleCfg.color, border: `1px solid ${roleCfg.border}` }}>
+                        <span className="font-black text-xs uppercase tracking-wider block" style={{ color: roleCfg.color }}>
                           {roleCfg.label}
                         </span>
-                      </td>
-
-                      {/* Barcode Tag Badge */}
-                      <td className="p-3">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-mono font-black bg-[#faf6f0] text-[#2d1f0e] border border-[#c8834a]/30 shadow-2xs">
-                          <Barcode className="w-3.5 h-3.5 text-[#c8834a]" />
-                          {barcodeTag}
-                        </div>
                       </td>
 
                       {/* Phone */}
@@ -173,7 +154,7 @@ const [patchEmployeeBarcode] = usePatchEmployeeBarcodeMutation();
                         <span className="font-black" style={{ color: '#2d1f0e' }}>{u.phone || 'N/A'}</span>
                       </td>
 
-                      {/* Beautiful Status Badge UI */}
+                      {/* Status Badge */}
                       <td className="p-3">
                         {u.is_active !== false ? (
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
@@ -203,10 +184,10 @@ const [patchEmployeeBarcode] = usePatchEmployeeBarcodeMutation();
                             type="button"
                             onClick={() => handleReissueBarcode(u)}
                             disabled={!!isActionLoading}
-                            className="px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50"
+                            className="px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold text-[#a86022] bg-[#faf6f0] hover:bg-[#f4ece1] border border-[#c8834a]/30 flex items-center gap-1 cursor-pointer transition-all disabled:opacity-50"
                             title="Reissue Barcode (Lost/Damaged Card)"
                           >
-                            {isActionLoading === 'reissue' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                            {isActionLoading === 'reissue' ? <Loader2 className="w-3.5 h-3.5 animate-spin text-[#a86022]" /> : <RefreshCw className="w-3.5 h-3.5 text-[#a86022]" />}
                             Reissue
                           </button>
                           <button

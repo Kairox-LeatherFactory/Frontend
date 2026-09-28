@@ -338,14 +338,14 @@ export default function LedgerView({ isActive }) {
                     {/* Team asked "where do I get a run id" for Run Actions
                         (Recompute/Close/Reopen) — it was never shown
                         anywhere in the UI. Copyable here now. */}
-                    <button
+                    {/* <button
                       type="button"
                       onClick={() => { navigator.clipboard?.writeText(selectedRun.run_id || ''); }}
                       title="Click to copy run id"
                       className="font-mono text-[10px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-1 rounded-md hover:bg-slate-100 cursor-pointer"
                     >
                       {selectedRun.run_id}
-                    </button>
+                    </button> */}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
