@@ -41,7 +41,11 @@ export default function StoreHubSection({
   setCameraScanTarget,
 }) {
   const { token, user } = useAuth();
-  const userRole = String(user?.role || (typeof window !== "undefined" ? localStorage.getItem("kairox_role") : "") || "").toLowerCase();
+  const userRole = String(
+    (typeof user === "object" ? user?.role : user) ||
+    (typeof window !== "undefined" ? localStorage.getItem("kairox_user") : "") ||
+    ""
+  ).toLowerCase();
 
   const isSuperuser = userRole === "managing_director" || userRole === "direct_manager" || userRole === "admin";
   const canApproveSubstitutions = isSuperuser;
