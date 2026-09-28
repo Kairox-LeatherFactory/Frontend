@@ -181,7 +181,7 @@ export default function StoreHubForm({
   const activeTab = ["LEATHER", "LINING", "ACCESSORIES", "COMPLETE"].includes(storeFilterType) ? storeFilterType : "All";
 
   const visiblePieces = filteredStorePieces.slice(0, storeVisibleCount);
-  const selectableIds = visiblePieces.filter((piece) => !getStoreParts(piece).sent).map((piece) => piece.id);
+  const selectableIds = visiblePieces.filter((piece) => !getStoreParts(piece).sent).map((piece) => piece.id || piece.piece_id);
   const allSelected = selectableIds.length > 0 && selectableIds.every((id) => selectedPieces.has(id));
   const toggleSelectAll = () => {
     setSelectedPieces(allSelected ? new Set() : new Set(selectableIds));
@@ -617,15 +617,16 @@ export default function StoreHubForm({
                   )}
                   {visiblePieces.map((piece, idx) => {
                     const parts = getStoreParts(piece);
-                    const pCode = piece.piece_code || piece.code || piece.barcode || piece.piece_id || piece.id;
-                    const isChecked = selectedPieces.has(piece.id || pCode);
+                    const pieceUUID = piece.id || piece.piece_id;
+                    const pCode = piece.piece_code || piece.code || piece.barcode || pieceUUID;
+                    const isChecked = selectedPieces.has(pieceUUID || pCode);
                     const stateLabel = parts.state === "sended" ? "SENT" : piece.holding || (parts.state ? parts.state.replace(/_/g, " ").toUpperCase() : "UNKNOWN");
                     return (
-                      <tr key={piece.id || pCode} className={`transition-colors ${isChecked ? "bg-[#c8834a]/[0.06]" : "hover:bg-[#faf6f0]/70"}`}>
+                      <tr key={pieceUUID || pCode} className={`transition-colors ${isChecked ? "bg-[#c8834a]/[0.06]" : "hover:bg-[#faf6f0]/70"}`}>
                         <td className="px-4 py-4 align-middle">
                           <button
                             type="button"
-                            onClick={() => togglePieceSelection(piece.id || pCode)}
+                            onClick={() => togglePieceSelection(pieceUUID || pCode)}
                             disabled={parts.sent}
                             aria-label={`Select ${pCode}`}
                             className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
@@ -680,7 +681,7 @@ export default function StoreHubForm({
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleBatchSendPieces([piece.id])}
+                              onClick={() => handleBatchSendPieces([pieceUUID])}
                               disabled={batchSending || parts.sent || !canScanAndSend}
                               title={!canScanAndSend ? "🔒 Releasing garments to stitching is restricted for your role" : ""}
                               className="h-10 px-4 rounded-xl border bg-[#faf6f0] text-[#5a3518] font-bold text-xs inline-flex items-center gap-2 hover:bg-[#f4ece3] hover:border-[#c8834a]/50 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
