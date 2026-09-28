@@ -7,7 +7,7 @@ import { Scissors, Loader2, FileSpreadsheet, LockOpen, Check, Barcode, Printer, 
 
 import {
   useLazyGetMaterialLotsQuery,
-  useGetCuttingGridQuery,
+  useLazyGetCuttingGridQuery,
   useLazyGetCuttingSheetQuery,
   useGenerateCuttingRowsMutation,
   useCreateCuttingSheetMutation,
@@ -143,17 +143,100 @@ export default function CuttingSheetSection() {
 
   const [generateRows] = useGenerateCuttingRowsMutation();
 
-  // 📡 GET /api/v1/cutting/grid?style_id=&colour=
-  const { data: gridData, isLoading: gridLoading, error: gridError } = useGetCuttingGridQuery(
-    { style_id: styleId, colour: colour || undefined },
-    { skip: !styleId }
-  );
+  // 📡 GET /api/v1/cutting/grid with 50-by-50 sequential batching & 1s delay
+  const [fetchCuttingGridBatch] = useLazyGetCuttingGridQuery();
+  const [accumulatedGridData, setAccumulatedGridData] = useState({
+    rows: [],
+    total: 0,
+    colours: [],
+    present_cutters: []
+  });
+  const [isFetchingGrid, setIsFetchingGrid] = useState(false);
+  const [gridError, setGridError] = useState(null);
 
+  useEffect(() => {
+    if (!styleId) {
+      setAccumulatedGridData({ rows: [], total: 0, colours: [], present_cutters: [] });
+      setIsFetchingGrid(false);
+      setGridError(null);
+      return;
+    }
 
+    let isCancelled = false;
+
+    const fetchAllGridBatches = async () => {
+      setIsFetchingGrid(true);
+      setGridError(null);
+      setAccumulatedGridData({ rows: [], total: 0, colours: [], present_cutters: [] });
+
+      let currentOffset = 0;
+      const batchLimit = 50;
+      let hasMore = true;
+
+      while (hasMore && !isCancelled) {
+        try {
+          const res = await fetchCuttingGridBatch({
+            style_id: styleId,
+            colour: colour || undefined,
+            limit: batchLimit,
+            offset: currentOffset
+          }, false).unwrap();
+
+          if (isCancelled) break;
+
+          const batchRows = Array.isArray(res?.rows) ? res.rows : (Array.isArray(res) ? res : []);
+          const totalCount = typeof res?.total === 'number' ? res.total : 0;
+          const resHasMore = res?.has_more;
+
+          setAccumulatedGridData(prev => {
+            const existingIds = new Set(prev.rows.map(r => r.row_id || r.id));
+            const freshRows = batchRows.filter(r => !existingIds.has(r.row_id || r.id));
+            return {
+              rows: [...prev.rows, ...freshRows],
+              total: totalCount || (prev.rows.length + freshRows.length),
+              colours: res?.colours || prev.colours || [],
+              present_cutters: res?.present_cutters || prev.present_cutters || []
+            };
+          });
+
+          // Check if more 50-row batches exist
+          if (resHasMore !== undefined) {
+            hasMore = resHasMore;
+          } else if (batchRows.length < batchLimit) {
+            hasMore = false;
+          } else if (totalCount && (currentOffset + batchRows.length >= totalCount)) {
+            hasMore = false;
+          }
+
+          if (hasMore && !isCancelled) {
+            currentOffset += batchLimit;
+            // ⏱ 1-second delay between 50-row batch requests
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        } catch (err) {
+          if (!isCancelled) {
+            console.warn('Batch fetch cutting grid error:', err);
+            setGridError(err);
+          }
+          hasMore = false;
+        }
+      }
+
+      if (!isCancelled) {
+        setIsFetchingGrid(false);
+      }
+    };
+
+    fetchAllGridBatches();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [styleId, colour, fetchCuttingGridBatch]);
 
   useEffect(() => {
     if (gridError) {
-      console.warn('Backend Grid Error 500:', gridError);
+      console.warn('Backend Grid Error:', gridError);
     }
   }, [gridError]);
 
@@ -164,7 +247,7 @@ export default function CuttingSheetSection() {
     const raw = Array.isArray(attendanceRes)
       ? attendanceRes
       : (attendanceRes?.roster || attendanceRes?.items || attendanceRes?.employees || attendanceRes?.attendance || []);
-    const gridCutters = Array.isArray(gridData?.present_cutters) ? gridData.present_cutters : [];
+    const gridCutters = Array.isArray(accumulatedGridData?.present_cutters) ? accumulatedGridData.present_cutters : [];
     const combined = [...raw, ...gridCutters];
 
     const uniqueMap = new Map();
@@ -177,7 +260,7 @@ export default function CuttingSheetSection() {
       }
     });
     return Array.from(uniqueMap.values());
-  }, [attendanceRes, gridData]);
+  }, [attendanceRes, accumulatedGridData]);
 
   const availableArticles = useMemo(() => {
     const lotArticles = lotsList.map(l => l.article).filter(Boolean);
@@ -193,12 +276,12 @@ export default function CuttingSheetSection() {
     }).filter(Boolean);
 
     const specColours = leatherLines.map(l => l.colour || l.color).filter(Boolean);
-    const gridColours = Array.isArray(gridData?.colours) ? gridData.colours : (gridData?.colour ? [gridData.colour] : []);
+    const gridColours = Array.isArray(accumulatedGridData?.colours) ? accumulatedGridData.colours : (accumulatedGridData?.colour ? [accumulatedGridData.colour] : []);
     const specExtraColours = Array.isArray(specData?.colours) ? specData.colours : [];
     const savedColour = colour ? [colour] : [];
 
     return [...new Set([...specColours, ...gridColours, ...specExtraColours, ...lotColours, ...savedColour])];
-  }, [leatherLines, lotsList, gridData, specData, colour]);
+  }, [leatherLines, lotsList, accumulatedGridData, specData, colour]);
 
   // Grid state
   const [rows, setRows] = useState([]);
@@ -288,10 +371,10 @@ export default function CuttingSheetSection() {
 
   // Sync loaded grid rows (filtered by Article, Colour, workDate & status rules)
   useEffect(() => {
-    if (gridData?.rows && Array.isArray(gridData.rows)) {
+    if (accumulatedGridData?.rows && Array.isArray(accumulatedGridData.rows)) {
       const todayStr = new Date().toISOString().slice(0, 10);
 
-      const filtered = gridData.rows.filter(r => {
+      const filtered = accumulatedGridData.rows.filter(r => {
         // Article & Colour filter (if selected in top bar)
         if (selectedArticle && r.article && r.article.toLowerCase() !== selectedArticle.toLowerCase()) {
           return false;
@@ -329,7 +412,7 @@ export default function CuttingSheetSection() {
 
       setRows(filtered);
     }
-  }, [gridData, workDate, selectedArticle, colour]);
+  }, [accumulatedGridData, workDate, selectedArticle, colour]);
 
 
 
@@ -417,6 +500,14 @@ export default function CuttingSheetSection() {
       const uId = updatedRow.row_id || updatedRow.id;
       return rId === uId ? updatedRow : r;
     }));
+    setAccumulatedGridData(prev => ({
+      ...prev,
+      rows: prev.rows.map(r => {
+        const rId = r.row_id || r.id;
+        const uId = updatedRow.row_id || updatedRow.id;
+        return rId === uId ? updatedRow : r;
+      })
+    }));
   }, []);
 
   const grandTotalSkins = rows.reduce((sum, r) => sum + (r.sheets?.length || 0), 0);
@@ -458,6 +549,12 @@ export default function CuttingSheetSection() {
           </div>
 
           <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-xl border border-slate-200 shadow-inner overflow-x-auto">
+            {isFetchingGrid && rows.length > 0 && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 text-amber-800 border border-amber-300 rounded-lg text-[11px] font-bold animate-pulse whitespace-nowrap">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                <span>Loading next 50 rows... ({accumulatedGridData.rows.length} fetched)</span>
+              </div>
+            )}
             <input
               type="date"
               value={workDate}
@@ -524,7 +621,7 @@ export default function CuttingSheetSection() {
                 <th className="p-2 border-r border-slate-400 w-36 text-center">Style</th>
                 <th className="p-2 border-r border-slate-400 w-32 text-center">Article</th>
                 <th className="p-2 border-r border-slate-400 w-24 text-center">Colour</th>
-                <th className="p-2 border-r border-slate-400 min-w-[150px] w-40 text-center">Name</th>
+                <th className="p-2 border-r border-slate-400 w-28 min-w-[100px] text-center">Name</th>
                 <th className="p-2 border-r border-slate-400 w-16 text-center">Size</th>
                 <th className="p-2 border-r border-slate-400 w-20 text-center">R.C.NO</th>
                 {Array(17).fill(0).map((_, i) => (
@@ -536,12 +633,12 @@ export default function CuttingSheetSection() {
               </tr>
             </thead>
             <tbody>
-              {gridLoading ? (
+              {isFetchingGrid && rows.length === 0 ? (
                 <tr>
                   <td colSpan={28} className="p-12 text-center text-slate-500 font-bold bg-slate-50">
                     <div className="flex items-center justify-center gap-2">
                       <Loader2 className="w-5 h-5 animate-spin text-[#c8834a]" />
-                      <span>Loading existing cutting rows...</span>
+                      <span>Loading cutting grid (50 rows per batch)...</span>
                     </div>
                   </td>
                 </tr>
@@ -1001,7 +1098,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
               toast.error(err?.data?.message || 'Failed to assign worker');
             }
           }}
-          className="w-full h-9 px-2 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all text-xs cursor-pointer min-w-[140px]"
+          className="w-full h-9 px-1 text-center font-bold text-slate-800 bg-transparent outline-none focus:bg-white focus:ring-1 focus:ring-slate-300 transition-all text-xs cursor-pointer min-w-[100px]"
         >
           <option value="">-- Select --</option>
           {presentWorkers.map((w) => (
