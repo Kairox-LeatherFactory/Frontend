@@ -427,15 +427,7 @@ export default function CuttingSheetSection() {
       setRows(filtered);
     }
   }, [accumulatedGridData, workDate, selectedArticle, colour]);
-
-
-
-
-
-
-
-
-  const handleGenerate = async () => {
+   const handleGenerate = async () => {
     if (!styleId) {
       toast.error('Style ID is required');
       return;
@@ -447,12 +439,12 @@ export default function CuttingSheetSection() {
 
     try {
       const matchingLot = lotsList.find(l => l.article === selectedArticle && (l.colour === colour || l.color === colour));
-      const payload = {
+           const payload = {
         style_id: styleId,
         colour: colour || undefined,
         material_lot_id: matchingLot ? (matchingLot.lot_id || matchingLot.id) : undefined,
         work_date: workDate || undefined,
-        allocate: true,
+        allocate: false,
         limit: 10
       };
 
@@ -466,9 +458,21 @@ export default function CuttingSheetSection() {
         else if (res.detail) lastMessage = res.detail;
 
         if (res.rows && Array.isArray(res.rows) && res.rows.length > 0) {
-          setRows(prev => [...prev, ...res.rows]);
+          const freshEmptyRows = res.rows.map(r => ({
+            ...r,
+            sheets: [] 
+          }));
+
+         
+          setRows(prev => {
+            const existingIds = new Set(prev.map(r => r.row_id || r.id));
+            const uniqueFresh = freshEmptyRows.filter(r => !existingIds.has(r.row_id || r.id));
+            return [...prev, ...uniqueFresh];
+          });
+
           const createdThisBatch = res.created || res.rows.length;
           totalGenerated += createdThisBatch;
+
 
           if (res.warnings && res.warnings.length > 0) {
             allWarnings.push(...res.warnings);

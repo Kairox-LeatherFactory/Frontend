@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   Barcode,
   Camera,
@@ -181,6 +181,8 @@ export default function StoreHubForm({
     setSelectedPieces(allSelected ? new Set() : new Set(selectableIds));
   };
 
+  const storeLotInputRef = useRef(null);
+
   const locked = !barcodeWorker;
   const lastParts = lastScan ? getStoreParts(lastScan) : null;
 
@@ -193,7 +195,34 @@ export default function StoreHubForm({
           onScan={(scannedCode) => {
             const cleanCode = String(scannedCode || "").replace(/[\r\n]+/g, "").trim();
             if (!cleanCode) return;
-            handleStoreScanInput(cleanCode);
+            setStoreCurrentScan(cleanCode);
+            setCameraScanTarget(null);
+            if (partMode === "accessory" && !storeLotInput.trim()) {
+              setSuccessMsg?.(`✅ Piece '${cleanCode}' scanned! Now scan Accessory Barcode...`);
+              setTimeout(() => storeLotInputRef.current?.focus(), 200);
+            } else {
+              handleStoreScanInput(cleanCode, storeLotInput.trim(), partMode);
+            }
+          }}
+        />
+      )}
+
+      {cameraScanTarget === "store_lot" && (
+        <CameraScannerModal
+          title="Scan Accessory Barcode"
+          onClose={() => setCameraScanTarget(null)}
+          onScan={(scannedCode) => {
+            const cleanCode = String(scannedCode || "").replace(/[\r\n]+/g, "").trim();
+            if (!cleanCode) return;
+            setStoreLotInput(cleanCode);
+            setCameraScanTarget(null);
+            const pVal = storeCurrentScan.trim() || storePieceInput.trim();
+            if (pVal) {
+              handleStoreScanInput(pVal, cleanCode, partMode);
+            } else {
+              setSuccessMsg?.(`✅ Accessory '${cleanCode}' scanned! Now scan Piece Barcode...`);
+              setTimeout(() => storeInputRef.current?.focus(), 200);
+            }
           }}
         />
       )}
@@ -378,10 +407,23 @@ export default function StoreHubForm({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                const formData = new FormData(e.currentTarget);
-                const pieceScan = formData.get("pieceScan") || storeCurrentScan;
-                const lotScan = formData.get("lotScan") || storeLotInput;
-                handleStoreScanInput(pieceScan, lotScan, partMode);
+                const pieceScan = (storeCurrentScan || storePieceInput || "").trim();
+                const lotScan = storeLotInput.trim();
+                if (!pieceScan) {
+                  setErrorMsg?.("Please scan or enter Piece Barcode.");
+                  storeInputRef.current?.focus();
+                  return;
+                }
+                if (partMode === "accessory") {
+                  if (!lotScan) {
+                    setSuccessMsg?.(`✅ Piece '${pieceScan}' ready! Now scan Accessory Barcode...`);
+                    storeLotInputRef.current?.focus();
+                    return;
+                  }
+                  handleStoreScanInput(pieceScan, lotScan, partMode);
+                } else {
+                  handleStoreScanInput(pieceScan, "", partMode);
+                }
               }}
               className="flex flex-col gap-4"
             >
@@ -389,26 +431,53 @@ export default function StoreHubForm({
               <div className="flex w-full bg-[#faf6f0] p-1 rounded-xl border" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
                 <button
                   type="button"
-                  onClick={() => setPartMode("leather")}
+                  onClick={() => {
+                    setPartMode("leather");
+                    setTimeout(() => storeInputRef.current?.focus(), 100);
+                  }}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${partMode === "leather" ? "bg-white text-[#c8834a] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
                   Leather
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPartMode("lining")}
+                  onClick={() => {
+                    setPartMode("lining");
+                    setTimeout(() => storeInputRef.current?.focus(), 100);
+                  }}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${partMode === "lining" ? "bg-white text-[#c8834a] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
                   Lining
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPartMode("accessory")}
+                  onClick={() => {
+                    setPartMode("accessory");
+                    setTimeout(() => {
+                      if (storeCurrentScan.trim() && !storeLotInput.trim()) {
+                        storeLotInputRef.current?.focus();
+                      } else {
+                        storeInputRef.current?.focus();
+                      }
+                    }, 100);
+                  }}
                   className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${partMode === "accessory" ? "bg-white text-[#c8834a] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
                   Accessory
                 </button>
               </div>
+
+              {partMode === "accessory" && (
+                <div className="flex items-center gap-2 text-xs font-bold px-1 text-[#f5d4a4]">
+                  <span className={`px-2 py-0.5 rounded-md border text-[11px] ${!storeCurrentScan.trim() ? "bg-[#c8834a] text-white border-[#f5d4a4]/40 animate-pulse" : "bg-emerald-800/60 text-emerald-200 border-emerald-500/40"}`}>
+                    Step 1: Piece {!storeCurrentScan.trim() ? "⏳" : "✓"}
+                  </span>
+                  <span className="text-white/40">➔</span>
+                  <span className={`px-2 py-0.5 rounded-md border text-[11px] ${storeCurrentScan.trim() && !storeLotInput.trim() ? "bg-[#c8834a] text-white border-[#f5d4a4]/40 animate-pulse" : !storeLotInput.trim() ? "bg-white/5 text-white/50 border-white/10" : "bg-emerald-800/60 text-emerald-200 border-emerald-500/40"}`}>
+                    Step 2: Accessory Lot {storeLotInput.trim() ? "✓" : ""}
+                  </span>
+                </div>
+              )}
 
               <div className="flex flex-col lg:flex-row items-center gap-3 w-full">
                 <div className="relative flex-1 w-full">
@@ -420,8 +489,26 @@ export default function StoreHubForm({
                     placeholder="Scan piece barcode (PC-100231)…"
                     value={storeCurrentScan}
                     onChange={(e) => setStoreCurrentScan(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const pVal = (e.target.value || storeCurrentScan || "").trim();
+                        if (!pVal) return;
+                        if (partMode === "accessory") {
+                          if (!storeLotInput.trim()) {
+                            setStoreCurrentScan(pVal);
+                            setSuccessMsg?.(`✅ Piece '${pVal}' scanned! Now scan Accessory Barcode...`);
+                            setTimeout(() => storeLotInputRef.current?.focus(), 60);
+                          } else {
+                            handleStoreScanInput(pVal, storeLotInput.trim(), partMode);
+                          }
+                        } else {
+                          handleStoreScanInput(pVal, "", partMode);
+                        }
+                      }
+                    }}
                     disabled={locked || storeApiLoading}
-                    className="w-full h-11 pl-11 pr-11 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
+                    className={`w-full h-11 pl-11 pr-11 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border rounded-xl focus:outline-none transition-all disabled:opacity-60 ${partMode === "accessory" && !storeCurrentScan.trim() ? "border-[#f5d4a4] ring-1 ring-[#f5d4a4]/40" : "border-[#e2d5c3]/30 focus:border-[#f5d4a4] focus:bg-white/10"}`}
                   />
                   <button
                     type="button"
@@ -433,17 +520,39 @@ export default function StoreHubForm({
                 </div>
 
                 {partMode === "accessory" && (
-                  <div className="relative flex-1 w-full">
+                  <div className="relative flex-1 w-full animate-in fade-in zoom-in-95 duration-200">
                     <Package className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                     <input
                       name="lotScan"
+                      ref={storeLotInputRef}
                       type="text"
-                      placeholder="Accessory Barcode…"
+                      placeholder="Scan accessory lot barcode (LOT-ACC-…)…"
                       value={storeLotInput}
                       onChange={(e) => setStoreLotInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          const lVal = (e.target.value || storeLotInput || "").trim();
+                          const pVal = (storeCurrentScan || storePieceInput || "").trim();
+                          if (!lVal) return;
+                          if (!pVal) {
+                            setErrorMsg?.("Please scan Piece Barcode first.");
+                            storeInputRef.current?.focus();
+                            return;
+                          }
+                          handleStoreScanInput(pVal, lVal, partMode);
+                        }
+                      }}
                       disabled={locked || storeApiLoading}
-                      className="w-full h-11 pl-11 pr-3 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
+                      className={`w-full h-11 pl-11 pr-11 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border rounded-xl focus:outline-none transition-all disabled:opacity-60 ${storeCurrentScan.trim() && !storeLotInput.trim() ? "border-amber-400 ring-2 ring-amber-400/40 bg-white/10" : "border-[#e2d5c3]/30 focus:border-[#f5d4a4] focus:bg-white/10"}`}
                     />
+                    <button
+                      type="button"
+                      onClick={() => setCameraScanTarget("store_lot")}
+                      className="sm:hidden absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-[#c8834a]/30 text-[#f5d4a4]"
+                    >
+                      <Camera className="w-4 h-4" />
+                    </button>
                   </div>
                 )}
 
