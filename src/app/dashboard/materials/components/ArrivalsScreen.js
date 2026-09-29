@@ -364,19 +364,28 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
   }, [listedSheets]);
 
   // Sheets are verified against the approved qty once entered, otherwise the declared total
+  const isNonLeather = arrival.category !== 'LEATHER';
   const approvedNum = Number(approvedQty) || 0;
   const rejectedNum = Number(rejectedQty) || 0;
   const targetDcm = approvedNum || declaredTotal;
+  
   const isMatching = targetDcm > 0 && Math.abs(totalSheetsDcm - targetDcm) < 0.001;
   const isOver = targetDcm > 0 && totalSheetsDcm > targetDcm;
   // Inspection can only be completed once the entered sheets add up exactly to the approved qty
   const sheetsMatchApproved = approvedNum > 0 && Math.abs(totalSheetsDcm - approvedNum) < 0.001;
-  const canComplete = sheetsMatchApproved;
-  const completeBlockReason = approvedNum <= 0
-    ? 'Enter Approved Qty to continue'
-    : totalSheetsDcm < approvedNum
-      ? `Sheets DCM must match Approved Qty — ${Math.round((approvedNum - totalSheetsDcm) * 1000) / 1000} DCM remaining`
-      : `Sheets DCM must match Approved Qty — ${Math.round((totalSheetsDcm - approvedNum) * 1000) / 1000} DCM over`;
+  
+  const canComplete = isNonLeather 
+    ? (approvedNum + rejectedNum > 0) && (!declaredTotal || Math.abs((approvedNum + rejectedNum) - declaredTotal) < 0.001)
+    : sheetsMatchApproved;
+    
+  const completeBlockReason = isNonLeather
+    ? (approvedNum + rejectedNum <= 0 ? 'Enter Approved or Rejected Qty' : 'Approved + Rejected must match declared total')
+    : (approvedNum <= 0
+      ? 'Enter Approved Qty to continue'
+      : totalSheetsDcm < approvedNum
+        ? `Sheets DCM must match Approved Qty — ${Math.round((approvedNum - totalSheetsDcm) * 1000) / 1000} DCM remaining`
+        : `Sheets DCM must match Approved Qty — ${Math.round((totalSheetsDcm - approvedNum) * 1000) / 1000} DCM over`);
+
   const progressPercent = targetDcm > 0
     ? Math.min(100, Math.round((totalSheetsDcm / targetDcm) * 100))
     : 0;
@@ -503,12 +512,12 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
 
       const payload = {
         receiptId,
-        approved_qty: appVal || totalSheetsDcm,
+        approved_qty: isNonLeather ? appVal : (appVal || totalSheetsDcm),
         rejected_qty: rejVal,
-        total_qty: (appVal || totalSheetsDcm) + rejVal,
-        sheet_count: computedSheetCount,
+        total_qty: isNonLeather ? (appVal + rejVal) : ((appVal || totalSheetsDcm) + rejVal),
+        sheet_count: isNonLeather ? 0 : computedSheetCount,
         // Sheets already on the lot were POSTed when added — only send the ones that weren't
-        sheets: sheets.filter((s) => !s.saved).map((s) => ({ dcm: Number(s.dcm), note: s.note || null })),
+        sheets: isNonLeather ? [] : sheets.filter((s) => !s.saved).map((s) => ({ dcm: Number(s.dcm), note: s.note || null })),
         thickness: thickness || null,
         note: note || (appVal > 0 ? 'Approved upon inspection' : 'Rejected upon inspection'),
       };
@@ -680,6 +689,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
       </div>
 
       {/* Sheet-wise DCM Entry */}
+      {!isNonLeather && (
       <div className="rounded-2xl border p-5 space-y-4" style={{ background: '#faf7f2', borderColor: 'rgba(200,131,74,0.25)' }}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
@@ -888,6 +898,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
           </div>
         </div>
       </div>
+      )}
 
       {/* Bottom Action: Complete Inspection (POST /materials/arrivals/{receipt_id}/complete) */}
       {!isAlreadyCompleted ? (
