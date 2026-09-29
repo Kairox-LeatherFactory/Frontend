@@ -44,6 +44,8 @@ export function ReceivingScreen({ showToast, prefill }) {
     const activeArticle = lot?.article || prefill?.article || '';
     const activeColour = lot?.colour || prefill?.colour || '';
     const activeSupplier = lot?.supplier_name || lot?.supplier_id || prefill?.supplierName || prefill?.supplierId || '';
+    const activeCategory = lot?.category || prefill?.category || '';
+    const isAccessory = activeCategory === 'ACCESSORY';
 
     const approvedNum = Number(approvedQty) || Number(totalDcm) || 0;
 
@@ -67,11 +69,11 @@ export function ReceivingScreen({ showToast, prefill }) {
 
             const payload = {
                 lot_id: lotId,
-                // approved_qty: appNum,
-                // rejected_qty: rejNum,
                 total_qty: totalNum,
-                sheet_count: computedSheetCount,
             };
+            if (!isAccessory) {
+                payload.sheet_count = computedSheetCount;
+            }
             if (supplierOrderId) payload.supplier_order_id = supplierOrderId;
             if (reserveFor) payload.reserve_for_required = Number(reserveFor);
             if (approveMismatch) payload.approve_mismatch = true;
@@ -277,38 +279,55 @@ export function ReceivingScreen({ showToast, prefill }) {
                     </div>
                 )}
 
-                {/* Side-by-side: Total Sheets (Sheet Count) & Total DCM */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Input Fields based on Category */}
+                {isAccessory ? (
                     <div>
                         <label className="text-xs font-black text-slate-700 block mb-1.5">
-                            Total Sheets <span className="font-semibold text-slate-500">(Sheet Count) *</span>
-                        </label>
-                        <input
-                            type="number"
-                            step="1"
-                            placeholder="e.g. 8"
-                            value={totalSheetsCount}
-                            onChange={(e) => setTotalSheetsCount(e.target.value)}
-                            className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                            style={{ borderColor: 'rgba(200,131,74,0.3)' }}
-                        />
-                    </div>
-
-                    <div>
-                        <label className="text-xs font-black text-slate-700 block mb-1.5">
-                            Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
+                            Total Quantity <span className="font-semibold text-slate-500">(Qty) *</span>
                         </label>
                         <input
                             type="number"
                             step="any"
-                            placeholder="e.g. 1000"
-                            value={totalDcm}
-                            onChange={(e) => setTotalDcm(e.target.value)}
+                            placeholder="e.g. 500"
+                            value={approvedQty}
+                            onChange={(e) => setApprovedQty(e.target.value)}
                             className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
                             style={{ borderColor: 'rgba(200,131,74,0.3)' }}
                         />
                     </div>
-                </div>
+                ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-black text-slate-700 block mb-1.5">
+                                Total Sheets <span className="font-semibold text-slate-500">(Sheet Count) *</span>
+                            </label>
+                            <input
+                                type="number"
+                                step="1"
+                                placeholder="e.g. 8"
+                                value={totalSheetsCount}
+                                onChange={(e) => setTotalSheetsCount(e.target.value)}
+                                className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                                style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                            />
+                        </div>
+
+                        <div>
+                            <label className="text-xs font-black text-slate-700 block mb-1.5">
+                                Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
+                            </label>
+                            <input
+                                type="number"
+                                step="any"
+                                placeholder="e.g. 1000"
+                                value={totalDcm}
+                                onChange={(e) => setTotalDcm(e.target.value)}
+                                className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                                style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                            />
+                        </div>
+                    </div>
+                )}
 
                 {/* 5. Primary CTA Button: RECEIVE STOCK */}
                 <button
