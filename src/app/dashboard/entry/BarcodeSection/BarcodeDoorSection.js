@@ -84,6 +84,7 @@ export default function BarcodeDoorSection({
   const [barcodeBatchPieces, setBarcodeBatchPieces] = useState([]); // Array of scanned piece objects
   const [barcodeSubmitting, setBarcodeSubmitting] = useState(false);
   const [barcodeSuccessModal, setBarcodeSuccessModal] = useState(null);
+  const [barcodeBlockerModal, setBarcodeBlockerModal] = useState(null);
   const dispatch = useDispatch();
   const barcodeSelectedSku = useSelector(state => state.entry.barcodeSelectedSku);
   const cuttingBatchPieces = useSelector(state => state.entry.cuttingBatchPieces);
@@ -442,7 +443,7 @@ export default function BarcodeDoorSection({
           realBlockers.length > 0
         ) {
           const firstBlocker = realBlockers[0];
-          setErrorMsg(`⚠️ ${firstBlocker.reason || "Scan blocked by server"}`);
+          setBarcodeBlockerModal(firstBlocker.reason || "Scan blocked by server");
           setBarcodePieceInput("");
           return;
         }
@@ -586,7 +587,9 @@ export default function BarcodeDoorSection({
         setTimeout(() => workerInputRef.current?.focus(), 150);
       }
     } catch (err) {
-      setErrorMsg(`Pipeline submission failed: ${err.message}`);
+      const errorMessage = err?.data?.detail || err?.data?.message || err?.message || "Pipeline submission failed.";
+      // Show backend rejections (like worker mismatch for cutting) in the center popup
+      setBarcodeBlockerModal(errorMessage);
     } finally {
       setBarcodeSubmitting(false);
     }
@@ -642,6 +645,8 @@ export default function BarcodeDoorSection({
       barcodeSubmitting={barcodeSubmitting}
       barcodeSuccessModal={barcodeSuccessModal}
       setBarcodeSuccessModal={setBarcodeSuccessModal}
+      barcodeBlockerModal={barcodeBlockerModal}
+      setBarcodeBlockerModal={setBarcodeBlockerModal}
       skuInputRef={skuInputRef}
       dcmInputRef={dcmInputRef}
       pieceInputRef={pieceInputRef}

@@ -70,6 +70,8 @@ export default function BarcodeDoorForm({
   barcodeSubmitting,
   barcodeSuccessModal,
   setBarcodeSuccessModal,
+  barcodeBlockerModal,
+  setBarcodeBlockerModal,
   skuInputRef,
   dcmInputRef,
   pieceInputRef,
@@ -514,6 +516,30 @@ export default function BarcodeDoorForm({
           />
         </div>
       </div>
+
+      {/* Barcode Blocker Modal */}
+      {barcodeBlockerModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
+            <div className="bg-[#fffdfa] p-6 flex flex-col items-center justify-center text-center">
+              <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4 shadow-sm border border-red-200">
+                <Lock className="w-8 h-8" />
+              </div>
+              <h3 className="text-xl font-black text-red-900 mb-2">Access Denied</h3>
+              <p className="text-sm font-medium text-red-700/90 mb-6">
+                {barcodeBlockerModal}
+              </p>
+              <button
+                type="button"
+                onClick={() => setBarcodeBlockerModal(null)}
+                className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+              >
+                Understood
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
