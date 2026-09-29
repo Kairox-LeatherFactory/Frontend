@@ -591,8 +591,7 @@ export default function BarcodeManagementPage() {
         .bucket-label canvas, .bucket-label svg { max-width: 95%; max-height: 95%; width: auto; height: auto; object-fit: contain; }
         @media print {
           @page { size: A4 portrait; margin: 4mm; }
-          #app-shell { display: none !important; }
-          .toast-stack { display: none !important; }
+          body > *:not(#thermalPrintSheet) { display: none !important; }
           #thermalPrintSheet { display: block !important; position: static; width: 100%; margin: 0; padding: 0; background: #fff !important; }
           #thermalPrintSheet * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
           .print-page {

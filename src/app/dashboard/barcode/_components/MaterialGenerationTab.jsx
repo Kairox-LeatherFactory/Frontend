@@ -141,23 +141,8 @@ export default function MaterialGenerationTab({
             <h3 className="text-lg font-black flex items-center gap-2" style={{ color: BRAND.text }}>
               <Package className="w-5 h-5 text-[#c8834a]" /> Accessory Barcode &amp; Lot Operations
             </h3>
-            <p className="text-xs" style={{ color: BRAND.textMuted }}>
-              Create accessory lots with child barcodes (<code className="font-mono text-xs font-bold text-[#a86530]">POST /materials/lots</code>), check live stock &amp; shortfalls, record receiving, and raise supplier orders.
-            </p>
           </div>
           <div className="flex gap-2 flex-wrap">
-            <button onClick={() => setCreateModalOpen(true)} className="btn-warm-primary !min-h-0 !py-2.5 !px-4 text-xs shadow-md">
-              <Plus className="w-4 h-4" /> Create Material Lot &amp; Barcode
-            </button>
-            <button onClick={() => setStockModalOpen(true)} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">
-              <Layers className="w-4 h-4" /> Check Stock &amp; Shortfall
-            </button>
-            <button onClick={() => { setReceiveTargetLot(null); setReceiveModalOpen(true); }} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">
-              <Truck className="w-4 h-4" /> Receive Material
-            </button>
-            <button onClick={() => { setSupplierOrderInitialData(null); setSupplierOrderModalOpen(true); }} className="btn-warm-secondary !min-h-0 !py-2.5 !px-4 text-xs">
-              <PackageSearch className="w-4 h-4" /> Raise Supplier Order
-            </button>
           </div>
         </div>
 
@@ -262,14 +247,6 @@ export default function MaterialGenerationTab({
                       </div>
                     </div>
                     <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenReceive(lot)}
-                        className="btn-warm-secondary !min-h-0 !py-1.5 !px-2.5 text-[11px]"
-                        title="Receive more material into this lot"
-                      >
-                        <Truck className="w-3 h-3" /> Receive
-                      </button>
                       <span className={statusBadgeClass(isGenerated ? 'PRINTED' : 'PENDING')}>
                         {isGenerated ? 'Done' : 'Unqueued'}
                       </span>
