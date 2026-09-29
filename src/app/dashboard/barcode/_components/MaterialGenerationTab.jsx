@@ -55,6 +55,7 @@ export default function MaterialGenerationTab({
 
   // Track already-queued material barcode codes
   const generatedCodes = useMemo(() => new Set(materialGenerated.map((r) => r.pieceCode || r.lotId)), [materialGenerated]);
+  const generatedLotIds = useMemo(() => new Set(materialGenerated.map((r) => r.lotId).filter(Boolean)), [materialGenerated]);
 
   // --------------------------------------------------------------------------
   // 2. SEARCH & SUBTYPE FILTERING (ACCESSORIES ONLY)
@@ -108,7 +109,10 @@ export default function MaterialGenerationTab({
   const clearSelection = () => setSelectedIds(new Set());
 
   const handleGenerateClick = () => {
-    const chosen = (materials || []).filter((m) => selectedIds.has(m.lot_id || m.barcode));
+    const chosen = (materials || []).filter((m) => {
+      const uniqueKey = m.lot_id || m.barcode || m.id || `${m.category}-${m.article}`;
+      return selectedIds.has(uniqueKey);
+    });
     onGenerateSelected(chosen);
     setSelectedIds(new Set());
   };
@@ -178,9 +182,9 @@ export default function MaterialGenerationTab({
 
           <div className="flex gap-2 flex-wrap items-center">
             <button onClick={handleGenerateClick} disabled={selectedIds.size === 0} className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs disabled:opacity-50">
-              <Zap className="w-3.5 h-3.5" /> Queue Selected ({selectedIds.size})
+              <Zap className="w-3.5 h-3.5" /> Generate Selected ({selectedIds.size})
             </button>
-            <button onClick={onGenerateAllRemaining} className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs">Queue All</button>
+            <button onClick={onGenerateAllRemaining} className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs">Generate All</button>
             <button onClick={onSendToPrintCenter} className="btn-warm-secondary !min-h-0 !py-2 !px-3 text-xs">
               <Send className="w-3.5 h-3.5" /> Send All to Print Center
             </button>
@@ -214,23 +218,24 @@ export default function MaterialGenerationTab({
           ) : (
             <div className="divide-y divide-[rgba(200,131,74,0.15)] max-h-96 overflow-y-auto">
               {filteredMaterials.map((lot) => {
-                const uniqueKey = lot.lot_id || lot.barcode || `${lot.category}-${lot.article}`;
+                const uniqueKey = lot.lot_id || lot.barcode || lot.id || `${lot.category}-${lot.article}`;
                 const hasBarcode = !!lot.barcode;
-                const isGenerated = generatedCodes.has(lot.barcode) || generatedCodes.has(lot.lot_id);
+                const isGenerated = generatedCodes.has(lot.barcode) || generatedLotIds.has(lot.lot_id || lot.id);
                 const isChecked = selectedIds.has(uniqueKey);
 
                 return (
                   <label
                     key={uniqueKey}
-                    className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-[#fdfaf5] transition-colors"
+                    className={`flex items-center justify-between px-4 py-3 transition-colors ${isGenerated ? 'opacity-75 cursor-default' : 'cursor-pointer hover:bg-[#fdfaf5]'}`}
                     style={{ background: isChecked ? '#faf3ea' : '#fff' }}
                   >
                     <div className="flex items-center gap-3">
                       <input
                         type="checkbox"
                         checked={isChecked}
+                        disabled={isGenerated}
                         onChange={() => toggleSelect(uniqueKey)}
-                        className="w-4 h-4 accent-[#c8834a] cursor-pointer"
+                        className="w-4 h-4 accent-[#c8834a] cursor-pointer disabled:cursor-default"
                       />
                       <div>
                         <div className="font-bold text-sm flex items-center gap-2" style={{ color: '#5a3518' }}>
@@ -265,16 +270,8 @@ export default function MaterialGenerationTab({
                       >
                         <Truck className="w-3 h-3" /> Receive
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => onPrintSingle(lot.barcode || lot.lot_id)}
-                        className="btn-warm-primary !min-h-0 !py-1.5 !px-2.5 text-[11px]"
-                        title="Print single label"
-                      >
-                        <Printer className="w-3 h-3" /> Print
-                      </button>
                       <span className={statusBadgeClass(isGenerated ? 'PRINTED' : 'PENDING')}>
-                        {isGenerated ? 'Queued / Ready' : 'Unqueued'}
+                        {isGenerated ? 'Done' : 'Unqueued'}
                       </span>
                     </div>
                   </label>

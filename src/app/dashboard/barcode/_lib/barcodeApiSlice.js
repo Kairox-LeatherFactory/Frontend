@@ -208,6 +208,18 @@ export const barcodeApi = createApi({
       query: (lotId) => `/api/v1/materials/lots/${encodeURIComponent(lotId)}/sheets`,
       providesTags: (_result, _error, lotId) => [{ type: 'LotSheets', id: lotId }],
     }),
+
+    // ────────────────────────────────────────────────────────────────────
+    // 9. POST /api/v1/barcode/print
+    // Trigger backend print job for a barcode
+    // ────────────────────────────────────────────────────────────────────
+    printBarcode: builder.mutation({
+      query: (payload) => ({
+        url: '/api/v1/barcode/print',
+        method: 'POST',
+        body: payload,
+      }),
+    }),
   }),
 });
 
@@ -219,4 +231,5 @@ export const {
   useGetOrderBarcodesQuery,
   useGetLeatherLotsQuery,
   useGetLotSheetsQuery,
+  usePrintBarcodeMutation,
 } = barcodeApi;
