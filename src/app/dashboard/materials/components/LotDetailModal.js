@@ -82,7 +82,7 @@ export function LotDetail({lot, onClose, onChanged, showToast, canEdit, canAdjus
 
           <div className="flex flex-wrap gap-2">
             <Tile label="In Factory" value={lot.on_hand} uom={lot.uom} />
-            <Tile label="Reserved" value={lot.reserved} uom={lot.uom} />
+            <Tile label="Used" value={lot.used} uom={lot.uom} />
             <Tile label="Ready to Use" value={lot.available} uom={lot.uom} primary />
           </div>
 

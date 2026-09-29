@@ -35,6 +35,7 @@ import {
   useGetEmployeesQuery,
   useGetBarcodeMaterialsQuery,
   useGetBarcodeOrdersQuery,
+  usePrintBarcodeMutation,
 } from './_lib/barcodeApiSlice';
 import ToastStack from './_components/ToastStack';
 import ResolveBarcodeWidget from './_components/ResolveBarcodeWidget';
@@ -114,6 +115,8 @@ export default function BarcodeManagementPage() {
   const { data: barcodeOrders = [] } = useGetBarcodeOrdersQuery(undefined, {
     skip: !hasMounted || !token,
   });
+
+  const [printBarcodeToBackend] = usePrintBarcodeMutation();
 
   const {
     data: materialDirectory = [],
@@ -273,15 +276,18 @@ export default function BarcodeManagementPage() {
   // ==========================================================================
   const generateMaterialLots = useCallback((lots) => {
     const alreadyGenCodes = new Set(materialStore.generated.map((r) => r.pieceCode));
-    const pending = lots.filter((l) => !alreadyGenCodes.has(l.barcode || l.lot_id));
+    const alreadyGenLotIds = new Set(materialStore.generated.map((r) => r.lotId).filter(Boolean));
+    const pending = lots.filter((l) => !alreadyGenCodes.has(l.barcode) && !alreadyGenLotIds.has(l.lot_id || l.id));
     if (pending.length === 0) {
       showToast(`${lots.length === 1 ? 'This material lot' : 'These material lots'} already ${lots.length === 1 ? 'has' : 'have'} a barcode queued!`, 'info');
       return;
     }
     const batchId = `MAT-BATCH-${Date.now().toString().slice(-6)}`;
-    const newRecords = pending.map((lot, idx) => ({
-      pieceCode: lot.barcode || `LOT-${(lot.category || 'MAT').slice(0, 3)}-${String(lot.lot_id || idx + 1).slice(0, 8).toUpperCase()}`,
-      orderId: lot.category || 'MATERIAL',
+    const newRecords = pending.map((lot, idx) => {
+      const baseId = lot.lot_id || lot.id || String(Date.now() + idx);
+      return {
+        pieceCode: lot.barcode || `LOT-${(lot.category || 'MAT').slice(0, 3)}-${String(baseId).slice(0, 8).toUpperCase()}`,
+        orderId: lot.category || 'MATERIAL',
       client: `${lot.category || 'MATERIAL'}${lot.subtype ? ` / ${lot.subtype}` : ''}`,
       style: lot.article || 'Unnamed Article',
       color: lot.colour || '—',
@@ -293,14 +299,15 @@ export default function BarcodeManagementPage() {
       generatedBy: operatorLabel,
       printStatus: 'PENDING',
       printCount: 0,
-      lotId: lot.lot_id,
+      lotId: lot.lot_id || lot.id,
       thickness: lot.thickness || lot.size,
       onHand: lot.on_hand,
       available: lot.available,
       reserved: lot.reserved,
       uom: lot.uom,
       supplierName: lot.supplier_name || lot.supplier_id || '—',
-    }));
+    };
+  });
 
     const historyEntry = {
       batchNo: batchId,
@@ -382,17 +389,35 @@ export default function BarcodeManagementPage() {
     dispatch(markPrintedAction({ category, codes }));
   }, [category, dispatch]);
 
-  const executeThermalPrint = useCallback((codes) => {
+  const executeThermalPrint = useCallback(async (codes) => {
     if (!codes || codes.length === 0) {
       showToast('Please select barcodes to print!', 'error');
       return;
     }
+
+    let backendSuccess = false;
+    try {
+      // Call backend to trigger physical printing or log it
+      await printBarcodeToBackend({ codes }).unwrap();
+      backendSuccess = true;
+      showToast(`Print job successfully logged to the server!`, 'success');
+    } catch (err) {
+      console.warn('Backend print endpoint failed, attempting frontend print fallback:', err);
+    }
+
+    // Always fallback to browser print so the user sees it in the UI
     const items = codes.map((c) => activeGenerated.find((b) => b.pieceCode === c)).filter(Boolean);
+    if (items.length === 0) {
+      showToast('Failed to print: Barcode data not queued locally.', 'error');
+      return;
+    }
+    
     markPrinted(codes);
     dispatch(setPreviewOpen(false));
-    showToast(`Sending ${items.length} ID card${items.length === 1 ? '' : 's'} to printer (4 per page)...`, 'success');
+    const labelType = category === 'material' ? 'material label' : (category === 'bucket' ? 'sheet label' : 'ID card');
+    showToast(`Sending ${items.length} ${labelType}${items.length === 1 ? '' : 's'} to browser printer...`, 'success');
     setPrintSheetItems(items);
-  }, [markPrinted, showToast, activeGenerated, dispatch]);
+  }, [markPrinted, showToast, activeGenerated, dispatch, printBarcodeToBackend, category]);
 
   const handlePrintSingle = useCallback((pieceCode) => {
     executeThermalPrint([pieceCode]);
