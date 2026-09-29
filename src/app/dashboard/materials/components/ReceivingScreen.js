@@ -45,7 +45,7 @@ export function ReceivingScreen({ showToast, prefill }) {
     const activeColour = lot?.colour || prefill?.colour || '';
     const activeSupplier = lot?.supplier_name || lot?.supplier_id || prefill?.supplierName || prefill?.supplierId || '';
     const activeCategory = lot?.category || prefill?.category || '';
-    const isAccessory = activeCategory === 'ACCESSORY';
+    const isNonLeather = activeCategory !== 'LEATHER';
 
     const approvedNum = Number(approvedQty) || Number(totalDcm) || 0;
 
@@ -71,7 +71,7 @@ export function ReceivingScreen({ showToast, prefill }) {
                 lot_id: lotId,
                 total_qty: totalNum,
             };
-            if (!isAccessory) {
+            if (!isNonLeather) {
                 payload.sheet_count = computedSheetCount;
             }
             if (supplierOrderId) payload.supplier_order_id = supplierOrderId;
@@ -280,7 +280,7 @@ export function ReceivingScreen({ showToast, prefill }) {
                 )}
 
                 {/* Input Fields based on Category */}
-                {isAccessory ? (
+                {isNonLeather ? (
                     <div>
                         <label className="text-xs font-black text-slate-700 block mb-1.5">
                             Total Quantity <span className="font-semibold text-slate-500">(Qty) *</span>

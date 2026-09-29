@@ -101,7 +101,6 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
         article: article.trim(),
         colour: colour.trim(),
         total_qty: totalQtyVal,
-        sheet_count: totalSheetsCount ? parseInt(totalSheetsCount, 10) : null,
         category: category || 'LEATHER',
         subtype: subtype || null,
         thickness: attrs.thickness || null,
@@ -110,6 +109,9 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
         supplier_order_id: null,
         note: attrs.note || null,
       };
+      if (isLeather && totalSheetsCount) {
+        arrivalPayload.sheet_count = parseInt(totalSheetsCount, 10);
+      }
 
       const res = await createMaterialArrival(arrivalPayload).unwrap();
       const receiptId = res.receipt_id || res.id || 'RCV-CREATED';
