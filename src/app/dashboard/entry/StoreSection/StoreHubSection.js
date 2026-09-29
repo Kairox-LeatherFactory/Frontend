@@ -188,7 +188,7 @@ export default function StoreHubSection({
     }
   };
 
-  const handleStoreScanInput = async (rawVal) => {
+  const handleStoreScanInput = async (rawVal, lotVal) => {
     const val = String(rawVal || "").trim();
     if (!val) return;
     setStoreCurrentScan("");
@@ -196,7 +196,7 @@ export default function StoreHubSection({
 
     setStorePieceInput(val);
     setSuccessMsg(`✅ Piece '${val}' detected! Ready to Log Scan.`);
-    setTimeout(() => handleStoreVerify(val), 100);
+    setTimeout(() => handleStoreVerify(val, lotVal), 100);
   };
 
   useEffect(() => {

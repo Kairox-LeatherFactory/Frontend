@@ -380,13 +380,17 @@ export default function StoreHubForm({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                handleStoreScanInput(storeCurrentScan.trim());
+                const formData = new FormData(e.currentTarget);
+                const pieceScan = formData.get("pieceScan") || storeCurrentScan;
+                const lotScan = formData.get("lotScan") || storeLotInput;
+                handleStoreScanInput(pieceScan, lotScan);
               }}
               className="flex flex-col lg:flex-row items-center gap-3"
             >
               <div className="relative flex-1 w-full">
                 <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
+                  name="pieceScan"
                   ref={storeInputRef}
                   type="text"
                   placeholder="Scan piece barcode (PC-100231)…"
@@ -407,6 +411,7 @@ export default function StoreHubForm({
               <div className="relative flex-1 w-full">
                 <Package className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
+                  name="lotScan"
                   type="text"
                   placeholder="Accessory Barcode…"
                   value={storeLotInput}
