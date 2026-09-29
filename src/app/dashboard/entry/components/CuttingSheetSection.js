@@ -387,24 +387,38 @@ export default function CuttingSheetSection() {
 
         const rowDate = (r.work_date || r.date || '').slice(0, 10);
         const approvedDate = (r.approved_at || r.logged_at || '').slice(0, 10);
+        const updatedDate = (r.updated_at || r.reopened_at || '').slice(0, 10);
         const isApproved = r.status === 'APPROVED' || r.status === 'ISSUED' || r.status === 'LOGGED';
         const isReopened = r.status === 'REOPENED';
+
+        // Calculate the "effective" date for this row based on its latest major action
+        let effectiveDate = rowDate;
+        if (isApproved && approvedDate) {
+          effectiveDate = approvedDate;
+        } else if (isReopened && updatedDate) {
+          effectiveDate = updatedDate;
+        }
 
         // Rule 1: Future date selected -> EMPTY (0 rows)
         if (workDate > todayStr) {
           return false;
         }
 
-        // Rule 2: Past date selected -> Show ONLY approved/reopened rows for that exact past work date
+        // Rule 2: Past date selected -> Show ONLY if the row's effective action happened on this exact past date
         if (workDate < todayStr) {
-          return rowDate === workDate && (isReopened || isApproved);
+          return effectiveDate === workDate && (isReopened || isApproved);
         }
 
         // Rule 3: Today's date selected ->
-        // Show rows worked on today (rowDate === todayStr) OR unapproved/draft rows carried forward from past dates
         if (workDate === todayStr) {
-          if (rowDate === todayStr) return true;
-          if (rowDate < todayStr) return !isApproved && !isReopened;
+          // If it was created/approved/reopened TODAY, show it.
+          if (effectiveDate === todayStr) return true;
+          
+          // If its effective date is in the past, only show it if it's an active (carried forward) task
+          if (effectiveDate < todayStr) {
+            if (!isApproved) return true; // Drafts and old Reopened rows carry forward
+          }
+          return false;
         }
 
         return false;
@@ -973,6 +987,14 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
     const effectiveRc = (rcNo || '').trim();
     if (!effectiveRc) {
       toast.error('⚠️ R.C NO is required before approving row.');
+      return;
+    }
+
+    const workerId = row.cutter_employee_id || row.cutter_id;
+    const isWorkerValid = workerId && presentWorkers.some(w => String(w.id) === String(workerId));
+    
+    if (!workerId || !isWorkerValid) {
+      toast.error('⚠️ Worker Name is required before approving row.');
       return;
     }
 

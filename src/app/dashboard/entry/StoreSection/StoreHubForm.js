@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import {
   Barcode,
   Camera,
@@ -152,6 +153,7 @@ export default function StoreHubForm({
   useMock,
   toggleMock,
 }) {
+  const [partMode, setPartMode] = useState("leather");
   const counts = { LEATHER: 0, LINING: 0, ACCESSORIES: 0, COMPLETE: 0, awaiting: 0, sent: 0 };
   storePieces.forEach((piece) => {
     const p = getStoreParts(piece);
@@ -234,9 +236,6 @@ export default function StoreHubForm({
                       Verified
                     </span>
                   </div>
-                  <p className="text-xs text-[#e2d5c3]/70 font-mono truncate">
-                    {barcodeWorker.employee_barcode || barcodeWorker.id} · {barcodeWorker.designation || "Store"}
-                  </p>
                 </div>
               </div>
 
@@ -361,8 +360,7 @@ export default function StoreHubForm({
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-base font-extrabold text-white">Store Scanner (Two-Scan Merge)</h3>
-                <p className="text-xs font-medium text-[#e2d5c3]/70">Scan worker & garment piece barcode to merge into store</p>
+                <h3 className="text-base font-extrabold text-white">Store Scanner</h3>
               </div>
 
               {/* Compact Last Scan Result Pill */}
@@ -383,53 +381,82 @@ export default function StoreHubForm({
                 const formData = new FormData(e.currentTarget);
                 const pieceScan = formData.get("pieceScan") || storeCurrentScan;
                 const lotScan = formData.get("lotScan") || storeLotInput;
-                handleStoreScanInput(pieceScan, lotScan);
+                handleStoreScanInput(pieceScan, lotScan, partMode);
               }}
-              className="flex flex-col lg:flex-row items-center gap-3"
+              className="flex flex-col gap-4"
             >
-              <div className="relative flex-1 w-full">
-                <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  name="pieceScan"
-                  ref={storeInputRef}
-                  type="text"
-                  placeholder="Scan piece barcode (PC-100231)…"
-                  value={storeCurrentScan}
-                  onChange={(e) => setStoreCurrentScan(e.target.value)}
-                  disabled={locked || storeApiLoading}
-                  className="w-full h-11 pl-11 pr-11 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
-                />
+              {/* Full Width Tabs */}
+              <div className="flex w-full bg-[#faf6f0] p-1 rounded-xl border" style={{ borderColor: "rgba(200,131,74,0.15)" }}>
                 <button
                   type="button"
-                  onClick={() => setCameraScanTarget("store")}
-                  className="sm:hidden absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-[#c8834a]/30 text-[#f5d4a4]"
+                  onClick={() => setPartMode("leather")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${partMode === "leather" ? "bg-white text-[#c8834a] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
                 >
-                  <Camera className="w-4 h-4" />
+                  Leather
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPartMode("lining")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${partMode === "lining" ? "bg-white text-[#c8834a] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  Lining
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPartMode("accessory")}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${partMode === "accessory" ? "bg-white text-[#c8834a] shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                >
+                  Accessory
                 </button>
               </div>
 
-              <div className="relative flex-1 w-full">
-                <Package className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  name="lotScan"
-                  type="text"
-                  placeholder="Accessory Barcode…"
-                  value={storeLotInput}
-                  onChange={(e) => setStoreLotInput(e.target.value)}
-                  disabled={locked || storeApiLoading}
-                  className="w-full h-11 pl-11 pr-3 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
-                />
-              </div>
+              <div className="flex flex-col lg:flex-row items-center gap-3 w-full">
+                <div className="relative flex-1 w-full">
+                  <Barcode className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    name="pieceScan"
+                    ref={storeInputRef}
+                    type="text"
+                    placeholder="Scan piece barcode (PC-100231)…"
+                    value={storeCurrentScan}
+                    onChange={(e) => setStoreCurrentScan(e.target.value)}
+                    disabled={locked || storeApiLoading}
+                    className="w-full h-11 pl-11 pr-11 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setCameraScanTarget("store")}
+                    className="sm:hidden absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 rounded-lg bg-[#c8834a]/30 text-[#f5d4a4]"
+                  >
+                    <Camera className="w-4 h-4" />
+                  </button>
+                </div>
 
-              <button
-                type="submit"
-                disabled={locked || storeApiLoading || !storeCurrentScan.trim() || !canScanAndSend}
-                title={!canScanAndSend ? "🔒 Store scanning is restricted for your role" : ""}
-                className="w-full lg:w-auto h-11 px-7 rounded-xl font-black text-xs text-[#2d1f0e] bg-gradient-to-br from-[#f5d4a4] to-[#d99a62] hover:brightness-105 transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
-              >
-                {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanLine className="w-4 h-4" />}
-                Log Scan
-              </button>
+                {partMode === "accessory" && (
+                  <div className="relative flex-1 w-full">
+                    <Package className="w-5 h-5 text-[#f5d4a4] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      name="lotScan"
+                      type="text"
+                      placeholder="Accessory Barcode…"
+                      value={storeLotInput}
+                      onChange={(e) => setStoreLotInput(e.target.value)}
+                      disabled={locked || storeApiLoading}
+                      className="w-full h-11 pl-11 pr-3 bg-white/[0.06] text-white placeholder-[#e2d5c3]/40 font-mono font-bold text-sm border border-[#e2d5c3]/30 rounded-xl focus:outline-none focus:border-[#f5d4a4] focus:bg-white/10 transition-all disabled:opacity-60"
+                    />
+                  </div>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={locked || storeApiLoading || !storeCurrentScan.trim() || (partMode === "accessory" && !storeLotInput.trim()) || !canScanAndSend}
+                  title={!canScanAndSend ? "🔒 Store scanning is restricted for your role" : ""}
+                  className="w-full lg:w-auto h-11 px-7 rounded-xl font-black text-xs text-[#2d1f0e] bg-gradient-to-br from-[#f5d4a4] to-[#d99a62] hover:brightness-105 transition-all shadow-md cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 shrink-0"
+                >
+                  {storeApiLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ScanLine className="w-4 h-4" />}
+                  Log Scan
+                </button>
+              </div>
             </form>
 
             {/* Mobile / Inline last scan result */}

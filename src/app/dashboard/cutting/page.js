@@ -26,8 +26,7 @@ const createNewSheet = (index) => ({
   operatorName: '',
   notes: '',
   hides: [
-    { id: 1, hideBarcode: 'HIDE-001', hideArea: 45, frontPanels: 2, backPanels: 2, sleeves: 2, collars: 1, actualConsumed: 41.5, waste: 3.5 },
-    { id: 2, hideBarcode: 'HIDE-002', hideArea: 48, frontPanels: 2, backPanels: 2, sleeves: 2, collars: 1, actualConsumed: 44.0, waste: 4.0 },
+    { id: 1, hideBarcode: '', hideArea: '', frontPanels: '', backPanels: '', sleeves: '', collars: '', actualConsumed: '', waste: '' },
   ],
 });
 
@@ -123,14 +122,14 @@ export default function CuttingGridPage() {
       const nextId = s.hides.length + 1;
       const newHide = {
         id: nextId,
-        hideBarcode: `HIDE-${String(nextId).padStart(3, '0')}`,
-        hideArea: 40,
-        frontPanels: 2,
-        backPanels: 2,
-        sleeves: 2,
-        collars: 1,
-        actualConsumed: 37,
-        waste: 3,
+        hideBarcode: '',
+        hideArea: '',
+        frontPanels: '',
+        backPanels: '',
+        sleeves: '',
+        collars: '',
+        actualConsumed: '',
+        waste: '',
       };
       return { ...s, hides: [...s.hides, newHide] };
     });

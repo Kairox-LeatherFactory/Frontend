@@ -127,7 +127,7 @@ export default function StoreHubSection({
     fetchLivePieces();
   }, [fetchLivePieces]);
 
-  const handleStoreVerify = async (pieceOverride, lotOverride) => {
+  const handleStoreVerify = async (pieceOverride, lotOverride, partModeOverride) => {
     setStoreApiLoading(true);
     setErrorMsg("");
     setStoreReceiveStatus("pending");
@@ -143,10 +143,16 @@ export default function StoreHubSection({
 
       const payload = {};
       if (barcodeWorker) {
-        if (barcodeWorker.employee_barcode || barcodeWorker.barcode) {
-          payload.employee_barcode = barcodeWorker.employee_barcode || barcodeWorker.barcode;
-        } else if (barcodeWorker.id) {
-          payload.employee_id = barcodeWorker.id;
+        const empCode = barcodeWorker.employee_barcode || barcodeWorker.barcode;
+        const empId = barcodeWorker.id;
+        const isEmpUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(empCode);
+
+        if (empId) {
+          payload.employee_id = empId;
+        } else if (isEmpUUID) {
+          payload.employee_id = empCode;
+        } else if (empCode) {
+          payload.employee_barcode = empCode;
         }
       }
 
@@ -160,6 +166,8 @@ export default function StoreHubSection({
       if (lotVal) {
         payload.lot_barcode = lotVal;
         payload.part = "accessory";
+      } else if (partModeOverride) {
+        payload.part = partModeOverride;
       }
 
       const res = await storeScan(payload).unwrap();
@@ -188,7 +196,7 @@ export default function StoreHubSection({
     }
   };
 
-  const handleStoreScanInput = async (rawVal, lotVal) => {
+  const handleStoreScanInput = async (rawVal, lotVal, partMode) => {
     const val = String(rawVal || "").trim();
     if (!val) return;
     setStoreCurrentScan("");
@@ -196,7 +204,7 @@ export default function StoreHubSection({
 
     setStorePieceInput(val);
     setSuccessMsg(`✅ Piece '${val}' detected! Ready to Log Scan.`);
-    setTimeout(() => handleStoreVerify(val, lotVal), 100);
+    setTimeout(() => handleStoreVerify(val, lotVal, partMode), 100);
   };
 
   useEffect(() => {
