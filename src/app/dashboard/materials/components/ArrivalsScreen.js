@@ -45,6 +45,7 @@ function isArrivalCompleted(a) {
 export function ArrivalsScreen({ showToast }) {
   const [selectedArrival, setSelectedArrival] = useState(null);
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
 
   // GET /materials/arrivals defaults to status=PENDING, so completed ones must be asked for separately
   const pendingQ = useGetMaterialArrivalsQuery({ status: 'PENDING' });
@@ -99,8 +100,11 @@ export function ArrivalsScreen({ showToast }) {
       if (statusFilter === 'PENDING') return !isCompleted;
       if (statusFilter === 'COMPLETED') return isCompleted;
       return true; // 'ALL'
+    }).filter((arrival) => {
+      if (categoryFilter === 'ALL') return true;
+      return arrival.category === categoryFilter;
     });
-  }, [sortedArrivals, statusFilter]);
+  }, [sortedArrivals, statusFilter, categoryFilter]);
 
   if (selectedArrival) {
     return (
@@ -186,6 +190,23 @@ export function ArrivalsScreen({ showToast }) {
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
         </div>
+      </div>
+
+      {/* Category Filter Pills */}
+      <div className="flex flex-wrap gap-2">
+        {['ALL', 'LEATHER', 'LINING', 'ACCESSORY'].map((cat) => (
+          <button
+            key={cat}
+            type="button"
+            onClick={() => setCategoryFilter(cat)}
+            className={`h-9 px-4 rounded-full font-black text-xs uppercase transition-all ${
+              categoryFilter === cat ? 'text-white shadow-sm' : 'text-slate-500 bg-white border'
+            }`}
+            style={categoryFilter === cat ? { background: '#c8834a' } : { borderColor: 'rgba(200,131,74,0.2)' }}
+          >
+            {cat === 'ALL' ? 'All Categories' : cat}
+          </button>
+        ))}
       </div>
 
       {/* List of Arrival Cards */}

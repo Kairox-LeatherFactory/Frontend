@@ -227,8 +227,9 @@ export default function ProcurementIntakePage() {
     (async () => {
       setLoading(true);
       try {
-        const clientList = await apiGetClients(token);
-        setClients(clientList || []);
+        const raw = await apiGetClients(token);
+        const clientList = Array.isArray(raw) ? raw : (raw?.items || raw?.clients || raw?.data || []);
+        setClients(clientList);
       } catch (e) {
         console.error('Failed to load clients:', e);
       } finally {

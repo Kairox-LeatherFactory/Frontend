@@ -212,7 +212,7 @@ export default function LedgerView({ isActive }) {
       {/* ── SEARCH BAR ── */}
       <div className="bg-white p-5 rounded-3xl shadow-sm border grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         <SearchCombobox
-          placeholder="Order number..."
+          placeholder="ORDER NUMBER..."
           value={orderSearch}
           options={orderOptions}
           getKey={(o) => o.order_number}
@@ -223,7 +223,7 @@ export default function LedgerView({ isActive }) {
           allowClear
         />
         <SearchCombobox
-          placeholder="Style code..."
+          placeholder="STYLE CODE..."
           value={styleSearch}
           options={styleOptions}
           getKey={(s) => s.style_code}
@@ -233,16 +233,16 @@ export default function LedgerView({ isActive }) {
           loading={styleOptionsLoading}
           allowClear
         />
-        <input type="date" placeholder="From" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
-        <input type="date" placeholder="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
+        <input type="date" placeholder="FROM" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs uppercase outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
+        <input type="date" placeholder="TO" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs uppercase outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
         <div className="flex gap-2">
           <SimpleSelect
             value={statusFilter}
             onChange={setStatusFilter}
             options={[
-              { value: '', label: 'All Status' },
-              { value: 'open', label: 'Draft' },
-              { value: 'closed', label: 'Frozen' },
+              { value: '', label: 'ALL STATUS' },
+              { value: 'open', label: 'DRAFT' },
+              { value: 'closed', label: 'FROZEN' },
             ]}
           />
           <button onClick={() => loadLedger()} className="h-12 px-4 rounded-xl font-black text-xs uppercase text-white shrink-0" style={{ background: '#c8834a' }}>

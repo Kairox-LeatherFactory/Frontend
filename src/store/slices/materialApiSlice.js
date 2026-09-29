@@ -76,7 +76,7 @@ export const materialApiSlice = apiSlice.injectEndpoints({
         // POST /api/v1/materials/receive
         receiveMaterials: builder.mutation({
             query: (receiveData) => ({ url: '/api/v1/materials/receive', method: 'POST', body: receiveData }),
-            invalidatesTags: ['MaterialLot', 'MaterialStock'],
+            invalidatesTags: ['MaterialLot', 'MaterialStock','MaterialArrival'],
         }),
 
         // POST /api/v1/suppliers/orders

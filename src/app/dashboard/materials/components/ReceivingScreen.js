@@ -5,7 +5,7 @@ import { useGetMaterialLotQuery, useGetMaterialLotsQuery, useReceiveMaterialsMut
     from '@/store/slices/materialApiSlice';
 import { errMsg } from './shared';
 
-export function ReceivingScreen({ showToast, prefill }) {
+export function ReceivingScreen({ showToast, prefill , onSuccess}) {
     const [receiveMaterials] = useReceiveMaterialsMutation();
     const [lotId, setLotId] = useState(prefill?.lotId || '');
 
@@ -45,7 +45,7 @@ export function ReceivingScreen({ showToast, prefill }) {
     const activeColour = lot?.colour || prefill?.colour || '';
     const activeSupplier = lot?.supplier_name || lot?.supplier_id || prefill?.supplierName || prefill?.supplierId || '';
     const activeCategory = lot?.category || prefill?.category || '';
-    const isAccessory = activeCategory === 'ACCESSORY';
+    const isNonLeather = activeCategory !== 'LEATHER';
 
     const approvedNum = Number(approvedQty) || Number(totalDcm) || 0;
 
@@ -71,7 +71,7 @@ export function ReceivingScreen({ showToast, prefill }) {
                 lot_id: lotId,
                 total_qty: totalNum,
             };
-            if (!isAccessory) {
+            if (!isNonLeather) {
                 payload.sheet_count = computedSheetCount;
             }
             if (supplierOrderId) payload.supplier_order_id = supplierOrderId;
@@ -132,15 +132,26 @@ export function ReceivingScreen({ showToast, prefill }) {
                     </p>
                 </div>
 
-                <div className="pt-2 flex gap-3 justify-center">
+                <div className="pt-2 flex flex-wrap gap-2.5 justify-center">
+                    <button
+                        onClick={() => {
+                            setResult(null);
+                            onSuccess?.();
+                        }}
+                        className="h-11 px-6 rounded-2xl font-black text-xs uppercase text-white shadow-md hover:brightness-105 transition-all cursor-pointer"
+                        style={{ background: '#c8834a' }}
+                    >
+                        View in Arrivals
+                    </button>
                     <button
                         onClick={() => {
                             setResult(null);
                             setApprovedQty('');
                             setRejectedQty('');
+                            setTotalDcm('');
+                            setTotalSheetsCount('');
                         }}
-                        className="h-11 px-6 rounded-2xl font-black text-xs uppercase text-white shadow-md hover:brightness-105 transition-all"
-                        style={{ background: '#c8834a' }}
+                        className="h-11 px-6 rounded-2xl font-black text-xs uppercase bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all cursor-pointer"
                     >
                         Receive Another Lot
                     </button>
@@ -280,7 +291,7 @@ export function ReceivingScreen({ showToast, prefill }) {
                 )}
 
                 {/* Input Fields based on Category */}
-                {isAccessory ? (
+                {isNonLeather ? (
                     <div>
                         <label className="text-xs font-black text-slate-700 block mb-1.5">
                             Total Quantity <span className="font-semibold text-slate-500">(Qty) *</span>

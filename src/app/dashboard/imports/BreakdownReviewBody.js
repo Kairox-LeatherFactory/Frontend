@@ -245,6 +245,7 @@ const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, sty
                       <SkuRow
                         key={sku.sku_id}
                         sku={sku}
+                        styleId={style.style_id}
                         editable={isDraft && style.editable !== false}
                         token={token}
                         showToast={showToast}

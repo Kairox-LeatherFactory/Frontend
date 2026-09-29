@@ -9,7 +9,7 @@ import {
 } from '@/store/slices/materialApiSlice';
 import { errMsg, SelectableFilterCombobox, CategoryPicker } from './shared';
 
-export function AddMaterialScreen({ showToast, onDuplicate }) {
+export function AddMaterialScreen({ showToast, onSuccess, onDuplicate }) {
   const [triggerGetLots] = useLazyGetMaterialLotsQuery();
   const [createMaterialArrival] = useCreateMaterialArrivalMutation();
   const [category, setCategory] = useState('');
@@ -101,7 +101,6 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
         article: article.trim(),
         colour: colour.trim(),
         total_qty: totalQtyVal,
-        sheet_count: totalSheetsCount ? parseInt(totalSheetsCount, 10) : null,
         category: category || 'LEATHER',
         subtype: subtype || null,
         thickness: attrs.thickness || null,
@@ -110,6 +109,9 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
         supplier_order_id: null,
         note: attrs.note || null,
       };
+      if (isLeather && totalSheetsCount) {
+        arrivalPayload.sheet_count = parseInt(totalSheetsCount, 10);
+      }
 
       const res = await createMaterialArrival(arrivalPayload).unwrap();
       const receiptId = res.receipt_id || res.id || 'RCV-CREATED';
@@ -161,7 +163,17 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
           {result.lot_barcode}
         </div>
 
-        <div className="flex gap-2 justify-center pt-2">
+        <div className="flex flex-wrap gap-2.5 justify-center pt-2">
+          <button
+            onClick={() => {
+              setResult(null);
+              onSuccess?.();
+            }}
+            className="h-11 px-6 rounded-2xl font-black text-xs uppercase text-white shadow-md hover:brightness-105 transition-all cursor-pointer"
+            style={{ background: '#c8834a' }}
+          >
+            View in Arrivals
+          </button>
           <button
             onClick={() => {
               setResult(null);
@@ -174,8 +186,7 @@ export function AddMaterialScreen({ showToast, onDuplicate }) {
               setSupplierName('');
               setTotalSheetsCount('');
             }}
-            className="h-11 px-6 rounded-2xl font-black text-xs uppercase text-white shadow-md hover:brightness-105 transition-all"
-            style={{ background: '#c8834a' }}
+            className="h-11 px-6 rounded-2xl font-black text-xs uppercase bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all cursor-pointer"
           >
             Add Another Material
           </button>
