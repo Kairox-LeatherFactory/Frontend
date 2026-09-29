@@ -17,7 +17,8 @@ import {
   useApproveCuttingRowMutation,
   useReopenCuttingRowMutation,
   useLazyGetClientStylesQuery,
-  useLazyGetStyleMaterialSpecQuery
+  useLazyGetStyleMaterialSpecQuery,
+  useLazyBarcodeResolveQuery
 } from '@/store/slices/apiSlice';
 import { useGetAttendanceTodayQuery } from '@/store/slices/attendanceApiSlice';
 import { useDispatch } from 'react-redux';
@@ -1254,45 +1255,69 @@ const isUuidString = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 function CuttingBarcodePrintModal({ rowData, stylesList = [], onClose }) {
   if (!rowData) return null;
 
-  const displayRc = rowData.rc_no || rowData.rc_number || '';
-  const displayArticle = rowData.article || '';
+  const [triggerResolve, { data: resolveData, isLoading: isResolving }] = useLazyBarcodeResolveQuery();
+
+  useEffect(() => {
+    const targetCode =
+      rowData.short_code ||
+      rowData.shortCode ||
+      rowData.piece_code ||
+      rowData.code ||
+      rowData.barcode ||
+      (rowData.rc_no ? `PC-${rowData.rc_no}` : '') ||
+      (rowData.rc_number ? `PC-${rowData.rc_number}` : '') ||
+      rowData.piece_id ||
+      rowData.id;
+
+    if (targetCode) {
+      triggerResolve(targetCode);
+    }
+  }, [rowData, triggerResolve]);
+
+  const piece = resolveData?.piece || resolveData?.data || null;
+
+  const displayRc = rowData.rc_no || rowData.rc_number || piece?.rc_no || '';
+  const displayArticle = piece?.article || rowData.article || '';
 
   const matchingStyle = stylesList?.find(s =>
-    (s.id && s.id === rowData.style_id) ||
-    (s.style_id && s.style_id === rowData.style_id) ||
-    (s.style_code && s.style_code === rowData.style_id)
+    (s.id && s.id === (piece?.style_id || rowData.style_id)) ||
+    (s.style_id && s.style_id === (piece?.style_id || rowData.style_id)) ||
+    (s.style_code && s.style_code === (piece?.style_id || rowData.style_id))
   );
 
-  const rawStyle = rowData.style_name || rowData.style_code || matchingStyle?.style_name || matchingStyle?.name || matchingStyle?.style_code || (isUuidString(rowData.style_id) ? '' : rowData.style_id) || '';
+  const rawStyle =
+    piece?.style_code ||
+    piece?.style_name ||
+    rowData.style_name ||
+    rowData.style_code ||
+    matchingStyle?.style_name ||
+    matchingStyle?.name ||
+    matchingStyle?.style_code ||
+    (isUuidString(rowData.style_id) ? '' : rowData.style_id) ||
+    '';
   const displayStyle = isUuidString(rawStyle) ? '' : rawStyle;
 
-  const displayColor = rowData.colour || rowData.color || '';
-  const displaySize = rowData.size || rowData.size_name || '';
-  const displaySno = String(rowData.sNo || rowData.seq || '001').padStart(3, '0');
+  const displayColor = piece?.colour || piece?.color || rowData.colour || rowData.color || '';
+  const displaySize = piece?.size || piece?.size_name || rowData.size || rowData.size_name || '';
 
-  const explicitShort =
+  // Strictly prioritize short_code for barcode and label
+  const pieceCode =
+    resolveData?.short_code ||
+    piece?.short_code ||
     rowData.short_code ||
     rowData.shortCode ||
-    rowData.short ||
-    rowData.piece?.short_code ||
-    rowData.piece?.shortCode;
+    (resolveData?.code && String(resolveData.code).length <= 15 ? resolveData.code : '') ||
+    (piece?.code && String(piece.code).length <= 15 ? piece.code : '') ||
+    (displayRc ? `PC-${displayRc}` : '') ||
+    (rowData.code && String(rowData.code).length <= 15 ? rowData.code : '') ||
+    'PC-BARCODE';
 
-  let pieceCode = '';
-  if (explicitShort) {
-    pieceCode = String(explicitShort);
-  } else if (rowData.code && String(rowData.code).length <= 15) {
-    pieceCode = String(rowData.code);
-  } else if (displayRc) {
-    pieceCode = `PC-${displayRc}`;
-  } else if (rowData.barcode && String(rowData.barcode).length <= 15) {
-    pieceCode = String(rowData.barcode);
-  } else {
-    pieceCode = `PC-${displaySno}`;
-  }
-
-  const subtitleStr = [displayStyle, displayArticle, displayColor, displaySize, displaySno]
-    .filter(val => val && !isUuidString(val))
-    .join(' · ');
+  // Subtitle caption without #1 / serial numbers: Style · Article · Colour · Size
+  const subtitleStr =
+    resolveData?.caption ||
+    [displayStyle, displayArticle, displayColor, displaySize]
+      .filter(val => val && !isUuidString(val))
+      .join(' · ');
 
   useEffect(() => {
     const handleAfterPrint = () => {
@@ -1370,26 +1395,37 @@ function CuttingBarcodePrintModal({ rowData, stylesList = [], onClose }) {
             Barcode ticket preview for approved cutting row:
           </p>
 
-          {/* Exact Barcode Ticket Box matching user screenshot */}
+          {/* Exact Barcode Ticket Box matching user template */}
           <div className="flex justify-center">
             <div
               id="printable-barcode-ticket"
-              className="border border-dashed border-slate-400 rounded-xl p-4 bg-white text-center w-[360px] max-w-full space-y-1.5 shadow-2xs"
+              className="border border-dashed border-slate-400 rounded-xl p-4 bg-white text-center w-[360px] max-w-full space-y-2 shadow-2xs"
             >
-              {/* SVG Barcode */}
-              <div className="flex justify-center pt-1">
-                <BarcodeSticker code={pieceCode} />
-              </div>
+              {isResolving ? (
+                <div className="py-6 flex justify-center items-center gap-2 text-slate-400 text-xs">
+                  <Loader2 className="w-4 h-4 animate-spin text-[#c8834a]" />
+                  <span>Resolving barcode...</span>
+                </div>
+              ) : (
+                <>
+                  {/* SVG Barcode */}
+                  <div className="flex justify-center pt-1">
+                    <BarcodeSticker code={pieceCode} />
+                  </div>
 
-              {/* Piece Code (Short Code) */}
-              <div className="font-mono text-xs font-black tracking-wider text-slate-900 uppercase">
-                {pieceCode}
-              </div>
+                  {/* Short Code */}
+                  <div className="font-mono text-sm font-black tracking-wider text-slate-900 uppercase">
+                    {pieceCode}
+                  </div>
 
-              {/* Spec Subtitle Line */}
-              <div className="text-[9px] font-bold text-slate-600 tracking-tight leading-tight uppercase px-1">
-                {subtitleStr}
-              </div>
+                  {/* Spec Subtitle Line (Style · Article · Colour · Size) */}
+                  {subtitleStr && (
+                    <div className="text-[10px] font-bold text-slate-700 tracking-tight leading-tight uppercase px-1">
+                      {subtitleStr}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -1405,7 +1441,8 @@ function CuttingBarcodePrintModal({ rowData, stylesList = [], onClose }) {
             <button
               type="button"
               onClick={handlePrint}
-              className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95"
+              disabled={isResolving}
+              className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase rounded-xl transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
             >
               <Printer className="w-4 h-4" />
               Print Barcode
