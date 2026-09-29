@@ -16,7 +16,6 @@ import {
   apiSendPO, apiAcknowledgePO, apiTransitionTracking,
   apiSimulateTwilioWhatsappWebhook, apiSimulateTwilioVoiceWebhook, IDS, MOCK_IDS
 } from '../lib/api';
-import { MOCK_SUPPLIERS } from '../lib/mockDataPack';
 
 const COLUMNS = [
   { id: 'draft', title: 'Draft', icon: FileText, color: '#9a7a5a', bg: '#faf6f0', border: 'rgba(200,131,74,0.2)' },
@@ -53,10 +52,10 @@ export default function SupplierPOPage() {
         apiGetSuppliers(token),
         apiGetProductionTracking(token)
       ]);
-      setPos(poRes.purchase_orders || []);
-      const sups = Array.isArray(supRes) ? supRes : (supRes?.suppliers || []);
-      setSuppliers(sups.length > 0 ? sups : (MOCK_SUPPLIERS || []));
-      setTrackers(trackRes.trackers || []);
+      setPos(poRes?.purchase_orders || (Array.isArray(poRes) ? poRes : []));
+      const sups = Array.isArray(supRes) ? supRes : (supRes?.suppliers || supRes?.items || []);
+      setSuppliers(sups);
+      setTrackers(trackRes?.trackers || (Array.isArray(trackRes) ? trackRes : []));
     } catch (err) {
       console.error('Failed to load PO data:', err);
       showToast('error', `Failed to load data: ${err.message}`);

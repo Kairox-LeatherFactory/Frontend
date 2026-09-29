@@ -66,10 +66,10 @@ export function SearchCombobox({ placeholder, value, options, getKey, getLabel, 
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen((o) => !o)}
-        className="w-full h-12 px-4 bg-slate-50 font-bold border rounded-xl text-xs outline-none transition-all flex items-center justify-between text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full h-12 px-4 bg-slate-50 font-bold border rounded-xl text-xs uppercase outline-none transition-all flex items-center justify-between text-left cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ borderColor: 'rgba(200,131,74,0.15)' }}
       >
-        <span className={selectedOption ? 'truncate' : 'text-slate-400'} style={selectedOption ? { color: '#2d1f0e' } : {}}>
+        <span className={selectedOption ? 'truncate uppercase' : 'text-slate-400 uppercase'} style={selectedOption ? { color: '#2d1f0e' } : {}}>
           {selectedOption ? getLabel(selectedOption) : placeholder}
         </span>
         {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: '#c8834a' }} /> : <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} style={{ color: '#c8834a' }} />}
@@ -84,8 +84,8 @@ export function SearchCombobox({ placeholder, value, options, getKey, getLabel, 
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Type to search..."
-              className="w-full h-10 pl-9 pr-3 bg-[#faf6f0] border rounded-lg text-xs font-bold outline-none"
+              placeholder="TYPE TO SEARCH..."
+              className="w-full h-10 pl-9 pr-3 bg-[#faf6f0] border rounded-lg text-xs font-bold uppercase outline-none"
               style={{ borderColor: 'rgba(200,131,74,0.2)', color: '#2d1f0e' }}
             />
           </div>
@@ -148,10 +148,10 @@ export function SimpleSelect({ value, options, onChange }) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full h-12 px-3 bg-slate-50 font-bold border rounded-xl text-xs outline-none transition-all flex items-center justify-between gap-1 text-left cursor-pointer"
+        className="w-full h-12 px-3 bg-slate-50 font-bold border rounded-xl text-xs uppercase outline-none transition-all flex items-center justify-between gap-1 text-left cursor-pointer"
         style={{ borderColor: 'rgba(200,131,74,0.15)' }}
       >
-        <span className="truncate" style={{ color: '#2d1f0e' }}>{selected ? selected.label : ''}</span>
+        <span className="truncate uppercase" style={{ color: '#2d1f0e' }}>{selected ? selected.label : ''}</span>
         <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} style={{ color: '#c8834a' }} />
       </button>
       {open && (
@@ -161,7 +161,7 @@ export function SimpleSelect({ value, options, onChange }) {
               key={opt.value}
               type="button"
               onClick={() => { onChange(opt.value); setOpen(false); }}
-              className={`w-full p-2 text-left rounded-lg text-xs font-bold truncate cursor-pointer transition-colors ${value === opt.value ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
+              className={`w-full p-2 text-left rounded-lg text-xs font-bold uppercase truncate cursor-pointer transition-colors ${value === opt.value ? 'bg-[#c8834a] text-white' : 'hover:bg-amber-50 text-slate-800'}`}
             >
               {opt.label}
             </button>

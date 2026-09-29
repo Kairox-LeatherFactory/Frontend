@@ -5,7 +5,7 @@ import { useGetMaterialLotQuery, useGetMaterialLotsQuery, useReceiveMaterialsMut
     from '@/store/slices/materialApiSlice';
 import { errMsg } from './shared';
 
-export function ReceivingScreen({ showToast, prefill }) {
+export function ReceivingScreen({ showToast, prefill , onSuccess}) {
     const [receiveMaterials] = useReceiveMaterialsMutation();
     const [lotId, setLotId] = useState(prefill?.lotId || '');
 
@@ -132,15 +132,26 @@ export function ReceivingScreen({ showToast, prefill }) {
                     </p>
                 </div>
 
-                <div className="pt-2 flex gap-3 justify-center">
+                <div className="pt-2 flex flex-wrap gap-2.5 justify-center">
+                    <button
+                        onClick={() => {
+                            setResult(null);
+                            onSuccess?.();
+                        }}
+                        className="h-11 px-6 rounded-2xl font-black text-xs uppercase text-white shadow-md hover:brightness-105 transition-all cursor-pointer"
+                        style={{ background: '#c8834a' }}
+                    >
+                        View in Arrivals
+                    </button>
                     <button
                         onClick={() => {
                             setResult(null);
                             setApprovedQty('');
                             setRejectedQty('');
+                            setTotalDcm('');
+                            setTotalSheetsCount('');
                         }}
-                        className="h-11 px-6 rounded-2xl font-black text-xs uppercase text-white shadow-md hover:brightness-105 transition-all"
-                        style={{ background: '#c8834a' }}
+                        className="h-11 px-6 rounded-2xl font-black text-xs uppercase bg-slate-100 text-slate-700 hover:bg-slate-200 transition-all cursor-pointer"
                     >
                         Receive Another Lot
                     </button>
