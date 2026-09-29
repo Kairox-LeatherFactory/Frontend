@@ -23,9 +23,9 @@ export const inspectionApiSlice = apiSlice.injectEndpoints({
       providesTags: ['Inspections'],
     }),
 
-    // GET /api/v1/production/piece-state?piece_barcode=
+    // GET /api/v1/production/piece-state?code=
     getPieceState: builder.query({
-      query: (pieceBarcode) => `/api/v1/production/piece-state?piece_barcode=${encodeURIComponent(pieceBarcode)}`,
+      query: (pieceBarcode) => `/api/v1/production/piece-state?code=${encodeURIComponent(pieceBarcode)}`,
     }),
 
     // POST /api/v1/inspections/{id}/approve
