@@ -7,12 +7,13 @@ import {
   Save,
   Trash2,
   ChevronDown,
-  Plus,
   X
 } from 'lucide-react';
 import { usePatchBreakdownSkuMutation, useDeleteBreakdownSkuMutation } from '@/store/slices/importsApiSlice';
 import {
+  useGetStyleMaterialSpecQuery,
   useAddStyleMaterialSpecLineMutation,
+  useDeleteStyleMaterialSpecLineMutation,
   useLazyGetMaterialLotsQuery
 } from '@/store/slices/apiSlice';
 
@@ -45,7 +46,7 @@ export function StatusBadge({ status }) {
 
 const ACCESSORY_SUBTYPES = ['BUTTON', 'ZIP', 'THREAD', 'OTHER'];
 
-// One editable SKU row inside a DRAFT style card with expandable + Add Accessory button.
+// One editable SKU row inside a DRAFT style card with expandable SKU-specific accessory management.
 export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, showToast }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -65,6 +66,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
   const [formLotId, setFormLotId] = useState('');
   const [formNote, setFormNote] = useState('');
   const [addingAccessory, setAddingAccessory] = useState(false);
+  const [deletingLineId, setDeletingLineId] = useState(null);
 
   // Available lots for quick pick
   const [lots, setLots] = useState([]);
@@ -74,7 +76,17 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
   const [patchBreakdownSku] = usePatchBreakdownSkuMutation();
   const [deleteBreakdownSku] = useDeleteBreakdownSkuMutation();
   const [addStyleMaterialSpecLine] = useAddStyleMaterialSpecLineMutation();
+  const [deleteStyleMaterialSpecLine] = useDeleteStyleMaterialSpecLineMutation();
   const [triggerGetMaterialLots] = useLazyGetMaterialLotsQuery();
+
+  // Load style material spec and strictly filter by sku_id
+  const { data: specData } = useGetStyleMaterialSpecQuery(styleId, {
+    skip: !styleId || !isExpanded,
+  });
+
+  const skuAccessories = (specData?.lines || []).filter(
+    (l) => l.category === 'ACCESSORY' && l.sku_id === sku.sku_id && l.is_active !== false
+  );
 
   // Fetch stock lots when form opens or subtype changes
   useEffect(() => {
@@ -179,6 +191,23 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
     }
   };
 
+  const handleDeleteAccessoryLine = async (lineId, e) => {
+    e?.stopPropagation();
+    if (!styleId || !lineId) return;
+    setDeletingLineId(lineId);
+    try {
+      await deleteStyleMaterialSpecLine({
+        styleId: styleId,
+        lineId: lineId,
+      }).unwrap();
+      showToast?.('Accessory removed.', 'success');
+    } catch (err) {
+      showToast?.(err.message || 'Failed to remove accessory.', 'error');
+    } finally {
+      setDeletingLineId(null);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 transition-all overflow-hidden shadow-2xs">
       {/* ── Main SKU Header Bar ── */}
@@ -256,25 +285,76 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
 
       {/* ── Expandable SKU Accessory Spec Section ── */}
       {isExpanded && (
-        <div className="p-3 bg-white border-t border-slate-200/80 space-y-2.5 animate-fade-in text-xs">
-          {!showAddForm ? (
-            <div className="flex justify-end">
-              {editable && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddForm(true);
-                    setFormColour(sku.colour || sku.color_code || '');
-                    setFormSize(sku.size || '');
-                  }}
-                  className="h-8 px-4 rounded-xl text-xs font-black uppercase text-white shadow-xs hover:brightness-105 transition-all cursor-pointer"
-                  style={{ background: '#c8834a' }}
-                >
-                  Add Accessory
-                </button>
-              )}
+        <div className="p-3.5 bg-white border-t border-slate-200/80 space-y-3 animate-fade-in text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-bold text-[11px] text-slate-500">
+              {skuAccessories.length > 0 ? `${skuAccessories.length} Accessory Item(s)` : 'No Accessories Added'}
+            </span>
+
+            {editable && !showAddForm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddForm(true);
+                  setFormColour(sku.colour || sku.color_code || '');
+                  setFormSize(sku.size || '');
+                }}
+                className="h-8 px-4 rounded-xl text-xs font-black uppercase text-white shadow-xs hover:brightness-105 transition-all cursor-pointer ml-auto"
+                style={{ background: '#c8834a' }}
+              >
+                Add Accessory
+              </button>
+            )}
+          </div>
+
+          {/* Existing SKU Accessories List (Strictly matching sku.sku_id) */}
+          {skuAccessories.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {skuAccessories.map((line) => {
+                const lineId = line.line_id || line.spec_id || line.id;
+                return (
+                  <div
+                    key={lineId || `${line.article}-${line.subtype}`}
+                    className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-100 text-[#8a4e1d]">
+                          {line.subtype || 'ACCESSORY'}
+                        </span>
+                        <span className="font-bold text-slate-800 truncate">{line.article}</span>
+                      </div>
+                      <p className="text-[10px] text-slate-500 font-semibold mt-0.5 truncate">
+                        {line.colour && `Colour: ${line.colour} · `}
+                        {line.size && `Size: ${line.size} · `}
+                        <span className="font-black text-[#c8834a]">{line.qty_per_piece} {line.uom || 'pcs'}/piece</span>
+                        {line.note && ` (${line.note})`}
+                      </p>
+                    </div>
+
+                    {editable && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteAccessoryLine(lineId, e)}
+                        disabled={deletingLineId === lineId}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0 cursor-pointer disabled:opacity-40"
+                        title="Remove accessory line"
+                      >
+                        {deletingLineId === lineId ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ) : (
+          )}
+
+          {/* Add Accessory Form */}
+          {showAddForm && (
             <div className="p-3.5 rounded-2xl bg-[#fdfbf7] border border-[#c8834a]/30 space-y-3 animate-fade-in">
               <div className="flex items-center justify-between border-b border-[#c8834a]/15 pb-2">
                 <span className="text-[11px] font-black uppercase tracking-wider text-[#8a4e1d]">
