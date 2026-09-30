@@ -99,7 +99,9 @@ export async function apiGetEmployees(token) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to fetch employees (${res.status})`);
-  return res.json();
+  // Backend wraps the list as { items: [...] } — always hand back a plain array
+  const data = await res.json();
+  return Array.isArray(data) ? data : data?.items || [];
 }
 
 /**
@@ -470,15 +472,12 @@ export async function apiCancelBreakdownStyles(token, orderNumber, styleIds) {
 
 /**
  * POST /api/v1/imports/breakdown/{order_number}/release — THE MINT. Creates
- * per-piece barcodes and merges drawers for the named styles, atomically.
- * Idempotent (release tops up, never rewrites). Read
- * `minted.pieces_waiting_for_drawer`, not the HTTP status — non-zero means
- * those pieces have barcodes but no drawer until the pool grows.
+ * per-piece barcodes for the named styles, atomically. Idempotent (release
+ * tops up, never rewrites).
  * @param {string[]} styleIds
- * @param {boolean} growDrawerPool default false — opt-in only.
  */
-export async function apiReleaseBreakdownStyles(token, orderNumber, styleIds, growDrawerPool = false, needsLining) {
-  const payload = { style_ids: styleIds, grow_drawer_pool: growDrawerPool };
+export async function apiReleaseBreakdownStyles(token, orderNumber, styleIds, needsLining) {
+  const payload = { style_ids: styleIds };
   if (needsLining !== undefined) payload.needs_lining = needsLining;
   const res = await fetch(`${API_BASE_URL}/api/v1/imports/breakdown/${encodeURIComponent(orderNumber)}/release`, {
     method: 'POST',
@@ -491,39 +490,6 @@ export async function apiReleaseBreakdownStyles(token, orderNumber, styleIds, gr
   if (!res.ok) {
     const errText = await res.text().catch(() => 'Failed to release styles');
     throw new Error(errText || `Failed to release styles (${res.status})`);
-  }
-  return res.json();
-}
-
-/**
- * GET /api/v1/drawers/pool — { pool_size, initial_pool_size, free_drawers,
- * occupied_drawers, pieces_waiting_for_drawer, shortfall }.
- */
-export async function apiGetDrawerPool(token) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/pool`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) throw new Error(`Failed to fetch drawer pool (${res.status})`);
-  return res.json();
-}
-
-/**
- * POST /api/v1/drawers/pool — DM/MD only, one-way. Adds `add` permanent
- * barcoded drawers and drains the waiting list into them (max 1000/call).
- */
-export async function apiGrowDrawerPool(token, add) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/pool`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ add }),
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => 'Failed to grow drawer pool');
-    throw new Error(errText || `Failed to grow drawer pool (${res.status})`);
   }
   return res.json();
 }
@@ -1530,93 +1496,11 @@ export async function apiGetBarcodeMaterials(token, params = {}) {
   return res.json();
 }
 
-/**
- * 10. POST /api/v1/drawers/store-scan
- * Store piece into drawer & evaluate completeness
- */
-export async function apiStoreDrawerScan(token, drawerData) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/store-scan`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(drawerData),
-  });
-  if (!res.ok) {
-    let detail;
-    try {
-      const errObj = await res.json();
-      detail = errObj.detail || errObj.message;
-    } catch {
-      // no JSON body
-    }
-    const err = new Error(detail || `Drawer store scan failed (${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
 
-/**
- * POST /api/v1/drawers/send
- * Batch-releases many drawers to LINING or STITCHING in one call. Sending to
- * STITCHING is what releases those pieces into line-stitching. Accepts
- * PARTIALLY — some drawers may come back in not_ready/not_found while others
- * succeed in `sent`; check count_sent, don't treat the call as all-or-nothing.
- * @param {{ drawer_ids: string[], destination: 'STITCHING' | 'LINING' }} payload
- */
-export async function apiSendDrawers(token, { drawer_ids, destination }) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/send`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ drawer_ids, destination }),
-  });
-  if (!res.ok) {
-    let detail;
-    try {
-      const errObj = await res.json();
-      detail = errObj.detail || errObj.message;
-    } catch {
-      // no JSON body
-    }
-    const err = new Error(detail || `Failed to send drawers (${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
 
-/**
- * 11. POST /api/v1/drawers/{id}/receive
- * Transition drawer status (RECEIVED / SENDED)
- */
-export async function apiReceiveDrawer(token, drawerId, transition) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/${encodeURIComponent(drawerId)}/receive`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ transition }),
-  });
-  if (!res.ok) {
-    let detail;
-    try {
-      const errObj = await res.json();
-      detail = errObj.detail || errObj.message;
-    } catch {
-      // no JSON body
-    }
-    const err = new Error(detail || `Failed to update drawer transition (${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
+
+
+
 
 /**
  * 12. POST /api/v1/attendance/scan-check-in
@@ -1841,95 +1725,11 @@ export async function apiGetOrderBarcodes(token, orderId, filters = {}) {
   return res.json();
 }
 
-/**
- * 22. GET /api/v1/drawers
- * The drawer label sheet: every drawer plus its scannable DRAWER-type code.
- * A row with `barcode: null` has no registry code and cannot be printed —
- * the caller must show it, not silently drop it.
- * @param {{ state, seq_from, seq_to, limit, offset }} params
- * @returns {{ total, count, items: Array<{ drawer_id, seq, code, state, barcode_id, barcode, caption, barcode_status }> }}
- */
-export async function apiListDrawers(token, params = {}) {
-  const qs = new URLSearchParams();
-  if (params.limit) qs.append('limit', params.limit);
-  else qs.append('limit', 500); // Default fallback
 
-  if (params.seq_from) qs.append('seq_from', params.seq_from);
-  if (params.seq_to) qs.append('seq_to', params.seq_to);
-  if (params.state) qs.append('state', params.state);
-  if (params.offset) qs.append('offset', params.offset);
-  if (params.has_piece !== undefined) qs.append('has_piece', params.has_piece);
-  if (params.sendable !== undefined) qs.append('sendable', params.sendable);
-  // Item 6 (17-Aug delta): case-insensitive contains search — "42" and
-  // "drw-004" both match. Lets the search box hit the backend directly
-  // instead of only filtering whatever page is already loaded.
-  if (params.code) qs.append('code', params.code);
 
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers?${qs.toString()}`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    const errText = await res.text().catch(() => '');
-    let detail = errText;
-    try { detail = JSON.parse(errText).detail; } catch { /* not JSON */ }
-    throw new Error(detail || `Failed to list drawers (${res.status})`);
-  }
-  return res.json();
-}
 
-/**
- * GET /api/v1/drawers/{drawer_id}
- * One drawer opened: contents, full piece card, awaiting/complete/can_send.
- * Used to inspect a drawer's real state BEFORE deciding whether to POST a
- * store-scan — a drawer already HOLDING BOTH / RECEIVED / sended must not be
- * re-scanned.
- */
-export async function apiGetDrawer(token, drawerId) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/${encodeURIComponent(drawerId)}`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    let detail;
-    try {
-      const errObj = await res.json();
-      detail = errObj.detail || errObj.message;
-    } catch {
-      // no JSON body
-    }
-    const err = new Error(detail || `Failed to fetch drawer (${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
 
-/**
- * GET /api/v1/drawers/by-code/{code}
- * Same body as GET /drawers/{drawer_id}, but keyed by the human drawer code
- * (e.g. "DRW-0014") instead of the UUID — so a searched row opens exactly
- * like a clicked one. 404 if no such code.
- */
-export async function apiGetDrawerByCode(token, code) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/drawers/by-code/${encodeURIComponent(code)}`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    let detail;
-    try {
-      const errObj = await res.json();
-      detail = errObj.detail || errObj.message;
-    } catch {
-      // no JSON body
-    }
-    const err = new Error(detail || `Failed to fetch drawer by code (${res.status})`);
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 23. MANAGER DASHBOARD ENDPOINTS
@@ -2131,39 +1931,9 @@ export async function apiGetStoreDashboard(token, params = {}) {
   return res.json();
 }
 
-/**
- * GET /api/v1/dashboard/store/drawers/{drawer_id}
- * @param {string} token
- * @param {string} drawerId
- */
-export async function apiGetStoreDrawerDetail(token, drawerId) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/store/drawers/${encodeURIComponent(drawerId)}`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => '');
-    throw new Error(err || `Failed to fetch store drawer detail (${res.status})`);
-  }
-  return res.json();
-}
 
-/**
- * GET /api/v1/dashboard/store/drawers/{drawer_id}/movement
- * @param {string} token
- * @param {string} drawerId
- */
-export async function apiGetStoreDrawerMovement(token, drawerId) {
-  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/store/drawers/${encodeURIComponent(drawerId)}/movement`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    const err = await res.text().catch(() => '');
-    throw new Error(err || `Failed to fetch store drawer movement (${res.status})`);
-  }
-  return res.json();
-}
+
+
 
 /**
  * GET /api/v1/dashboard/store/traceability
@@ -2257,5 +2027,228 @@ export async function apiGetDirectManagerPieceDetail(token, pieceCode) {
   }
   return res.json();
 }
+export async function apiGetStyleMaterialSpec(token, styleId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to fetch material spec (${res.status})`);
+  return res.json();
+}
 
+export async function apiPutStyleMaterialSpec(token, styleId, lines) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ lines }),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to save material spec (${res.status})`);
+  return res.json();
+}
+
+export async function apiAddStyleMaterialSpecLine(token, styleId, line) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/lines`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(line),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to add material line (${res.status})`);
+  return res.json();
+}
+
+export async function apiPatchStyleMaterialSpecLine(token, styleId, lineId, patch) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/lines/${encodeURIComponent(lineId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to update material line (${res.status})`);
+  return res.json();
+}
+
+export async function apiDeleteStyleMaterialSpecLine(token, styleId, lineId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/lines/${encodeURIComponent(lineId)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to remove material line (${res.status})`);
+  return res.json();
+}
+
+export async function apiConfirmStyleMaterialSpec(token, styleId, noAccessories = false) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/confirm`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ no_accessories: !!noAccessories }),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to confirm material spec (${res.status})`);
+  return res.json();
+}
+
+export async function apiCopyStyleMaterialSpec(token, styleId, fromStyleId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/copy-from`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ from_style_id: fromStyleId }),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to copy material spec (${res.status})`);
+  return res.json();
+}
+
+export async function apiGetStyleMaterialRequirement(token, styleId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/styles/${encodeURIComponent(styleId)}/material-spec/requirement`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to fetch requirement check (${res.status})`);
+  return res.json();
+}
+
+export async function apiRecordMaterialIssue(token, payload) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/materials/issues`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw await materialSpecApiError(res, `Failed to record material issue (${res.status})`);
+  return res.json();
+}
+
+// Thin wrapper over the existing POST /drawers/store-scan — builds the
+// ACCESSORY-part payload, no duplicate fetch/error-handling logic.
+export async function apiIssueAccessoryKit(token, { employee, pieceId, pieceBarcode, lines } = {}) {
+  const payload = { part: 'ACCESSORY' };
+  if (employee) {
+    if (employee.employee_barcode || employee.barcode) payload.employee_barcode = employee.employee_barcode || employee.barcode;
+    else if (employee.id) payload.employee_id = employee.id;
+  }
+  if (pieceId) payload.piece_id = pieceId;
+  else if (pieceBarcode) payload.piece_barcode = pieceBarcode;
+  if (Array.isArray(lines) && lines.length > 0) payload.lines = lines;
+  return apiStoreScan(token, payload);
+}
+function parseSpecErrorDetail(detail) {
+  if (!detail) return null;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail)) return detail.map((d) => d?.msg || d).join(', ');
+  return null;
+}
+
+async function materialSpecApiError(res, fallback) {
+  let detail;
+  try { detail = (await res.json()).detail; } catch { /* no JSON body */ }
+  const message = parseSpecErrorDetail(detail) || fallback;
+  const err = new Error(message);
+  err.status = res.status;
+  err.detail = detail;
+  return err;
+}
+
+export async function apiIssueCuttingJobSheet(token, payload) {
+  console.warn('[apiIssueCuttingJobSheet] Mocking issue:', payload);
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve({
+        success: true,
+        barcode_id: `CUT-${Math.floor(Math.random() * 10000)}`,
+        timestamp: new Date().toISOString()
+      });
+    }, 1000);
+  });
+}
+
+/**
+ * POST /api/v1/store/scan
+ * Store piece scanning (replaces drawer scan)
+ */
+export async function apiStoreScan(token, scanData) {
+  const res = await fetch(API_BASE_URL + '/api/v1/store/scan', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + token,
+    },
+    body: JSON.stringify(scanData),
+  });
+  if (!res.ok) {
+    let detail;
+    try {
+      const errObj = await res.json();
+      detail = errObj.detail || errObj.message;
+    } catch { }
+    const err = new Error(detail || 'Store scan failed (' + res.status + ')');
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/**
+ * POST /api/v1/store/send
+ */
+export async function apiStoreSend(token, { piece_ids }) {
+  const res = await fetch(API_BASE_URL + '/api/v1/store/send', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: 'Bearer ' + token,
+    },
+    body: JSON.stringify({ piece_ids }),
+  });
+  if (!res.ok) {
+    let detail;
+    try {
+      const errObj = await res.json();
+      detail = errObj.detail || errObj.message;
+    } catch { }
+    const err = new Error(detail || 'Failed to send pieces (' + res.status + ')');
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/store/pieces
+ */
+export async function apiListStorePieces(token, params = {}) {
+  const qs = new URLSearchParams();
+  qs.append('limit', params.limit || 500);
+  if (params.code) qs.append('code', params.code);
+  if (params.state) qs.append('state', params.state);
+  if (params.offset) qs.append('offset', params.offset);
+
+  const res = await fetch(API_BASE_URL + '/api/v1/store/pieces?' + qs.toString(), {
+    method: 'GET',
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    let detail = errText;
+    try { detail = JSON.parse(errText).detail; } catch { }
+    throw new Error(detail || 'Failed to list store pieces (' + res.status + ')');
+  }
+  return res.json();
+}
+
+/**
+ * GET /api/v1/store/pieces/{piece_code}
+ */
+export async function apiGetStorePiece(token, pieceCode) {
+  const res = await fetch(API_BASE_URL + '/api/v1/store/pieces/' + encodeURIComponent(pieceCode), {
+    method: 'GET',
+    headers: { Authorization: 'Bearer ' + token },
+  });
+  if (!res.ok) {
+    let detail;
+    try {
+      const errObj = await res.json();
+      detail = errObj.detail || errObj.message;
+    } catch { }
+    const err = new Error(detail || 'Failed to fetch store piece (' + res.status + ')');
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
 

@@ -1,8 +1,6 @@
 // manual logger main file
 "use client";
 import { useState, useRef, useEffect, useMemo } from "react";
-import { useAuth } from "@/context/AuthContext";
-import { useData } from "@/context/DataContext";
 import CheckInWarningModal from "./CheckInWarningModal";
 import CheckOutWarningModal from "./CheckOutWarningModal";
 import TravelerPrintModal from "./TravelerPrintModal";
@@ -10,13 +8,31 @@ import AnalyticsPopupModal from "./AnalyticsPopupModal";
 import PieceChecklistModal from "./PieceChecklistModal";
 import ManualDoorForm from "./form";
 import {
-  apiGetSkus,
-  apiGetSkuPieces,
-  apiProductionCutting,
-  apiProductionLogTwoDoor,
-  apiGetMaterialLots,
-} from "@/lib/api";
+  useGetSkusQuery,
+  useGetSkuPiecesQuery,
+  useGetMaterialLotsQuery,
+  useProductionCuttingMutation,
+  useProductionLogTwoDoorMutation,
+  useLazyGetSkuPiecesQuery,
+
+} from "@/store/slices/apiSlice";
+import {
+  useLazyGetAttendanceTodayQuery
+} from "@/store/slices/attendanceApiSlice";
 import { useRoleAccess, normalizeRosterArray } from "../shared";
+import { useSelector, useDispatch } from 'react-redux';
+import { 
+  setSelectedStage as reduxSetSelectedStage, 
+  setWorkerId as reduxSetWorkerId, 
+  setSkuCode as reduxSetSkuCode, 
+  setPieceSeqs as reduxSetPieceSeqs, 
+  setCuttingCount as reduxSetCuttingCount, 
+  setSkuSearchQuery as reduxSetSkuSearchQuery, 
+  setWorkerSearchQuery as reduxSetWorkerSearchQuery 
+} from '@/store/slices/manualSlice';
+import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
+import { useGetOperationsQuery, useAddScanEventMutation } from '@/store/slices/clientApiSlice';
+
 export default function ManualDoorSection({
   activeDoor,
   setSuccessMsg,
@@ -43,17 +59,20 @@ export default function ManualDoorSection({
   setShowBucketModal,
   mounted,
 }) {
-  const { token } = useAuth();
-  const { workers, addScanEvent, operations } = useData();
+// Workers — already in adminApiSlice
+  const { data: employeesData } = useGetEmployeesQuery();
+  const workers = Array.isArray(employeesData) ? employeesData : (employeesData?.items || []);
+
+// Operations — clientApiSlice (already created)
+const { data: operations = [] } = useGetOperationsQuery();
+
+// addScanEvent mutation — clientApiSlice
+const [addScanEvent] = useAddScanEventMutation();
+
   const { isReadOnly, isFullAccess, isStageAllowedForRole } =
     useRoleAccess();
-  const [selectedStage, setSelectedStage] = useState("Cutting");
-  const [workerId, setWorkerId] = useState("");
-  const [skuCode, setSkuCode] = useState("");
-  const [pieceSeqs, setPieceSeqs] = useState("");
-  const [cuttingCount, setCuttingCount] = useState("");
-  const [fetchedSkus, setFetchedSkus] = useState([]);
-  const [skusLoading, setSkusLoading] = useState(false);
+  
+  const [triggerGetAttendance] = useLazyGetAttendanceTodayQuery();
   const [cuttingPieces, setCuttingPieces] = useState([]);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [isSavingCutting, setIsSavingCutting] = useState(false);
@@ -66,13 +85,11 @@ export default function ManualDoorSection({
     loading: false,
     detail: null,
     error: null,
-  });
+  }); 
   const [isSkuOpen, setIsSkuOpen] = useState(false);
-  const [skuSearchQuery, setSkuSearchQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(60);
   const skuModalRef = useRef(null);
   const [isWorkerOpen, setIsWorkerOpen] = useState(false);
-  const [workerSearchQuery, setWorkerSearchQuery] = useState("");
   const workerModalRef = useRef(null);
   const [lastSubmittedPieceSeqs, setLastSubmittedPieceSeqs] = useState([]);
   const [showChecklistModal, setShowChecklistModal] = useState(false);
@@ -86,16 +103,48 @@ export default function ManualDoorSection({
   const [checklistSubmitting, setChecklistSubmitting] = useState(false);
   const [scannedBarcodes, setScannedBarcodes] = useState([]);
   const [workerVerifying, setWorkerVerifying] = useState(false);
-  // Already-logged count for the selected SKU at the current stage — parity
-  // with the duplicate-submit guard we added for Barcode Gun Scanner.
-  // apiProductionCutting always targets piece_seqs [1..count], so re-submitting
-  // the same (or lower) count re-logs the SAME pieces as backend "rework"
-  // instead of adding anything new.
-  const [alreadyCutCount, setAlreadyCutCount] = useState(0);
+  const dispatch = useDispatch();
 
-  // Dedicated Barcode Gun Scanner Handler: Verify Worker & Attendance Check
+  const selectedStage = useSelector(state => state.manual.selectedStage);
+  const workerId = useSelector(state => state.manual.workerId);
+  const skuCode = useSelector(state => state.manual.skuCode);
+  const pieceSeqs = useSelector(state => state.manual.pieceSeqs);
+  const cuttingCount = useSelector(state => state.manual.cuttingCount);
+  const skuSearchQuery = useSelector(state => state.manual.skuSearchQuery);
+  const workerSearchQuery = useSelector(state => state.manual.workerSearchQuery);
 
-  const [skuRefreshKey, setSkuRefreshKey] = useState(0);
+  // REDUX WRAPPERS
+  const setSelectedStage = (val) => dispatch(reduxSetSelectedStage(val));
+  const setWorkerId = (val) => dispatch(reduxSetWorkerId(val));
+  const setSkuCode = (val) => dispatch(reduxSetSkuCode(val));
+  const setPieceSeqs = (val) => dispatch(reduxSetPieceSeqs(val));
+  const setCuttingCount = (val) => dispatch(reduxSetCuttingCount(val));
+  const setSkuSearchQuery = (val) => dispatch(reduxSetSkuSearchQuery(val));
+  const setWorkerSearchQuery = (val) => dispatch(reduxSetWorkerSearchQuery(val));
+
+  // --- RTK QUERY HOOKS ---
+  const { data: skusData = [], isLoading: skusLoading, refetch: refetchSkus } = useGetSkusQuery();
+  const fetchedSkus = skusData?.items || skusData?.skus || (Array.isArray(skusData) ? skusData : []);
+
+  const searchOp = String(selectedStage || "").toLowerCase().replace(/[^a-z]/g, "");
+  const opRecord = operations?.find((o) => {
+    const opLabel = String(o.label || "").toLowerCase().replace(/[^a-z]/g, "");
+    return opLabel === searchOp || opLabel.includes(searchOp) || searchOp.includes(opLabel);
+  }) || (operations && operations[0]);
+
+  const skuObj = fetchedSkus.find((s) => s.code === skuCode);
+
+  const { data: piecesData } = useGetSkuPiecesQuery(
+    { skuId: skuObj?.sku_id, operationId: opRecord?.id },
+    { skip: !skuCode || !opRecord || (selectedStage !== "Cutting" && selectedStage !== "Lining") }
+  );
+  
+  const piecesArray = Array.isArray(piecesData) ? piecesData : (piecesData?.pieces || []);
+  const alreadyCutCount = piecesArray.filter(p => p.done_at_op).length;
+
+  const [productionCutting] = useProductionCuttingMutation();
+  const [productionLogTwoDoor] = useProductionLogTwoDoorMutation();
+const [triggerGetPieces] = useLazyGetSkuPiecesQuery();
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -113,133 +162,41 @@ export default function ManualDoorSection({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
   useEffect(() => {
-    setSkusLoading(true);
-    apiGetSkus(token)
-      .then((res) => {
-        // Handle both plain array and paginated {items:[...]} format
-        const items =
-          res?.items || res?.skus || (Array.isArray(res) ? res : []);
-        console.log("[fetchedSkus] loaded:", items.length, "SKUs");
-        setFetchedSkus(items);
-      })
-      .catch(console.warn)
-      .finally(() => setSkusLoading(false));
-  }, [token, skuRefreshKey]);
-
-  useEffect(() => {
     if (skuCode) {
       const skuObj = fetchedSkus.find((s) => s.code === skuCode);
       if (skuObj?.qty_ordered) setCuttingCount(skuObj.qty_ordered.toString());
     }
   }, [skuCode, fetchedSkus]);
-
-  // Barcode Gun Scanner parity: know how many pieces are already logged for
-  // this SKU at this stage BEFORE the operator submits, so a duplicate
-  // Cutting/Lining run can be caught instead of silently re-logging as rework.
-  useEffect(() => {
-    if (
-      !skuCode ||
-      (selectedStage !== "Cutting" && selectedStage !== "Lining")
-    ) {
-      setAlreadyCutCount(0);
-      return;
-    }
-    const skuObj = fetchedSkus.find((s) => s.code === skuCode);
-    const searchOp = String(selectedStage || "")
-      .toLowerCase()
-      .replace(/[^a-z]/g, "");
-    const opRecord =
-      operations.find((o) => {
-        const opLabel = String(o.label || "")
-          .toLowerCase()
-          .replace(/[^a-z]/g, "");
-        return (
-          opLabel === searchOp ||
-          opLabel.includes(searchOp) ||
-          searchOp.includes(opLabel)
-        );
-      }) || operations[0];
-    if (!skuObj || !opRecord) {
-      setAlreadyCutCount(0);
-      return;
-    }
-
-    let isMounted = true;
-    apiGetSkuPieces(token, skuObj.sku_id, opRecord.id)
-      .then((data) => {
-        if (!isMounted) return;
-        const arr = Array.isArray(data) ? data : data.pieces || [];
-        setAlreadyCutCount(arr.length);
-      })
-      .catch(() => {
-        if (isMounted) setAlreadyCutCount(0);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, [skuCode, selectedStage, fetchedSkus, operations, token]);
-
-  // Dynamic Material Lots Fetcher — Manual-door half. See the matching copy
-  // in BarcodeDoorSection.js for why this was split into two door-local
-  // effects instead of staying as one shared effect in page.js.
-  useEffect(() => {
     const isCutting = selectedStage === "Cutting";
-    const isLining = selectedStage === "Lining";
+  const isLining = selectedStage === "Lining";
+  const lotCategoryLocal = isLining ? "LINING" : "LEATHER";
+
+  const { data: lotsData, isFetching: lotsFetching } = useGetMaterialLotsQuery(
+    { category: lotCategoryLocal, article: lotArticle, colour: lotColor, thickness: lotThickness },
+    { skip: !skuCode || (!isCutting && !isLining) }
+  );
+
+  useEffect(() => {
     if (!isCutting && !isLining) return;
+    setLotCategory(lotCategoryLocal);
+    
+    if (lotsFetching) {
+      setLotLoading(true);
+    } else if (lotsData) {
+      setLotLoading(false);
+      setLotOptions(lotsData.options || { article: [], colour: [], thickness: [], size: [] });
+      setLotResults(lotsData.lots || []);
 
-    const category = isLining ? "LINING" : "LEATHER";
-    setLotCategory(category);
-
-    const currentSku = skuCode;
-    if (!currentSku) return;
-   const params = {
-      category,
-      article: lotArticle,
-      colour: lotColor,
-      thickness: lotThickness,
-    };
-
-    let isMounted = true;
-    setLotLoading(true);
-    apiGetMaterialLots(token, params)
-      .then((data) => {
-        if (!isMounted) return;
-        setLotOptions(
-          data.options || { article: [], colour: [], thickness: [], size: [] },
-        );
-        setLotResults(data.lots || []);
-
-        if (data.suggested_lot_id && data.lots) {
-          const suggestedLot = data.lots.find(
-            (l) => l.lot_id === data.suggested_lot_id,
-          );
-          if (suggestedLot && !lotArticle && !lotColor && !lotThickness) {
-            setLotArticle(suggestedLot.article || "");
-            setLotColor(suggestedLot.colour || "");
-            setLotThickness(suggestedLot.thickness || "");
-          }
+      if (lotsData.suggested_lot_id && lotsData.lots) {
+        const suggestedLot = lotsData.lots.find((l) => l.lot_id === lotsData.suggested_lot_id);
+        if (suggestedLot && !lotArticle && !lotColor && !lotThickness) {
+          setLotArticle(suggestedLot.article || "");
+          setLotColor(suggestedLot.colour || "");
+          setLotThickness(suggestedLot.thickness || "");
         }
-      })
-      .catch((err) => {
-        console.warn("Failed to fetch lots:", err);
-      })
-      .finally(() => {
-        if (isMounted) setLotLoading(false);
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [
-    selectedStage,
-    skuCode,
-    lotArticle,
-    lotColor,
-    lotThickness,
-    barcodeDcm,
-    cuttingCount,
-    token,
-  ]);
+      }
+    }
+  }, [lotsData, lotsFetching, isCutting, isLining, lotCategoryLocal, lotArticle, lotColor, lotThickness, setLotCategory, setLotLoading, setLotOptions, setLotResults, setLotArticle, setLotColor, setLotThickness]);
 
   const searchFilteredSkus = useMemo(() => {
     if (!skuSearchQuery.trim()) return fetchedSkus;
@@ -264,21 +221,11 @@ export default function ManualDoorSection({
   }, [workers, workerSearchQuery]);
 
   const currentSelectedWorker = workers.find((w) => w.id === workerId);
-
-  // Barcode Gun Scanner parity: verify attendance check-in the moment a
-  // worker is picked, not only at submit time — same GET /attendance/today
-  // gate as handleVerifyBarcodeWorker, just triggered earlier so the operator
-  // finds out before filling out the rest of the form. Kept alongside (not
-  // instead of) the existing submit-time checks below, since a worker could
-  // still check out in the gap between selecting them and hitting submit.
   const handleSelectWorker = async (w) => {
     setIsWorkerOpen(false);
     setWorkerVerifying(true);
     try {
-      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const rosterData = await response.json();
+      const rosterData = await triggerGetAttendance().unwrap();
       const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(
         (r) => String(r.employee_id) === String(w.id),
@@ -367,10 +314,7 @@ export default function ManualDoorSection({
     // Instant block for non-checked in workers on other stages
     const currentWorker = workers.find((w) => w.id === workerId);
     try {
-      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const rosterData = await response.json();
+      const rosterData = await triggerGetAttendance().unwrap();
       const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(
         (r) => String(r.employee_id) === String(workerId),
@@ -419,7 +363,7 @@ export default function ManualDoorSection({
         work_date: date,
         sku_id: skuObj.sku_id,
         piece_seqs: parsedSeqs,
-      });
+      }).unwrap();
       setSuccessMsg(
         `Logged ${result.count_logged ?? parsedSeqs.length} pieces for ${activeOp}.`,
       );
@@ -437,10 +381,7 @@ export default function ManualDoorSection({
   const handleDirectCuttingSave = async () => {
     const currentWorker = workers.find((w) => w.id === workerId);
     try {
-      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const rosterData = await response.json();
+      const rosterData = await triggerGetAttendance().unwrap();
       const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(
         (r) => String(r.employee_id) === String(workerId),
@@ -464,12 +405,6 @@ export default function ManualDoorSection({
     try {
       const skuObj = fetchedSkus.find((s) => s.code === skuCode);
       const parsedCount = parseInt(cuttingCount, 10);
-
-      // Duplicate-submit guard (Barcode Gun Scanner parity): apiProductionCutting
-      // always targets piece_seqs [1..count], so submitting a count that's
-      // already covered just re-logs the SAME pieces as backend "rework" —
-      // nothing new gets created. Block it here instead of letting the
-      // operator find out only from a misleading success message.
       if (alreadyCutCount > 0 && parsedCount <= alreadyCutCount) {
         setErrorMsg(
           `⚠️ This SKU already has ${alreadyCutCount} piece(s) logged for ${selectedStage}. Enter a count higher than ${alreadyCutCount} to add new pieces.`,
@@ -477,15 +412,32 @@ export default function ManualDoorSection({
         return;
       }
 
-      const result = await apiProductionCutting(token, {
-        sku_id: skuObj.sku_id,
-        employee_id: workerId,
+      const isLiningLocal = selectedStage === 'Lining';
+      const lotIdLocal = lotResults.length === 1 ? lotResults[0].lot_id : null;
+      const logPayload = {
+        screen_context: isLiningLocal ? 'LINING_CUT' : 'LEATHER_CUT',
+        actor: { employee_id: workerId },
+        targets: {
+          sku_id: skuObj.sku_id,
+          piece_seqs: Array.from({ length: parsedCount }, (_, i) => i + 1)
+        },
         work_date: date,
-        count: parsedCount,
-        dcm: barcodeDcm ? parseInt(barcodeDcm, 10) : parsedCount,
-        stage: selectedStage, // 'Cutting' or 'Lining'
-        lot_id: lotResults.length === 1 ? lotResults[0].lot_id : null,
-      });
+        consumption: {
+          dcm: barcodeDcm ? Number(barcodeDcm) : 10
+        }
+      };
+      if (lotIdLocal) {
+        if (isLiningLocal) logPayload.consumption.lining_lot_id = lotIdLocal;
+        else logPayload.consumption.leather_lot_id = lotIdLocal;
+      } else {
+        logPayload.consumption.article = lotArticle;
+        if (lotColor) logPayload.consumption.colour = lotColor;
+        if (lotThickness) logPayload.consumption.thickness = lotThickness;
+      }
+      if (isLiningLocal) {
+        delete logPayload.consumption; // Lining ku consumption thevaiyilla!
+      }
+      const result = await productionCutting(logPayload).unwrap();
 
       // Bug fix: the real response field is `count_logged`/`logged` (piece
       // code strings) — `result.count`/`result.pieces` never existed, so this
@@ -495,7 +447,6 @@ export default function ManualDoorSection({
         setSuccessMsg(
           `✅ Cut ${result.count_logged} pieces successfully saved.`,
         );
-        setAlreadyCutCount(parsedCount);
       } else {
         setErrorMsg(
           `⚠️ ${result.message || "Nothing new was logged — pieces may already be recorded at this stage."}`,
@@ -525,10 +476,7 @@ export default function ManualDoorSection({
     // Double check check-in status when confirming
     const currentWorker = workers.find((w) => w.id === workerId);
     try {
-      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const rosterData = await response.json();
+      const rosterData = await triggerGetAttendance().unwrap();
       const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(
         (r) => String(r.employee_id) === String(workerId),
@@ -557,18 +505,42 @@ export default function ManualDoorSection({
       const skuObj = fetchedSkus.find((s) => s.code === skuCode);
       const parsedCount = parseInt(cuttingCount, 10);
 
-      const result = await apiProductionCutting(token, {
-        sku_id: skuObj.sku_id,
-        employee_id: workerId,
+      const isLiningLocal = selectedStage === 'Lining';
+      const lotIdLocal = lotResults.length === 1 ? lotResults[0].lot_id : null;
+      const logPayload = {
+        screen_context: isLiningLocal ? 'LINING_CUT' : 'LEATHER_CUT',
+        actor: { employee_id: workerId },
+        targets: {
+          sku_id: skuObj.sku_id,
+          piece_seqs: Array.from({ length: parsedCount }, (_, i) => i + 1)
+        },
         work_date: date,
-        count: parsedCount,
-      });
+        consumption: {
+          dcm: barcodeDcm ? Number(barcodeDcm) : 10
+        }
+      };
+      if (lotIdLocal) {
+        if (isLiningLocal) logPayload.consumption.lining_lot_id = lotIdLocal;
+        else logPayload.consumption.leather_lot_id = lotIdLocal;
+      } else {
+        logPayload.consumption.article = lotArticle;
+        if (lotColor) logPayload.consumption.colour = lotColor;
+        if (lotThickness) logPayload.consumption.thickness = lotThickness;
+      }
+      if (isLiningLocal) {
+        delete logPayload.consumption; // Lining ku consumption thevaiyilla!
+      }
+      const result = await productionCutting(logPayload).unwrap();
 
       setSuccessMsg(
-        `✅ Cut ${result.count || parsedCount} pieces successfully saved.`,
+        `✅ Cut ${result.count_logged || parsedCount} pieces successfully saved.`,
       );
+      const extractSeq = (code) => {
+        const n = parseInt(String(code).split("-").pop(), 10);
+        return isNaN(n) ? null : n;
+      };
       setLastSubmittedPieceSeqs(
-        result.pieces ? result.pieces.map((p) => p.seq) : [],
+        (result.logged || []).map(extractSeq).filter((n) => n !== null),
       );
 
       setShowPrintModal(false);
@@ -606,7 +578,8 @@ export default function ManualDoorSection({
     setRangeFrom("");
     setRangeTo("");
     try {
-      const data = await apiGetSkuPieces(token, skuObj.sku_id, opRecord.id);
+    const data = await triggerGetPieces({ skuId: skuObj.sku_id, operationId: opRecord.id }).unwrap();
+
       let piecesArr = Array.isArray(data) ? data : data.pieces || [];
 
       // Dynamically sync piece list with submitted count for this SKU (e.g. 12 pieces)
@@ -625,16 +598,6 @@ export default function ManualDoorSection({
           );
         });
       }
-
-      // Store Gate Check removed: it filtered on `p.store_sended` and
-      // `current_stage_label === 'SENDED'` — fields that don't match the
-      // real API shape (the actual fields are `store_status: "sended"` and a
-      // free-text current_stage_label like "In store · sent · moved to
-      // line-stitching..."), so it silently dropped every real piece for
-      // Line/Shell Stitching, even ones the backend had already marked
-      // `eligible: true`. The per-piece `eligible`/`blocked_reason` fields
-      // (used below when rendering the checklist) already correctly reflect
-      // Store Hub gating — no separate check needed here.
 
       setChecklistPieces(piecesArr);
       const total = piecesArr.length;
@@ -667,10 +630,7 @@ export default function ManualDoorSection({
     const currentWorker = workers.find((w) => w.id === workerId);
 
     try {
-      const response = await fetch(`/api/v1/attendance/today?t=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const rosterData = await response.json();
+      const rosterData = await triggerGetAttendance().unwrap();
       const rosterArray = normalizeRosterArray(rosterData);
       const workerRoster = rosterArray.find(
         (r) => String(r.employee_id) === String(workerId),
@@ -696,9 +656,12 @@ export default function ManualDoorSection({
     try {
       let bucketRes = null;
       try {
-        const isCutStage = selectedStage.toUpperCase().includes("CUT");
+        let context = "PIPELINE";
+        if (selectedStage === "Cutting") context = "LEATHER_CUT";
+        else if (selectedStage === "Lining") context = "LINING_CUT";
+
         const logPayload = {
-          screen_context: isCutStage ? "LEATHER_CUT" : "PIPELINE",
+          screen_context: context,
           actor: currentWorker?.employee_barcode
             ? { employee_barcode: currentWorker.employee_barcode }
             : { employee_id: workerId },
@@ -707,14 +670,10 @@ export default function ManualDoorSection({
               ? { piece_barcodes: scannedBarcodes }
               : { sku_id: skuObj.sku_id, piece_seqs: selectedPieces },
           work_date: date,
-          ...(isCutStage
-            ? { consumption: { dcm: Number(barcodeDcm || 10) } }
-            : {}),
         };
-        bucketRes = await apiProductionLogTwoDoor(token, logPayload);
+        bucketRes = await productionLogTwoDoor(logPayload).unwrap();
         const hasRealBlocks =
-          bucketRes?.sequence_blocked?.length > 0 ||
-          bucketRes?.merge_blocked?.length > 0 ||
+          bucketRes?.blocked?.length > 0 ||
           bucketRes?.not_found?.length > 0;
         if (bucketRes && hasRealBlocks) {
           setBucketResult(bucketRes);
@@ -728,7 +687,7 @@ export default function ManualDoorSection({
           work_date: date,
           sku_id: skuObj.sku_id,
           piece_seqs: selectedPieces,
-        });
+        }).unwrap();
       }
 
       // Record local stage completion for whichever pieces were actually submitted —
@@ -758,15 +717,6 @@ export default function ManualDoorSection({
       setChecklistSubmitting(false);
     }
   };
-
-  // NOTE: the Excel/Breakdown-Sheet import feature (handleFileUpload,
-  // handleCommit, fileInputRef, uploadLoading/showPreviewModal/previewData/
-  // fileName/commitLoading/showOrderNumModal/uploadOrderNumber/
-  // uploadOrderNumberError, plus the Order Number Modal and Excel Preview
-  // Modal JSX) moved to page.js — its trigger button + hidden file input
-  // live in the shared TITLE SECTION, rendered unconditionally regardless of
-  // which door is active, not nested inside this door's own block.
-
   return (
     <>
       <ManualDoorForm
@@ -789,7 +739,7 @@ export default function ManualDoorSection({
   pieceSeqs={pieceSeqs}
   setPieceSeqs={setPieceSeqs}
   skuModalRef={skuModalRef}
-  setSkuRefreshKey={setSkuRefreshKey}
+  setSkuRefreshKey={refetchSkus}
   skusLoading={skusLoading}
   isSkuOpen={isSkuOpen}
   setIsSkuOpen={setIsSkuOpen}
@@ -840,7 +790,6 @@ export default function ManualDoorSection({
   show={showAnalyticsModal}
   setShow={setShowAnalyticsModal}
   currentSelectedSku={currentSelectedSku}
-  token={token}
   analyticsData={analyticsData}
   setAnalyticsData={setAnalyticsData}
   lastSubmittedPieceSeqs={lastSubmittedPieceSeqs}

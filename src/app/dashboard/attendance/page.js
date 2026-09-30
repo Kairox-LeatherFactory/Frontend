@@ -1,23 +1,26 @@
 'use client';
 import { useState, useMemo, useEffect } from 'react';
-import { useAuth } from '@/context/AuthContext';
+
 import {
   Clock, 
  Users,
   CalendarDays,Building2,QrCode
 } from 'lucide-react';
+import { useGetEmployeesQuery } from '@/store/slices/attendanceApiSlice';
+import { usePageTrail } from '@/context/PageTrailContext';
 
 import { motion} from 'framer-motion';
 import {
-    apiFetch,
+   
   LockedView, EmployeesListView, AttendanceHistoryView,
 } from './shared';
 import MyAttendanceView from './MyAttendanceView';
 import FloorCommandView from './FloorCommandView';
 import OperationsHRView from './OperationsHRView';
-// ═══════════════════════════════════════════════════════════════════════════════
-// ROOT EXPORT — Attendance Module Router
-// ═══════════════════════════════════════════════════════════════════════════════
+import { useSelector, useDispatch } from 'react-redux';
+import { setWorkers, setActiveTab } from '@/store/slices/attendanceSlice';
+
+
 export default function AttendancePage() {
  const [hasMounted, setHasMounted] = useState(false);
 
@@ -25,8 +28,7 @@ export default function AttendancePage() {
  setHasMounted(true);
  }, []);
 
- const { user, token } = useAuth();
-
+ const { user} = useSelector(state => state.auth); 
  const isManager = user === 'direct_manager' || user === 'managing_director' || user === 'hr';
  const isSupervisor = isManager;
  const isSecurity = user === 'security';
@@ -45,39 +47,46 @@ export default function AttendancePage() {
  }, [isSecurity, isMD, isSupervisor, isManager]);
 
  const defaultTab = useMemo(() => tabs[0]?.key || (isSecurity ? 'employees' : 'me'), [tabs, isSecurity]);
- const [activeTab, setActiveTab] = useState(defaultTab);
- const [workers, setWorkers] = useState([]);
  const [workerRefreshKey, setWorkerRefreshKey] = useState(0);
+   // Redux Attendance state
+  const workers = useSelector(state => state.attendance.workers);
+  const activeTab = useSelector(state => state.attendance.activeTab) || defaultTab;
+ const dispatch = useDispatch();
+    // --- RTK QUERY HOOKS ---
+  const shouldFetchEmployees = activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees';
+  const { data: employeesData } = useGetEmployeesQuery(undefined, { skip: !shouldFetchEmployees });
+console.log(employeesData,"employeesData",shouldFetchEmployees)
+  useEffect(() => {
+    if (employeesData) {
+      dispatch(setWorkers(employeesData));
+    }
+  }, [employeesData, dispatch]);
+
+
+
+ // Header path: Attendance › <tab>
+ usePageTrail([tabs.find((t) => t.key === activeTab)?.label]);
 
  const refreshWorkers = () => {
  setWorkerRefreshKey(k => k + 1);
  };
+   const handleTabChange = (key) => {
+    dispatch(setActiveTab(key));
+  };
 
  useEffect(() => {
  if (defaultTab && !activeTab) {
- setActiveTab(defaultTab);
+ handleTabChange(defaultTab);
  }
  }, [defaultTab, activeTab]);
 
  useEffect(() => {
  if (tabs.length > 0 && !tabs.find(t => t.key === activeTab)) {
- setActiveTab(tabs[0].key);
+ handleTabChange(tabs[0].key);
  }
  }, [tabs, activeTab]);
 
- useEffect(() => {
- if (!hasMounted) return;
- const timer = setTimeout(() => {
- if ((activeTab === 'proxy' || activeTab === 'admin' || activeTab === 'employees')) {
- apiFetch('/api/v1/employees', {}, token)
- .then(setWorkers)
- .catch(() => { });
- }
- }, 100);
- return () => clearTimeout(timer);
- }, [activeTab, token, workerRefreshKey, hasMounted]);
-
- if (!hasMounted) {
+if (!hasMounted) {
  return (
  <div className="w-full py-20 flex items-center justify-center bg-[#faf6f0]">
  <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
@@ -94,7 +103,7 @@ export default function AttendancePage() {
  {tabs.map(({ key, label, icon: Icon }) => {
  const isActive = activeTab === key;
  return (
- <button key={key} onClick={() => setActiveTab(key)}
+ <button key={key} onClick={() => handleTabChange(key)}
  className="relative flex items-center gap-2 px-4 py-3 text-xs font-black whitespace-nowrap transition-colors"
  style={{ color: isActive ? '#c8834a' : '#9a7a5a' }}>
  <Icon className="w-4 h-4 relative" />
@@ -112,25 +121,26 @@ export default function AttendancePage() {
  })}
  </div>
 
- <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
- {activeTab === 'me' ? (
- !isSecurity ? <MyAttendanceView token={token} /> : <LockedView title="Restricted" description="Access denied" />
- ) : activeTab === 'employees' ? (
- isSecurity ? <EmployeesListView workers={workers} /> : <LockedView title="Restricted" description="Access denied" />
- ) : activeTab === 'history' ? (
- isSecurity ? <AttendanceHistoryView token={token} /> : <LockedView title="Restricted" description="Access denied" />
- ) : activeTab === 'proxy' ? (
- (isSupervisor || isSecurity)
- ? <FloorCommandView workers={workers} token={token} onWorkerAdded={refreshWorkers} isSecurity={isSecurity} />
- : <LockedView title="Authorization Required" description="Floor Command is restricted." />
- ) : activeTab === 'admin' ? (
- (isManager && !isSecurity)
- ? <OperationsHRView token={token} />
- : <LockedView title="Direct Manager Authorization Required" description="Operations & HR is restricted to Direct Managers only." />
- ) : (
- <LockedView title="Loading State" description="Preparing module..." />
- )}
- </div>
+   <div key={activeTab} className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+    {activeTab === 'me' ? (
+      !isSecurity ? <MyAttendanceView /> : <LockedView title="Restricted" description="Access denied" />
+    ) : activeTab === 'employees' ? (
+      isSecurity ? <EmployeesListView workers={workers} /> : <LockedView title="Restricted" description="Access denied" />
+    ) : activeTab === 'history' ? (
+      isSecurity ? <AttendanceHistoryView workers={workers} userRole={user} /> : <LockedView title="Restricted" description="Access denied" />
+    ) : activeTab === 'proxy' ? (
+      (isSupervisor || isSecurity)
+        ? <FloorCommandView workers={workers} onWorkerAdded={refreshWorkers} isSecurity={isSecurity} />
+        : <LockedView title="Authorization Required" description="Floor Command is restricted." />
+    ) : activeTab === 'admin' ? (
+      (isManager && !isSecurity)
+        ? <OperationsHRView workers={workers} />
+        : <LockedView title="Direct Manager Authorization Required" description="Operations & HR is restricted to Direct Managers only." />
+    ) : (
+      <LockedView title="Loading State" description="Preparing module..." />
+    )}
+  </div>
+
  </div>
  );
 }

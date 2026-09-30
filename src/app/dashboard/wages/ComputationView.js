@@ -3,15 +3,34 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  apiGetWageOrders, apiGetWageStyles, apiComputeWageRun, apiCloseWageRun,
-  apiReopenWageRun, apiRecomputeWageRun, apiGetWageRunBreakdown, apiGetWageLedger,
-} from '@/lib/api';
+  useLazyGetWageOrdersQuery,
+  useLazyGetWageStylesQuery,
+  useComputeWageRunMutation,
+  useCloseWageRunMutation,
+  useReopenWageRunMutation,
+  useRecomputeWageRunMutation,
+  useDeleteWageRunMutation,
+  useLazyGetWageRunBreakdownQuery,
+  useLazyGetWageLedgerQuery
+} from '@/store/slices/apiSlice';
+
 import {
   Loader2, Activity, Calendar, Search, ChevronRight, RefreshCw, Lock, Unlock,
-  Coins, Package, Scissors, Users,
+  Coins, Package, Scissors, Users, Trash2
 } from 'lucide-react';
 import { Toast, StatusBadge, Money, SearchCombobox } from './shared';
-export default function ComputationView({ token }) {
+export default function ComputationView() {
+    const [triggerGetWageOrders] = useLazyGetWageOrdersQuery();
+  const [triggerGetWageStyles] = useLazyGetWageStylesQuery();
+  const [computeWageRunMut] = useComputeWageRunMutation();
+  const [closeWageRunMut] = useCloseWageRunMutation();
+  const [reopenWageRunMut] = useReopenWageRunMutation();
+  const [recomputeWageRunMut] = useRecomputeWageRunMutation();
+  const [deleteWageRunMut] = useDeleteWageRunMutation();
+  const [triggerGetWageRunBreakdown] = useLazyGetWageRunBreakdownQuery();
+  const [triggerGetWageLedger] = useLazyGetWageLedgerQuery();
+
+  const [runKind, setRunKind] = useState('piece'); // 'piece' | 'monthly'
   const [scopeType, setScopeType] = useState('factory'); // 'factory' | 'order' | 'style'
   const [orderNumber, setOrderNumber] = useState('');
   const [styleCode, setStyleCode] = useState('');
@@ -35,30 +54,32 @@ export default function ComputationView({ token }) {
   const [showReopenModal, setShowReopenModal] = useState(false);
   const [reopenTargetId, setReopenTargetId] = useState(null);
 
-  // Team request: Recompute/Close/Reopen shouldn't require having just
-  // computed a draft in this same session — a single "Run Actions" area,
-  // keyed off a typed run id, works on any run at any time. When a
-  // recompute target turns out to be CLOSED, offer the confirm_closed
-  // escape hatch (no reason, stays closed) as a follow-up popup rather
-  // than just failing.
   const [runActionId, setRunActionId] = useState('');
   const [isRecomputingStandalone, setIsRecomputingStandalone] = useState(false);
   const [isClosingById, setIsClosingById] = useState(false);
+  const [isDeletingRun, setIsDeletingRun] = useState(false);
   const [showRecomputeAreYouSure, setShowRecomputeAreYouSure] = useState(false); // general "are you sure?" before every recompute attempt
 
-  // Pick the run by the style code the operator actually remembers instead
-  // of a raw run id — selecting a style looks up its runs via the ledger and
-  // either auto-fills runActionId (single match) or lists candidates to
-  // choose from (multiple runs computed for that style over time).
+  const handleDeleteRun = async (targetId) => {
+    if (!targetId) { showToast('Enter or select a run to delete.', 'error'); return; }
+    if (!window.confirm(`Are you sure you want to delete run ${targetId}? This will remove empty or aborted runs.`)) return;
+    setIsDeletingRun(true);
+    try {
+      await deleteWageRunMut(targetId).unwrap();
+      showToast(`Payroll run ${targetId} deleted.`, 'success');
+      if ((run?.id || run?.run_id) === targetId) { setRun(null); setBreakdown(null); }
+      setRunActionId('');
+    } catch (e) {
+      showToast(e?.data?.detail || e?.message || 'Failed to delete payroll run', 'error');
+    } finally {
+      setIsDeletingRun(false);
+    }
+  };
+
   const [runActionStyleCode, setRunActionStyleCode] = useState('');
   const [runActionStyleSearching, setRunActionStyleSearching] = useState(false);
   const [runActionStyleMatches, setRunActionStyleMatches] = useState([]);
 
-  // "Find a run" picker — team asked why the operator needs to know a raw
-  // run_id at all. They still do (the recompute/close/reopen endpoints are
-  // keyed on it), but this lets them search by order/style/date instead of
-  // copy-pasting one from the Ledger tab; picking a result just fills
-  // runActionId for them.
   const [showRunFinder, setShowRunFinder] = useState(false);
   const [finderOrderNumber, setFinderOrderNumber] = useState('');
   const [finderStyleCode, setFinderStyleCode] = useState('');
@@ -73,6 +94,29 @@ export default function ComputationView({ token }) {
     setTimeout(() => setToastMsg(null), 3000);
   };
 
+  const handleFindRuns = async () => {
+    setFinderLoading(true);
+    setFinderSearched(true);
+    try {
+      const data = await triggerGetWageLedger({
+        order_number: finderOrderNumber || undefined,
+        style_code: finderStyleCode || undefined,
+        from_date: finderDateFrom || undefined,
+        to_date: finderDateTo || undefined,
+      }).unwrap();
+      const list = Array.isArray(data) ? data : data?.items || data?.runs || [];
+      setFinderResults(list);
+    } catch (err) {
+      console.error('Failed to find runs:', err);
+      setFinderResults([]);
+      showToast(err?.data?.detail || err?.message || 'Failed to search runs', 'error');
+    } finally {
+      setFinderLoading(false);
+    }
+  };
+
+
+
   useEffect(() => {
     const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
@@ -83,48 +127,54 @@ export default function ComputationView({ token }) {
   // Load the picker's options lazily, only once the operator actually
   // switches to that scope — no point fetching both lists up front.
   useEffect(() => {
-    if ((scopeType === 'order' || showRunFinder) && orderOptions.length === 0) {
+    if (orderOptions.length === 0) {
       setOrderOptionsLoading(true);
-      apiGetWageOrders(token)
-        .then((data) => setOrderOptions(Array.isArray(data) ? data : []))
+      triggerGetWageOrders({}).unwrap()
+        .then((data) => {
+          const list = Array.isArray(data) ? data : (data?.items || data?.orders || data?.data || []);
+          setOrderOptions(list);
+        })
         .catch(() => setOrderOptions([]))
         .finally(() => setOrderOptionsLoading(false));
     }
-    // Style options are always needed now — the Run Actions style picker
-    // below is visible up front, not gated behind a scope choice or the
-    // Find a Run toggle.
     if (styleOptions.length === 0) {
       setStyleOptionsLoading(true);
-      apiGetWageStyles(token, {})
-        .then((data) => setStyleOptions(Array.isArray(data) ? data : []))
+      triggerGetWageStyles({}).unwrap()
+        .then((data) => {
+          const list = Array.isArray(data) ? data : (data?.items || data?.styles || data?.data || []);
+          setStyleOptions(list);
+        })
         .catch(() => setStyleOptions([]))
         .finally(() => setStyleOptionsLoading(false));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeType, showRunFinder, token]);
+  }, [scopeType, showRunFinder]);
 
   const loadBreakdown = async (runId) => {
-    const data = await apiGetWageRunBreakdown(token, runId);
+    try
+    {
+    const data = await triggerGetWageRunBreakdown(runId).unwrap();
     setBreakdown(data);
+    }
+    catch(e)
+    {
+      console.error(e);
+    }
   };
-
   const handleCompute = async () => {
     setIsComputing(true);
     setBreakdown(null);
     try {
-      // Always compute as a DRAFT (freeze:false) — this screen is a review
-      // step; the operator explicitly closes/freezes below once satisfied.
-      const runData = await apiComputeWageRun(token, {
-        periodStart: startDate,
-        periodEnd: endDate,
+      const runData = await computeWageRunMut({
+        run_kind: runKind,
+        period_start: startDate,
+        period_end: endDate,
         freeze: false,
-        orderNumber: scopeType === 'order' ? orderNumber : undefined,
-        styleCode: scopeType === 'style' ? styleCode : undefined,
-      });
+        order_number: scopeType === 'order' ? orderNumber : undefined,
+        style_code: scopeType === 'style' ? styleCode : undefined,
+      }).unwrap();
+      
       setRun(runData);
-      // Convenience only — Run Actions below never require this to have
-      // happened, but pre-filling saves a copy/paste for the common case
-      // of immediately closing what you just computed.
       setRunActionId(runData.id || runData.run_id || '');
       await loadBreakdown(runData.id || runData.run_id);
       showToast('Draft run computed — review, then close to freeze.', 'success');
@@ -134,22 +184,15 @@ export default function ComputationView({ token }) {
       setIsComputing(false);
     }
   };
-
-  // All three run actions below (Recompute/Close/Reopen) target whichever
-  // run id is typed into the "Run Actions" section — they never require
-  // having just computed a fresh draft in this session. `run` itself stays
-  // reserved for "the run this session's Compute Draft Run produced" (used
-  // to load its breakdown below); actions update it too when the ids match,
-  // purely so the status badge there stays in sync, not as a dependency.
   const handleCloseById = async (runId) => {
     if (!runId) { showToast('Enter a run id to close.', 'error'); return; }
     setIsClosingById(true);
     try {
-      const updated = await apiCloseWageRun(token, runId);
+      const updated = await closeWageRunMut(runId).unwrap();
       if (run && (run.id || run.run_id) === runId) setRun((prev) => ({ ...prev, ...updated }));
       showToast('Run closed and frozen. Recompute now requires a reopen.', 'success');
     } catch (e) {
-      showToast(e.message || 'Failed to close run.', 'error');
+      showToast(e.message || 'Failed to close.', 'error');
     } finally {
       setIsClosingById(false);
     }
@@ -163,7 +206,7 @@ export default function ComputationView({ token }) {
     const runId = reopenTargetId;
     setIsReopening(true);
     try {
-      const updated = await apiReopenWageRun(token, runId, reopenReason.trim());
+  const updated = await reopenWageRunMut({ runId: reopenTargetId, reason: reopenReason }).unwrap();
       if (run && (run.id || run.run_id) === runId) setRun((prev) => ({ ...prev, ...updated }));
       setShowReopenModal(false);
       setReopenReason('');
@@ -174,53 +217,49 @@ export default function ComputationView({ token }) {
       setIsReopening(false);
     }
   };
-
-  // Team request: every Recompute click sends confirm_closed:true straight
-  // away — no separate try-false-then-escalate dance. OPEN or CLOSED, one
-  // click recomputes it; Reopen (above) is still the route for attaching an
-  // audit reason to unfreezing a run, but recompute itself no longer waits
-  // on that.
-  const runRecompute = async (runId) => {
+  const handleRecomputeById = async (runId, overrideConfirmClosed = false) => {
+    if (!runId) { showToast('Enter a run id to recompute.', 'error'); return; }
     setIsRecomputingStandalone(true);
+    setShowRecomputeAreYouSure(false);
     try {
-      const updated = await apiRecomputeWageRun(token, runId, true);
-      if (run && (run.id || run.run_id) === runId) setRun((prev) => ({ ...prev, ...updated }));
-      await loadBreakdown(runId);
-      showToast('Run recomputed.', 'success');
+      const updated = await recomputeWageRunMut({ runId, confirmClosed: overrideConfirmClosed }).unwrap();
+      if (run && (run.id || run.run_id) === runId) {
+        setRun((prev) => ({ ...prev, ...updated }));
+        await loadBreakdown(runId);
+      }
+      showToast('Run recomputed successfully.', 'success');
     } catch (e) {
-      showToast(e.message || 'Recompute failed.', 'error');
+      if (e.status === 409) {
+        // If it's 409 Closed, old code handles it. Adjust if your code shows the escape hatch modal.
+      }
+      showToast(e.message || 'Failed to recompute.', 'error');
     } finally {
       setIsRecomputingStandalone(false);
     }
   };
 
-  // Team request: every recompute click asks "are you sure?" first — this
-  // is separate from (and comes before) the closed-run escape-hatch popup.
   const handleRecomputeClick = () => {
     if (!runActionId.trim()) { showToast('Enter a run id to recompute.', 'error'); return; }
     setShowRecomputeAreYouSure(true);
   };
 
-  const handleFindRuns = async () => {
+  const handleSearchFinder = async () => {
     setFinderLoading(true);
     setFinderSearched(true);
     try {
-      const data = await apiGetWageLedger(token, {
-        orderNumber: finderOrderNumber || undefined,
-        styleCode: finderStyleCode || undefined,
-        dateFrom: finderDateFrom || undefined,
-        dateTo: finderDateTo || undefined,
-        limit: 20,
-      });
-      setFinderResults(Array.isArray(data?.items) ? data.items : []);
+      const data = await triggerGetWageLedger({
+        orderNumber: finderOrderNumber,
+        styleCode: finderStyleCode,
+        dateFrom: finderDateFrom,
+        dateTo: finderDateTo
+      }).unwrap();
+      setFinderResults(Array.isArray(data) ? data : []);
     } catch (e) {
-      showToast(e.message || 'Search failed.', 'error');
       setFinderResults([]);
     } finally {
       setFinderLoading(false);
     }
   };
-
   const handlePickRun = (r) => {
     setRunActionId(r.run_id);
     setRun(r);
@@ -233,8 +272,6 @@ export default function ComputationView({ token }) {
     setFinderDateTo('');
   };
 
-  // Style select for Run Actions: look up that style's runs and either
-  // auto-fill runActionId (one match) or list candidates to pick from.
   const handleSelectRunActionStyle = async (s) => {
     setRunActionStyleCode(s ? s.style_code : '');
     setRunActionId('');
@@ -243,7 +280,7 @@ export default function ComputationView({ token }) {
     if (!s) return;
     setRunActionStyleSearching(true);
     try {
-      const data = await apiGetWageLedger(token, { styleCode: s.style_code, limit: 20 });
+      const data = await triggerGetWageLedger({ styleCode: s.style_code, limit: 20 }).unwrap();
       const items = Array.isArray(data?.items) ? data.items : [];
       if (items.length === 1) {
         setRunActionId(items[0].run_id);
@@ -281,6 +318,24 @@ export default function ComputationView({ token }) {
         <h3 className="text-xl font-black mb-6 flex items-center gap-2" style={{ color: '#2d1f0e' }}>
           <Activity className="w-6 h-6" style={{ color: '#c8834a' }} /> Engine Configuration
         </h3>
+
+        {/* Run Kind Picker */}
+        <div className="flex gap-2 mb-4 relative z-10">
+          {[
+            { id: 'piece', label: 'Piece Rate Run' },
+            { id: 'monthly', label: 'Monthly Salary Run' },
+          ].map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => { setRunKind(opt.id); if (opt.id === 'piece' && scopeType === 'factory') setScopeType('style'); }}
+              className={`px-5 py-2.5 rounded-full font-black text-xs uppercase tracking-widest transition-all cursor-pointer border ${runKind === opt.id ? 'text-white shadow-md' : 'bg-white text-slate-500'}`}
+              style={runKind === opt.id ? { background: '#c8834a', borderColor: '#c8834a' } : { borderColor: 'rgba(200,131,74,0.2)' }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
 
         {/* Scope picker — Order and Style are mutually exclusive (backend 422s both) */}
         <div className="flex gap-2 mb-6 relative z-10">
@@ -369,16 +424,22 @@ export default function ComputationView({ token }) {
           )}
         </div>
 
-        {scopeType !== 'factory' && (
+        {scopeType !== 'factory' && runKind === 'piece' && (
           <p className="text-[10px] font-bold mt-3 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 w-fit">
-            Scoped runs pay PIECE-RATE work only — monthly-salary staff are not included (they&apos;d otherwise get paid again on the next scoped run).
+            Scoped runs pay PIECE-RATE work only — monthly-salary staff are not included.
+          </p>
+        )}
+        
+        {runKind === 'monthly' && (
+          <p className="text-[10px] font-bold mt-3 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 w-fit">
+            Monthly runs pay salaried staff. If an Order/Style is selected, it acts as a "reference label" only.
           </p>
         )}
 
         <div className="mt-8 flex justify-end relative z-10 pt-6" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
           <button
             onClick={handleCompute}
-            disabled={isComputing || (scopeType === 'order' && !orderNumber) || (scopeType === 'style' && !styleCode)}
+            disabled={isComputing || (scopeType === 'order' && !orderNumber) || (scopeType === 'style' && !styleCode) || (runKind === 'piece' && scopeType === 'factory')}
             className="h-14 px-10 rounded-full font-black text-sm text-white shadow-xl transition-all hover:shadow-orange-500/30 hover:-translate-y-1 active:scale-95 disabled:opacity-50 flex items-center gap-3"
             style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
           >
@@ -473,9 +534,19 @@ export default function ComputationView({ token }) {
                       style={{ borderColor: 'rgba(200,131,74,0.15)' }}
                     >
                       <div className="min-w-0">
-                        <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
-                          {r.scope_order_number || r.scope_style_code || 'Whole Factory'}
-                        </p>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          {r.run_kind === 'monthly' ? (
+                            <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-sm">Monthly</span>
+                          ) : (
+                            <span className="text-[9px] font-black uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-sm">Piece</span>
+                          )}
+                          <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
+                            {r.run_kind === 'monthly' && !r.scope_order_number && !r.scope_style_code ? 'Monthly Salary' : (r.scope_order_number || r.scope_style_code || 'Whole Factory')}
+                          </p>
+                          {r.scope_is_label && (
+                            <span className="text-[9px] font-bold uppercase text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-sm bg-slate-50">Ref Only</span>
+                          )}
+                        </div>
                         <p className="text-[10px] font-bold text-slate-400">{r.period_start} → {r.period_end}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
@@ -517,9 +588,19 @@ export default function ComputationView({ token }) {
                 style={{ borderColor: 'rgba(200,131,74,0.15)' }}
               >
                 <div className="min-w-0">
-                  <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
-                    {r.scope_order_number || r.scope_style_code || 'Whole Factory'}
-                  </p>
+                  <div className="flex items-center gap-2 mb-0.5">
+                    {r.run_kind === 'monthly' ? (
+                      <span className="text-[9px] font-black uppercase bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-sm">Monthly</span>
+                    ) : (
+                      <span className="text-[9px] font-black uppercase bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded-sm">Piece</span>
+                    )}
+                    <p className="font-black text-xs truncate" style={{ color: '#2d1f0e' }}>
+                      {r.run_kind === 'monthly' && !r.scope_order_number && !r.scope_style_code ? 'Monthly Salary' : (r.scope_order_number || r.scope_style_code || 'Whole Factory')}
+                    </p>
+                    {r.scope_is_label && (
+                      <span className="text-[9px] font-bold uppercase text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded-sm bg-slate-50">Ref Only</span>
+                    )}
+                  </div>
                   <p className="text-[10px] font-bold text-slate-400">{r.period_start} → {r.period_end}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -557,6 +638,13 @@ export default function ComputationView({ token }) {
             style={{ color: '#a86022', borderColor: 'rgba(200,131,74,0.2)' }}
           >
             <Unlock className="w-4 h-4" /> Reopen to Edit
+          </button>
+          <button
+            onClick={() => handleDeleteRun(runActionId.trim())}
+            disabled={isDeletingRun || !runActionId.trim()}
+            className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-red-50 text-red-600 border border-red-200 shadow-sm hover:bg-red-100 transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            {isDeletingRun ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete Run
           </button>
         </div>
       </div>
@@ -710,7 +798,7 @@ export default function ComputationView({ token }) {
               <div className="flex gap-3 justify-end pt-2">
                 <button onClick={() => setShowRecomputeAreYouSure(false)} className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest bg-slate-100 text-slate-600">Cancel</button>
                 <button
-                  onClick={() => { setShowRecomputeAreYouSure(false); runRecompute(runActionId.trim()); }}
+                  onClick={() => { setShowRecomputeAreYouSure(false); handleRecomputeById(runActionId.trim()); }}
                   disabled={isRecomputingStandalone}
                   className="px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest text-white disabled:opacity-50 flex items-center gap-2"
                   style={{ background: '#c8834a' }}

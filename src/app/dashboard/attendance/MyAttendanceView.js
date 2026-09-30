@@ -1,31 +1,93 @@
 // attendance view and check in and checkout logic code
 'use client';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useAuth } from '@/context/AuthContext';
+import { useState, useMemo, useEffect } from 'react';
+import { useSelector } from 'react-redux';
 import { Timer, Loader2, LogIn, LogOut, Clock, Zap, CalendarDays } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { motion } from 'framer-motion';
-import { API, apiFetch, AlertBanner, padTime, fmtTime, Badge, fmtDate, fmtDist, Paginator } from './shared';
-export default function MyAttendanceView({ token }) {
- const { user } = useAuth();
+import {AlertBanner, padTime, fmtTime, Badge, fmtDate, Paginator } from './shared';
+import { 
+  useGetMyStatusQuery, 
+  useGetMyHistoryQuery, 
+  useCheckInMutation, 
+  useCheckOutMutation 
+} from '@/store/slices/attendanceApiSlice';
+
+// Work dates are factory-local (IST); a UTC date is yesterday until 05:30 IST.
+const istDate = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+
+// fetchBaseQuery errors are { status, data }; FastAPI 422s carry detail as an array.
+const apiErr = (e, fallback) => {
+  const d = e?.data?.detail ?? e?.data?.message;
+  if (Array.isArray(d)) return d.map((x) => x.msg).join(', ');
+  return typeof d === 'string' ? d : fallback;
+};
+
+export default function MyAttendanceView() {
+   const user = useSelector(state => state.auth.user);
  const isManagingDirector = user === 'managing_director';
  const isFloorManager = user === 'stitching_manager' || user === 'cutting_manager' || user === 'lining_manager';
 
- const [status, setStatus] = useState(null);
- const [statusLoading, setStatusLoading] = useState(true);
- const [countdown, setCountdown] = useState(null);
- const intervalRef = useRef(null);
 
- const [history, setHistory] = useState([]);
- const [histLoading, setHistLoading] = useState(true);
  const [startDate, setStartDate] = useState(() => {
- const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().split('T')[0];
+ const d = new Date(); d.setDate(d.getDate() - 30); return istDate(d);
  });
- const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+ const [endDate, setEndDate] = useState(() => istDate(new Date()));
+  // --- RTK QUERY HOOKS ---
+  const { data: status, isLoading: statusLoading, fulfilledTimeStamp: statusFetchedAt } = useGetMyStatusQuery();
+  const { data: historyData, isLoading: histLoading } = useGetMyHistoryQuery({ start: startDate, end: endDate });
+
+
+  const history = useMemo(() => historyData ? [...historyData].reverse() : [], [historyData]);
+
+  const [checkInApi, { isLoading: isCheckingIn }] = useCheckInMutation();
+  const [checkOutApi, { isLoading: isCheckingOut }] = useCheckOutMutation();
+  const actionLoading = isCheckingIn || isCheckingOut;
+
+  // Today's state: /me/status is the primary source (it documents checked_in +
+  // check_in_at / check_out_at — there is no checked_out field), with today's
+  // history row as a fallback so an open punch always unlocks Check Out.
+  // work_date may arrive as "YYYY-MM-DD" or a full timestamp — compare the date
+  // part, and fall back to the IST date of the check-in itself.
+  const todayRow = useMemo(() => {
+    const today = istDate(new Date());
+    return history.find((r) =>
+      String(r.work_date || '').slice(0, 10) === today
+      || (r.check_in_at && istDate(new Date(r.check_in_at)) === today)
+    ) || null;
+  }, [history]);
+  const checkedIn = !!(status?.checked_in || status?.check_in_at || todayRow);
+  const checkedOut = !!(status?.checked_out || status?.check_out_at || todayRow?.check_out_at);
+  const checkInAt = status?.check_in_at || todayRow?.check_in_at || null;
+  const isLate = status?.is_late ?? todayRow?.is_late ?? false;
+  const isShort = status?.is_short ?? todayRow?.is_short ?? false;
+  const isOvertime = status?.is_overtime ?? todayRow?.is_overtime ?? false;
+
+  // Timer: one-time server_now − device_now offset, ticking every second.
+  // Counts down to shift_end_at when the server gives it; otherwise counts
+  // up from check-in so the timer still runs.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const shiftRunning = checkedIn && !checkedOut;
+  useEffect(() => {
+    if (!shiftRunning) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [shiftRunning]);
+  const serverOffsetMs = status?.server_now && statusFetchedAt
+    ? new Date(status.server_now).getTime() - statusFetchedAt
+    : 0;
+  const serverNowMs = nowMs + serverOffsetMs;
+  const countdown = status?.shift_end_at
+    ? Math.max(0, Math.floor((new Date(status.shift_end_at).getTime() - serverNowMs) / 1000))
+    : (status?.remaining_seconds ?? null);
+  const elapsed = checkInAt
+    ? Math.max(0, Math.floor((serverNowMs - new Date(checkInAt).getTime()) / 1000))
+    : null;
+  const timerSecs = countdown ?? elapsed;
+
  const [page, setPage] = useState(1);
  const PER_PAGE = 8;
 
- const [actionLoading, setActionLoading] = useState(false);
  const [alert, setAlert] = useState(null);
 
  const showAlert = (type, message) => {
@@ -33,95 +95,30 @@ export default function MyAttendanceView({ token }) {
  if (type === 'success') setTimeout(() => setAlert(null), 5000);
  };
 
- const fetchStatus = useCallback(async () => {
- try {
- const data = await apiFetch(`${API}/me/status`, {}, token);
- setStatus(data);
- if (data.remaining_seconds != null && data.checked_in && !data.checked_out) {
- setCountdown(data.remaining_seconds);
- } else {
- setCountdown(null);
- }
- } catch (e) {
- console.error('Status fetch failed:', e.message);
- setStatus(null);
- setCountdown(null);
- } finally {
- setStatusLoading(false);
- }
- }, [token]);
 
- const fetchHistory = useCallback(async () => {
- setHistLoading(true);
- try {
- const data = await apiFetch(`${API}/me?start=${startDate}&end=${endDate}`, {}, token);
- setHistory([...data].reverse());
- } catch (e) {
- showAlert('error', e.message || 'Failed to load history.');
- } finally {
- setHistLoading(false);
- }
- }, [startDate, endDate, token]);
+  const handleCheckIn = async () => {
+    try {
+      await checkInApi().unwrap(); // .unwrap() pota dhaan success/error catch aagum
+      showAlert('success', 'Checked in successfully!');
+    } catch (e) {
+      showAlert('error', apiErr(e, 'Check-in failed.'));
+    }
+  };
 
- useEffect(() => { fetchStatus(); }, [fetchStatus]);
- useEffect(() => { fetchHistory(); setPage(1); }, [fetchHistory]);
-
- useEffect(() => {
- if (intervalRef.current) clearInterval(intervalRef.current);
- if (status?.remaining_seconds == null || status?.checked_out) return;
- intervalRef.current = setInterval(() => {
- setCountdown((prev) => {
- if (prev == null || prev <= 0) { clearInterval(intervalRef.current); return 0; }
- return prev - 1;
- });
- }, 1000);
- return () => clearInterval(intervalRef.current);
- }, [status]);
-
- const handleCheckIn = async () => {
- setActionLoading(true);
- try {
- await apiFetch(`${API}/check-in`, { method: 'POST', body: JSON.stringify({}) }, token);
- showAlert('success', 'Checked in successfully!');
- await fetchStatus();
- await fetchHistory();
- } catch (e) {
- if (e.status === 403) showAlert('error', `Check-in denied: ${e.message}`);
- else showAlert('error', typeof e === 'string' ? e : e.message || 'Check-in failed.');
- } finally {
- setActionLoading(false);
- }
- };
-
- const handleCheckOut = async () => {
- setActionLoading(true);
- try {
- await apiFetch(`${API}/check-out`, { method: 'POST', body: JSON.stringify({}) }, token);
- showAlert('success', 'Checked out. Shift complete!');
- clearInterval(intervalRef.current);
- await fetchStatus();
- await fetchHistory();
- } catch (e) {
- if (e.status === 403) showAlert('error', `Check-out denied: ${e.message}`);
- else showAlert('error', typeof e === 'string' ? e : e.message || 'Check-out failed.');
- } finally {
- setActionLoading(false);
- }
- };
-
+  const handleCheckOut = async () => {
+    try {
+      await checkOutApi().unwrap();
+      showAlert('success', 'Checked out. Shift complete!');
+    } catch (e) {
+      showAlert('error', apiErr(e, 'Check-out failed.'));
+    }
+  };
  const paginated = useMemo(() => history.slice((page - 1) * PER_PAGE, page * PER_PAGE), [history, page]);
  const totalPages = Math.ceil(history.length / PER_PAGE);
- const checkedIn = status?.checked_in ?? false;
- const checkedOut = status?.checked_out ?? false;
  const busy = actionLoading;
 
  return (
  <motion.div className="space-y-6">
- <div>
- <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>My Attendance</h1>
- <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Track your shift status and review personal attendance history.</p>
- </div>
-
  <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 
  {/* Hero row — Managing Director */}
@@ -142,19 +139,20 @@ export default function MyAttendanceView({ token }) {
  </div>
  ) : (
  <>
- <div className={`text-5xl font-black tabular-nums tracking-tight`} style={{ color: checkedIn && !checkedOut ? '#c8834a' : '#d1d5db' }}>
- {checkedIn && !checkedOut ? padTime(countdown) : '—:—:—'}
+ <div className={`text-5xl font-black tabular-nums tracking-tight`} style={{ color: shiftRunning ? '#c8834a' : '#d1d5db' }}>
+ {shiftRunning && timerSecs != null ? padTime(timerSecs) : '—:—:—'}
  </div>
  <div className="text-xs font-bold" style={{ color: '#9a7a5a' }}>
  {!checkedIn && 'Not checked in today'}
- {checkedIn && !checkedOut && status?.shift_end_at && (
+ {shiftRunning && status?.shift_end_at && (
  <span>Ends at <strong style={{ color: '#2d1f0e' }}>{fmtTime(status.shift_end_at)}</strong></span>
  )}
+ {shiftRunning && countdown == null && elapsed != null && 'Time on shift'}
  {checkedOut && <span className="font-black" style={{ color: '#38a169' }}>✓ Shift complete</span>}
  </div>
- {status?.check_in_at && (
+ {checkInAt && (
  <div className="text-[11px] font-semibold pt-3" style={{ borderTop: '1px solid rgba(200,131,74,0.1)', color: '#9a7a5a' }}>
- Clocked in: <strong style={{ color: '#2d1f0e' }}>{fmtTime(status.check_in_at)}</strong>
+ Clocked in: <strong style={{ color: '#2d1f0e' }}>{fmtTime(checkInAt)}</strong>
  </div>
  )}
  </>
@@ -193,10 +191,10 @@ export default function MyAttendanceView({ token }) {
  </div>
  {checkedIn && (
  <div className="flex flex-wrap gap-2 pt-4" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
- {status?.is_late && <Badge label="Late" type="late" />}
- {status?.is_short && <Badge label="Short Shift" type="short" />}
- {status?.is_overtime && <Badge label="Overtime" type="overtime" />}
- {!status?.is_late && <Badge label="On Time" type="active" />}
+ {isLate && <Badge label="Late" type="late" />}
+ {isShort && <Badge label="Short Shift" type="short" />}
+ {isOvertime && <Badge label="Overtime" type="overtime" />}
+ {!isLate && <Badge label="On Time" type="active" />}
  </div>
  )}
  </SpotlightCard>
@@ -240,8 +238,6 @@ export default function MyAttendanceView({ token }) {
  <th className="p-3">Date</th>
  <th className="p-3">Check In</th>
  <th className="p-3">Check Out</th>
- <th className="p-3">Distance</th>
- <th className="p-3">Source</th>
  <th className="p-3">Flags</th>
  </tr>
  </thead>
@@ -255,8 +251,6 @@ export default function MyAttendanceView({ token }) {
  ? fmtTime(row.check_out_at)
  : <span className="font-black" style={{ color: '#38a169' }}>Active</span>}
  </td>
- <td className="p-3" style={{ color: '#9a7a5a' }}>{fmtDist(row.distance_m)}</td>
- <td className="p-3"><Badge label={row.source} type={row.source} /></td>
  <td className="p-3">
  <div className="flex flex-wrap gap-1">
  {row.is_late && <Badge label="Late" type="late" />}
@@ -277,7 +271,6 @@ export default function MyAttendanceView({ token }) {
  <motion.div key={row.id} className="rounded-xl p-4 space-y-3" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.1)' }}>
  <div className="flex items-center justify-between">
  <span className="font-black text-sm" style={{ color: '#2d1f0e' }}>{fmtDate(row.work_date)}</span>
- <Badge label={row.source} type={row.source} />
  </div>
  <div className="grid grid-cols-2 gap-2 text-xs">
  <div>
@@ -292,11 +285,7 @@ export default function MyAttendanceView({ token }) {
  : <span style={{ color: '#38a169' }}>Active</span>}
  </p>
  </div>
- <div>
- <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Distance</p>
- <p className="font-semibold" style={{ color: '#a86022' }}>{fmtDist(row.distance_m)}</p>
- </div>
- <div>
+ <div className="col-span-2">
  <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5" style={{ color: '#9a7a5a' }}>Flags</p>
  <div className="flex flex-wrap gap-1">
  {row.is_late && <Badge label="Late" type="late" />}

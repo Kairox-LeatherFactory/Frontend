@@ -1,13 +1,13 @@
 'use client';
-
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link, { useLinkStatus } from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { useData } from '@/context/DataContext';
-
+import { useGetMeQuery } from '@/store/slices/apiSlice';
+import { PageTrailProvider } from '@/context/PageTrailContext';
 import {
+  ChevronRight,
   Factory,
   LayoutDashboard,
   ClipboardPen,
@@ -19,7 +19,6 @@ import {
   X,
   Menu,
   LogOut,
-  TriangleAlert,
   BotMessageSquare,
   ShieldCheck,
   Settings,
@@ -31,8 +30,8 @@ import {
   Waypoints,
   Shirt,
   Boxes,
-  ChevronDown,
   Package,
+  Scissors,
 } from 'lucide-react';
 
 // Raw hide → cut pattern pieces → stitched seam → finished jacket
@@ -113,11 +112,11 @@ function AnimatedNavIcon({ isActive, Icon, className }) {
 
 const NAV_ICONS = {
   '/dashboard': ScissorsLineDashed,
-  '/dashboard/direct-manager': Factory,
-  '/dashboard/cutting': ScissorsLineDashed,
-  '/dashboard/lining': Shirt,
-  '/dashboard/stitching': Waypoints,
-  '/dashboard/store': Boxes,
+  '/dashboard/dashboards/dm': Factory,
+  '/dashboard/dashboards/cutting': ScissorsLineDashed,
+  '/dashboard/dashboards/lining': Shirt,
+  '/dashboard/dashboards/stitching': Waypoints,
+  '/dashboard/dashboards/store': Boxes,
   '/dashboard/analytics': BarChart3,
   '/dashboard/entry': ClipboardPen,
   '/dashboard/progress': BarChart3,
@@ -135,6 +134,9 @@ const NAV_ICONS = {
   '/dashboard/procurement/intake': UploadCloud,
   '/dashboard/procurement/inventory': Layers,
   '/dashboard/procurement/po': ShoppingCart,
+  '/dashboard/procurement/chat': ShoppingCart,
+  '/dashboard/procurement/production': ShoppingCart,
+  '/dashboard/procurement/notifications': ShoppingCart,
 };
 
 const navStagger = {
@@ -182,14 +184,67 @@ function NavPendingBar() {
   );
 }
 
+// Header title per route (longest prefix wins). Pages don't repeat their title
+// in the body — this is the one place it is shown.
+const PAGE_TITLES = {
+  '/dashboard/analytics': 'Analytics & Operations',
+  '/dashboard/entry': 'Production Logger',
+  '/dashboard/progress': 'Stage-Spread Progress',
+  '/dashboard/orders': 'Client Directory',
+  '/dashboard/wages': 'Payroll Command',
+  '/dashboard/materials': 'Material Stock',
+  '/dashboard/attendance': 'Attendance',
+  '/dashboard/barcode': 'Barcode Management',
+  '/dashboard/procurement': 'Procurement Overview',
+  '/dashboard/procurement/intake': 'Submission Workspace',
+  '/dashboard/procurement/inventory': 'Inventory Control',
+  '/dashboard/procurement/po': 'Purchase Orders & Suppliers',
+  '/dashboard/procurement/bom': 'Material Breakdown (BOM)',
+  '/dashboard/procurement/chat': 'Factory Chat',
+  '/dashboard/procurement/notifications': 'Procurement Inbox',
+  '/dashboard/procurement/production': 'Production Board',
+  '/dashboard/admin': 'Admin & User Management',
+  '/dashboard/imports': 'Breakdown Review & Release',
+  '/dashboard/cutting': 'Cutting Grid Engine',
+  '/dashboard/chat': 'AI Operations Assistant',
+  '/dashboard/settings': 'Security Settings',
+  '/dashboard/simulator': 'Delay Impact Simulator',
+  '/dashboard/tracer': 'Garment QC Tracer',
+  '/dashboard/dashboards/dm': 'Direct Manager Operations Dashboard',
+  '/dashboard/dashboards/cutting': 'Cutting Floor Operations Dashboard',
+  '/dashboard/dashboards/lining': 'Lining Floor Operations Dashboard',
+  '/dashboard/dashboards/stitching': 'Stitching Floor Operations Dashboard',
+  '/dashboard/dashboards/store': 'Store Manager Operations Dashboard',
+};
+
+// /dashboard itself renders the signed-in role's own dashboard (see dashboard/page.js)
+const HOME_TITLES = {
+  direct_manager: 'Direct Manager Operations Dashboard',
+  managing_director: 'Direct Manager Operations Dashboard',
+  hr: 'Direct Manager Operations Dashboard',
+  cutting_manager: 'Cutting Floor Operations Dashboard',
+  lining_manager: 'Lining Floor Operations Dashboard',
+  stitching_manager: 'Stitching Floor Operations Dashboard',
+  store_manager: 'Store Manager Operations Dashboard',
+  store_scan: 'Store Manager Operations Dashboard',
+};
+
+function getPageTitle(pathname, role) {
+  if (pathname === '/dashboard') return HOME_TITLES[role] || 'Cutting Floor Operations Dashboard';
+  const match = Object.keys(PAGE_TITLES)
+    .filter((path) => pathname === path || pathname.startsWith(path + '/'))
+    .sort((a, b) => b.length - a.length)[0];
+  return match ? PAGE_TITLES[match] : 'Dashboard';
+}
+
 export default function DashboardLayout({ children }) {
-  const { user, logout, ROLES } = useAuth();
-  const { orders } = useData();
+  const { user, userName: storedName, logout, ROLES } = useAuth();
 
   const router = useRouter();
   const pathname = usePathname();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [pageTrail, setPageTrail] = useState([]);
   const [pendingPoCount, setPendingPoCount] = useState(0);
 
   // --------------------------------------------------
@@ -252,20 +307,6 @@ export default function DashboardLayout({ children }) {
   }, [user]);
 
   // --------------------------------------------------
-  // Air freight risk orders
-  // --------------------------------------------------
-
-  const airRiskOrders = useMemo(
-    () =>
-      orders.filter(
-        (o) =>
-          o.freight_mode &&
-          o.freight_mode.includes('RISK')
-      ),
-    [orders]
-  );
-
-  // --------------------------------------------------
   // Navigation links
   // --------------------------------------------------
 
@@ -308,24 +349,24 @@ export default function DashboardLayout({ children }) {
         href: '/dashboard/barcode',
       },
 
-      // // Procurement Suite
-      // {
-      //   name: 'Procurement',
-      //   href: '/dashboard/procurement',
-      //   divider: true,
-      // },
-      // {
-      //   name: 'New Intake',
-      //   href: '/dashboard/procurement/intake',
-      // },
-      // {
-      //   name: 'Inventory Check',
-      //   href: '/dashboard/procurement/inventory',
-      // },
-      // {
-      //   name: 'PO Tracker',
-      //   href: '/dashboard/procurement/po',
-      // },
+      // Procurement Suite
+      {
+        name: 'Procurement',
+        href: '/dashboard/procurement',
+        divider: true,
+      },
+      {
+        name: 'New Intake',
+        href: '/dashboard/procurement/intake',
+      },
+      {
+        name: 'Inventory Check',
+        href: '/dashboard/procurement/inventory',
+      },
+      {
+        name: 'PO Tracker',
+        href: '/dashboard/procurement/po',
+      },
 
       // Admin
       {
@@ -359,6 +400,12 @@ export default function DashboardLayout({ children }) {
       label: 'Viewer',
       color: 'bg-slate-100 text-slate-700',
     };
+
+  // Sessions from before the name was stored at login fall back to /auth/me
+  const { data: me } = useGetMeQuery(undefined, { skip: !user || !!storedName });
+  const userName = storedName || me?.name || '';
+
+  const pageTitle = getPageTitle(pathname, user);
 
   // --------------------------------------------------
   // Loading state while auth is resolving
@@ -405,7 +452,8 @@ export default function DashboardLayout({ children }) {
       </div>
 
       {/* Sidebar Navigation */}
-      <motion.nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto" variants={navStagger} initial="hidden" animate="show">
+      {/* Still scrolls on short screens, just without a visible scrollbar */}
+      <motion.nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" variants={navStagger} initial="hidden" animate="show">
         {navLinks.map((link) => {
           const isActive = pathname === link.href || (link.href !== '/dashboard' && pathname.startsWith(link.href + '/'));
           const IconComp = NAV_ICONS[link.href] || LayoutDashboard;
@@ -416,7 +464,7 @@ export default function DashboardLayout({ children }) {
                   <div className="h-px" style={{ background: 'rgba(200,131,74,0.15)' }} />
                 </div>
               )}
-              <Link href={link.href} prefetch={false} onClick={() => setMobileMenuOpen(false)} className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full`}>
+              <Link href={link.href} onClick={() => setMobileMenuOpen(false)} className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full`}>
                 <NavPendingBar />
                 {isActive && (
                   <motion.span className="absolute inset-0 rounded-[10px] overflow-hidden" style={{ background: 'linear-gradient(135deg, #a8703f 0%, #8a5a2e 45%, #6b4423 100%)', boxShadow: 'inset 0 0 0 1px rgba(255,232,204,0.14), inset 0 2px 4px rgba(0,0,0,0.35), 0 3px 10px rgba(0,0,0,0.25)' }} transition={{ type: 'spring', stiffness: 460, damping: 28, mass: 0.9 }}>
@@ -450,9 +498,11 @@ export default function DashboardLayout({ children }) {
   const mobileSidebar = renderSidebar('mobile');
 
   return (
+    // Shell is pinned to the viewport: sidebar and header stay put and only
+    // <main> scrolls (print falls back to normal flow so pages aren't clipped)
     <div
       id="app-shell"
-      className="min-h-screen flex flex-col md:flex-row"
+      className="h-dvh overflow-hidden flex flex-col md:flex-row print:h-auto print:overflow-visible"
       style={{
         background: '#faf6f0',
       }}
@@ -461,7 +511,7 @@ export default function DashboardLayout({ children }) {
           DESKTOP SIDEBAR (persistent, lg+ only — tablets get the
           collapsible overlay sidebar below, same as mobile)
           ================================================ */}
-      <aside className="hidden lg:flex flex-col static inset-auto z-auto w-72 shadow-2xl" style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
+      <aside className="hidden lg:flex flex-col static inset-auto z-auto w-72 shrink-0 shadow-2xl" style={{ background: 'linear-gradient(180deg, #3d2b1a 0%, #2a1d11 100%)', borderRight: '1px solid rgba(200,131,74,0.2)', color: '#ffffff' }}>
         {desktopSidebar}
       </aside>
 
@@ -487,7 +537,7 @@ export default function DashboardLayout({ children }) {
       {/* ================================================
           MAIN CONTENT
           ================================================ */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-screen lg:min-h-0 lg:overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden print:overflow-visible">
         {/* Header */}
 
         <motion.header
@@ -503,7 +553,7 @@ export default function DashboardLayout({ children }) {
             duration: 0.4,
             ease: [0.22, 1, 0.36, 1],
           }}
-          className="h-20 flex items-center justify-between px-6 sticky top-0 z-30"
+          className="h-20 shrink-0 flex items-center justify-between px-6 relative z-30"
           style={{
             background: '#faf6f0',
             borderBottom:
@@ -538,73 +588,56 @@ export default function DashboardLayout({ children }) {
               <Menu className="w-6 h-6" />
             </button>
 
-            {(() => {
-              let title = 'Shop Floor Command';
-              let subtitle = 'Production, wages, and compliance tracking';
-
-              const isCutting = pathname === '/dashboard/cutting' || (pathname === '/dashboard' && user === 'cutting_manager');
-              const isLining = pathname === '/dashboard/lining' || (pathname === '/dashboard' && user === 'lining_manager');
-              const isStitching = pathname === '/dashboard/stitching' || (pathname === '/dashboard' && user === 'stitching_manager');
-              const isDM = pathname === '/dashboard/direct-manager' || (pathname === '/dashboard' && ['direct_manager', 'managing_director', 'hr'].includes(user));
-
-              if (isLining) {
-                title = 'Lining Floor Operations Dashboard';
-                subtitle = 'Piece & Style Traceability • Standard Unit: Decimeter (DCM / dm²) & Meters';
-              } else if (isCutting) {
-                title = 'Cutting Floor Operations Dashboard';
-                subtitle = 'Piece & Style Traceability • Standard Unit: Decimeter (DCM / dm²)';
-              } else if (isStitching) {
-                title = 'Stitching Floor Operations Dashboard';
-                subtitle = 'Pre-Store: Fusing → Pasting • Post-Store: Line Stitch → Shell Stitch → Final Finish';
-              } else if (isDM) {
-                title = 'Direct Manager Operations Dashboard';
-                subtitle = 'Executive Command • Real-time Factory Pipeline, Department Queues & Traceability';
-              }
-
-              return (
-                <div className="hidden sm:block">
-                  <h2
-                    className="text-xl font-bold"
-                    style={{
-                      color: '#3d2b1a',
-                    }}
-                  >
-                    {title}
-                  </h2>
-
-                  <p
-                    className="text-xs"
-                    style={{
-                      color: '#9a8a7a',
-                    }}
-                  >
-                    {subtitle}
-                  </p>
-                </div>
-              );
-            })()}
+            {/* The page title lives here — pages no longer repeat it in their body.
+                Pages with tabs/sub-views append to it like a folder path
+                (usePageTrail). Phones show only the deepest level. */}
+            <h1 className="flex items-center gap-1.5 min-w-0 text-lg sm:text-xl font-bold">
+              <span
+                className={`truncate ${pageTrail.length ? 'hidden sm:inline' : ''}`}
+                style={{ color: pageTrail.length ? '#9a8a7a' : '#3d2b1a' }}
+              >
+                {pageTitle}
+              </span>
+              {pageTrail.map((crumb, i) => {
+                const isLast = i === pageTrail.length - 1;
+                return (
+                  <Fragment key={`${i}-${crumb}`}>
+                    <ChevronRight className="hidden sm:block w-4 h-4 shrink-0" style={{ color: '#c8b8a8' }} />
+                    <span
+                      className={`truncate ${isLast ? '' : 'hidden sm:inline'}`}
+                      style={{ color: isLast ? '#3d2b1a' : '#9a8a7a' }}
+                    >
+                      {crumb}
+                    </span>
+                  </Fragment>
+                );
+              })}
+            </h1>
           </div>
 
           {/* User section */}
 
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
+              {userName && (
+                <p
+                  className="text-sm font-bold uppercase"
+                  style={{
+                    color: '#2d1f0e',
+                  }}
+                >
+                  {userName}
+                </p>
+              )}
+
               <p
-                className="text-xs font-bold tracking-wide uppercase"
+                className="text-xs font-semibold"
                 style={{
                   color: '#9a8a7a',
                 }}
               >
-                Active Persona
+                {roleInfo.label}
               </p>
-
-              <div className="flex items-center gap-1.5 mt-0.5 justify-end">
-                <span
-                  className={`badge ${roleInfo.color}`}
-                >
-                  {roleInfo.label}
-                </span>
-              </div>
             </div>
 
             {/* Logout */}
@@ -629,81 +662,17 @@ export default function DashboardLayout({ children }) {
             </button>
           </div>
         </motion.header>
-
-        {/* ================================================
-            AIR FREIGHT WARNING
-            ================================================ */}
-
-        <AnimatePresence>
-          {airRiskOrders.length > 0 && (
-            <motion.div
-              key="air-freight-warning"
-              initial={{
-                opacity: 0,
-                height: 0,
-              }}
-              animate={{
-                opacity: 1,
-                height: 'auto',
-              }}
-              exit={{
-                opacity: 0,
-                height: 0,
-              }}
-              transition={{
-                duration: 0.35,
-                ease: [0.22, 1, 0.36, 1],
-              }}
-              className="overflow-hidden border-b border-red-700"
-            >
-              <div className="bg-gradient-to-r from-red-600 to-amber-600 text-white p-4 font-bold text-sm shadow-md flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <TriangleAlert className="w-6 h-6 animate-pulse flex-shrink-0" />
-
-                  <div>
-                    <p className="text-sm font-black tracking-wide">
-                      AIR FREIGHT PENALTY WARNING
-                      DETECTED!
-                    </p>
-
-                    <p className="text-xs text-red-100 font-medium">
-                      {airRiskOrders
-                        .map(
-                          (o) =>
-                            `${o.client} (${o.style} - ${o.colorway}) is delayed by ${o.delay_days} days!`
-                        )
-                        .join(', ')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-xs font-black uppercase text-center sm:text-right">
-                  Air Mode Triggers Over 2-Day
-                  Delay • Margins Shrink ~35%
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* ================================================
-            PAGE CONTENT
-
-            IMPORTANT:
-            No artificial loading state.
-            No MutationObserver.
-            No forced repaint.
-            No display:none.
-            No translateZ hack — `transform-gpu` does the same GPU-layer
-            promotion under a different name and was the original suspect
-            for the mobile stuck-paint bug, so it stays off too.
-            ================================================ */}
-
+        {/* Full-width scroll area so the scrollbar sits at the window edge; content stays capped at 1920px */}
         <main
-          className="flex-1 p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full min-h-screen lg:min-h-0 overflow-y-auto z-0 mx-auto relative"
+          id="app-main"
+          className="flex-1 min-h-0 w-full overflow-y-auto z-0 print:overflow-visible"
           style={{ background: '#faf6f0' }}
         >
-          {children}
+          <div className="p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full mx-auto relative">
+            <PageTrailProvider value={setPageTrail}>
+              {children}
+            </PageTrailProvider>
+          </div>
         </main>
       </div>
     </div>

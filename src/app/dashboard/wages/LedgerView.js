@@ -2,13 +2,20 @@
 'use client';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { apiGetWageLedger, apiGetWageOrders, apiGetWageStyles, apiGetWageRunBreakdown, apiGetWageRunPieces } from '@/lib/api';
+import {
+  useLazyGetWageLedgerQuery,
+  useLazyGetWageOrdersQuery,
+  useLazyGetWageStylesQuery,
+  useLazyGetWageRunBreakdownQuery,
+  useLazyGetWageRunPiecesQuery
+} from '@/store/slices/apiSlice';
+
 import { Loader2, History, Warehouse, Calendar, ChevronRight, RefreshCw, Search, Download, X, Barcode as BarcodeIcon } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import SpotlightCard from '@/components/SpotlightCard';
 import { SearchCombobox, SimpleSelect, StatusBadge, Money, PortalPillSelect } from './shared';
 
-export default function LedgerView({ token, isActive }) {
+export default function LedgerView({ isActive }) {
   const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -32,41 +39,40 @@ export default function LedgerView({ token, isActive }) {
   // Per Piece tab only: column-wise filters, on top of the free-text search above.
   const [pieceFilterStage, setPieceFilterStage] = useState('');
   const [pieceFilterEmployee, setPieceFilterEmployee] = useState('');
+  const [triggerGetWageLedger] = useLazyGetWageLedgerQuery();
+  const [triggerGetWageOrders] = useLazyGetWageOrdersQuery();
+  const [triggerGetWageStyles] = useLazyGetWageStylesQuery();
+  const [triggerGetWageRunBreakdown] = useLazyGetWageRunBreakdownQuery();
+  const [triggerGetWageRunPieces] = useLazyGetWageRunPiecesQuery();
 
-  // `background` skips the full-page spinner so the auto-refresh-on-tab-switch
-  // below doesn't flash the whole list to a loading state — only the manual
-  // Refresh button and the initial mount show that.
-  const loadLedger = (background = false) => {
+   const loadLedger = (background = false) => {
     if (background) setIsRefreshing(true); else setLoading(true);
-    apiGetWageLedger(token, {
+    triggerGetWageLedger({
       orderNumber: orderSearch || undefined,
       styleCode: styleSearch || undefined,
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       status: statusFilter || undefined,
       limit: 100,
-    })
-      .then((data) => setRuns(Array.isArray(data?.items) ? data.items : []))
+    }).unwrap()
+      .then((data) => setRuns(Array.isArray(data?.items) ? data.items : (Array.isArray(data) ? data : [])))
       .catch(() => setRuns([]))
       .finally(() => { setLoading(false); setIsRefreshing(false); });
   };
 
   useEffect(() => {
     loadLedger();
-    apiGetWageOrders(token)
-      .then((data) => setOrderOptions(Array.isArray(data) ? data : []))
+    triggerGetWageOrders({}).unwrap()
+      .then((data) => setOrderOptions(Array.isArray(data) ? data : (data?.items || data?.orders || data?.data || [])))
       .catch(() => setOrderOptions([]))
       .finally(() => setOrderOptionsLoading(false));
-    apiGetWageStyles(token, {})
-      .then((data) => setStyleOptions(Array.isArray(data) ? data : []))
+    triggerGetWageStyles({}).unwrap()
+      .then((data) => setStyleOptions(Array.isArray(data) ? data : (data?.items || data?.styles || data?.data || [])))
       .catch(() => setStyleOptions([]))
       .finally(() => setStyleOptionsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token]);
+  }, []);
 
-  // Ledger stays mounted (just hidden) when another Payroll tab is active, so
-  // a run computed while on Run Engine never shows up here until this fires —
-  // re-pull the list every time the operator switches back into this tab.
   const isFirstActivate = useRef(true);
   useEffect(() => {
     if (!isActive) return;
@@ -81,7 +87,10 @@ export default function LedgerView({ token, isActive }) {
   const grouped = useMemo(() => {
     const groups = new Map();
     runs.forEach((r) => {
-      const key = r.scope_order_number || r.scope_style_code || 'Whole Factory';
+      let key = r.scope_order_number || r.scope_style_code || 'Whole Factory';
+      if (r.run_kind === 'monthly') {
+        key = 'Monthly Salary Runs';
+      }
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(r);
     });
@@ -99,8 +108,8 @@ export default function LedgerView({ token, isActive }) {
     setRunPieces(null);
     try {
       const [bd, pieces] = await Promise.all([
-        apiGetWageRunBreakdown(token, run.run_id),
-        apiGetWageRunPieces(token, run.run_id, { limit: 200 }),
+        triggerGetWageRunBreakdown(run.run_id).unwrap(),
+        triggerGetWageRunPieces({ runId: run.run_id, limit: 200 }).unwrap(),
       ]);
       setRunBreakdown(bd);
       setRunPieces(pieces);
@@ -145,7 +154,7 @@ export default function LedgerView({ token, isActive }) {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(employeeRows.length ? employeeRows : [{ Info: 'No data' }]), 'Per Employee');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(pieceRows.length ? pieceRows : [{ Info: 'No data' }]), 'Per Piece');
 
-    const scopeName = (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
+    const scopeName = selectedRun.run_kind === 'monthly' ? 'Monthly_Salary' : (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
     XLSX.writeFile(wb, `Payroll_${scopeName}_${selectedRun.period_start}_to_${selectedRun.period_end}.xlsx`);
   };
 
@@ -194,7 +203,7 @@ export default function LedgerView({ token, isActive }) {
     }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ Info: 'No matching rows' }]), sheetName);
-    const scopeName = (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
+    const scopeName = selectedRun.run_kind === 'monthly' ? 'Monthly_Salary' : (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole_Factory').replace(/\s+/g, '_');
     XLSX.writeFile(wb, `Payroll_${scopeName}_${sheetName.replace(/\s+/g, '_')}_filtered.xlsx`);
   };
 
@@ -203,7 +212,7 @@ export default function LedgerView({ token, isActive }) {
       {/* ── SEARCH BAR ── */}
       <div className="bg-white p-5 rounded-3xl shadow-sm border grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
         <SearchCombobox
-          placeholder="Order number..."
+          placeholder="ORDER NUMBER..."
           value={orderSearch}
           options={orderOptions}
           getKey={(o) => o.order_number}
@@ -214,7 +223,7 @@ export default function LedgerView({ token, isActive }) {
           allowClear
         />
         <SearchCombobox
-          placeholder="Style code..."
+          placeholder="STYLE CODE..."
           value={styleSearch}
           options={styleOptions}
           getKey={(s) => s.style_code}
@@ -224,16 +233,16 @@ export default function LedgerView({ token, isActive }) {
           loading={styleOptionsLoading}
           allowClear
         />
-        <input type="date" placeholder="From" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
-        <input type="date" placeholder="To" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
+        <input type="date" placeholder="FROM" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs uppercase outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
+        <input type="date" placeholder="TO" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-12 px-4 bg-slate-50 rounded-xl font-bold text-xs uppercase outline-none border focus:border-[#c8834a]" style={{ borderColor: 'rgba(200,131,74,0.15)' }} />
         <div className="flex gap-2">
           <SimpleSelect
             value={statusFilter}
             onChange={setStatusFilter}
             options={[
-              { value: '', label: 'All Status' },
-              { value: 'open', label: 'Draft' },
-              { value: 'closed', label: 'Frozen' },
+              { value: '', label: 'ALL STATUS' },
+              { value: 'open', label: 'DRAFT' },
+              { value: 'closed', label: 'FROZEN' },
             ]}
           />
           <button onClick={() => loadLedger()} className="h-12 px-4 rounded-xl font-black text-xs uppercase text-white shrink-0" style={{ background: '#c8834a' }}>
@@ -281,6 +290,11 @@ export default function LedgerView({ token, isActive }) {
                     </div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Pay Cycle</p>
                     <h4 className="font-black text-sm" style={{ color: '#2d1f0e' }}>{run.period_start} <span className="opacity-40 px-1">to</span> {run.period_end}</h4>
+                    {run.scope_is_label && (run.scope_order_number || run.scope_style_code) && (
+                      <p className="text-[10px] font-bold text-slate-500 mt-1.5 truncate border border-slate-200 bg-slate-50 px-2 py-0.5 rounded-md w-fit">
+                        Ref: {run.scope_order_number || run.scope_style_code}
+                      </p>
+                    )}
                     <p
                       className="font-mono text-[9px] font-bold text-slate-300 mt-1 truncate"
                       title={run.run_id}
@@ -310,21 +324,28 @@ export default function LedgerView({ token, isActive }) {
             <div className="p-6 sm:p-8 pb-4 bg-white relative shrink-0">
               <div className="flex justify-between items-start">
                 <div>
-                  <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>{selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole Factory'}</h3>
+                  <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>
+                    {selectedRun.run_kind === 'monthly' ? 'Monthly Salary Run' : (selectedRun.scope_order_number || selectedRun.scope_style_code || 'Whole Factory')}
+                  </h3>
                   <div className="flex gap-3 mt-2 flex-wrap items-center">
+                    {selectedRun.scope_is_label && (selectedRun.scope_order_number || selectedRun.scope_style_code) && (
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 bg-slate-100 border border-slate-200 px-2 py-1 rounded-md">
+                        Ref: {selectedRun.scope_order_number || selectedRun.scope_style_code}
+                      </span>
+                    )}
                     <span className="text-xs font-bold text-slate-500 bg-slate-100 px-3 py-1 rounded-md">{selectedRun.period_start} to {selectedRun.period_end}</span>
                     <StatusBadge status={selectedRun.status} />
                     {/* Team asked "where do I get a run id" for Run Actions
                         (Recompute/Close/Reopen) — it was never shown
                         anywhere in the UI. Copyable here now. */}
-                    <button
+                    {/* <button
                       type="button"
                       onClick={() => { navigator.clipboard?.writeText(selectedRun.run_id || ''); }}
                       title="Click to copy run id"
                       className="font-mono text-[10px] font-bold text-slate-400 bg-slate-50 border border-slate-200 px-2 py-1 rounded-md hover:bg-slate-100 cursor-pointer"
                     >
                       {selectedRun.run_id}
-                    </button>
+                    </button> */}
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

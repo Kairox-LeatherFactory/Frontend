@@ -6,32 +6,28 @@ import OrdersStylesView from './OrdersStylesView';
 import ComputationView from './ComputationView';
 import LedgerView from './LedgerView';
 import { Scissors, Activity, FileText } from 'lucide-react';
+import { usePageTrail } from '@/context/PageTrailContext';
 
+const WAGE_TABS = [
+  { id: 'styles', icon: Scissors, label: 'Piece Rates' },
+  { id: 'computation', icon: Activity, label: 'Run Engine' },
+  { id: 'ledger', icon: FileText, label: 'Ledger' }
+];
 
 export default function PieceRatesAndWages() {
   const { token } = useAuth();
   const [activeTab, setActiveTab] = useState('styles');
 
+  // Header path: Payroll Command › <tab>
+  usePageTrail([WAGE_TABS.find((t) => t.id === activeTab)?.label]);
+
   return (
     <div className="space-y-8 animate-fade-in pb-16">
       {/* ─── PREMIUM HEADER & NAVIGATION ─── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 relative z-10">
-        <div>
-          <h1 className="text-4xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>
-            Payroll Command
-          </h1>
-          <p className="font-medium mt-2 text-sm max-w-xl" style={{ color: '#9a7a5a' }}>
-            Manage piece-rate logic, execute shop floor audits, and process automated wage runs with high precision.
-          </p>
-        </div>
-
-        {/* ─── PILL NAVIGATION ─── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-start gap-6 relative z-10">
+        {/* ─── PILL NAVIGATION ─── (page title is shown in the app header) */}
         <div className="flex items-center gap-1 p-1.5 rounded-full bg-white/60 backdrop-blur-md shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-          {[
-            { id: 'styles', icon: Scissors, label: 'Piece Rates' },
-            { id: 'computation', icon: Activity, label: 'Run Engine' },
-            { id: 'ledger', icon: FileText, label: 'Ledger' }
-          ].map(tab => {
+          {WAGE_TABS.map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (

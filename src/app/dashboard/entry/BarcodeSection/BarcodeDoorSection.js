@@ -1,15 +1,14 @@
 // barcode main file
 "use client";
 import { useState, useRef, useEffect } from "react";
-
+import { useGetEmployeesQuery } from '@/store/slices/adminApiSlice';
 import { useAuth } from "@/context/AuthContext";
-import { useData } from "@/context/DataContext";
 import BarcodeDoorForm from "./BarcodeDoorForm";
 import {
-  apiProductionLogTwoDoor,
-  apiGetPieceState,
-  apiGetMaterialLots,
-} from "@/lib/api";
+  useProductionLogTwoDoorMutation,
+  useLazyGetPieceStateQuery,
+  useLazyGetMaterialLotsQuery,
+} from "@/store/slices/apiSlice";
 
 import {
   manualStages,
@@ -20,6 +19,11 @@ import {
   useRoleAccess,
 
 } from "../shared";
+import { useSelector, useDispatch } from 'react-redux';
+import {
+  setCuttingBatchPieces as reduxSetCuttingBatchPieces,
+  setBarcodeSelectedSku as reduxSetBarcodeSelectedSku
+} from '@/store/slices/entrySlice';
 
 // Extracted from src/app/dashboard/entry/page.js (Barcode Gun Scanner door:
 // Cutting/Lining DCM screen + Fusing->Package Export pipeline scan). Props
@@ -65,25 +69,40 @@ export default function BarcodeDoorSection({
 }) {
 
   const { token, user } = useAuth();
-  const { workers } = useData();
+  const { data: workers = [] } = useGetEmployeesQuery();
   const { allowedOperations, isFullAccess, isStageAllowedForRole } =
     useRoleAccess();
   const [barcodeSkuInput, setBarcodeSkuInput] = useState("");
-  const [barcodeSelectedSku, setBarcodeSelectedSku] = useState(null);
   const [barcodeSkuVerifying, setBarcodeSkuVerifying] = useState(false);
   const [barcodeDcmConfirmed, setBarcodeDcmConfirmed] = useState(false);
   const [sessionCutSkus, setSessionCutSkus] = useState([]); // Track duplicate cuts in session
-  // Item 5: always holds exactly the one piece Verify SKU resolved — Cutting
-  // no longer batches multiple pieces under one shared DCM.
-  const [cuttingBatchPieces, setCuttingBatchPieces] = useState([]); // [{ code, seq, serial_str, article, style_name, color, size, order_number }]
   const [closedCuttingSkus, setClosedCuttingSkus] = useState([]); // sku_code[] fully cut, closed for further scanning
   const [barcodePieceResolving, setBarcodePieceResolving] = useState(false);
   const [barcodePieceValidating, setBarcodePieceValidating] = useState(false); // FIX: referenced in JSX but never declared in the original file either (also no setter call anywhere — was silently always false); declared here to match that same de-facto behavior.
-  const [scannedPieceDrawerInfo, setScannedPieceDrawerInfo] = useState(null); // { code, holding }
+  const [scannedPieceStoreInfo, setScannedPieceStoreInfo] = useState(null); // { code, holding }
   const [barcodePieceInput, setBarcodePieceInput] = useState("");
   const [barcodeBatchPieces, setBarcodeBatchPieces] = useState([]); // Array of scanned piece objects
   const [barcodeSubmitting, setBarcodeSubmitting] = useState(false);
-  const [barcodeSuccessModal, setBarcodeSuccessModal] = useState(null); // Success popup details
+  const [barcodeSuccessModal, setBarcodeSuccessModal] = useState(null);
+  const [barcodeBlockerModal, setBarcodeBlockerModal] = useState(null);
+  const dispatch = useDispatch();
+  const barcodeSelectedSku = useSelector(state => state.entry.barcodeSelectedSku);
+  const cuttingBatchPieces = useSelector(state => state.entry.cuttingBatchPieces);
+  const [productionLogTwoDoor] = useProductionLogTwoDoorMutation();
+  const [triggerGetPieceState] = useLazyGetPieceStateQuery();
+  const [triggerGetMaterialLots] = useLazyGetMaterialLotsQuery();
+
+
+  const setBarcodeSelectedSku = (sku) => dispatch(reduxSetBarcodeSelectedSku(sku));
+  const setCuttingBatchPieces = (pieces) => {
+    if (typeof pieces === 'function') {
+      const newPieces = pieces(cuttingBatchPieces);
+      dispatch(reduxSetCuttingBatchPieces(newPieces));
+    } else {
+      dispatch(reduxSetCuttingBatchPieces(pieces));
+    }
+  };
+
   const resolveWorkableStage = (pieceState) => {
     const primary = pieceState?.next_stage
       ? API_TO_UI_STAGE[pieceState.next_stage] || null
@@ -214,12 +233,12 @@ export default function BarcodeDoorSection({
     const parsedDcm = parseInt(barcodeDcm, 10) || 0;
     const parsedPieces = barcodePieceInput
       ? barcodePieceInput.split(",").reduce((acc, curr) => {
-          if (curr.includes("-")) {
-            const [s, e] = curr.split("-").map(Number);
-            return acc + (e - s + 1);
-          }
-          return acc + 1;
-        }, 0)
+        if (curr.includes("-")) {
+          const [s, e] = curr.split("-").map(Number);
+          return acc + (e - s + 1);
+        }
+        return acc + 1;
+      }, 0)
       : 0;
     const requiredQty = parsedDcm * parsedPieces; // eslint-disable-line no-unused-vars -- matches original file's own dead calculation, kept for fidelity
 
@@ -232,7 +251,7 @@ export default function BarcodeDoorSection({
 
     let isMounted = true;
     setLotLoading(true);
-    apiGetMaterialLots(token, params)
+    triggerGetMaterialLots(params).unwrap()
       .then((data) => {
         if (!isMounted) return;
         setLotOptions(
@@ -283,310 +302,10 @@ export default function BarcodeDoorSection({
     setBarcodeDcmConfirmed(false);
     setErrorMsg("");
 
-    try {
-      // GET /production/piece-state — verification/viewing ONLY, no logging here.
-      const pieceState = await apiGetPieceState(token, {
-        code: val,
-        employee_barcode:
-          barcodeWorker?.employee_barcode ||
-          barcodeWorker?.barcode ||
-          barcodeWorker?.id,
-      });
 
-      const piece = pieceState?.piece;
-      if (!piece || !piece.code) {
-        throw new Error(
-          `Piece '${val}' not found. Please scan a valid piece barcode.`,
-        );
-      }
-
-      // Local Validation: Check if this piece has already been leather-cut in
-      // this session. Scoped to the Cutting stage only — sessionCutSkus
-      // tracks LEATHER_CUTTING completions specifically (it's also what
-      // unlocks Fusing locally), so it must never block a legitimate Lining
-      // scan of the same piece. The authoritative per-stage check still runs
-      // below via stageEntry regardless.
-      if (barcodeStage === "Cutting" && sessionCutSkus.includes(piece.code)) {
-        throw new Error(
-          `Piece ${piece.code} has already been cut! It cannot be scanned again in Cutting.`,
-        );
-      }
-
-      // Bug #8: once a style's full required quantity has been submitted, the
-      // backend reports it closed (sku_progress.closed) — block re-scanning
-      // any more of its pieces here rather than silently re-adding them.
-      if (piece.sku_code && closedCuttingSkus.includes(piece.sku_code)) {
-        throw new Error(
-          `Style ${piece.sku_code} is closed — all required quantities have already been cut.`,
-        );
-      }
-
-      // Check if THIS stage even applies to this piece BEFORE looking at
-      // next_stage/role gating below. A piece that doesn't need Lining will
-      // have next_stage pointing straight to Line Stitching — that must read
-      // as "Lining doesn't apply here," not "you're not allowed on that stage."
-      const currentStageEntry = (pieceState?.stages || []).find(
-        (s) => s.stage === UI_TO_API_STAGE[barcodeStage],
-      );
-      // Per the 17-Aug backend doc (Item 10): "The LINING_CUTTING stage
-      // card's not_applicable verdict now uses the effective rule, so the
-      // screen and the store gate agree" — no special case for Lining here
-      // anymore. A style that doesn't need lining blocks the Lining stage
-      // just like any other not_applicable stage.
-      if (currentStageEntry?.state === "not_applicable") {
-        throw new Error(
-          `'${barcodeStage}' does not apply to this piece${currentStageEntry.reason ? ` (${currentStageEntry.reason})` : ""}. It skips straight to its next required stage.`,
-        );
-      }
-
-      // The server names the stage — auto-switch the UI to match (never chosen
-
-      // The server names the stage — auto-switch the UI to match (never chosen
-      // by hand). But NEVER auto-switch into a stage this role can't work —
-      // that silently dumped a Cutting Manager into the Lining tab (which
-      // Cutting Manager has no permission for and has no DCM form anyway),
-      // producing a confusing secondary "Role Restricted" error later instead
-      // of a clear message right here.
-      const mappedStage = resolveWorkableStage(pieceState);
-      if (
-        mappedStage &&
-        manualStages.includes(mappedStage) &&
-        mappedStage !== barcodeStage
-      ) {
-        const roleCanWorkMappedStage = isStageAllowedForRole(mappedStage);
-        if (!roleCanWorkMappedStage) {
-          // If the operator intentionally chose Lining, allow them to proceed
-          // even when the server's next_stage points elsewhere.
-          if (barcodeStage !== "Lining") {
-            throw new Error(
-              `This piece's next stage is '${mappedStage}', which isn't assigned to your role. Please have the appropriate manager scan this piece.`,
-            );
-          }
-          // otherwise ignore mappedStage and continue with Lining
-        } else {
-          // Role can work the mapped stage. Auto-switch only if the
-          // operator has not explicitly chosen Lining (we prefer an
-          // intentional Lining selection over auto-switching away).
-          if (barcodeStage !== "Lining") {
-            setBarcodeStage(mappedStage);
-            setSuccessMsg(`🔄 Auto-detected stage: ${mappedStage}`);
-          } else {
-            setSuccessMsg(
-              `🔄 Detected next stage: ${mappedStage}. Keeping Lining as selected.`,
-            );
-          }
-        }
-      }
-      const targetStage =
-        barcodeStage === "Lining" ? "Lining" : mappedStage || barcodeStage;
-
-      // Enforce the pipeline gate using stages[] before letting the operator proceed.
-      const stageEntry = (pieceState?.stages || []).find(
-        (s) => s.stage === UI_TO_API_STAGE[targetStage],
-      );
-      if (
-        stageEntry &&
-        stageEntry.state !== "next" &&
-        stageEntry.state !== "completed"
-      ) {
-        throw new Error(
-          stageEntry.reason ||
-            (stageEntry.state === "not_applicable"
-              ? `'${targetStage}' does not apply to this piece.`
-              : `Production sequence blocked: '${targetStage}' isn't ready yet.`),
-        );
-      }
-      const usingAlternateStage = !!(
-        pieceState?.next_stage &&
-        UI_TO_API_STAGE[targetStage] !== pieceState.next_stage
-      );
-      const realBlockers = (pieceState?.blockers || []).filter(
-        (b) =>
-          b.gate !== "consumption" &&
-          b.gate !== "skill" &&
-          b.gate !== "role" &&
-          b.gate !== "designation",
-      );
-      if (
-        !(
-          barcodeStage === "Lining" ||
-          (typeof targetStage !== "undefined" && targetStage === "Lining")
-        ) &&
-        pieceState?.ready_to_log === false &&
-        realBlockers.length > 0
-      ) {
-        throw new Error(realBlockers[0].reason || "Scan blocked by server");
-      }
-
-      // Local UI update only — this piece's real identity + current/next stage.
-      setBarcodeSelectedSku({
-        piece_id: piece.piece_id,
-        code: piece.code,
-        short_code: piece.short_code,
-        style_name: piece.style_name,
-        order_number: piece.order_number,
-        size: piece.size,
-        serial: piece.serial,
-        color_code: piece.colour,
-        article: piece.article,
-        sku_id: piece.sku_id,
-        sku_code: piece.sku_code,
-        current_stage: pieceState?.current_stage,
-        current_stage_label: pieceState?.current_stage_label,
-        next_stage: pieceState?.next_stage,
-        next_stage_label: targetStage,
-        drawer: piece.drawer || pieceState?.drawer || null,
-      });
-      setBarcodeSkuInput(piece.code);
-      // Bug #8: Verify SKU starts a FRESH batch with this piece as #1 —
-      // remaining pieces of this style get scanned individually into it below.
-      setCuttingBatchPieces([
-        {
-          code: piece.code,
-          seq: piece.seq,
-          serial_str: piece.serial,
-          article: piece.article,
-          style_name: piece.style_name,
-          color: piece.colour,
-          size: piece.size,
-          order_number: piece.order_number,
-        },
-      ]);
-      setSuccessMsg(
-        `✅ Piece ${piece.code} verified — next stage: ${targetStage}`,
-      );
-    } catch (err) {
-      setErrorMsg(err.message);
-      setBarcodeSkuInput("");
-      setTimeout(() => skuInputRef.current?.focus(), 100);
-    } finally {
-      setBarcodeSkuVerifying(false);
-    }
   };
   // API Flow: Verify (GET) -> Local UI Update -> Submit (POST)
-  // Dedicated Barcode Cutting/Lining Submit Handler. THE ONLY WRITE for this door —
-  // logs the exact piece that handleVerifySkuBarcode already confirmed via piece-state.
-  // Never re-derives or re-guesses the target piece; it targets barcodeSelectedSku.code.
-  const handleBarcodeCuttingSubmit = async () => {
-    if (!barcodeWorker)
-      return setErrorMsg("Please scan and verify Worker ID first!");
-    if (!barcodeSelectedSku)
-      return setErrorMsg("Please verify a piece barcode first!");
-    if (cuttingBatchPieces.length === 0)
-      return setErrorMsg("Please scan at least one piece!");
-    const isLining = barcodeStage === "Lining";
-    // Lining is not a "measured cut" on the backend — no DCM, no material lot.
-    // Sending consumption.dcm at all makes the backend demand article/lot_id
-    // (its "measured cut needs to name its material" rule), so Lining skips
-    // consumption entirely and only sends actor + targets.
-    let parsedDcm = null;
-    if (!isLining) {
-      parsedDcm = parseFloat(barcodeDcm);
-      if (!barcodeDcm || isNaN(parsedDcm) || parsedDcm <= 0)
-        return setErrorMsg("Please enter a valid Cut Area (DCM) value");
-    }
-    if (barcodeStage === "Cutting" || barcodeStage === "LEATHER_CUTTING") {
-      if (!lotArticle) return setErrorMsg("Please select the Article!");
-      if (!lotColor) return setErrorMsg("Please select the Color!");
-    }
-    setBarcodeSubmitting(true);
-    try {
-      const pieceCodes = cuttingBatchPieces.map((p) => p.code);
 
-      const payload = {
-        screen_context: isLining ? "LINING_CUT" : "LEATHER_CUT",
-        actor: {
-          employee_barcode:
-            barcodeWorker.employee_barcode ||
-            barcodeWorker.barcode ||
-            barcodeWorker.id,
-        },
-        targets: { piece_barcodes: pieceCodes },
-        work_date: date,
-      };
-      if (!isLining) {
-        const lotId = lotResults.length === 1 ? lotResults[0].lot_id : null;
-        payload.consumption = { dcm: parsedDcm, leather_lot_id: lotId };
-      }
-
-      // POST /production/log — the ONLY write on the floor. Bug #8: submits
-      // the WHOLE scanned batch (every individually-verified piece) in one call.
-      const result = await apiProductionLogTwoDoor(token, payload);
-
-      const loggedPieces = cuttingBatchPieces.map((p) => ({
-        id: p.code,
-        seq: p.seq || 1,
-        code: p.code,
-        serial_str: p.serial_str,
-        order_number: p.order_number || barcodeSelectedSku.order_number || "",
-        article: lotArticle || p.article || "",
-        style_name:
-          p.style_name ||
-          barcodeSelectedSku.style_name ||
-          barcodeSelectedSku.code,
-        color: lotColor || p.color || "",
-        size: p.size || barcodeSelectedSku.size || "",
-        dcm: parsedDcm,
-      }));
-
-      setBarcodeSuccessModal({
-        stage: barcodeStage,
-        count: result?.count_logged ?? pieceCodes.length,
-        skuCode: barcodeSelectedSku.style_name || barcodeSelectedSku.code,
-        orderNumber: barcodeSelectedSku.order_number || "",
-        article: lotArticle || barcodeSelectedSku.article || "",
-        style: barcodeSelectedSku.style_name || barcodeSelectedSku.code,
-        color: lotColor || "",
-        size: barcodeSelectedSku.size || "",
-        thickness: lotThickness || "N/A",
-        pieces: loggedPieces,
-      });
-
-      // sessionCutSkus specifically tracks LEATHER_CUTTING completions (it's
-      // what unlocks Fusing locally) — only record it for actual Cutting
-      // submits, not Lining, so a Lining submit never blocks a real re-cut.
-      if (!isLining) setSessionCutSkus((prev) => [...prev, ...pieceCodes]);
-      pieceCodes.forEach((code) => recordStageCompletion(barcodeStage, code));
-      // Cutting has a clear linear next stage (Fusing); Lining is a parallel,
-      // independent branch feeding the Store merge gate, not a tab in this
-      // linear chain — only advance the highlighted tab for a Cutting submit.
-      if (!isLining) advanceToNextPipelineStage();
-
-      // Bug #8: once the backend confirms this style's full required
-      // quantity has been submitted, close it — no more scanning into it.
-      if (result?.sku_progress?.closed && barcodeSelectedSku.sku_code) {
-        setClosedCuttingSkus((prev) =>
-          Array.from(new Set([...prev, barcodeSelectedSku.sku_code])),
-        );
-      }
-
-      setBarcodeDcm("");
-      setBarcodeSkuInput("");
-      setBarcodeSelectedSku(null);
-      setBarcodeDcmConfirmed(false);
-      setCuttingBatchPieces([]);
-      setLotArticle("");
-      setLotColor("");
-      setLotThickness("");
-
-      // Bug #16: force a fresh Worker ID scan for the next log — one operator
-      // shouldn't be able to keep submitting under the previous scan's identity.
-      setBarcodeWorker(null);
-      setBarcodeWorkerInput("");
-      setTimeout(() => workerInputRef.current?.focus(), 150);
-    } catch (err) {
-      const msg =
-        typeof err?.message === "string"
-          ? err.message
-          : typeof err === "string"
-            ? err
-            : JSON.stringify(err);
-      console.error(`[${barcodeStage} Submit Error]`, err);
-      setErrorMsg(`${barcodeStage} failed: ${msg}`);
-    } finally {
-      setBarcodeSubmitting(false);
-    }
-  };
 
   // Dedicated Barcode Pipeline Scan & Submit
   const handleBarcodePieceScan = async (codeToScan) => {
@@ -620,20 +339,20 @@ export default function BarcodeDoorSection({
       // worker can log it right now (ready_to_log), and per-item blockers[].
       // Per API docs: NEVER choose a stage on the client side — let next_stage drive it.
       try {
-        const pieceState = await apiGetPieceState(token, {
+        const pieceState = await triggerGetPieceState({
           code,
           employee_barcode:
             barcodeWorker?.employee_barcode ||
             barcodeWorker?.barcode ||
             barcodeWorker?.id,
-        });
+        }).unwrap();
 
-        // Pull drawer info from the response (piece.drawer or top-level drawer)
+        // Pull store_state info from the response
         const piece = pieceState?.piece || {};
         drawerInfo =
-          piece.drawer ||
-          pieceState?.drawer ||
-          (piece.drawer_code ? { code: piece.drawer_code } : null);
+          piece.store_state ||
+          pieceState?.store_state ||
+          null;
         // Bug #7 (Line Stitching etc.): capture the piece's real identity so
         // the success modal shows Serial/Article/Style/Color/Size instead of
         // "undefined" — barcodeBatchPieces previously only stored the code.
@@ -680,34 +399,51 @@ export default function BarcodeDoorSection({
             }
           }
 
-          // Cutting/Lining have their own dedicated consumption screen (DCM/
-          // Article/Colour). If either the mappedStage OR the operator's
-          // selected stage is a cut stage, route to the dedicated flow.
-          if (
-            mappedStage === "Cutting" ||
-            mappedStage === "Lining" ||
-            barcodeStage === "Cutting" ||
-            barcodeStage === "Lining"
-          ) {
-            setBarcodePieceInput("");
-            await handleVerifySkuBarcode(code);
-            return;
-          }
+
         }
 
-        // If the server says NOT ready_to_log, surface the first blocker reason verbatim
-        // Exempt Lining so it's not prevented by ready_to_log blockers.
+        // Filter blockers: skill/role/designation are handled by the auto-stage
+        // logic above. consumption/screen_context mean "use the Cutting screen",
+        // not a hard scan rejection — show a specific hint for that.
+        const allBlockers = pieceState?.blockers || [];
+        const consumptionBlocked = allBlockers.some(
+          (b) => b.gate === "consumption" || b.gate === "screen_context",
+        );
+        const realBlockers = allBlockers.filter(
+          (b) =>
+            b.gate !== "consumption" &&
+            b.gate !== "screen_context" &&
+            b.gate !== "skill" &&
+            b.gate !== "role" &&
+            b.gate !== "designation",
+        );
+
+        // If the only reason it can't log is that it requires a cut-screen
+        // (consumption gate), tell the user to use the Cutting Sheet instead.
         if (
           !(barcodeStage === "Lining" || targetStage === "Lining") &&
           pieceState?.ready_to_log === false &&
-          Array.isArray(pieceState?.blockers) &&
-          pieceState.blockers.length > 0
+          consumptionBlocked &&
+          realBlockers.length === 0
         ) {
-          const firstBlocker = pieceState.blockers[0];
-          setErrorMsg(`⚠️ ${firstBlocker.reason || "Scan blocked by server"}`);
+          setErrorMsg(
+            `⚠️ This piece needs to be logged from the Cutting Sheet — it requires material consumption data (DCM) to be recorded first.`,
+          );
           setBarcodePieceInput("");
           return;
         }
+
+        if (
+          !(barcodeStage === "Lining" || targetStage === "Lining") &&
+          pieceState?.ready_to_log === false &&
+          realBlockers.length > 0
+        ) {
+          const firstBlocker = realBlockers[0];
+          setBarcodeBlockerModal(firstBlocker.reason || "Scan blocked by server");
+          setBarcodePieceInput("");
+          return;
+        }
+
 
         // Use stages[] from piece-state to enforce the pipeline gate (Bug #6)
         // Allow Lining to bypass this gate so lining cuts can be scanned
@@ -740,18 +476,18 @@ export default function BarcodeDoorSection({
         }
       }
 
-      setScannedPieceDrawerInfo(drawerInfo);
+      setScannedPieceStoreInfo(drawerInfo);
       setBarcodeBatchPieces((prev) =>
         prev.some((p) => p.code === code)
           ? prev
           : [
-              ...prev,
-              {
-                code,
-                scanned_at: new Date().toLocaleTimeString(),
-                ...pieceMeta,
-              },
-            ],
+            ...prev,
+            {
+              code,
+              scanned_at: new Date().toLocaleTimeString(),
+              ...pieceMeta,
+            },
+          ],
       );
       setBarcodePieceInput("");
     } finally {
@@ -778,8 +514,12 @@ export default function BarcodeDoorSection({
 
     setBarcodeSubmitting(true);
     try {
+      let context = "PIPELINE";
+      if (barcodeStage === "Cutting") context = "LEATHER_CUT";
+      else if (barcodeStage === "Lining") context = "LINING_CUT";
+
       const payload = {
-        screen_context: "PIPELINE",
+        screen_context: context,
         actor: {
           employee_barcode:
             barcodeWorker.employee_barcode ||
@@ -790,20 +530,7 @@ export default function BarcodeDoorSection({
         work_date: date,
       };
 
-      if (barcodeStage === "Lining") {
-        if (lotResults.length === 1 && lotResults[0].lot_id) {
-          payload.lot_id = lotResults[0].lot_id;
-        } else {
-          payload.consumption = {
-            article: lotArticle,
-            ...(lotColor ? { colour: lotColor } : {}),
-            ...(lotThickness ? { thickness: lotThickness } : {}),
-          };
-        }
-        if (barcodeDcm) payload.dcm = parseInt(barcodeDcm, 10);
-      }
-
-      const result = await apiProductionLogTwoDoor(token, payload);
+      const result = await productionLogTwoDoor(payload).unwrap();
 
       // Batch writes accept partially — some pieces logged, others blocked.
       // Always record local stage completion for whichever pieces the backend
@@ -819,18 +546,7 @@ export default function BarcodeDoorSection({
       if (loggedCodes.length > 0 || reworkCodes.length > 0)
         advanceToNextPipelineStage();
 
-      const hasBlockedItems =
-        result?.sequence_blocked?.length > 0 ||
-        result?.merge_blocked?.length > 0 ||
-        (Array.isArray(result?.blocked) &&
-          result.blocked.filter((b) => {
-            const r = (b?.reason || "").toLowerCase();
-            return (
-              !r.includes("skill") &&
-              !r.includes("designation") &&
-              !r.includes("assigned")
-            );
-          }).length > 0);
+      const hasBlockedItems = result?.blocked?.length > 0;
 
       // Bug fix (parity with ManualDoorSection): `logged`/`rework` only say a
       // piece is RECORDED at this stage — a rescan of a piece already logged
@@ -857,7 +573,7 @@ export default function BarcodeDoorSection({
       }
 
       setBarcodeBatchPieces([]);
-      setScannedPieceDrawerInfo(null);
+      setScannedPieceStoreInfo(null);
 
       // Bug #16: force a fresh Worker ID scan for the next log, same as the
       // Cutting/Lining door — only once pieces actually got logged/reworked.
@@ -867,13 +583,15 @@ export default function BarcodeDoorSection({
         setTimeout(() => workerInputRef.current?.focus(), 150);
       }
     } catch (err) {
-      setErrorMsg(`Pipeline submission failed: ${err.message}`);
+      const errorMessage = err?.data?.detail || err?.data?.message || err?.message || "Pipeline submission failed.";
+      // Show backend rejections (like worker mismatch for cutting) in the center popup
+      setBarcodeBlockerModal(errorMessage);
     } finally {
       setBarcodeSubmitting(false);
     }
   };
 
-   return (
+  return (
     <BarcodeDoorForm
       setErrorMsg={setErrorMsg}
       barcodeStage={barcodeStage}
@@ -914,8 +632,8 @@ export default function BarcodeDoorSection({
       cuttingBatchPieces={cuttingBatchPieces}
       barcodePieceResolving={barcodePieceResolving}
       barcodePieceValidating={barcodePieceValidating}
-      scannedPieceDrawerInfo={scannedPieceDrawerInfo}
-      setScannedPieceDrawerInfo={setScannedPieceDrawerInfo}
+      scannedPieceStoreInfo={scannedPieceStoreInfo}
+      setScannedPieceStoreInfo={setScannedPieceStoreInfo}
       barcodePieceInput={barcodePieceInput}
       setBarcodePieceInput={setBarcodePieceInput}
       barcodeBatchPieces={barcodeBatchPieces}
@@ -923,16 +641,16 @@ export default function BarcodeDoorSection({
       barcodeSubmitting={barcodeSubmitting}
       barcodeSuccessModal={barcodeSuccessModal}
       setBarcodeSuccessModal={setBarcodeSuccessModal}
+      barcodeBlockerModal={barcodeBlockerModal}
+      setBarcodeBlockerModal={setBarcodeBlockerModal}
       skuInputRef={skuInputRef}
       dcmInputRef={dcmInputRef}
       pieceInputRef={pieceInputRef}
-      handleVerifySkuBarcode={handleVerifySkuBarcode}
-      handleBarcodeCuttingSubmit={handleBarcodeCuttingSubmit}
       handleBarcodePieceScan={handleBarcodePieceScan}
       handleBarcodeBatchSubmit={handleBarcodeBatchSubmit}
     />
   );
 }
 
-  
+
 

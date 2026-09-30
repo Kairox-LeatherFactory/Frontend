@@ -1,97 +1,123 @@
 // operation and hr view code
 'use client';
-import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Activity, Filter, CheckCircle2, RefreshCw, Loader2, Users, Settings, Clock } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Activity, Filter, CheckCircle2, RefreshCw, Loader2, Users, Edit2, AlertTriangle, X, Save } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
-import { motion } from 'framer-motion';
-import { API, apiFetch, AlertBanner, Badge, fmtTime, fmtDist, Paginator } from './shared';
-export default function OperationsHRView({ token }) {
- const [roster, setRoster] = useState([]);
- const [rosterLoading, setRosterLoading] = useState(true);
- // const [config, setConfig] = useState(null);
- const [configLoading, setConfigLoading] = useState(true);
+import { motion, AnimatePresence } from 'framer-motion';
+import { AlertBanner, Badge, fmtTime, fmtDate, Paginator } from './shared';
+import { useGetAttendanceTodayQuery, useUpdateAttendanceMutation, useDeleteAttendanceMutation } from '@/store/slices/attendanceApiSlice';
 
- const [configForm, setConfigForm] = useState({});
- const [configSaving, setConfigSaving] = useState(false);
+// Factory clock is IST (fixed +05:30, no DST) — the same zone fmtTime displays in.
+const istHHMM = (iso) => (iso
+  ? new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }).format(new Date(iso))
+  : '');
+const istDate = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(iso));
+const istToIso = (ymd, hhmm) => new Date(`${ymd}T${hhmm}:00+05:30`).toISOString();
+
+export default function OperationsHRView({ workers = [] }) {
  const [alert, setAlert] = useState(null);
  const [page, setPage] = useState(1);
  const [filter, setFilter] = useState('all');
  const [filterOpen, setFilterOpen] = useState(false);
  const PER_PAGE = 10;
 
- const showAlert = (type, message) => {
- setAlert({ type, message });
- if (type === 'success') setTimeout(() => setAlert(null), 5000);
- };
+ const [updateAttendance] = useUpdateAttendanceMutation();
+ const [editModal, setEditModal] = useState(null);
+ const [editForm, setEditForm] = useState({ employee_id: '', reason: '', check_in: '', check_out: '' });
+ const [actionLoading, setActionLoading] = useState(false);
+ const [deleteAttendance] = useDeleteAttendanceMutation();
+ const [deleteModal, setDeleteModal] = useState(null);
+ const [deleteReason, setDeleteReason] = useState('');
 
- useEffect(() => {
+   // --- RTK QUERY HOOKS ---
+  const { data: roster = [], isLoading: rosterLoading, refetch: refetchRoster } = useGetAttendanceTodayQuery();
+  const showAlert = (type, message) => {
+    setAlert({ type, message });
+    if (type === 'success') setTimeout(() => setAlert(null), 5000);
+  };
+
+  const handleEditClick = (row) => {
+    setEditForm({
+      employee_id: row.employee_id,
+      reason: '',
+      check_in: istHHMM(row.check_in_at),
+      check_out: istHHMM(row.check_out_at),
+    });
+    setEditModal(row);
+  };
+
+  const editWorkDate = editModal ? String(editModal.work_date || istDate(editModal.check_in_at)).slice(0, 10) : '';
+  const isReassign = !!editModal && !!editForm.employee_id && String(editForm.employee_id) !== String(editModal.employee_id);
+
+  const handleSaveCorrection = async () => {
+    // PATCH takes any subset — send only what actually changed.
+    const patch = {};
+    if (isReassign) patch.employee_id = editForm.employee_id;
+    if (editForm.check_in && editForm.check_in !== istHHMM(editModal.check_in_at)) {
+      patch.check_in_at = istToIso(editWorkDate, editForm.check_in);
+    }
+    if (editForm.check_out && editForm.check_out !== istHHMM(editModal.check_out_at)) {
+      patch.check_out_at = istToIso(editWorkDate, editForm.check_out);
+    }
+
+    if (Object.keys(patch).length === 0) {
+      showAlert('warning', 'Nothing changed — pick a different worker or adjust the times.');
+      return;
+    }
+    if (editForm.check_in && editForm.check_out && editForm.check_out <= editForm.check_in) {
+      showAlert('warning', 'Check-out must be after check-in.');
+      return;
+    }
+    if (!editForm.reason.trim()) {
+      showAlert('warning', 'Reason is required for correction (e.g. "Card swapped").');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const res = await updateAttendance({
+        id: editModal.id,
+        ...patch,
+        reason: editForm.reason
+      }).unwrap();
+
+      showAlert('success', res?.message || 'Attendance corrected.');
+      setEditModal(null);
+    } catch (err) {
+      showAlert('error', err.message || 'Failed to reassign attendance.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDeleteClick = (row) => {
+    setDeleteReason('');
+    setDeleteModal(row);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteReason.trim()) {
+      showAlert('warning', 'Reason is required to hard-delete an attendance record.');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      await deleteAttendance({ id: deleteModal.id, reason: deleteReason }).unwrap();
+      showAlert('success', 'Attendance record deleted successfully.');
+      setDeleteModal(null);
+    } catch (err) {
+      showAlert('error', err.message || 'Failed to delete attendance.');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  useEffect(() => {
  if (!filterOpen) return;
  const close = (e) => { if (!e.target.closest('.filter-dropdown')) setFilterOpen(false); };
  document.addEventListener('mousedown', close);
  return () => document.removeEventListener('mousedown', close);
  }, [filterOpen]);
-
- const fetchRoster = useCallback(async () => {
- setRosterLoading(true);
- try {
- const data = await apiFetch(`${API}/today`, {}, token);
- setRoster(data);
- } catch {
- showAlert('error', "Failed to load today's roster.");
- } finally {
- setRosterLoading(false);
- }
- }, [token]);
-
- const fetchConfig = useCallback(async () => {
- setConfigLoading(true);
- try {
- const data = await apiFetch(`${API}/config`, {}, token);
- //setConfig(data);
- setConfigForm({
- shift_start: data.shift_start,
- shift_length_hours: data.shift_length_hours,
- late_grace_minutes: data.late_grace_minutes,
- // Geofence Parameters — commented out so attendance can be configured
- // and marked without requiring factory lat/lon/radius. Re-enable by
- // uncommenting these fields alongside the JSX block further below.
- // factory_lat: data.factory_lat,
- // factory_lon: data.factory_lon,
- // radius_m: data.radius_m,
- });
- } catch {
- showAlert('error', 'Failed to load shift configuration.');
- } finally {
- setConfigLoading(false);
- }
- }, [token]);
-
- useEffect(() => { fetchRoster(); fetchConfig(); }, [fetchRoster, fetchConfig]);
-
- const handleSaveConfig = async () => {
- const timeRegex = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
- if (!timeRegex.test(configForm.shift_start || '')) {
- showAlert('error', 'Shift start must be strict HH:MM 24-hour format (e.g. 09:00, 14:30).');
- return;
- }
- setConfigSaving(true);
- try {
- const payload = {
- shift_start: configForm.shift_start,
- shift_length_hours: parseFloat(configForm.shift_length_hours),
- late_grace_minutes: parseInt(configForm.late_grace_minutes, 10),
-
- };
-// const updated = await apiFetch(`${API}/config`, { method: 'PATCH', body: JSON.stringify(payload) }, token);
- //setConfig(updated);
- showAlert('success', 'Shift & geofence configuration saved successfully.');
- } catch (e) {
- showAlert('error', e.message || 'Failed to save configuration.');
- } finally {
- setConfigSaving(false);
- }
- };
-
  const filteredRoster = useMemo(() => {
  let rows = [...roster];
  if (filter === 'active') rows = rows.filter((r) => !r.check_out_at);
@@ -104,17 +130,12 @@ export default function OperationsHRView({ token }) {
 
  return (
  <motion.div className="space-y-6">
- <div>
- <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Operations &amp; HR</h1>
- <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Live roster audit and shift policy configuration.</p>
- </div>
-
  <AlertBanner type={alert?.type} message={alert?.message} onClose={() => setAlert(null)} />
 
  <SpotlightCard className="p-6 bg-white shadow-xl space-y-5 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-4" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)' }}>
  <h3 className="text-lg font-extrabold flex items-center gap-2" style={{ color: '#2d1f0e' }}>
- <Activity className="w-5 h-5" style={{ color: '#c8834a' }} /> Today's Roster
+ <Activity className="w-5 h-5" style={{ color: '#c8834a' }} /> Today&apos;s Roster
  <span className="text-xs font-black px-2 py-0.5 rounded-full ml-1" style={{ background: '#faf6f0', color: '#a86022', border: '1px solid rgba(200,131,74,0.2)' }}>
  {roster.length} Live
  </span>
@@ -148,7 +169,7 @@ export default function OperationsHRView({ token }) {
  )}
  </div>
 
- <button onClick={fetchRoster} title="Refresh roster"
+ <button onClick={refetchRoster} title="Refresh roster"
  className="h-8 w-8 p-0 flex items-center justify-center rounded-lg transition-all duration-200 hover:rotate-180"
  style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)' }}>
  <RefreshCw className="w-4 h-4" style={{ color: '#c8834a' }} />
@@ -176,16 +197,15 @@ export default function OperationsHRView({ token }) {
  <th className="p-3">Name</th>
  <th className="p-3">Check In</th>
  <th className="p-3">Check Out</th>
- <th className="p-3">Distance</th>
- <th className="p-3">Source</th>
  <th className="p-3">Flags</th>
+ <th className="p-3 text-right pr-5">Actions</th>
  </tr>
  </thead>
  <motion.tbody className="divide-y" style={{ divideColor: 'rgba(200,131,74,0.1)' }}>
  {paginated.map((row) => (
  <motion.tr key={row.id} className="hover:bg-[#fcfaf8] transition-colors">
- <td className="p-3 font-mono text-[10px] font-black" style={{ color: '#9a7a5a' }}>
- {String(row.name)}…
+ <td className="p-3 text-sm font-black uppercase" style={{ color: '#2d1f0e' }}>
+ {row.name}
  </td>
  <td className="p-3 font-black" style={{ color: '#2d1f0e' }}>{fmtTime(row.check_in_at)}</td>
  <td className="p-3">
@@ -193,14 +213,30 @@ export default function OperationsHRView({ token }) {
  ? fmtTime(row.check_out_at)
  : <Badge label="Active" type="active" />}
  </td>
- <td className="p-3 font-bold" style={{ color: '#9a7a5a' }}>{fmtDist(row.distance_m)}</td>
- <td className="p-3"><Badge label={row.source} type={row.source} /></td>
  <td className="p-3">
  <div className="flex flex-wrap gap-1">
  {row.is_late && <Badge label="Late" type="late" />}
  {row.is_short && <Badge label="Short" type="short" />}
  {row.is_overtime && <Badge label="OT" type="overtime" />}
  {!row.is_late && !row.is_short && !row.is_overtime && <Badge label="Clean" type="active" />}
+ </div>
+ </td>
+ <td className="p-3 text-right pr-5">
+ <div className="flex justify-end gap-2">
+ <button
+ onClick={() => handleEditClick(row)}
+ className="p-1.5 rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+ title="Correct / Reassign Worker"
+ >
+ <Edit2 className="w-4 h-4" />
+ </button>
+ <button
+ onClick={() => handleDeleteClick(row)}
+ className="p-1.5 rounded-md text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
+ title="Hard Delete Attendance"
+ >
+ <X className="w-4 h-4" />
+ </button>
  </div>
  </td>
  </motion.tr>
@@ -213,98 +249,172 @@ export default function OperationsHRView({ token }) {
  )}
  </SpotlightCard>
 
- <SpotlightCard className="p-6 bg-white shadow-xl space-y-6 rounded-3xl" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
- <h3 className="text-lg font-extrabold pb-4 flex items-center gap-2" style={{ borderBottom: '1px solid rgba(200,131,74,0.1)', color: '#2d1f0e' }}>
- <Settings className="w-5 h-5" style={{ color: '#c8834a' }} /> Shift &amp; Geofence Configuration
+ {/* Edit / Reassign Attendance Modal */}
+ <AnimatePresence>
+ {editModal && (
+ <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+ <motion.div
+ initial={{ opacity: 0, scale: 0.95, y: 10 }}
+ animate={{ opacity: 1, scale: 1, y: 0 }}
+ exit={{ opacity: 0, scale: 0.95, y: 10 }}
+ className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
+ >
+ <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+ <div>
+ <h3 className="text-lg font-black flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+ <Edit2 className="w-5 h-5" style={{ color: '#c8834a' }} /> Edit Attendance
  </h3>
-
- {configLoading ? (
- <div className="flex items-center justify-center py-10">
- <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} />
+ <p className="text-xs font-black uppercase mt-1" style={{ color: '#9a7a5a' }}>
+ {editModal.name}
+ </p>
  </div>
- ) : (
- <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
- <div className="space-y-4">
- <h4 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
- <Clock className="w-3.5 h-3.5" /> Shift Policy
- </h4>
- <div>
- <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>
- Shift Start — HH:MM (24-hour) *
- </label>
- <input type="text" placeholder="09:00"
- value={configForm.shift_start || ''}
- onChange={(e) => setConfigForm((f) => ({ ...f, shift_start: e.target.value }))}
- className="w-full h-11 sm:h-10 text-base sm:text-sm font-black font-mono px-3 rounded-lg focus:outline-none transition-colors"
- style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
- </div>
- <div>
- <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Shift Length (hours)</label>
- <input type="number" step="0.5" min="1" max="24"
- value={configForm.shift_length_hours || ''}
- onChange={(e) => setConfigForm((f) => ({ ...f, shift_length_hours: e.target.value }))}
- className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
- style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
- </div>
- <div>
- <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Late Grace Period (minutes)</label>
- <input type="number" min="0" max="120"
- value={configForm.late_grace_minutes || ''}
- onChange={(e) => setConfigForm((f) => ({ ...f, late_grace_minutes: e.target.value }))}
- className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
- style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
- </div>
- </div>
-
- {/* Geofence Parameters — commented out so shift config can be saved and
- attendance marked without requiring factory lat/lon/radius. Uncomment
- this block (and the matching fields in fetchConfig/handleSaveConfig
- above) to bring geofencing back.
- <div className="space-y-4">
- <h4 className="text-xs font-black uppercase tracking-widest flex items-center gap-2" style={{ color: '#9a7a5a' }}>
- <Shield className="w-3.5 h-3.5" /> Geofence Parameters
- </h4>
- <div>
- <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Factory Latitude</label>
- <input type="number" step="0.0000001"
- value={configForm.factory_lat ?? ''}
- onChange={(e) => setConfigForm((f) => ({ ...f, factory_lat: e.target.value }))}
- className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold font-mono px-3 rounded-lg focus:outline-none transition-colors"
- style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
- </div>
- <div>
- <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Factory Longitude</label>
- <input type="number" step="0.0000001"
- value={configForm.factory_lon ?? ''}
- onChange={(e) => setConfigForm((f) => ({ ...f, factory_lon: e.target.value }))}
- className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold font-mono px-3 rounded-lg focus:outline-none transition-colors"
- style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
- </div>
- <div>
- <label className="text-[11px] font-black uppercase tracking-wider block mb-1" style={{ color: '#9a7a5a' }}>Radius (meters)</label>
- <input type="number" min="10" max="5000"
- value={configForm.radius_m ?? ''}
- onChange={(e) => setConfigForm((f) => ({ ...f, radius_m: e.target.value }))}
- className="w-full h-11 sm:h-10 text-base sm:text-sm font-semibold px-3 rounded-lg focus:outline-none transition-colors"
- style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.2)', color: '#2d1f0e' }} />
- </div>
- </div>
- */}
- </div>
- )}
-
- {!configLoading && (
- <div className="flex justify-end pt-5" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
- <button onClick={handleSaveConfig} disabled={configSaving}
- className="h-11 px-8 text-xs font-black flex items-center gap-2 rounded-xl text-white shadow-md transition-all active:scale-95 hover:shadow-lg hover:-translate-y-0.5 disabled:opacity-50"
- style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
- {configSaving
- ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
- : <><CheckCircle2 className="w-4 h-4" /> Save Configuration</>}
+ <button onClick={() => setEditModal(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-full transition-colors self-start">
+ <X className="w-5 h-5" />
  </button>
  </div>
+
+ <div className="p-5 space-y-4 bg-slate-50/50 text-left">
+ <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+ <div>
+ <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Work Date</label>
+ <div className="h-11 px-3 flex items-center rounded-xl border border-slate-200 bg-slate-100 text-xs font-black text-slate-700">
+ {fmtDate(editWorkDate)}
+ </div>
+ </div>
+ <div>
+ <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Check In</label>
+ <input
+ type="time"
+ className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a]"
+ value={editForm.check_in}
+ onChange={e => setEditForm({ ...editForm, check_in: e.target.value })}
+ />
+ </div>
+ <div>
+ <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Check Out</label>
+ <input
+ type="time"
+ className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a]"
+ value={editForm.check_out}
+ onChange={e => setEditForm({ ...editForm, check_out: e.target.value })}
+ />
+ </div>
+ </div>
+
+ <div>
+ <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Correct Worker (Who actually worked)</label>
+ <select
+ className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a]"
+ value={editForm.employee_id}
+ onChange={e => setEditForm({ ...editForm, employee_id: e.target.value })}
+ >
+ <option value="" disabled>Select the correct worker</option>
+ {workers.map(w => (
+ <option key={w.id} value={w.id}>{w.name} ({w.employee_barcode || String(w.id).slice(0,6)})</option>
+ ))}
+ </select>
+ </div>
+
+ {isReassign && (
+ <div className="p-3 rounded-xl flex items-start gap-2" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.25)' }}>
+ <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#c8834a' }} />
+ <p className="text-[11px] font-bold" style={{ color: '#a86022' }}>
+ Changing the worker moves this attendance and all of today&apos;s production events (and wages) from <span className="font-black uppercase">{editModal.name}</span> to the selected worker.
+ </p>
+ </div>
  )}
- </SpotlightCard>
+
+ <div>
+ <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Reason for correction *</label>
+ <input
+ type="text"
+ placeholder="e.g. Card swapped by mistake at gate"
+ className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-[#c8834a]"
+ value={editForm.reason}
+ onChange={e => setEditForm({ ...editForm, reason: e.target.value })}
+ />
+ </div>
+ </div>
+ 
+ <div className="p-5 bg-white border-t border-slate-100 flex gap-3">
+ <button onClick={() => setEditModal(null)} className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center">
+ Cancel
+ </button>
+ <button
+ onClick={handleSaveCorrection}
+ disabled={actionLoading}
+ className="flex-1 py-3 px-4 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+ style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+ >
+ {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+ Save Changes
+ </button>
+ </div>
+ </motion.div>
+ </div>
+ )}
+ </AnimatePresence>
+
+ <AnimatePresence>
+ {deleteModal && (
+ <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+ <motion.div
+ initial={{ opacity: 0, scale: 0.95, y: 10 }}
+ animate={{ opacity: 1, scale: 1, y: 0 }}
+ exit={{ opacity: 0, scale: 0.95, y: 10 }}
+ className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
+ >
+ <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+ <div>
+ <h3 className="text-lg font-black text-rose-700 flex items-center gap-2">
+ <AlertTriangle className="w-5 h-5" /> Hard Delete Attendance
+ </h3>
+ <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mt-1">
+ Irreversible action
+ </p>
+ </div>
+ <button onClick={() => setDeleteModal(null)} className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-full transition-colors self-start">
+ <X className="w-5 h-5" />
+ </button>
+ </div>
+ 
+ <div className="p-5 space-y-4 bg-slate-50/50 text-left">
+ <div className="p-3 bg-red-50 border border-red-100 rounded-xl mb-2">
+ <p className="text-[11px] font-bold text-red-700">
+ You are about to permanently delete the attendance record for <span className="font-black underline">{deleteModal.name}</span>. This will remove this check-in entirely.
+ </p>
+ </div>
+ 
+ <div>
+ <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block mb-1">Reason for deletion *</label>
+ <input
+ type="text"
+ placeholder="e.g. Accidental proxy entry"
+ className="w-full h-11 px-3 text-xs font-bold rounded-xl border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-rose-400"
+ value={deleteReason}
+ onChange={e => setDeleteReason(e.target.value)}
+ />
+ </div>
+ </div>
+ 
+ <div className="p-5 bg-white border-t border-slate-100 flex gap-3">
+ <button onClick={() => setDeleteModal(null)} className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center">
+ Cancel
+ </button>
+ <button
+ onClick={handleConfirmDelete}
+ disabled={actionLoading}
+ className="flex-1 py-3 px-4 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+ style={{ background: 'linear-gradient(135deg, #e11d48, #9f1239)' }}
+ >
+ {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+ Confirm Delete
+ </button>
+ </div>
+ </motion.div>
+ </div>
+ )}
+ </AnimatePresence>
  </motion.div>
  );
 }
