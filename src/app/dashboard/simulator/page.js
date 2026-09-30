@@ -37,12 +37,6 @@ export default function DelayImpactSimulator() {
   return (
     <div className="space-y-8 animate-fade-in">
 
-      {/* ─── TITLE SECTION ─── */}
-      <div>
-        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>Delay Impact Simulator</h1>
-        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Model supply-chain bottlenecks and live labor defect penalties to test freight margin outcomes.</p>
-      </div>
-
       {/* ─── GRID: SLIDERS & LIVE CALCULATION DISPLAY ─── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
 
