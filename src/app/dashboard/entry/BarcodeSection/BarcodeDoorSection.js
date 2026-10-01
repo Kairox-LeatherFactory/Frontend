@@ -374,8 +374,8 @@ export default function BarcodeDoorSection({
         if (mappedStage && manualStages.includes(mappedStage)) {
           const roleCanWorkMappedStage = isStageAllowedForRole(mappedStage);
           if (!roleCanWorkMappedStage) {
-            if (barcodeStage === "Lining") {
-              // Operator forced Lining — ignore the mappedStage and continue
+            if (barcodeStage === "Lining" || barcodeStage === "Cutting") {
+              // Operator forced Lining or Cutting — ignore the mappedStage and continue
             } else {
               setErrorMsg(
                 `⚠️ This piece's next stage is '${mappedStage}', which isn't assigned to your role.`,
@@ -385,8 +385,8 @@ export default function BarcodeDoorSection({
             }
           } else {
             // Role can handle mappedStage — auto-switch only if operator
-            // hasn't explicitly chosen Lining.
-            if (barcodeStage !== "Lining") {
+            // hasn't explicitly chosen Lining or Cutting.
+            if (barcodeStage !== "Lining" && barcodeStage !== "Cutting") {
               targetStage = mappedStage;
               if (mappedStage !== barcodeStage) {
                 setBarcodeStage(mappedStage);
@@ -394,12 +394,10 @@ export default function BarcodeDoorSection({
               }
             } else {
               setSuccessMsg(
-                `🔄 Detected next stage: ${mappedStage}. Keeping Lining as selected.`,
+                `🔄 Detected next stage: ${mappedStage}. Keeping ${barcodeStage} as selected.`,
               );
             }
           }
-
-
         }
 
         // Filter blockers: skill/role/designation are handled by the auto-stage
@@ -419,9 +417,9 @@ export default function BarcodeDoorSection({
         );
 
         // If the only reason it can't log is that it requires a cut-screen
-        // (consumption gate), tell the user to use the Cutting Sheet instead.
+        // (consumption gate), allow operator when Cutting or Lining is selected.
         if (
-          !(barcodeStage === "Lining" || targetStage === "Lining") &&
+          !(barcodeStage === "Lining" || targetStage === "Lining" || barcodeStage === "Cutting" || targetStage === "Cutting") &&
           pieceState?.ready_to_log === false &&
           consumptionBlocked &&
           realBlockers.length === 0
@@ -434,7 +432,7 @@ export default function BarcodeDoorSection({
         }
 
         if (
-          !(barcodeStage === "Lining" || targetStage === "Lining") &&
+          !(barcodeStage === "Lining" || targetStage === "Lining" || barcodeStage === "Cutting" || targetStage === "Cutting") &&
           pieceState?.ready_to_log === false &&
           realBlockers.length > 0
         ) {
@@ -444,15 +442,15 @@ export default function BarcodeDoorSection({
           return;
         }
 
-
         // Use stages[] from piece-state to enforce the pipeline gate (Bug #6)
-        // Allow Lining to bypass this gate so lining cuts can be scanned
+        // Allow Lining and Cutting to bypass this gate so cuts can be scanned
         // regardless of the backend's current-stage flags.
         const stageEntry = (pieceState?.stages || []).find(
           (s) => s.stage === UI_TO_API_STAGE[targetStage],
         );
         if (
           targetStage !== "Lining" &&
+          targetStage !== "Cutting" &&
           stageEntry &&
           stageEntry.state !== "next" &&
           stageEntry.state !== "completed"
