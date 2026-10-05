@@ -454,22 +454,8 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                   />
                 </div>
 
-                {/* Material Lot ID */}
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">
-                    Lot ID <span className="normal-case text-slate-400">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Lot ID or Barcode"
-                    value={formLotId}
-                    onChange={(e) => setFormLotId(e.target.value)}
-                    className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                  />
-                </div>
-
                 {/* Note */}
-                <div>
+                <div className="sm:col-span-2">
                   <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">
                     Note <span className="normal-case text-slate-400">(optional)</span>
                   </label>

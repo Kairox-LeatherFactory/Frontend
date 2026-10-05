@@ -114,15 +114,13 @@ export function AddMaterialScreen({ showToast, onSuccess, onDuplicate }) {
       }
 
       const res = await createMaterialArrival(arrivalPayload).unwrap();
-      const receiptId = res.receipt_id || res.id || 'RCV-CREATED';
       const lotBarcode = res.lot_barcode || res.barcode || (res.lot_id ? `LOT-${res.lot_id.slice(0, 8)}` : 'LOT-CREATED');
 
       setResult({
         ...res,
-        receipt_id: receiptId,
         lot_barcode: lotBarcode,
       });
-      showToast?.(`Arrival registered! Receipt ID: ${receiptId}`, 'success');
+      showToast?.('Arrival registered!');
     } catch (e) {
       showToast?.(errMsg(e), 'error');
       if (e.status === 409 && onDuplicate) {

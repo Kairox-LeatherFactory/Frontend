@@ -9,10 +9,11 @@ export const progressApiSlice = apiSlice.injectEndpoints({
       query: (orderId) => `/api/v1/barcode/orders/${encodeURIComponent(orderId)}/skus`,
     }),
     getOrderBarcodes: builder.query({
-      query: ({ orderId, styleId, pageSize }) => {
+      query: (arg) => {
+        const orderId = typeof arg === 'string' ? arg : arg?.orderId;
+        const styleId = typeof arg === 'object' ? arg?.styleId : undefined;
         const params = new URLSearchParams();
         if (styleId) params.append('style_id', styleId);
-        if (pageSize) params.append('page_size', pageSize);
         const qs = params.toString();
         return `/api/v1/barcode/orders/${encodeURIComponent(orderId)}/barcodes${qs ? '?' + qs : ''}`;
       },
