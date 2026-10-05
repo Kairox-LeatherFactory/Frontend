@@ -1,82 +1,85 @@
-// barcode worker verify success modal
 'use client';
 import { createPortal } from 'react-dom';
-import { CheckCircle2 } from 'lucide-react';
+import { motion } from 'framer-motion';
+import { Check } from 'lucide-react';
 
 export default function BarcodeSuccessModal({ barcodeSuccessModal, setBarcodeSuccessModal }) {
   if (!barcodeSuccessModal) return null;
 
+  const stageName = barcodeSuccessModal.stage || 'Stage';
+
   return createPortal(
-    <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/80 backdrop-blur-md animate-fade-in p-4">
-      <div className="bg-white rounded-3xl shadow-2xl border-2 border-[#c8834a]/40 w-full max-w-lg p-6 sm:p-8 space-y-6 relative overflow-hidden">
-        <div className="w-16 h-16 rounded-2xl bg-amber-50 border border-[#c8834a]/30 flex items-center justify-center mx-auto shadow-inner">
-          <CheckCircle2 className="w-8 h-8 text-[#c8834a]" />
-        </div>
+    <div
+      onClick={() => setBarcodeSuccessModal(null)}
+      className="fixed inset-0 z-[999999] flex flex-col items-center justify-center bg-[#faf7f2]/95 backdrop-blur-md p-6 select-none cursor-pointer overflow-hidden animate-fade-in"
+    >
+      {/* Background Soft Ripple Animation */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none overflow-hidden">
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0.5 }}
+          animate={{ scale: [0.8, 1.8, 2.5], opacity: [0.4, 0.15, 0] }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: 'easeOut' }}
+          className="w-72 h-72 rounded-full bg-amber-400/10 absolute"
+        />
+        <motion.div
+          initial={{ scale: 0.8, opacity: 0.6 }}
+          animate={{ scale: [0.8, 1.4, 2], opacity: [0.5, 0.2, 0] }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: 'easeOut', delay: 0.4 }}
+          className="w-56 h-56 rounded-full bg-[#c8834a]/10 absolute"
+        />
+      </div>
 
-        <div className="text-center space-y-2">
-          <h3 className="text-xl font-black text-[#2d1f0e]">{barcodeSuccessModal.stage} Event Successfully Saved!</h3>
-          <p className="text-xs font-bold text-slate-500">
-            Logged {barcodeSuccessModal.count} pieces for {barcodeSuccessModal.skuCode || 'Production Batch'}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="relative z-10 flex flex-col items-center text-center max-w-md w-full space-y-6 px-4"
+      >
+        {/* Animated Checkmark Circle */}
+        <motion.div
+          initial={{ scale: 0, rotate: -45 }}
+          animate={{ scale: 1, rotate: 0 }}
+          transition={{
+            type: 'spring',
+            stiffness: 300,
+            damping: 20,
+            delay: 0.1,
+          }}
+          className="w-28 h-28 sm:w-32 sm:h-32 rounded-full bg-white border-2 border-[#c8834a]/30 flex items-center justify-center shadow-[0_8px_30px_rgba(200,131,74,0.18)] relative"
+        >
+          <motion.div
+            initial={{ pathLength: 0, opacity: 0 }}
+            animate={{ pathLength: 1, opacity: 1 }}
+            transition={{ duration: 0.4, delay: 0.25 }}
+          >
+            <Check className="w-16 h-16 sm:w-20 sm:h-20 text-[#c8834a] stroke-[3.5]" />
+          </motion.div>
+        </motion.div>
+
+        {/* Stage Name Announcement */}
+        <motion.div
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          className="space-y-2"
+        >
+          <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-[#2d1f0e]">
+            {stageName} Successful!
+          </h2>
+          <p className="text-sm sm:text-base font-bold text-[#8c6b4a]">
+            Production Stage Event Logged Successfully
           </p>
-        </div>
+        </motion.div>
 
-        {barcodeSuccessModal.pieces && barcodeSuccessModal.pieces.length > 0 && (
-          <div className="p-4 rounded-2xl bg-[#faf6f0] border border-[#c8834a]/20 space-y-3">
-            <div className="flex items-center justify-between text-xs font-black text-[#2d1f0e]">
-              <span>Generated Traveler Card Barcodes</span>
-              <span>{barcodeSuccessModal.pieces.length} Barcodes</span>
-            </div>
-
-            <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
-              {barcodeSuccessModal.pieces.map((p) => (
-                <div key={p.code} className="p-2.5 rounded-xl bg-white border border-slate-200 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-black text-xs text-[#2d1f0e]">{p.code}</span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-700 font-extrabold uppercase px-1.5 py-0.5 rounded-md">
-                      #{p.serial_str || String(p.seq).padStart(3, '0')}
-                    </span>
-                  </div>
-                  <div className="flex items-center flex-wrap gap-1">
-                    {(barcodeSuccessModal.article || p.article) && (
-                      <span className="text-[9px] bg-amber-50 text-amber-700 border border-amber-200 font-bold px-1.5 py-0.5 rounded-md">
-                        {p.article || barcodeSuccessModal.article}
-                      </span>
-                    )}
-                    {(barcodeSuccessModal.style || p.style_name) && (
-                      <span className="text-[9px] bg-blue-50 text-blue-700 border border-blue-200 font-bold px-1.5 py-0.5 rounded-md">
-                        {p.style_name || barcodeSuccessModal.style}
-                      </span>
-                    )}
-                    {(barcodeSuccessModal.color || p.color) && (
-                      <span className="text-[9px] bg-slate-50 text-slate-600 border border-slate-200 font-bold px-1.5 py-0.5 rounded-md">
-                        {p.color || barcodeSuccessModal.color}
-                      </span>
-                    )}
-                    {(barcodeSuccessModal.size || p.size) && (
-                      <span className="text-[9px] bg-purple-50 text-purple-700 border border-purple-200 font-bold px-1.5 py-0.5 rounded-md">
-                        Sz: {p.size || barcodeSuccessModal.size}
-                      </span>
-                    )}
-                    {(barcodeSuccessModal.orderNumber || p.order_number) && (
-                      <span className="text-[9px] bg-rose-50 text-rose-700 border border-rose-200 font-bold px-1.5 py-0.5 rounded-md">
-                        #{p.order_number || barcodeSuccessModal.orderNumber}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <button
+        {/* Action Button */}
+        <motion.button
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.35, delay: 0.3 }}
           type="button"
           onClick={() => setBarcodeSuccessModal(null)}
-          className="w-full h-14 rounded-2xl font-black text-sm text-[#0f0a06] shadow-md transition-all active:scale-95 cursor-pointer"
-          style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+          className="w-full sm:w-auto min-w-[160px] h-13 px-8 rounded-2xl bg-[#c8834a] text-white font-black text-sm uppercase tracking-wider shadow-lg hover:bg-[#b5733c] active:scale-95 transition-all cursor-pointer"
         >
-          Done &amp; Close Modal
-        </button>
+          Done
+        </motion.button>
       </div>
     </div>,
     document.body

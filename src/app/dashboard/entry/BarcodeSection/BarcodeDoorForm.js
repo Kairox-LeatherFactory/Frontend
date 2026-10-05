@@ -517,22 +517,24 @@ export default function BarcodeDoorForm({
         </div>
       </div>
 
-      {/* Barcode Blocker Modal */}
+      {/* Barcode Blocker / Restriction Modal */}
       {barcodeBlockerModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl w-full max-w-sm overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200">
-            <div className="bg-[#fffdfa] p-6 flex flex-col items-center justify-center text-center">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl relative animate-in zoom-in-95 duration-200 border border-red-100">
+            <div className="bg-[#fffdfa] p-6 sm:p-7 flex flex-col items-center justify-center text-center">
               <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4 shadow-sm border border-red-200">
                 <Lock className="w-8 h-8" />
               </div>
-              <h3 className="text-xl font-black text-red-900 mb-2">Access Denied</h3>
-              <p className="text-sm font-medium text-red-700/90 mb-6">
-                {barcodeBlockerModal}
-              </p>
+              <h3 className="text-xl font-black tracking-tight text-red-900 mb-2">Access Denied</h3>
+              <div className="bg-red-50/70 border border-red-200/80 rounded-2xl p-4 mb-6 w-full">
+                <p className="text-xs sm:text-sm font-semibold text-red-800 leading-relaxed text-center whitespace-pre-line break-words">
+                  {barcodeBlockerModal}
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => setBarcodeBlockerModal(null)}
-                className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl shadow-md transition-all active:scale-95 cursor-pointer"
+                className="w-full h-12 bg-red-600 hover:bg-red-700 text-white font-bold text-sm tracking-wide rounded-xl shadow-md transition-all active:scale-95 cursor-pointer uppercase"
               >
                 Understood
               </button>
