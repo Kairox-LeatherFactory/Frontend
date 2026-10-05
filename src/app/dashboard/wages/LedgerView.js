@@ -295,13 +295,6 @@ export default function LedgerView({ isActive }) {
                         Ref: {run.scope_order_number || run.scope_style_code}
                       </p>
                     )}
-                    <p
-                      className="font-mono text-[9px] font-bold text-slate-300 mt-1 truncate"
-                      title={run.run_id}
-                      onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(run.run_id || ''); }}
-                    >
-                      {run.run_id}
-                    </p>
                     <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: '1px solid rgba(200,131,74,0.1)' }}>
                       {/* <div>
                         <p className="text-[10px] font-bold text-slate-400">Total</p>
