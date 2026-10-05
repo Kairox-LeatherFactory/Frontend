@@ -326,10 +326,10 @@ export default function BarcodeDoorForm({
                   className={`p-3.5 rounded-2xl text-xs transition-all text-center border shadow-sm relative ${
                     isDisabled
                       ? isSelected
-                        ? "bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-not-allowed font-black"
+                        ? "bg-[#c8834a] bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-not-allowed font-black"
                         : "opacity-35 grayscale bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed"
                       : isSelected
-                        ? "bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-pointer font-black"
+                        ? "bg-[#c8834a] bg-gradient-to-r from-[#c8834a] to-[#e8a06a] text-white border-[#c8834a] scale-[1.02] shadow-md cursor-pointer font-black"
                         : "bg-white text-slate-800 border-slate-200 hover:border-[#c8834a] hover:bg-amber-50/50 cursor-pointer font-bold"
                   }`}
                   title={

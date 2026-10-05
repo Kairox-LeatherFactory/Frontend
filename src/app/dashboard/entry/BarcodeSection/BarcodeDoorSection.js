@@ -187,10 +187,10 @@ export default function BarcodeDoorSection({
   const pieceInputRef = useRef(null);
   useEffect(() => {
     if (!barcodeWorker) return;
-    const isCutOrLining =
-      barcodeStage === "Cutting" || barcodeStage === "Lining";
-    const targetRef = isCutOrLining ? skuInputRef : pieceInputRef;
-    setTimeout(() => targetRef.current?.focus(), 150);
+    setTimeout(() => {
+      pieceInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      pieceInputRef.current?.focus();
+    }, 200);
   }, [barcodeWorker, barcodeStage]);
 
   useEffect(() => {
