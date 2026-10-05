@@ -86,6 +86,7 @@ export default function StoreHubSection({
   const [storeLotInput, setStoreLotInput] = useState("");
   const [inspectPieceCode, setInspectPieceCode] = useState(null);
   const [manualIssueModalOpen, setManualIssueModalOpen] = useState(false);
+  const [substitutionsModalOpen, setSubstitutionsModalOpen] = useState(false);
 
   const storeInputRef = useRef(null);
   const observerRef = useRef();
@@ -293,6 +294,8 @@ export default function StoreHubSection({
       setInspectPieceCode={setInspectPieceCode}
       manualIssueModalOpen={manualIssueModalOpen}
       setManualIssueModalOpen={setManualIssueModalOpen}
+      substitutionsModalOpen={substitutionsModalOpen}
+      setSubstitutionsModalOpen={setSubstitutionsModalOpen}
       setSuccessMsg={setSuccessMsg}
       setErrorMsg={setErrorMsg}
 
