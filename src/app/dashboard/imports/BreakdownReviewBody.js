@@ -166,7 +166,9 @@ const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, sty
 
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm">{error}</div>
+        <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl font-bold text-sm">
+          {typeof error === 'string' ? error : error?.data?.detail || error?.data?.message || error?.error || error?.message || 'Failed to load breakdown.'}
+        </div>
       )}
 
       {loading && (
@@ -240,7 +242,7 @@ const result = await cancelBreakdownStyles({ orderNumber: activeOrderNumber, sty
                   </div>
                 </div>
                 {isExpanded && (
-                  <div className="px-5 pb-5 space-y-1.5">
+                  <div className="px-5 pb-5 space-y-2.5">
                     {(style.skus || []).map((sku) => (
                       <SkuRow
                         key={sku.sku_id}

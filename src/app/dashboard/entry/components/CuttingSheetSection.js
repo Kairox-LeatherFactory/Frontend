@@ -26,11 +26,11 @@ import { setMessages } from '@/store/slices/entrySlice';
 
 const toastListeners = new Set();
 
-const toast = {
-  success: (msg) => toastListeners.forEach(fn => fn({ type: 'success', message: msg })),
-  error: (msg) => toastListeners.forEach(fn => fn({ type: 'error', message: msg })),
-  warning: (msg) => toastListeners.forEach(fn => fn({ type: 'warning', message: msg }))
-};
+// const toast = {
+//   success: (msg) => toastListeners.forEach(fn => fn({ type: 'success', message: msg })),
+//   error: (msg) => toastListeners.forEach(fn => fn({ type: 'error', message: msg })),
+//   warning: (msg) => toastListeners.forEach(fn => fn({ type: 'warning', message: msg }))
+// };
 const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', 'XXXL', '3XL', '4XL', '5XL'];
 const sizeRank = (s) => {
   const i = SIZE_ORDER.indexOf(s);
@@ -41,8 +41,6 @@ const sizeRank = (s) => {
 const sizeAnchorId = (s) => `cs-size-${String(s).replace(/[^A-Za-z0-9]/g, '_')}`;
 const rowSize = (row) => String(row?.size || row?.size_name || '').toUpperCase();
 
-// Messages go to the Production Logger's own bottom-right toast (entry slice
-// successMsg / errorMsg) — never a browser alert() pop-up.
 function useLoggerToast() {
   const dispatch = useDispatch();
   return useMemo(() => ({
