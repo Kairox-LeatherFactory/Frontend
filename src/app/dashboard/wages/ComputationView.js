@@ -612,9 +612,9 @@ export default function ComputationView() {
           </div>
         )}
 
-        {runActionId && (
+        {/* {runActionId && (
           <p className="text-[10px] font-mono font-bold text-slate-400 truncate">Run ID: {runActionId}</p>
-        )}
+        )} */}
         {run && (run.id || run.run_id) === runActionId.trim() && (
           <div className="flex items-center gap-3">
             <StatusBadge status={run.status} />
