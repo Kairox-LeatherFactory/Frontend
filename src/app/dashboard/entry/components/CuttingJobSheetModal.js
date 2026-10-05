@@ -247,7 +247,7 @@ export default function CuttingJobSheetModal({ isOpen, onClose }) {
                   <option value="">-- Choose Leather Lot --</option>
                   {lotsList.map((l) => (
                     <option key={l.lot_id} value={l.lot_id}>
-                      {l.article} - {l.colour} ({l.lot_id})
+                      {l.article} - {l.colour} {l.barcode ? `(${l.barcode})` : ''}
                     </option>
                   ))}
                 </select>

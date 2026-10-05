@@ -251,33 +251,6 @@ export default function MaterialCategorySection({
                   className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
                 />
               </div>
-
-              {!minimalFields && (
-                <>
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">
-                      SKU Override ID <span className="normal-case text-slate-400">(optional)</span>
-                    </label>
-                    <input
-                      value={form.sku_id}
-                      onChange={(e) => setForm((f) => ({ ...f, sku_id: e.target.value }))}
-                      placeholder="SKU override ID"
-                      className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-slate-500 block mb-1">
-                      Lot Barcode / ID <span className="normal-case text-slate-400">(optional)</span>
-                    </label>
-                    <input
-                      value={form.material_lot_id}
-                      onChange={(e) => setForm((f) => ({ ...f, material_lot_id: e.target.value }))}
-                      placeholder="Lot barcode or ID"
-                      className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                    />
-                  </div>
-                </>
-              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-1 border-t border-slate-200">
