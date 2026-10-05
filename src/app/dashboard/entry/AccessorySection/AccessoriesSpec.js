@@ -118,7 +118,11 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
   }
 
   if (error) {
-    return <div className="mt-3 p-4 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-700">{error}</div>;
+    return (
+      <div className="mt-3 p-4 rounded-xl bg-red-50 border border-red-200 text-xs font-bold text-red-700">
+        {typeof error === 'string' ? error : error?.data?.detail || error?.data?.message || error?.message || 'Failed to load material spec.'}
+      </div>
+    );
   }
 
   if (!spec) return null;
@@ -126,23 +130,35 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
   const requirementLines = requirement?.lines || [];
 
   return (
-    <div className="mt-3 p-4 rounded-xl bg-white border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+    <div className="mt-3 p-4 rounded-2xl bg-white border space-y-4" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] font-black uppercase tracking-widest" style={{ color: '#a86022' }}>Material Spec</span>
-          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded border flex items-center gap-1" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.25)', color: spec.confirmed ? '#2d1f0e' : '#9a7a5a' }}>
+          <span className="text-[11px] font-black uppercase tracking-wider text-[#8a4e1d]">Material Spec</span>
+          <span className={`text-[9px] font-black uppercase px-2.5 py-0.5 rounded-lg border flex items-center gap-1 ${
+            spec.confirmed ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-amber-50 text-amber-700 border-amber-200'
+          }`}>
             {spec.confirmed && <CheckCircle2 className="w-3 h-3" />} {spec.confirmed ? 'Confirmed' : 'Not confirmed'}
           </span>
           {spec.no_accessories_declared && (
-            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded border" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.25)', color: '#9a7a5a' }}>No accessories needed</span>
+            <span className="text-[9px] font-black uppercase px-2.5 py-0.5 rounded-lg border bg-slate-50 text-slate-600 border-slate-200">
+              No accessories needed
+            </span>
           )}
         </div>
       </div>
 
       {(spec.release_blockers?.length > 0 || confirmWarnings.length > 0) && (
-        <div className="p-2.5 rounded-lg border space-y-0.5" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.3)' }}>
-          {(spec.release_blockers || []).map((b, i) => <p key={`b${i}`} className="text-[11px] font-bold" style={{ color: '#a86022' }}>⚠ {b}</p>)}
-          {confirmWarnings.map((w, i) => <p key={`w${i}`} className="text-[11px] font-bold" style={{ color: '#9a7a5a' }}>ℹ {w}</p>)}
+        <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 space-y-1">
+          {(spec.release_blockers || []).map((b, i) => (
+            <p key={`b${i}`} className="text-[11px] font-bold text-amber-800 flex items-start gap-1.5">
+              <span>⚠</span> <span>{b}</span>
+            </p>
+          ))}
+          {confirmWarnings.map((w, i) => (
+            <p key={`w${i}`} className="text-[11px] font-bold text-slate-600 flex items-start gap-1.5">
+              <span>ℹ</span> <span>{w}</span>
+            </p>
+          ))}
         </div>
       )}
 
@@ -172,20 +188,25 @@ export function StyleAccessoriesPanel({ styleId, canEdit, token, showToast, piec
           <div className="border-t border-slate-100" />
 
           {accessoryLines.length === 0 && (
-            <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 pt-1">
+            <label className="flex items-center gap-2 text-[11px] font-bold text-slate-500 pt-1 cursor-pointer">
               <input type="checkbox" checked={noAccessories} onChange={(e) => setNoAccessories(e.target.checked)} className="w-3.5 h-3.5 accent-[#c8834a]" />
               This style takes no accessories
             </label>
           )}
 
-          <button onClick={handleConfirm} disabled={confirming || (accessoryLines.length === 0 && !noAccessories)} className="h-9 px-4 rounded-lg font-black text-[11px] uppercase text-white flex items-center gap-1.5 disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}>
+          <button
+            onClick={handleConfirm}
+            disabled={confirming || (accessoryLines.length === 0 && !noAccessories)}
+            className="h-9 px-5 rounded-xl font-black text-xs uppercase text-white shadow-xs hover:brightness-105 transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+            style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+          >
             {confirming ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />} Confirm Material Spec
           </button>
         </>
       )}
 
       <div className="pt-2 border-t border-slate-100">
-        <button onClick={toggleRequirement} className="flex items-center gap-1.5 text-[11px] font-black uppercase text-slate-500">
+        <button onClick={toggleRequirement} className="flex items-center gap-1.5 text-[11px] font-black uppercase text-slate-500 cursor-pointer hover:text-slate-700">
           {requirementOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />} Check Requirement vs Stock
         </button>
         {requirementOpen && (

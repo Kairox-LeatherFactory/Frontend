@@ -4,7 +4,7 @@ apiSlice.injectEndpoints({
     endpoints:(builder)=>({
         // 1. Get My Status
     getMyStatus: builder.query({
-      query: () => '/api/v1/attendance/me/status',
+      query: () => '/api/v1/attendance/me',
       providesTags: ['Attendance']
     }),
 
@@ -46,18 +46,18 @@ apiSlice.injectEndpoints({
       query: () => '/api/v1/attendance/today',
       providesTags: ['Attendance']
     }),
-    // 7. Get Attendance Config
-    getAttendanceConfig: builder.query({
-      query: () => '/api/v1/attendance/config',
+    // // 7. Get Attendance Config
+    // getAttendanceConfig: builder.query({
+    //   query: () => '/api/v1/attendance/config',
  
-    }),
-    updateAttendanceConfig: builder.mutation({
-      query: (body) => ({
-        url: '/api/v1/attendance/config',
-        method: 'PATCH',
-        body,
-      }),
-    }),
+    // }),
+    // updateAttendanceConfig: builder.mutation({
+    //   query: (body) => ({
+    //     url: '/api/v1/attendance/config',
+    //     method: 'PATCH',
+    //     body,
+    //   }),
+    // }),
     // 8. Floor Command Barcode Scan Check-In
     scanCheckIn: builder.mutation({
       query: (payload) => ({

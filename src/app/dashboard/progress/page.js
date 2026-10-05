@@ -99,7 +99,7 @@ export default function StyleStageProgress() {
       .then((data) => setStyleDetail(data))
       .catch(() => setStyleDetail(null));
     if (selectedOrderId) {
-      triggerGetPieces({ orderId: selectedOrderId, styleId: selectedStyleId, pageSize: 200 }).unwrap()
+      triggerGetPieces({ orderId: selectedOrderId, styleId: selectedStyleId }).unwrap()
         .then((data) => setPieceOptions(Array.isArray(data?.items) ? data.items : []))
         .catch(() => setPieceOptions([]));
     }

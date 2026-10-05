@@ -452,6 +452,8 @@ export async function apiMarkNotificationRead(token, id) {
   });
 }
 
+export const apiOpenNotification = apiMarkNotificationRead;
+
 export async function apiChatQuery(token, message, history = []) {
   return await http(`${V1}/procurement/chat`, {
     method: 'POST',
@@ -461,6 +463,10 @@ export async function apiChatQuery(token, message, history = []) {
     },
     body: JSON.stringify({ message, history })
   });
+}
+
+export async function apiChat(token, message, history = []) {
+  return await apiChatQuery(token, message, Array.isArray(history) ? history : []);
 }
 
 export async function apiSimulateTwilioWhatsappWebhook(token, payload = {}) {

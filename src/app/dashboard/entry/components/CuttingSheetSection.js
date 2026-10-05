@@ -26,11 +26,11 @@ import { setMessages } from '@/store/slices/entrySlice';
 
 const toastListeners = new Set();
 
-const toast = {
-  success: (msg) => toastListeners.forEach(fn => fn({ type: 'success', message: msg })),
-  error: (msg) => toastListeners.forEach(fn => fn({ type: 'error', message: msg })),
-  warning: (msg) => toastListeners.forEach(fn => fn({ type: 'warning', message: msg }))
-};
+// const toast = {
+//   success: (msg) => toastListeners.forEach(fn => fn({ type: 'success', message: msg })),
+//   error: (msg) => toastListeners.forEach(fn => fn({ type: 'error', message: msg })),
+//   warning: (msg) => toastListeners.forEach(fn => fn({ type: 'warning', message: msg }))
+// };
 const SIZE_ORDER = ['XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', '2XL', 'XXXL', '3XL', '4XL', '5XL'];
 const sizeRank = (s) => {
   const i = SIZE_ORDER.indexOf(s);
@@ -41,8 +41,6 @@ const sizeRank = (s) => {
 const sizeAnchorId = (s) => `cs-size-${String(s).replace(/[^A-Za-z0-9]/g, '_')}`;
 const rowSize = (row) => String(row?.size || row?.size_name || '').toUpperCase();
 
-// Messages go to the Production Logger's own bottom-right toast (entry slice
-// successMsg / errorMsg) — never a browser alert() pop-up.
 function useLoggerToast() {
   const dispatch = useDispatch();
   return useMemo(() => ({
@@ -91,7 +89,7 @@ export default function CuttingSheetSection() {
   // Auto-fetch lots & styles on mount so options are available
   useEffect(() => {
     fetchLots();
-    fetchStyles({ limit: 200 });
+    fetchStyles({limit:200});
   }, [fetchLots, fetchStyles]);
 
   // Save changes to localStorage
@@ -583,7 +581,7 @@ export default function CuttingSheetSection() {
             <select
               value={styleId}
               onChange={(e) => handleStyleChange(e.target.value)}
-              onFocus={() => fetchStyles({ limit: 200 })}
+              onFocus={() => fetchStyles({limit:200})}
               className="px-3 py-2 w-32 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
             >
               <option value="">-- Style * --</option>

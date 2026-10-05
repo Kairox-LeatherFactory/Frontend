@@ -7,12 +7,14 @@ import {
   Save,
   Trash2,
   ChevronDown,
-  Plus,
-  X
+  X,
+  Plus
 } from 'lucide-react';
 import { usePatchBreakdownSkuMutation, useDeleteBreakdownSkuMutation } from '@/store/slices/importsApiSlice';
 import {
+  useGetStyleMaterialSpecQuery,
   useAddStyleMaterialSpecLineMutation,
+  useDeleteStyleMaterialSpecLineMutation,
   useLazyGetMaterialLotsQuery
 } from '@/store/slices/apiSlice';
 
@@ -45,7 +47,7 @@ export function StatusBadge({ status }) {
 
 const ACCESSORY_SUBTYPES = ['BUTTON', 'ZIP', 'THREAD', 'OTHER'];
 
-// One editable SKU row inside a DRAFT style card with expandable + Add Accessory button.
+// One editable SKU row inside a DRAFT style card with expandable SKU-specific accessory management.
 export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, showToast }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -65,6 +67,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
   const [formLotId, setFormLotId] = useState('');
   const [formNote, setFormNote] = useState('');
   const [addingAccessory, setAddingAccessory] = useState(false);
+  const [deletingLineId, setDeletingLineId] = useState(null);
 
   // Available lots for quick pick
   const [lots, setLots] = useState([]);
@@ -74,7 +77,17 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
   const [patchBreakdownSku] = usePatchBreakdownSkuMutation();
   const [deleteBreakdownSku] = useDeleteBreakdownSkuMutation();
   const [addStyleMaterialSpecLine] = useAddStyleMaterialSpecLineMutation();
+  const [deleteStyleMaterialSpecLine] = useDeleteStyleMaterialSpecLineMutation();
   const [triggerGetMaterialLots] = useLazyGetMaterialLotsQuery();
+
+  // Load style material spec and strictly filter by sku_id
+  const { data: specData } = useGetStyleMaterialSpecQuery(styleId, {
+    skip: !styleId || !isExpanded,
+  });
+
+  const skuAccessories = (specData?.lines || []).filter(
+    (l) => l.category === 'ACCESSORY' && l.sku_id === sku.sku_id && l.is_active !== false
+  );
 
   // Fetch stock lots when form opens or subtype changes
   useEffect(() => {
@@ -179,6 +192,23 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
     }
   };
 
+  const handleDeleteAccessoryLine = async (lineId, e) => {
+    e?.stopPropagation();
+    if (!styleId || !lineId) return;
+    setDeletingLineId(lineId);
+    try {
+      await deleteStyleMaterialSpecLine({
+        styleId: styleId,
+        lineId: lineId,
+      }).unwrap();
+      showToast?.('Accessory removed.', 'success');
+    } catch (err) {
+      showToast?.(err.message || 'Failed to remove accessory.', 'error');
+    } finally {
+      setDeletingLineId(null);
+    }
+  };
+
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50 transition-all overflow-hidden shadow-2xs">
       {/* ── Main SKU Header Bar ── */}
@@ -234,8 +264,8 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                 e.stopPropagation();
                 setEditing(true);
               }}
-              className="p-1.5 px-2.5 rounded-lg bg-white border shrink-0 text-xs font-bold hover:bg-slate-50 cursor-pointer"
-              style={{ borderColor: 'rgba(200,131,74,0.25)', color: '#c8834a' }}
+              className="h-7 px-2.5 rounded-lg bg-white border shrink-0 text-[11px] font-bold hover:bg-[#faf6f0] cursor-pointer shadow-2xs"
+              style={{ borderColor: 'rgba(200,131,74,0.3)', color: '#c8834a' }}
             >
               Edit
             </button>
@@ -246,7 +276,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
           <button
             onClick={handleDelete}
             disabled={deleting}
-            className="p-1.5 rounded-lg bg-red-50 text-red-500 shrink-0 disabled:opacity-50 hover:bg-red-100 cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0 disabled:opacity-40 cursor-pointer"
             title="Delete this line (only if no pieces minted yet)"
           >
             {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
@@ -256,27 +286,77 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
 
       {/* ── Expandable SKU Accessory Spec Section ── */}
       {isExpanded && (
-        <div className="p-3 bg-white border-t border-slate-200/80 space-y-2.5 animate-fade-in text-xs">
-          {!showAddForm ? (
-            <div className="flex justify-end">
-              {editable && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowAddForm(true);
-                    setFormColour(sku.colour || sku.color_code || '');
-                    setFormSize(sku.size || '');
-                  }}
-                  className="h-8 px-4 rounded-xl text-xs font-black uppercase text-white shadow-xs hover:brightness-105 transition-all cursor-pointer"
-                  style={{ background: '#c8834a' }}
-                >
-                  Add Accessory
-                </button>
-              )}
+        <div className="p-3.5 bg-white border-t border-slate-200/80 space-y-3 animate-fade-in text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-bold text-[11px] text-slate-500">
+              {skuAccessories.length > 0 ? `${skuAccessories.length} Accessory Item(s)` : 'No Accessories Added'}
+            </span>
+
+            {editable && !showAddForm && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddForm(true);
+                  setFormColour(sku.colour || sku.color_code || '');
+                  setFormSize(sku.size || '');
+                }}
+                className="h-7 px-3 rounded-xl font-bold text-[11px] uppercase bg-white border border-[#c8834a]/30 text-[#8a4e1d] hover:bg-[#faf6f0] shadow-2xs transition-all cursor-pointer ml-auto flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5 text-[#c8834a]" /> Add Accessory
+              </button>
+            )}
+          </div>
+
+          {/* Existing SKU Accessories List (Strictly matching sku.sku_id) */}
+          {skuAccessories.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {skuAccessories.map((line) => {
+                const lineId = line.line_id || line.spec_id || line.id;
+                return (
+                  <div
+                    key={lineId || `${line.article}-${line.subtype}`}
+                    className="p-3 rounded-xl border border-slate-200 bg-slate-50/80 hover:bg-slate-50 transition-all flex items-center justify-between gap-2.5 text-xs"
+                  >
+                    <div className="min-w-0 flex-1 space-y-0.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded bg-amber-100 text-[#8a4e1d] border border-amber-200/60">
+                          {line.subtype || 'ACCESSORY'}
+                        </span>
+                        <span className="font-bold text-slate-800 truncate text-xs">{line.article}</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 font-semibold truncate">
+                        {line.colour && <span>Colour: <strong className="text-slate-700">{line.colour}</strong> · </span>}
+                        {line.size && <span>Size: <strong className="text-slate-700">{line.size}</strong> · </span>}
+                        <span>Consumption: <strong className="font-black text-[#c8834a]">{line.qty_per_piece} {line.uom || 'pcs'}/piece</strong></span>
+                        {line.note && <span className="text-slate-400 font-normal"> ({line.note})</span>}
+                      </p>
+                    </div>
+
+                    {editable && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteAccessoryLine(lineId, e)}
+                        disabled={deletingLineId === lineId}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors shrink-0 cursor-pointer disabled:opacity-40"
+                        title="Remove accessory line"
+                      >
+                        {deletingLineId === lineId ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          ) : (
-            <div className="p-3.5 rounded-2xl bg-[#fdfbf7] border border-[#c8834a]/30 space-y-3 animate-fade-in">
-              <div className="flex items-center justify-between border-b border-[#c8834a]/15 pb-2">
+          )}
+
+          {/* Add Accessory Form */}
+          {showAddForm && (
+            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3 animate-fade-in">
+              <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                 <span className="text-[11px] font-black uppercase tracking-wider text-[#8a4e1d]">
                   New Accessory for {sku.sku_code}
                 </span>
@@ -296,8 +376,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                   <select
                     value={formSubtype}
                     onChange={(e) => setFormSubtype(e.target.value)}
-                    className="w-full h-9 px-2.5 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                    style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+                    className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
                   >
                     {ACCESSORY_SUBTYPES.map((sub) => (
                       <option key={sub} value={sub}>{sub}</option>
@@ -314,8 +393,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                     value={selectedLotPick}
                     onChange={(e) => handleLotPick(e.target.value)}
                     disabled={lotsLoading}
-                    className="w-full h-9 px-2.5 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a] truncate"
-                    style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+                    className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a] truncate"
                   >
                     <option value="__custom__">— Manual / Custom Article —</option>
                     {lots.map((l) => (
@@ -334,8 +412,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                     placeholder="e.g. HORN TAUPE"
                     value={formArticle}
                     onChange={(e) => setFormArticle(e.target.value)}
-                    className="w-full h-9 px-2.5 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                    style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+                    className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
                   />
                 </div>
 
@@ -347,8 +424,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                     placeholder="Colour"
                     value={formColour}
                     onChange={(e) => setFormColour(e.target.value)}
-                    className="w-full h-9 px-2.5 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                    style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+                    className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
                   />
                 </div>
 
@@ -360,8 +436,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                     placeholder="e.g. 2XL"
                     value={formSize}
                     onChange={(e) => setFormSize(e.target.value)}
-                    className="w-full h-9 px-2.5 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                    style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+                    className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
                   />
                 </div>
 
@@ -375,8 +450,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                     placeholder="1"
                     value={formQty}
                     onChange={(e) => setFormQty(e.target.value)}
-                    className="w-full h-9 px-2.5 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                    style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+                    className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
                   />
                 </div>
 
@@ -390,8 +464,7 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                     placeholder="Lot ID or Barcode"
                     value={formLotId}
                     onChange={(e) => setFormLotId(e.target.value)}
-                    className="w-full h-9 px-2.5 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                    style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+                    className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
                   />
                 </div>
 
@@ -405,19 +478,17 @@ export function SkuRow({ sku, styleId, editable, onSaved, onDeleted, token, show
                     placeholder="e.g. Front zipper"
                     value={formNote}
                     onChange={(e) => setFormNote(e.target.value)}
-                    className="w-full h-9 px-2.5 bg-white border rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
-                    style={{ borderColor: 'rgba(200,131,74,0.25)' }}
+                    className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-xl font-bold text-xs outline-none focus:border-[#c8834a]"
                   />
                 </div>
               </div>
 
               {/* Form Action Buttons */}
-              <div className="flex justify-end gap-2 pt-1 border-t border-[#c8834a]/15">
+              <div className="flex justify-end gap-2 pt-1 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setShowAddForm(false)}
-                  className="h-8 px-3 rounded-xl font-black text-[11px] uppercase bg-white border text-slate-600 hover:bg-slate-50 transition-all cursor-pointer"
-                  style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                  className="h-8 px-3 rounded-xl font-black text-[11px] uppercase bg-white border border-slate-300 text-slate-600 hover:bg-slate-100 transition-all cursor-pointer"
                 >
                   Cancel
                 </button>
