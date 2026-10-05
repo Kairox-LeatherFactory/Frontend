@@ -89,7 +89,7 @@ export default function CuttingSheetSection() {
   // Auto-fetch lots & styles on mount so options are available
   useEffect(() => {
     fetchLots();
-    fetchStyles();
+    fetchStyles({limit:200});
   }, [fetchLots, fetchStyles]);
 
   // Save changes to localStorage
@@ -581,7 +581,7 @@ export default function CuttingSheetSection() {
             <select
               value={styleId}
               onChange={(e) => handleStyleChange(e.target.value)}
-              onFocus={() => fetchStyles()}
+              onFocus={() => fetchStyles({limit:200})}
               className="px-3 py-2 w-32 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
             >
               <option value="">-- Style * --</option>
