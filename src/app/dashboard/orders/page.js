@@ -2,12 +2,18 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
-import { Building2, Plus, X, Loader2, Search, CheckCircle2, XCircle } from 'lucide-react';
+import { Building2, Plus, X, Loader2, Search, CheckCircle2, XCircle, PackagePlus } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { staggerContainer, fadeUpItem } from '@/lib/motionVariants';
 import { createPortal } from 'react-dom';
-import { useGetClientsQuery, useCreateClientMutation, useUpdateClientMutation, useGetClientOrdersQuery } from '@/store/slices/clientApiSlice';
+import {
+  useGetClientsQuery,
+  useCreateClientMutation,
+  useUpdateClientMutation,
+  useGetClientOrdersQuery,
+  useAddClientOrderMutation,
+} from '@/store/slices/clientApiSlice';
 
 // POST /clients only takes name, country and order_number; everything else is
 // written afterwards with PATCH /clients/{id} (partial update).
@@ -61,6 +67,7 @@ export default function OrdersTreeBrowser() {
   const { data: clientsData = [], isLoading: apiLoading } = useGetClientsQuery();
   const [createClient] = useCreateClientMutation();
   const [updateClient] = useUpdateClientMutation();
+  const [addClientOrder, { isLoading: isAddingOrder }] = useAddClientOrderMutation();
   const { user } = useAuth();
   
   // Transform data to match original format
@@ -94,6 +101,12 @@ export default function OrdersTreeBrowser() {
   const [orderNumberError, setOrderNumberError] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+
+  // Modal states — Add Order to Existing Client
+  const [addOrderClient, setAddOrderClient] = useState(null);
+  const [newOrderNumber, setNewOrderNumber] = useState('');
+  const [addOrderError, setAddOrderError] = useState('');
+  const [addOrderNumberError, setAddOrderNumberError] = useState('');
 
   const setField = (key, value) => setClientForm((f) => ({ ...f, [key]: value }));
   const canCreate = clientForm.name.trim() && clientForm.country.trim() && clientForm.order_number.trim();
@@ -145,6 +158,39 @@ export default function OrdersTreeBrowser() {
     setIsCreating(false);
     closeCreateModal();
     setSuccessMsg(`Client "${name}" created successfully!`);
+  };
+
+  const closeAddOrderModal = () => {
+    setAddOrderClient(null);
+    setNewOrderNumber('');
+    setAddOrderError('');
+    setAddOrderNumberError('');
+  };
+
+  const handleAddOrderSubmit = async (e) => {
+    e.preventDefault();
+    const orderNum = newOrderNumber.trim();
+    if (!orderNum || !addOrderClient?.id) return;
+
+    setAddOrderError('');
+    setAddOrderNumberError('');
+
+    try {
+      await addClientOrder({
+        clientId: addOrderClient.id,
+        payload: { order_number: orderNum },
+      }).unwrap();
+
+      const clientName = addOrderClient.name;
+      closeAddOrderModal();
+      setSuccessMsg(`Order "${orderNum}" added to ${clientName} successfully!`);
+    } catch (err) {
+      if (err?.status === 409) {
+        setAddOrderNumberError(`Order number "${orderNum}" is already in use.`);
+      } else {
+        setAddOrderError(apiErrText(err, 'Failed to add order to client.'));
+      }
+    }
   };
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -335,7 +381,26 @@ export default function OrdersTreeBrowser() {
                           <span className="font-extrabold uppercase" style={{ color: '#2d1f0e' }}>{client.country || 'International'}</span>
                         </div>
                         <div className="col-span-2">
-                          <span className="text-[9px] font-bold block uppercase tracking-wider mb-1" style={{ color: '#9a7a5a' }}>Order Number</span>
+                          <div className="flex justify-between items-center mb-1.5">
+                            <span className="text-[9px] font-bold block uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Order Number</span>
+                            {user === 'direct_manager' && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAddOrderClient(client);
+                                  setNewOrderNumber('');
+                                  setAddOrderError('');
+                                  setAddOrderNumberError('');
+                                }}
+                                className="text-[10px] font-black flex items-center gap-1 transition-all active:scale-95 cursor-pointer px-2 py-0.5 rounded-md hover:bg-[#faf6f0]"
+                                style={{ color: '#c8834a', border: '1px solid rgba(200,131,74,0.3)' }}
+                                title={`Add a new order for ${client.name}`}
+                              >
+                                <Plus className="w-3 h-3" /> Add Order
+                              </button>
+                            )}
+                          </div>
                           <ClientOrderNumbers clientId={client.id} />
                         </div>
                       </div>
@@ -501,6 +566,114 @@ export default function OrdersTreeBrowser() {
                 </button>
               </div>
             </form>
+      </AnimatedModal>
+
+      {/* ─── ADD ORDER TO EXISTING CLIENT MODAL POPUP ─── */}
+      <AnimatedModal
+        isOpen={!!addOrderClient}
+        onClose={closeAddOrderModal}
+        zIndex={999999}
+        panelClassName="space-y-4"
+        panelStyle={{
+          backgroundColor: '#ffffff',
+          borderRadius: '20px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+          border: '1px solid #e2e8f0',
+          width: '100%',
+          maxWidth: '480px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          padding: '24px',
+          pointerEvents: 'auto',
+        }}
+      >
+        <div className="flex justify-between items-center pb-2 border-b border-slate-100">
+          <div>
+            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <PackagePlus className="w-5 h-5 text-amber-600" />
+              Add Order
+            </h3>
+            {addOrderClient && (
+              <p className="text-xs font-bold text-slate-500 mt-0.5">
+                Client: <span className="text-[#c8834a] uppercase font-black">{addOrderClient.name}</span>
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={closeAddOrderModal}
+            disabled={isAddingOrder}
+            className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50 relative z-50"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {addOrderError && (
+          <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
+            {addOrderError}
+          </div>
+        )}
+
+        <form onSubmit={handleAddOrderSubmit} className="space-y-4 text-left">
+          <div className="space-y-1">
+            <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block">
+              Order Number <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              autoFocus
+              required
+              placeholder="e.g. 1002 / PO-2024-002"
+              value={newOrderNumber}
+              onChange={(e) => {
+                setNewOrderNumber(e.target.value.trim());
+                setAddOrderNumberError('');
+              }}
+              disabled={isAddingOrder}
+              className={`w-full px-3.5 py-2.5 rounded-xl border text-xs font-semibold text-slate-900 bg-white shadow-sm focus:outline-none focus:ring-2 disabled:opacity-50 transition-colors cursor-text relative z-20 ${
+                addOrderNumberError
+                  ? 'border-red-500 focus:ring-red-500 bg-red-50'
+                  : 'border-slate-300 focus:ring-[#c8834a] focus:border-[#c8834a]'
+              }`}
+            />
+            {addOrderNumberError && (
+              <p className="text-[11px] font-bold text-red-600 flex items-center gap-1 mt-0.5">
+                <span className="w-3 h-3 rounded-full bg-red-500 text-white text-[8px] font-black flex items-center justify-center shrink-0">!</span>
+                {addOrderNumberError}
+              </p>
+            )}
+            <p className="text-[10px] text-slate-400 font-semibold mt-1">
+              Creates a new production order for {addOrderClient?.name || 'this client'} via <code className="text-[9px] bg-slate-100 px-1 py-0.5 rounded text-slate-600">POST /api/v1/clients/{'{client_id}'}/orders</code>.
+            </p>
+          </div>
+
+          <div className="flex gap-3 pt-3 border-t border-slate-100 relative z-30">
+            <button
+              type="button"
+              onClick={closeAddOrderModal}
+              disabled={isAddingOrder}
+              className="flex-1 py-3 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center disabled:opacity-50 pointer-events-auto"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isAddingOrder || !newOrderNumber.trim()}
+              className="flex-1 py-3 px-4 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 pointer-events-auto"
+              style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+            >
+              {isAddingOrder ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Adding Order...
+                </>
+              ) : (
+                'Add Order'
+              )}
+            </button>
+          </div>
+        </form>
       </AnimatedModal>
 
     </motion.div>

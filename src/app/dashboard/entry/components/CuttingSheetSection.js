@@ -89,7 +89,7 @@ export default function CuttingSheetSection() {
   // Auto-fetch lots & styles on mount so options are available
   useEffect(() => {
     fetchLots();
-    fetchStyles({limit:200});
+    fetchStyles({ limit: 200 });
   }, [fetchLots, fetchStyles]);
 
   // Save changes to localStorage
@@ -412,7 +412,7 @@ export default function CuttingSheetSection() {
         if (workDate === todayStr) {
           // If it was created/approved/reopened TODAY, show it.
           if (effectiveDate === todayStr) return true;
-          
+
           // If its effective date is in the past, only show it if it's an active (carried forward) task
           if (effectiveDate < todayStr) {
             if (!isApproved) return true; // Drafts and old Reopened rows carry forward
@@ -426,7 +426,7 @@ export default function CuttingSheetSection() {
       setRows(filtered);
     }
   }, [accumulatedGridData, workDate, selectedArticle, colour]);
-   const handleGenerate = async () => {
+  const handleGenerate = async () => {
     if (!styleId) {
       toast.error('Style ID is required');
       return;
@@ -438,7 +438,7 @@ export default function CuttingSheetSection() {
 
     try {
       const matchingLot = lotsList.find(l => l.article === selectedArticle && (l.colour === colour || l.color === colour));
-           const payload = {
+      const payload = {
         style_id: styleId,
         colour: colour || undefined,
         material_lot_id: matchingLot ? (matchingLot.lot_id || matchingLot.id) : undefined,
@@ -459,10 +459,10 @@ export default function CuttingSheetSection() {
         if (res.rows && Array.isArray(res.rows) && res.rows.length > 0) {
           const freshEmptyRows = res.rows.map(r => ({
             ...r,
-            sheets: [] 
+            sheets: []
           }));
 
-         
+
           setRows(prev => {
             const existingIds = new Set(prev.map(r => r.row_id || r.id));
             const uniqueFresh = freshEmptyRows.filter(r => !existingIds.has(r.row_id || r.id));
@@ -581,7 +581,7 @@ export default function CuttingSheetSection() {
             <select
               value={styleId}
               onChange={(e) => handleStyleChange(e.target.value)}
-              onFocus={() => fetchStyles({limit:200})}
+              onFocus={() => fetchStyles({ limit: 200 })}
               className="px-3 py-2 w-32 bg-white border border-slate-300 rounded-lg font-bold text-slate-800 text-xs outline-none focus:border-[#c8834a] focus:ring-1 focus:ring-[#c8834a] transition-all truncate"
             >
               <option value="">-- Style * --</option>
@@ -825,15 +825,15 @@ export default function CuttingSheetSection() {
 }
 
 
-const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal, onApproveSuccess, workDate }) => {
+const CuttingSheetRow = React.memo(({ sNo, row, updateRowInState, stylesList, presentWorkers = [], onOpenReopenModal, onApproveSuccess, workDate }) => {
   const toast = useLoggerToast();
   const [createSheet] = useCreateCuttingSheetMutation();
   const [updateSheet] = useUpdateCuttingSheetMutation();
   const [deleteSheet] = useDeleteCuttingSheetMutation();
   const [updateRowMutation] = useUpdateCuttingRowMutation();
   const [approveRow, { isLoading: isApproving }] = useApproveCuttingRowMutation();
-  const [reopenRow, { isLoading: isReopening }] = useReopenCuttingRowMutation();
-  const [fetchSheetDetail] = useLazyGetCuttingSheetQuery();
+  // const [reopenRow, { isLoading: isReopening }] = useReopenCuttingRowMutation();
+  // const [fetchSheetDetail] = useLazyGetCuttingSheetQuery();
 
   const [localCells, setLocalCells] = useState({});
   const [loadingCells, setLoadingCells] = useState({});
@@ -995,7 +995,7 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
 
     const workerId = row.cutter_employee_id || row.cutter_id;
     const isWorkerValid = workerId && presentWorkers.some(w => String(w.id) === String(workerId));
-    
+
     if (!workerId || !isWorkerValid) {
       toast.error('⚠️ Worker Name is required before approving row.');
       return;
@@ -1205,12 +1205,12 @@ const CuttingSheetRow = React.memo(({ index, sNo, row, updateRowInState, stylesL
         {isLocked ? (
           <button
             onClick={handleReopen}
-            disabled={isReopening}
-            className="flex items-center justify-center gap-1 w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded font-black text-[10px] uppercase shadow-sm transition-transform active:scale-95 border border-amber-300"
+            className="flex items-center justify-center gap-1 w-full py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded font-black text-[10px] uppercase shadow-sm transition-transform active:scale-95 border border-amber-300 cursor-pointer"
           >
-            {isReopening ? <Loader2 className="w-3 h-3 animate-spin" /> : <LockOpen className="w-3 h-3" />}
+            <LockOpen className="w-3 h-3" />
             Reopen
           </button>
+
         ) : (
           <button
             onClick={handleApprove}

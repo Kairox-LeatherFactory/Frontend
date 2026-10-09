@@ -1,11 +1,12 @@
 'use client';
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState, useRef } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import Link, { useLinkStatus } from 'next/link';
 import { useAuth } from '@/context/AuthContext';
 import { useGetMeQuery } from '@/store/slices/apiSlice';
 import { PageTrailProvider } from '@/context/PageTrailContext';
+import DashboardLoading from './loading';
 import {
   ChevronRight,
   Factory,
@@ -246,6 +247,35 @@ export default function DashboardLayout({ children }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [pageTrail, setPageTrail] = useState([]);
   const [pendingPoCount, setPendingPoCount] = useState(0);
+  const [isPageTransitioning, setIsPageTransitioning] = useState(false);
+  const prevPathnameRef = useRef(pathname);
+  const transitionTimerRef = useRef(null);
+
+  const handleNavClick = (href) => {
+    setMobileMenuOpen(false);
+    if (pathname !== href) {
+      setIsPageTransitioning(true);
+      if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = setTimeout(() => {
+        setIsPageTransitioning(false);
+      }, 850);
+    }
+  };
+
+  // Trigger smooth leather loading transition on route switch
+  useEffect(() => {
+    if (prevPathnameRef.current !== pathname) {
+      prevPathnameRef.current = pathname;
+      setIsPageTransitioning(true);
+      if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+      transitionTimerRef.current = setTimeout(() => {
+        setIsPageTransitioning(false);
+      }, 850);
+    }
+    return () => {
+      if (transitionTimerRef.current) clearTimeout(transitionTimerRef.current);
+    };
+  }, [pathname]);
 
   // --------------------------------------------------
   // Session gate
@@ -464,7 +494,7 @@ export default function DashboardLayout({ children }) {
                   <div className="h-px" style={{ background: 'rgba(200,131,74,0.15)' }} />
                 </div>
               )}
-              <Link href={link.href} onClick={() => setMobileMenuOpen(false)} className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full`}>
+              <Link href={link.href} onClick={() => handleNavClick(link.href)} className={`nav-item group ${isActive ? 'active' : ''} relative flex items-center justify-between w-full`}>
                 <NavPendingBar />
                 {isActive && (
                   <motion.span className="absolute inset-0 rounded-[10px] overflow-hidden" style={{ background: 'linear-gradient(135deg, #a8703f 0%, #8a5a2e 45%, #6b4423 100%)', boxShadow: 'inset 0 0 0 1px rgba(255,232,204,0.14), inset 0 2px 4px rgba(0,0,0,0.35), 0 3px 10px rgba(0,0,0,0.25)' }} transition={{ type: 'spring', stiffness: 460, damping: 28, mass: 0.9 }}>
@@ -670,7 +700,28 @@ export default function DashboardLayout({ children }) {
         >
           <div className="p-3 sm:p-5 lg:p-7 max-w-[1920px] w-full mx-auto relative">
             <PageTrailProvider value={setPageTrail}>
-              {children}
+              <AnimatePresence mode="wait">
+                {isPageTransitioning ? (
+                  <motion.div
+                    key="page-transition-loader"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                  >
+                    <DashboardLoading />
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key={pathname}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25, ease: 'easeOut' }}
+                  >
+                    {children}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </PageTrailProvider>
           </div>
         </main>
