@@ -1,5 +1,6 @@
 'use client';
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 
 import {
   Clock, 
@@ -21,8 +22,30 @@ import { useSelector, useDispatch } from 'react-redux';
 import { setWorkers, setActiveTab } from '@/store/slices/attendanceSlice';
 
 
+function AttendanceLoading() {
+ return (
+ <div className="w-full py-20 flex items-center justify-center bg-[#faf6f0]">
+ <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
+ <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8834a] mb-2" />
+ <span className="text-xs font-bold tracking-widest uppercase">Loading Attendance...</span>
+ </div>
+ </div>
+ );
+}
+
+// useSearchParams (the ?tab= link) needs a Suspense boundary.
 export default function AttendancePage() {
+ return (
+ <Suspense fallback={<AttendanceLoading />}>
+ <AttendanceInner />
+ </Suspense>
+ );
+}
+
+function AttendanceInner() {
  const [hasMounted, setHasMounted] = useState(false);
+ const searchParams = useSearchParams();
+ const tabParam = searchParams.get('tab');
 
  useEffect(() => {
  setHasMounted(true);
@@ -86,15 +109,16 @@ console.log(employeesData,"employeesData",shouldFetchEmployees)
  }
  }, [tabs, activeTab]);
 
+ // A link can open a tab directly, e.g. ?tab=admin from the DM dashboard's
+ // "Workers In Today" card — if this user can see that tab.
+ useEffect(() => {
+ if (tabParam && tabs.some(t => t.key === tabParam)) {
+ dispatch(setActiveTab(tabParam));
+ }
+ }, [tabParam, tabs, dispatch]);
+
 if (!hasMounted) {
- return (
- <div className="w-full py-20 flex items-center justify-center bg-[#faf6f0]">
- <div className="flex flex-col items-center text-[#c8834a] animate-pulse">
- <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8834a] mb-2" />
- <span className="text-xs font-bold tracking-widest uppercase">Loading Attendance...</span>
- </div>
- </div>
- );
+ return <AttendanceLoading />;
  }
 
  return (

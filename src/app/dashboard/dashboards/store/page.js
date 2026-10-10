@@ -1,1528 +1,529 @@
 'use client';
 
-import { useState, useMemo, useEffect, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { motion, AnimatePresence } from 'framer-motion';
-import {
-  Layers, Sparkles, TrendingUp, AlertTriangle, RefreshCw, Search, Download, Filter, CheckCircle2, Clock, User, Package, Eye, X, Plus, BarChart3, Calendar, Activity, ArrowRight, ShieldCheck, Zap, Tag, QrCode, FileSpreadsheet, PauseCircle, Archive, Shirt,
-} from 'lucide-react';
-import {
-  ResponsiveContainer,
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  CartesianGrid,
-} from 'recharts';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ClipboardList, PackageCheck, PackageOpen, Send, TrendingUp, X } from 'lucide-react';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
-import { useData } from '@/context/DataContext';
+import { apiGetStoreDashboard } from '@/lib/api';
+import { formatShortDate, lastDays, localDateKey, localDayOf, rowOrderKey, toNum } from '../_shared/format';
 import {
-  apiGetStoreDashboard,
-  // apiGetStoreDrawerDetail,
-  // apiGetStoreDrawerMovement,
-} from '@/lib/api';
+  CARD,
+  ChartTooltip,
+  DashboardHeader,
+  DateFilterCalendar,
+  EmptyNote,
+  FilterSelect,
+  IconBubble,
+  LoadFailedAlert,
+  PageLoading,
+  ShowAllButton,
+  useClock,
+} from '../_shared/ui';
 
-// Badge shown wherever the live backend has no data for a field yet
-// (see meta.unsupported.* on the /dashboard/store response).
-function NotAvailableBadge({ label = 'Not tracked yet' }) {
-  return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200"
-      title="This field is not yet supported by the backend"
-    >
-      — {label}
-    </span>
-  );
+/**
+ * ============================================================================
+ * STORE DASHBOARD — "Store Today"
+ * ============================================================================
+ * One page in the style of the other dashboards: no tabs, each number once.
+ *   1. Received today — garments that got all their parts today (the store
+ *      marks a garment received once leather, lining and any accessory kit
+ *      are in)
+ *   2. Sent today — garments sent on to Line Stitching today
+ *   3. In the store — garments by where they are: need lining, need
+ *      leather, both in (accessories still to come), ready to send, sent.
+ *      Click a tile to show just those garments in 4.
+ *   4. Garments — every garment in the store, with the card's own date
+ *      (completed or sent that day) + order filters
+ *   5. Styles in store, soonest due first: garments in / ready to send
+ *   6. Last 14 days: garments received and sent each day
+ * From GET /api/v1/dashboard/store (garments, current_styles). A garment
+ * that has shipped hands its drawer back and leaves this list, so "sent"
+ * counts garments not yet shipped.
+ */
+
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+const CLOCK_TICK_MS = 30 * 1000;
+const CHART_DAYS = 14;
+const GARMENTS_PREVIEW_COUNT = 10;
+const STYLES_PREVIEW_COUNT = 5;
+
+// Where a garment is, in store order. Its parts decide it until the store
+// marks it received (ready to send) or sent.
+const STATUSES = [
+  { key: 'need_lining', label: 'Need Lining', note: 'Leather in, lining not yet.', row: 'Needs lining' },
+  { key: 'need_leather', label: 'Need Leather', note: 'Lining in, leather not yet.', row: 'Needs leather' },
+  { key: 'both', label: 'Both In', note: 'Leather and lining in, accessories not yet.', row: 'Needs accessories' },
+  { key: 'ready', label: 'Ready to Send', note: 'Complete, not sent yet.', row: 'Ready to send' },
+  { key: 'sent', label: 'Sent', note: 'Sent to Line Stitching.', row: 'Sent' },
+];
+const STATUS_RANK = Object.fromEntries(STATUSES.map((s, i) => [s.key, i]));
+const STATUS_ROW = Object.fromEntries(STATUSES.map((s) => [s.key, s.row]));
+
+function storeStatus(g) {
+  const state = String(g?.state || '').toLowerCase();
+  if (state === 'sended') return 'sent';
+  if (state === 'received') return 'ready';
+  if (g?.leather_in && g?.lining_in) return 'both';
+  if (g?.leather_in) return 'need_lining';
+  return 'need_leather';
 }
 
-// Interactive Monthly Calendar Filter Picker Component
-function CompleteDateCalendarPicker({ selectedDate, onSelectDate, availableDates = [], themeColor = '#0891b2' }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentMonth, setCurrentMonth] = useState(() => new Date(2026, 7, 1));
+function partsLabel(g) {
+  if (g?.leather_in && g?.lining_in) return 'Leather + Lining';
+  if (g?.leather_in) return 'Leather';
+  if (g?.lining_in) return 'Lining';
+  return 'Accessories';
+}
 
-  const year = currentMonth.getFullYear();
-  const month = currentMonth.getMonth();
-  const firstDayIndex = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+// The store's garments → table rows, with their status and local days.
+function buildGarments(list) {
+  return (Array.isArray(list) ? list : [])
+    .map((g, idx) => ({
+      key: g.piece_id || g.piece_code || `garment-${idx}`,
+      code: g.piece_code || '—',
+      order: String(g.order_number || '—').trim(),
+      orderKey: rowOrderKey(g),
+      style: String(g.style || '—').trim(),
+      colour: String(g.colour || '—').trim(),
+      size: String(g.size || '').trim(),
+      parts: partsLabel(g),
+      status: storeStatus(g),
+      receivedDay: localDayOf(g.received_at),
+      sentDay: localDayOf(g.sended_at),
+    }))
+    .sort(
+      (a, b) =>
+        STATUS_RANK[a.status] - STATUS_RANK[b.status] ||
+        String(b.sentDay || b.receivedDay).localeCompare(String(a.sentDay || a.receivedDay)) ||
+        String(a.code).localeCompare(String(b.code), undefined, { numeric: true })
+    );
+}
 
-  const monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
+// ─── Garments ───────────────────────────────────────────────────────────────
 
-  const handlePrevMonth = (e) => {
-    e.stopPropagation();
-    setCurrentMonth(new Date(year, month - 1, 1));
+// Every garment in the store, narrowed by the status tile picked above and the
+// card's own date (completed or sent that day) and order filters.
+function GarmentsCard({ garments, status, onClearStatus }) {
+  const [dateFilter, setDateFilter] = useState('');
+  const [orderFilter, setOrderFilter] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const filtering = dateFilter !== '' || orderFilter !== '' || status !== '';
+
+  const filterOptions = useMemo(() => {
+    const dates = new Set();
+    const orders = new Map();
+    garments.forEach((g) => {
+      if (g.receivedDay) dates.add(g.receivedDay);
+      if (g.sentDay) dates.add(g.sentDay);
+      if (g.orderKey && !orders.has(g.orderKey)) orders.set(g.orderKey, g.order);
+    });
+    return {
+      dates,
+      latestDate: [...dates].sort((a, b) => b.localeCompare(a))[0] ?? null,
+      orders: [...orders.entries()]
+        .sort((a, b) => a[1].localeCompare(b[1], undefined, { numeric: true, sensitivity: 'base' }))
+        .map(([value, label]) => ({ value, label })),
+    };
+  }, [garments]);
+
+  const rows = useMemo(
+    () =>
+      garments.filter(
+        (g) =>
+          (!status || g.status === status) &&
+          (!orderFilter || g.orderKey === orderFilter) &&
+          (!dateFilter || g.receivedDay === dateFilter || g.sentDay === dateFilter)
+      ),
+    [garments, status, orderFilter, dateFilter]
+  );
+  const visible = showAll ? rows : rows.slice(0, GARMENTS_PREVIEW_COUNT);
+  const statusLabel = STATUSES.find((s) => s.key === status)?.label ?? '';
+  const clearFilters = () => {
+    setDateFilter('');
+    setOrderFilter('');
+    onClearStatus();
   };
-  const handleNextMonth = (e) => {
-    e.stopPropagation();
-    setCurrentMonth(new Date(year, month + 1, 1));
-  };
 
-  const isSelected = (dayStr) => selectedDate === dayStr;
-  const hasPieces = (dayStr) => availableDates.includes(dayStr);
-
-  return (
-    <div className="relative">
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:border-cyan-500 focus:outline-none flex items-center justify-between gap-1 shadow-sm transition-all cursor-pointer"
-        title="Open full interactive calendar"
-      >
-        <span className="truncate flex items-center gap-1">
-          <span>📅</span>
-          <span>{selectedDate === 'all' ? 'All Dates' : selectedDate}</span>
-        </span>
-        <span className="text-[10px] text-slate-400 font-bold">▼</span>
-      </button>
-
-      {isOpen && (
-        <div className="absolute top-full mt-2 left-0 z-50 bg-white border border-slate-200 rounded-2xl p-4 shadow-2xl w-80 animate-fade-in text-slate-800">
-          <div className="grid grid-cols-3 gap-1.5 mb-3 pb-2.5 border-b border-slate-100 text-[11px] font-bold">
-            <button
-              onClick={() => { onSelectDate('all'); setIsOpen(false); }}
-              className={`px-2 py-1 rounded-lg transition-all ${selectedDate === 'all' ? 'bg-[#0891b2] text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
-            >
-              All Dates
-            </button>
-            <button
-              onClick={() => { onSelectDate(new Date().toISOString().slice(0, 10)); setIsOpen(false); }}
-              className={`px-2 py-1 rounded-lg transition-all ${selectedDate === new Date().toISOString().slice(0, 10) ? 'bg-[#0891b2] text-white' : 'bg-slate-50 text-slate-700 hover:bg-slate-100'}`}
-            >
-              ⚡ Today
-            </button>
-            <button
-              onClick={() => {
-                const y = new Date();
-                y.setDate(y.getDate() - 1);
-                onSelectDate(y.toISOString().slice(0, 10));
-                setIsOpen(false);
-              }}
-              className="px-2 py-1 rounded-lg bg-slate-50 text-slate-700 hover:bg-slate-100 transition-all"
-            >
-              Yesterday
-            </button>
-          </div>
-
-          <div className="flex items-center justify-between mb-2">
-            <button onClick={handlePrevMonth} className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 font-black text-sm">&larr;</button>
-            <span className="text-xs font-extrabold text-slate-900">{monthNames[month]} {year}</span>
-            <button onClick={handleNextMonth} className="px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-600 font-black text-sm">&rarr;</button>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-extrabold text-slate-400 mb-1">
-            <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
-          </div>
-
-          <div className="grid grid-cols-7 gap-1 text-center text-xs">
-            {Array.from({ length: firstDayIndex }).map((_, i) => (
-              <div key={`empty-${i}`} className="p-1"></div>
-            ))}
-            {Array.from({ length: daysInMonth }).map((_, i) => {
-              const d = i + 1;
-              const dayStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-              const active = isSelected(dayStr);
-              const pieceActivity = hasPieces(dayStr);
-              return (
-                <button
-                  key={d}
-                  onClick={() => {
-                    onSelectDate(dayStr);
-                    setIsOpen(false);
-                  }}
-                  className={`p-1.5 rounded-xl font-bold transition-all relative flex flex-col items-center justify-center ${
-                    active
-                      ? 'bg-[#0891b2] text-white shadow-md scale-105 font-black'
-                      : pieceActivity
-                      ? 'bg-cyan-50 text-cyan-900 hover:bg-cyan-100 font-extrabold'
-                      : 'hover:bg-slate-100 text-slate-700'
+  let body;
+  if (rows.length === 0) {
+    body = filtering ? (
+      <p className="py-10 text-center text-sm text-[#a89c8a]">
+        No garments match.{' '}
+        <button type="button" onClick={clearFilters} className="font-semibold text-[#3e6fd6] hover:underline cursor-pointer">
+          Clear filters
+        </button>
+      </p>
+    ) : (
+      <EmptyNote>No garments in the store.</EmptyNote>
+    );
+  } else {
+    body = (
+      <div className="mt-5 overflow-x-auto rounded-2xl border border-[#efe6d6]">
+        <table className="w-full min-w-[760px] text-sm">
+          <thead className="bg-[#faf5ec] text-xs text-[#8b7f6e]">
+            <tr>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Piece</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Order</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Style</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Colour</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Size</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Has</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Status</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Complete</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Sent</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#f3ece0]">
+            {visible.map((g) => (
+              <tr key={g.key}>
+                <td className="px-4 py-3 font-semibold whitespace-nowrap">{g.code}</td>
+                <td className="px-4 py-3 whitespace-nowrap">{g.order}</td>
+                <td className="px-4 py-3 text-[#5b5146] uppercase">{g.style}</td>
+                <td className="px-4 py-3 text-[#5b5146] uppercase">{g.colour}</td>
+                <td className="px-4 py-3 text-[#5b5146] whitespace-nowrap">{g.size || '—'}</td>
+                <td className="px-4 py-3 whitespace-nowrap">{g.parts}</td>
+                <td
+                  className={`px-4 py-3 whitespace-nowrap ${
+                    g.status === 'ready' ? 'font-semibold text-[#2f8f6b]' : g.status === 'sent' ? 'text-[#8b7f6e]' : 'text-[#b8730a]'
                   }`}
                 >
-                  <span>{d}</span>
-                  {pieceActivity && !active && (
-                    <span className="w-1 h-1 rounded-full bg-[#0891b2] mt-0.5"></span>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+                  {STATUS_ROW[g.status]}
+                </td>
+                <td className="px-4 py-3 whitespace-nowrap tabular-nums">{g.receivedDay ? formatShortDate(g.receivedDay) : '—'}</td>
+                <td className="px-4 py-3 whitespace-nowrap tabular-nums">{g.sentDay ? formatShortDate(g.sentDay) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
-          <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2">
-            <span className="text-[10px] font-bold text-slate-400">Pick any date:</span>
-            <input
-              type="date"
-              value={selectedDate === 'all' ? '' : selectedDate}
-              onChange={(e) => {
-                onSelectDate(e.target.value || 'all');
-                if (e.target.value) setIsOpen(false);
-              }}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-[11px] font-bold text-slate-700 focus:outline-none focus:border-cyan-600 cursor-pointer"
-            />
-          </div>
+  return (
+    <section className={`${CARD} p-6`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <IconBubble icon={PackageOpen} />
+        <div className="min-w-0">
+          <h3 className="text-lg font-semibold">Garments{statusLabel ? ` · ${statusLabel}` : ''}</h3>
+          <p className="text-xs text-[#8b7f6e] mt-0.5">Every garment in the store and what it has. Complete = all its parts in.</p>
+        </div>
+        <span className="rounded-full bg-[#f3eee5] px-3 py-1 text-xs font-semibold text-[#5b5146] tabular-nums">
+          {rows.length.toLocaleString()} garment{rows.length === 1 ? '' : 's'}
+        </span>
+        {rows.length > GARMENTS_PREVIEW_COUNT && <ShowAllButton showAll={showAll} onToggle={() => setShowAll((v) => !v)} />}
+      </div>
+
+      {garments.length > 0 && (
+        <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-3">
+          <DateFilterCalendar
+            label="Date"
+            value={dateFilter}
+            onChange={setDateFilter}
+            markedDates={filterOptions.dates}
+            latestDate={filterOptions.latestDate}
+            markLabel="Days with garments completed or sent"
+          />
+          <FilterSelect label="Order" value={orderFilter} onChange={setOrderFilter} allLabel="All orders" options={filterOptions.orders} />
+          {filtering && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="flex items-center gap-1 text-sm font-semibold text-[#3e6fd6] hover:underline cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+              Show all
+            </button>
+          )}
         </div>
       )}
-    </div>
+
+      {body}
+    </section>
   );
 }
 
-// Chart custom tooltip
-function CustomTooltip({ active, payload, label, unit = 'drawers' }) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="bg-[#1e293b] border border-slate-700 text-white px-3.5 py-2.5 rounded-xl text-xs shadow-2xl z-50">
-      {label && <p className="text-[10px] font-black uppercase tracking-wider text-[#06b6d4] mb-1">{label}</p>}
-      {payload.map((p, i) => (
-        <p key={i} className="font-semibold flex items-center justify-between gap-4" style={{ color: p.color || p.fill }}>
-          <span>{p.name}:</span>
-          <span className="text-white font-mono font-bold">{p.value} {unit}</span>
-        </p>
-      ))}
-    </div>
-  );
-}
+// ─── Page ───────────────────────────────────────────────────────────────────
 
-function StoreDashboardContent() {
-  const searchParams = useSearchParams();
+export default function StoreDashboard() {
   const { token } = useAuth();
-  const { orders: contextOrders } = useData();
 
-  // State — populated entirely from the live /api/v1/dashboard/store family of endpoints
-  const [activeTab, setActiveTab] = useState('tab-today');
-  const [meta, setMeta] = useState(null);
-  const [kpis, setKpis] = useState(null);
-  const [drawersList, setDrawersList] = useState([]);
-  const [stylesList, setStylesList] = useState([]);
-  const [ordersList, setOrdersList] = useState(() => contextOrders || []);
-  const [activeOrder, setActiveOrder] = useState(() => contextOrders?.[0] || null);
-
-  const [loading, setLoading] = useState(false);
-  const [apiError, setApiError] = useState(null);
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [updatedAt, setUpdatedAt] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [showAllStyles, setShowAllStyles] = useState(false);
+  // The status tile picked in "In the Store" ('' = all).
+  const [status, setStatus] = useState('');
+  const now = useClock(CLOCK_TICK_MS);
 
-  // Sync context orders
-  useEffect(() => {
-    if (contextOrders && contextOrders.length > 0 && ordersList.length === 0) {
-      setOrdersList(contextOrders);
-      if (!activeOrder) setActiveOrder(contextOrders[0]);
-    }
-  }, [contextOrders, ordersList, activeOrder]);
-
-  // Universal Filters
-  const [filterDate, setFilterDate] = useState('all');
-  const [filterStyle, setFilterStyle] = useState('all');
-  const [filterMaterial, setFilterMaterial] = useState('all');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-
-  // Modals state
-  const [selectedDrawerModal, setSelectedDrawerModal] = useState(null);
-  const [showHoldModal, setShowHoldModal] = useState(false);
-  const [toastMessage, setToastMessage] = useState(null);
-
-  // Pagination for drawer master
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
-  // Sync tab from URL query params (from sidebar tree sub-branches)
-  useEffect(() => {
-    const tabParam = searchParams.get('tab');
-    if (tabParam) {
-      setActiveTab(tabParam);
-    }
-  }, [searchParams]);
-
-  // Dynamic Options for Selects
-  const availableStyles = useMemo(() => {
-    const map = new Map();
-    stylesList.forEach((s) => {
-      const name = s.style || s.style_name || s.name;
-      if (name) map.set(name, { id: s.id || s.style_id || name, name });
-    });
-    drawersList.forEach((d) => {
-      if (d.style && !map.has(d.style)) map.set(d.style, { id: d.style, name: d.style });
-    });
-    ordersList.forEach((o) => {
-      o.styles?.forEach((s) => {
-        if (s.name && !map.has(s.name)) map.set(s.name, { id: s.id || s.name, name: s.name });
-      });
-    });
-    return Array.from(map.values());
-  }, [stylesList, drawersList, ordersList]);
-
-  const availableMaterials = useMemo(() => {
-    return [
-      { id: 'LEATHER+LINING', label: 'Leather + Lining (Both)' },
-      { id: 'LEATHER', label: 'Leather Only' },
-      { id: 'LINING', label: 'Lining Only' },
-    ];
-  }, []);
-
-  const availableStatuses = useMemo(() => {
-    const set = new Set(['In Store', 'Ready to Send', 'Sent to Production', 'Held']);
-    drawersList.forEach((d) => { if (d.status_label) set.add(d.status_label); });
-    return Array.from(set).filter(Boolean);
-  }, [drawersList]);
-
-  const availableDates = useMemo(() => {
-    const set = new Set();
-    drawersList.forEach((d) => {
-      if (d.received_at) set.add(d.received_at.slice(0, 10));
-      if (d.sended_at) set.add(d.sended_at.slice(0, 10));
-    });
-    return Array.from(set).filter(Boolean);
-  }, [drawersList]);
-
-  // Filtered drawers computed dynamically based on ALL cross-filters
-  const filteredDrawers = useMemo(() => {
-    return drawersList.filter((d) => {
-      // Search query
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const matchesQuery =
-          (d.drawer_code && d.drawer_code.toLowerCase().includes(q)) ||
-          (d.style && d.style.toLowerCase().includes(q)) ||
-          (d.piece_code && d.piece_code.toLowerCase().includes(q)) ||
-          (d.order_number && d.order_number.toLowerCase().includes(q)) ||
-          (d.status_label && d.status_label.toLowerCase().includes(q));
-        if (!matchesQuery) return false;
-      }
-      // Date — inclusive "existed by this date" rather than "moved on exactly
-      // this date". Drawers only carry two real timestamps (received_at,
-      // sended_at); matching only the exact day meant almost every drawer
-      // vanished the moment any date other than today was picked (very few
-      // drawers move on any single day), so every card built on this list
-      // looked frozen/broken. A drawer now counts for a picked date once it
-      // had been received or sent on or before that date — a real, honest
-      // "as of this date" scope instead of an exact-day-only one.
-      if (filterDate !== 'all') {
-        const recDate = d.received_at ? d.received_at.slice(0, 10) : null;
-        const sendDate = d.sended_at ? d.sended_at.slice(0, 10) : null;
-        const receivedByDate = recDate !== null && recDate <= filterDate;
-        const sentByDate = sendDate !== null && sendDate <= filterDate;
-        if (!receivedByDate && !sentByDate) return false;
-      }
-      // Style
-      if (filterStyle !== 'all' && d.style !== filterStyle) return false;
-      // Material
-      if (filterMaterial !== 'all') {
-        if (filterMaterial === 'LEATHER' && d.material_type !== 'LEATHER') return false;
-        if (filterMaterial === 'LINING' && d.material_type !== 'LINING') return false;
-        if (filterMaterial === 'LEATHER+LINING' && d.material_type !== 'LEATHER+LINING') return false;
-      }
-      // Status
-      if (filterStatus !== 'all' && d.status_label !== filterStatus) return false;
-
-      return true;
-    });
-  }, [drawersList, searchQuery, filterDate, filterStyle, filterMaterial, filterStatus]);
-
-  // Styles in Store table narrowed by the Style cross-filter — previously the
-  // filter only highlighted the matching row here instead of actually
-  // reducing the list to it.
-  const filteredStylesList = useMemo(() => {
-    if (filterStyle === 'all') return stylesList;
-    return stylesList.filter((st) => (st.style || st.style_name || st.name) === filterStyle);
-  }, [stylesList, filterStyle]);
-
-  // Held / empty drawers aren't separate endpoints — they're subsets of the
-  // filtered drawers list, split by the state the backend already assigned.
-  // Sourced from filteredDrawers (not the raw drawersList) so the universal
-  // cross-filter (date/style/material/status/search) reaches the Held
-  // and Empty tabs too, not just the Drawer Master table.
-  const heldList = useMemo(
-    () => filteredDrawers.filter((d) => d.status_label === 'Held'),
-    [filteredDrawers]
-  );
-  const emptyList = useMemo(
-    () => filteredDrawers.filter((d) => d.contents === 'EMPTY' && d.status_label !== 'Held'),
-    [filteredDrawers]
-  );
-
-  // Paginated drawers
-  const paginatedDrawers = useMemo(() => {
-    const start = (currentPage - 1) * pageSize;
-    return filteredDrawers.slice(start, start + pageSize);
-  }, [filteredDrawers, currentPage, pageSize]);
-
-  const totalPages = Math.ceil(filteredDrawers.length / pageSize) || 1;
-
-  // Dynamic daily production / drawer throughput chart data
-  const dynamicDailyChartData = useMemo(() => {
-    const map = new Map();
-    filteredDrawers.forEach((d) => {
-      const date = d.received_at ? d.received_at.slice(0, 10) : (d.sended_at ? d.sended_at.slice(0, 10) : null);
-      if (!date) return; // no timestamp to bucket by (e.g. an untouched waiting drawer)
-      if (!map.has(date)) {
-        map.set(date, {
-          work_date: date,
-          received: 0,
-          sent: 0,
-          held: 0,
-          emptied: 0,
-        });
-      }
-      const row = map.get(date);
-      if (d.state === 'received' || d.status_label === 'In Store' || d.status_label === 'Ready to Send') row.received += 1;
-      if (d.state === 'sended' || d.status_label === 'Sent to Production') row.sent += 1;
-      if (d.state === 'merged' || d.status_label === 'Held') row.held += 1;
-    });
-    return Array.from(map.values()).sort((a, b) => b.work_date.localeCompare(a.work_date));
-  }, [filteredDrawers]);
-
-  // LIVE BACKEND CALL: /api/v1/dashboard/store
+  // ── LIVE BACKEND CALL: GET /api/v1/dashboard/store ──
+  // Loads on mount, on the refresh button (refreshKey), and every 5 minutes.
+  // A failed reload keeps the last good numbers.
   useEffect(() => {
     let isMounted = true;
-    async function fetchStoreDashboard() {
+    async function loadDashboard() {
       if (!token) return;
       try {
         setLoading(true);
-        setApiError(null);
-        const params = {};
-        // filterStyle holds a style NAME (for client-side row filtering + the
-        // Styles tab's click-to-filter); resolve it to the real style_id the
-        // backend expects.
-        if (filterStyle && filterStyle !== 'all') {
-          const styleObj = stylesList.find((s) => (s.style || s.style_name || s.name) === filterStyle);
-          if (styleObj?.style_id) params.style_id = styleObj.style_id;
-        }
-        if (filterMaterial && filterMaterial !== 'all') params.material_type = filterMaterial;
-        // filterStatus is a derived status_label ("In Store"/"Held"/...), not
-        // the backend's `state` enum (received/sended/merged/holding_both/...)
-        // — status filtering is applied client-side in filteredDrawers instead.
-
-        const data = await apiGetStoreDashboard(token, params);
-        if (isMounted && data) {
-          setMeta(data.meta || null);
-          setKpis(data.kpis || null);
-          setDrawersList(Array.isArray(data.drawers) ? data.drawers : []);
-          setStylesList(Array.isArray(data.current_styles) ? data.current_styles : []);
-        }
+        const dashboard = await apiGetStoreDashboard(token);
+        if (!isMounted) return;
+        setData(dashboard || {});
+        setLoadFailed(false);
+        setUpdatedAt(Date.now());
       } catch (err) {
-        console.warn('Backend API /api/v1/dashboard/store notice:', err.message);
-        if (isMounted) setApiError(err.message);
+        console.warn('Store dashboard fetch failed:', err?.message);
+        if (isMounted) setLoadFailed(true);
       } finally {
         if (isMounted) setLoading(false);
       }
     }
-    fetchStoreDashboard();
-    return () => { isMounted = false; };
-  }, [token, filterStyle, filterMaterial, refreshKey]);
+    loadDashboard();
+    const id = setInterval(loadDashboard, AUTO_REFRESH_MS);
+    return () => {
+      isMounted = false;
+      clearInterval(id);
+    };
+  }, [token, refreshKey]);
 
+  const refreshDashboard = () => setRefreshKey((k) => k + 1);
+  const todayKey = now ? localDateKey(now) : null;
 
-  // Handler to inspect drawer and call /api/v1/dashboard/store/drawers/{drawer_id} & movement
-  const handleOpenDrawerModal = async (drawer) => {
-    setSelectedDrawerModal(drawer);
-    if (!token || !drawer?.drawer_id) return;
-    try {
-      // The drawer endpoints have been removed, mocking this for now to prevent compilation errors
-      const [detail, movement] = await Promise.allSettled([
-        Promise.resolve({ status: 'fulfilled', value: null }), // apiGetStoreDrawerDetail(token, drawer.drawer_id),
-        Promise.resolve({ status: 'fulfilled', value: null }), // apiGetStoreDrawerMovement(token, drawer.drawer_id),
-      ]);
-      if (detail.status === 'fulfilled' && detail.value) {
-        setSelectedDrawerModal((prev) => ({ ...prev, ...detail.value }));
-      }
-      if (movement.status === 'fulfilled' && movement.value) {
-        const history = Array.isArray(movement.value) ? movement.value
-          : Array.isArray(movement.value?.movement) ? movement.value.movement
-          : Array.isArray(movement.value?.history) ? movement.value.history
-          : Array.isArray(movement.value?.events) ? movement.value.events
-          : [];
-        setSelectedDrawerModal((prev) => ({ ...prev, movement_history: history }));
-      }
-    } catch (err) {
-      console.warn(`Backend API /api/v1/dashboard/store/drawers/${drawer.drawer_id} notice:`, err.message);
-    }
-  };
+  const garments = useMemo(() => buildGarments(data?.garments), [data]);
 
-  // Toast trigger helper
-  const triggerToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  // ── 1 + 2. Received and sent today ──
+  const receivedToday = todayKey ? garments.filter((g) => g.receivedDay === todayKey).length : 0;
+  const sentToday = todayKey ? garments.filter((g) => g.sentDay === todayKey).length : 0;
 
-  // Reset all filters
-  const handleResetFilters = () => {
-    setFilterDate('all');
-    setFilterStyle('all');
-    setFilterMaterial('all');
-    setFilterStatus('all');
-    setSearchQuery('');
-    triggerToast('Store filters reset to default view');
-  };
+  // ── 3. Garments by status ──
+  const statusCounts = useMemo(() => {
+    const counts = Object.fromEntries(STATUSES.map((s) => [s.key, 0]));
+    garments.forEach((g) => {
+      counts[g.status] += 1;
+    });
+    return counts;
+  }, [garments]);
+  const toggleStatus = (key) => setStatus((current) => (current === key ? '' : key));
 
-  // CSV Export action
-  const handleExportCSV = () => {
-    const headers = [
-      'Drawer Code',
-      'Seq',
-      'Style',
-      'Order #',
-      'Piece Code',
-      'Material Contents',
-      'Material Type',
-      'Received At',
-      'Sended At',
-      'Status',
-    ];
+  // ── 5. Styles in store, soonest due first ──
+  const styles = useMemo(
+    () =>
+      (Array.isArray(data?.current_styles) ? data.current_styles : [])
+        .map((s, idx) => ({
+          key: `${s.order_id || s.order_number || 'order'}-${s.style_id || s.style || 'style'}-${idx}`,
+          order: String(s.order_number || '—').trim(),
+          style: String(s.style || '—').trim(),
+          garments: toNum(s.garments) ?? 0,
+          ready: toNum(s.ready_to_send) ?? 0,
+          due: s.target_date ? String(s.target_date).slice(0, 10) : null,
+        }))
+        .sort((a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0)),
+    [data]
+  );
+  const visibleStyles = showAllStyles ? styles : styles.slice(0, STYLES_PREVIEW_COUNT);
 
-    const rows = filteredDrawers.map((d) => [
-      d.drawer_code,
-      d.seq,
-      d.style,
-      d.order_number,
-      d.piece_code,
-      d.contents,
-      d.material_type,
-      d.received_at || 'N/A',
-      d.sended_at || 'N/A',
-      d.status_label,
-    ]);
-
-    const csvContent =
-      'data:text/csv;charset=utf-8,' +
-      [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `Store_Drawer_Movement_Report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    triggerToast('📥 Store Drawer Movement CSV Report Downloaded Successfully');
-  };
-
-  // Hold Drawer form submit — no backend write endpoint exists for this yet,
-  // so this only flags the real drawer locally (lost on next refresh). The
-  // derived heldList picks this up automatically since it's computed from
-  // drawersList.
-  const handleHoldDrawerSubmit = (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const drawerCode = formData.get('drawerCode');
-    const reason = formData.get('reason');
-    const heldBy = formData.get('heldBy');
-
-    if (!drawersList.some((d) => d.drawer_code === drawerCode)) {
-      triggerToast(`⚠️ Drawer ${drawerCode} not found in the live registry`);
-      return;
-    }
-
-    setDrawersList((prev) =>
-      prev.map((d) =>
-        d.drawer_code === drawerCode
-          ? {
-              ...d,
-              status_label: 'Held',
-              hold_reason: reason,
-              held_by: heldBy,
-            }
-          : d
-      )
-    );
-
-    setShowHoldModal(false);
-    triggerToast(`🛑 Drawer ${drawerCode} put on HOLD locally: ${reason} (not yet persisted — no hold endpoint)`);
-  };
+  // ── 6. Last 14 days, every day shown ──
+  const chartDays = useMemo(() => {
+    if (!now) return [];
+    const received = new Map();
+    const sent = new Map();
+    garments.forEach((g) => {
+      if (g.receivedDay) received.set(g.receivedDay, (received.get(g.receivedDay) ?? 0) + 1);
+      if (g.sentDay) sent.set(g.sentDay, (sent.get(g.sentDay) ?? 0) + 1);
+    });
+    return lastDays(now, CHART_DAYS).map((day) => ({
+      day: formatShortDate(day),
+      Received: received.get(day) ?? 0,
+      Sent: sent.get(day) ?? 0,
+    }));
+    // Only a new day changes the window, not every clock tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todayKey, garments]);
+  const anyInChart = chartDays.some((d) => d.Received > 0 || d.Sent > 0);
 
   return (
-    <div className="w-full min-w-0 space-y-5">
-      
-      {/* ─── TOAST NOTIFICATION ─── */}
-      <AnimatePresence>
-        {toastMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="fixed bottom-6 right-6 z-50 bg-[#1e293b] border border-slate-700 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 text-xs font-bold font-mono"
-          >
-            <Zap className="w-4 h-4 text-[#06b6d4] animate-pulse" />
-            <span>{toastMessage}</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="relative isolate w-full min-w-0 space-y-6 text-[#2b2118]">
+      <DashboardHeader
+        title="Store Today"
+        now={now}
+        updatedAt={updatedAt}
+        loading={loading}
+        refreshDisabled={!token}
+        onRefresh={refreshDashboard}
+      />
 
-      {/* ─── TOP ACTION BANNER (Full Width) ─── */}
-      <div className="w-full flex flex-col md:flex-row md:items-center justify-end gap-4">
-        {/* Action Controls — page title is shown in the app header */}
-        <div className="flex items-center flex-wrap gap-2.5">
-          <button
-            onClick={() => { setRefreshKey((k) => k + 1); triggerToast('🔄 Refreshing store data from server...'); }}
-            disabled={loading}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#0891b2] text-white text-xs font-bold hover:bg-[#0e7490] transition-all shadow-sm hover:scale-[1.02] disabled:opacity-60"
-            title="Refresh live store data from the server"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>{loading ? 'Refreshing...' : 'Refresh Store Data'}</span>
-          </button>
+      {loadFailed && <LoadFailedAlert hasData={Boolean(data)} onRetry={refreshDashboard} />}
 
-          <button
-            onClick={() => setShowHoldModal(true)}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold hover:bg-amber-100 transition-all"
-          >
-            <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
-            <span>Hold Drawer</span>
-          </button>
-
-          <button
-            onClick={handleExportCSV}
-            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#f8fafc] text-slate-700 border border-slate-200 text-xs font-bold hover:bg-slate-100 transition-all"
-            title="Export complete drawer movement report to CSV"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export CSV</span>
-          </button>
-
-          <div className="hidden lg:flex items-center gap-2 pl-3 border-l border-slate-200 text-xs text-slate-500 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping"></span>
-            <span>Store Stream Active</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ─── UNIVERSAL MULTI-FILTER TOOLBAR (Full Width) ─── */}
-      <section className="w-full bg-white p-4 rounded-2xl border border-[#e8edf3] shadow-sm flex flex-col gap-3">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2 text-xs font-bold text-[#1e293b] uppercase tracking-wider">
-            <Filter className="w-4 h-4 text-[#0891b2]" />
-            <span>Universal Store Cross-Filter</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#cffafe] text-[#155e75] border border-[#a5f3fc]">
-              Showing {filteredDrawers.length} of {kpis?.total_drawers ?? drawersList.length} Registered Drawers
-            </span>
-            <button
-              onClick={handleResetFilters}
-              className="text-xs text-cyan-700 font-bold hover:underline cursor-pointer"
-            >
-              Reset All
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2">
-          {/* Quick Search */}
-          <div className="relative col-span-2">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search drawer, style, piece code, order..."
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0891b2]"
-            />
-          </div>
-
-          {/* Date Filter with Complete Interactive Monthly Calendar Picker */}
-          <div>
-            <CompleteDateCalendarPicker
-              selectedDate={filterDate}
-              onSelectDate={setFilterDate}
-              availableDates={availableDates}
-              themeColor="#0891b2"
-            />
-          </div>
-
-          {/* Style Filter */}
-          <div>
-            <select
-              value={filterStyle}
-              onChange={(e) => setFilterStyle(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
-            >
-              <option value="all">👗 All Styles</option>
-              {availableStyles.map((s, idx) => (
-                <option key={`store-style-${s.id || s.name}-${idx}`} value={s.name || s.id}>
-                  {s.name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Material Type Filter */}
-          <div>
-            <select
-              value={filterMaterial}
-              onChange={(e) => setFilterMaterial(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
-            >
-              <option value="all">🧵 Material Contents</option>
-              {availableMaterials.map((m, idx) => (
-                <option key={`${m.id}-${idx}`} value={m.id}>
-                  {m.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Drawer Status Filter */}
-          <div>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-bold text-slate-700 focus:outline-none focus:border-[#0891b2]"
-            >
-              <option value="all">🗄️ All Statuses</option>
-              {availableStatuses.map((st, idx) => (
-                <option key={`${st}-${idx}`} value={st}>
-                  {st}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </section>
-
-      {/* ─── NAVIGATION TABS BAR (Full Width) ─── */}
-      <div className="w-full flex items-center gap-1.5 bg-white p-1.5 rounded-2xl border border-[#e8edf3] shadow-sm overflow-x-auto">
-        {[
-          { id: 'tab-today', label: "📌 Today's Priority" },
-          { id: 'tab-drawers', label: '🗄️ Drawer Master' },
-          { id: 'tab-styles', label: '📦 Styles in Store' },
-          { id: 'tab-materials', label: '🧵 Leather & Lining' },
-          { id: 'tab-holds', label: '🛑 Hold Management' },
-          { id: 'tab-empty', label: '♻️ Empty Drawers' },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-2 ${
-              activeTab === tab.id
-                ? 'bg-[#1e293b] text-white shadow-md'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-[#f8fafc]'
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* ====================================================================
-           TAB 1: TODAY'S STORE PRIORITY
-           ==================================================================== */}
-      {activeTab === 'tab-today' && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full space-y-5"
-        >
-          {/* CURRENT STORE OVERVIEW BANNER (Full Width Grid) */}
-          <div className="w-full bg-gradient-to-br from-white via-[#f8fafc] to-[#ecfeff] border border-cyan-200/70 rounded-3xl p-6 shadow-sm grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* Left Col: Store Capacity */}
-            <div className="flex flex-col justify-between space-y-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-cyan-100 text-cyan-800 border border-cyan-200">
-                    Store Storage Online
-                  </span>
-                  <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-slate-100 text-slate-800">
-                    {drawersList.length || 0} Registered
-                  </span>
+      {!data ? (
+        !loadFailed && <PageLoading />
+      ) : (
+        <>
+          {/* ─── Today: received + sent ─── */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <section className="lg:col-span-7 rounded-[28px] border border-[#f6dd9e] bg-gradient-to-br from-[#fff7e0] via-[#fff2cf] to-[#ffeab9] p-6 sm:p-7 shadow-[0_12px_32px_-16px_rgba(200,140,40,0.35)]">
+              <div className="flex gap-5">
+                <IconBubble icon={PackageCheck} large />
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-semibold">Received Today</h3>
+                  <p className="mt-3 text-5xl font-semibold tabular-nums">{receivedToday.toLocaleString()}</p>
+                  <p className="mt-4 text-sm text-[#7a6d5c]">Garments that got all their parts today.</p>
                 </div>
-                <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">Store Storage & Buffer Hub</h2>
-                <p className="text-xs font-semibold text-slate-600 mt-0.5">Physical drawer movement between Cutting, Lining & Stitching Lines</p>
               </div>
+            </section>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4 border-t border-slate-200">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">In Store</span>
-                  <p className="text-xs font-bold text-cyan-800">{filteredDrawers.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} drawers</p>
+            <section className="lg:col-span-5 relative overflow-hidden rounded-[28px] border border-[#f1e6d3] bg-[#fffaf0] p-6 sm:p-7 shadow-[0_12px_32px_-16px_rgba(160,110,40,0.25)]">
+              <svg
+                aria-hidden="true"
+                className="pointer-events-none absolute right-0 bottom-0 h-full w-1/2"
+                viewBox="0 0 200 200"
+                preserveAspectRatio="none"
+              >
+                <path d="M200 10 C 150 70, 175 130, 70 200 L 200 200 Z" fill="#fde9b8" opacity="0.7" />
+                <path d="M200 80 C 165 120, 175 165, 120 200 L 200 200 Z" fill="#fbdc94" opacity="0.55" />
+              </svg>
+              <div className="relative flex gap-5">
+                <IconBubble icon={Send} large />
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-semibold">Sent Today</h3>
+                  <p className="mt-3 text-5xl font-semibold tabular-nums">{sentToday.toLocaleString()}</p>
+                  <p className="mt-4 text-sm text-[#7a6d5c]">Garments sent to Line Stitching today.</p>
                 </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Sent Floor</span>
-                  <p className="text-xs font-bold text-slate-800">{filteredDrawers.filter((d) => d.status_label === 'Sent to Production').length} drawers</p>
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Held</span>
-                  <p className="text-xs font-bold text-amber-600">{heldList.length} drawers</p>
-                </div>
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Empty Ready</span>
-                  <p className="text-xs font-bold text-emerald-600">{emptyList.length} drawers</p>
-                </div>
+              </div>
+            </section>
+          </div>
+
+          {/* ─── In the store: a tile per status; a tile filters the garments ─── */}
+          <section className={`${CARD} p-6`}>
+            <div className="flex flex-wrap items-center gap-3">
+              <IconBubble icon={ClipboardList} />
+              <div className="min-w-0">
+                <h3 className="text-lg font-semibold">In the Store</h3>
+                <p className="text-xs text-[#8b7f6e] mt-0.5">Garments by what they still need. Click one to see those garments.</p>
               </div>
             </div>
-
-            {/* Middle Col: Contents Breakdown */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Material Contents in Drawers</span>
-                <span className="text-[11px] font-bold text-slate-400">Live Breakdown</span>
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 my-3">
-                <div className="bg-orange-50 border border-orange-100 p-3 rounded-xl text-center">
-                  <span className="text-[10px] font-bold text-orange-700">Leather Only</span>
-                  <div className="text-lg font-black text-orange-900 mt-0.5">{filteredDrawers.filter((d) => d.material_type === 'LEATHER').length}</div>
-                </div>
-                <div className="bg-rose-50 border border-rose-100 p-3 rounded-xl text-center">
-                  <span className="text-[10px] font-bold text-rose-700">Lining Only</span>
-                  <div className="text-lg font-black text-rose-900 mt-0.5">{filteredDrawers.filter((d) => d.material_type === 'LINING').length}</div>
-                </div>
-                <div className="bg-cyan-50 border border-cyan-100 p-3 rounded-xl text-center">
-                  <span className="text-[10px] font-bold text-cyan-700">Both Merged</span>
-                  <div className="text-lg font-black text-cyan-900 mt-0.5">{filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length}</div>
-                </div>
-              </div>
-
-              <div className="text-xs font-semibold text-slate-500">
-                <span>Both Leather & Lining pairs are priority dispatched to Stitching</span>
-              </div>
+            <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {STATUSES.map((s) => {
+                const selected = status === s.key;
+                return (
+                  <button
+                    key={s.key}
+                    type="button"
+                    onClick={() => toggleStatus(s.key)}
+                    aria-pressed={selected}
+                    title={selected ? 'Show all garments' : `Show garments: ${s.label}`}
+                    className={`rounded-2xl border p-4 text-left cursor-pointer transition-shadow focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8834a] ${
+                      selected
+                        ? 'border-[#f4cf7a] bg-[#fff6df] ring-2 ring-[#c8834a] ring-offset-2 ring-offset-[#fffdf9]'
+                        : 'border-[#efe6d6] bg-white hover:shadow-[0_8px_20px_-12px_rgba(160,110,40,0.35)]'
+                    }`}
+                  >
+                    <span className="block text-[13px] font-semibold text-[#2b2118]">{s.label}</span>
+                    <span
+                      className={`mt-2 block text-3xl font-semibold tabular-nums ${
+                        s.key === 'ready' ? 'text-[#2f8f6b]' : s.key === 'sent' ? 'text-[#5b5146]' : 'text-[#df8d1c]'
+                      }`}
+                    >
+                      {statusCounts[s.key].toLocaleString()}
+                    </span>
+                    <span className="mt-1 block text-[11px] leading-snug text-[#8b7f6e]">{s.note}</span>
+                  </button>
+                );
+              })}
             </div>
+          </section>
 
-            {/* Right Col: Active Styles in Store */}
-            <div className="bg-white/90 backdrop-blur-sm border border-slate-200 rounded-2xl p-5 flex flex-col justify-between">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Active Styles in Store</span>
-                <span className="text-[11px] font-bold text-cyan-700">Ready to Send</span>
-              </div>
+          {/* ─── Garments ─── */}
+          <GarmentsCard garments={garments} status={status} onClearStatus={() => setStatus('')} />
 
-              <div className="space-y-2 my-2">
-                {stylesList.slice(0, 3).map((st, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-2 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
-                    <div>
-                      <span className="font-bold text-slate-900">{st.style || st.style_name || st.name}</span>
-                      <span className="text-[10px] text-slate-500 block">{st.order_number || '—'}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="font-mono font-bold text-cyan-700">{st.drawers || 0} drawers</span>
-                      <span className="text-[10px] text-emerald-600 font-bold block">{st.ready_to_send || 0} ready</span>
-                    </div>
-                  </div>
-                ))}
-                {stylesList.length === 0 && (
-                  <div className="text-center py-4 text-xs text-slate-400 font-medium">
-                    No active styles in store buffer.
-                  </div>
+          {/* ─── Styles + last 14 days, side by side, the same height ─── */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <section className={`${CARD} lg:col-span-7 p-6 flex flex-col min-w-0`}>
+              <div className="flex flex-wrap items-center gap-3">
+                <IconBubble icon={ClipboardList} />
+                <div className="min-w-0">
+                  <h3 className="text-lg font-semibold">Styles in Store</h3>
+                  <p className="text-xs text-[#8b7f6e] mt-0.5">Garments in the store per style, soonest due first.</p>
+                </div>
+                {styles.length > STYLES_PREVIEW_COUNT && (
+                  <ShowAllButton showAll={showAllStyles} onToggle={() => setShowAllStyles((v) => !v)} />
                 )}
               </div>
-            </div>
-          </div>
 
-          {/* 4 TOP SUMMARY KPIS */}
-          <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            
-            {/* KPI 1 */}
-            <div
-              onClick={() => setActiveTab('tab-drawers')}
-              className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-cyan-50 text-cyan-600 flex items-center justify-center font-bold text-lg">
-                  🗄️
-                </div>
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-50 text-cyan-700">
-                  {filteredDrawers.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length} Available
-                </span>
-              </div>
-              <span className="text-xs font-semibold text-slate-500">Drawers in Store</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{filteredDrawers.filter((d) => d.status_label === 'In Store' || d.status_label === 'Ready to Send').length}</span>
-                <span className="text-xs font-semibold text-slate-400">/ {kpis?.total_drawers ?? drawersList.length} capacity</span>
-              </div>
-              <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Sent to Prod: <strong className="text-blue-600">{filteredDrawers.filter((d) => d.status_label === 'Sent to Production').length}</strong></span>
-                <span>Held: <strong className="text-amber-600">{heldList.length}</strong></span>
-              </div>
-            </div>
-
-            {/* KPI 2 */}
-            <div
-              onClick={() => setActiveTab('tab-empty')}
-              className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold text-lg">
-                  ♻️
-                </div>
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700">
-                  Reuse Ready
-                </span>
-              </div>
-              <span className="text-xs font-semibold text-slate-500">Empty Drawers for Intake</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-emerald-700">{emptyList.length}</span>
-              </div>
-              <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Empty Available: <strong>{emptyList.length} drawers</strong></span>
-                <span>Immediate Intake: <strong className="text-emerald-600">Active</strong></span>
-              </div>
-            </div>
-
-            {/* KPI 3 */}
-            <div
-              onClick={() => setActiveTab('tab-materials')}
-              className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold text-lg">
-                  🧵
-                </div>
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700">
-                  {filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length} Both Merged
-                </span>
-              </div>
-              <span className="text-xs font-semibold text-slate-500">Merged (Leather + Lining)</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-slate-900">{filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length} Pairs</span>
-              </div>
-              <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>Leather only: <strong>{filteredDrawers.filter((d) => d.material_type === 'LEATHER').length}</strong></span>
-                <span>Lining only: <strong>{filteredDrawers.filter((d) => d.material_type === 'LINING').length}</strong></span>
-              </div>
-            </div>
-
-            {/* KPI 4 */}
-            <div
-              onClick={() => setActiveTab('tab-holds')}
-              className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all cursor-pointer group"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-lg">
-                  🛑
-                </div>
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                  {heldList.length} Blocked
-                </span>
-              </div>
-              <span className="text-xs font-semibold text-slate-500">Held Drawers (QC / Missing)</span>
-              <div className="flex items-baseline gap-2 mt-1">
-                <span className="text-2xl font-black text-amber-600">{heldList.length}</span>
-              </div>
-              <div className="mt-3 pt-3 border-t border-dashed border-slate-100 flex justify-between text-xs text-slate-600 font-semibold">
-                <span>With Piece: <strong>{heldList.filter((h) => h.piece_code).length}</strong></span>
-                <span>Empty: <strong className="text-amber-600">{heldList.filter((h) => !h.piece_code).length}</strong></span>
-              </div>
-            </div>
-          </div>
-
-          {/* DAILY STORE MOVEMENT CADENCE CHART & LOG */}
-          <div className="w-full grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {/* Chart */}
-            <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <div className="flex items-center justify-between mb-4">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-900">Daily Store Movement (Received vs Sent vs Emptied)</h3>
-                  <p className="text-xs text-slate-500">Drawer intake and dispatch volume across floor dates</p>
-                </div>
-              </div>
-              <div className="h-[280px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={dynamicDailyChartData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                    <XAxis dataKey="work_date" tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <YAxis tick={{ fontSize: 11, fill: '#64748b' }} />
-                    <Tooltip content={<CustomTooltip unit="drawers" />} />
-                    <Legend wrapperStyle={{ fontSize: 11, paddingTop: 10 }} />
-                    <Bar dataKey="received" name="Received in Store" fill="#0891b2" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="sent" name="Sent to Production" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="emptied" name="Emptied & Recycled" fill="#10b981" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* Log Table */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900 mb-1">Store Daily Movement Log</h3>
-                <p className="text-xs text-slate-500 mb-3">Shift-wise drawer transitions</p>
-                
-                <div className="overflow-y-auto max-h-[250px] space-y-2 pr-1">
-                  {dynamicDailyChartData.map((log, i) => (
-                    <div key={i} className="flex items-center justify-between p-2.5 rounded-xl bg-[#f8fafc] border border-slate-100 text-xs">
-                      <div>
-                        <span className="font-bold text-slate-800">{log.work_date || log.date}</span>
-                        <div className="text-[10px] text-slate-500 mt-0.5">{log.received || 0} in &bull; {log.sent || 0} out</div>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-black text-emerald-700">{log.emptied || 0} emptied</span>
-                        <div className="text-[10px] text-amber-600 font-semibold">{log.held || 0} held</div>
-                      </div>
-                    </div>
-                  ))}
-                  {dynamicDailyChartData.length === 0 && (
-                    <div className="text-center py-8 text-slate-400 font-medium text-xs">
-                      No daily movement logs available for selected filter.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 2: DRAWER MASTER MANAGEMENT
-           ==================================================================== */}
-      {activeTab === 'tab-drawers' && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full space-y-4"
-        >
-          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Drawer Master Registry & Real-Time Tracking</h3>
-                <p className="text-xs text-slate-500">Live position, associated jacket piece, material contents, and dispatch timestamps</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-500">Rows per page:</span>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value));
-                    setCurrentPage(1);
-                  }}
-                  className="bg-[#f8fafc] border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold text-slate-800"
-                >
-                  <option value={10}>10</option>
-                  <option value={25}>25</option>
-                  <option value={50}>50</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                    <th className="py-3 px-4">Drawer Code</th>
-                    <th className="py-3 px-4">Style</th>
-                    <th className="py-3 px-4">Piece Serial Code</th>
-                    <th className="py-3 px-4">Material Contents</th>
-                    <th className="py-3 px-4">Received / Sent</th>
-                    <th className="py-3 px-4 text-center">Status</th>
-                    <th className="py-3 px-4 text-center">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {paginatedDrawers.map((d, idx) => (
-                    <tr
-                      key={idx}
-                      onClick={() => handleOpenDrawerModal(d)}
-                      className="hover:bg-slate-50 cursor-pointer transition-all"
-                    >
-                      <td className="py-3.5 px-4 font-mono font-bold text-cyan-800">{d.drawer_code}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{d.style}</td>
-                      <td className="py-3.5 px-4 font-mono text-slate-700">{d.piece_code}</td>
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            d.material_type === 'LEATHER+LINING'
-                              ? 'bg-cyan-100 text-cyan-800'
-                              : d.material_type === 'LEATHER'
-                              ? 'bg-orange-100 text-orange-800'
-                              : 'bg-rose-100 text-rose-800'
-                          }`}
-                        >
-                          {d.contents || d.material_type}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 font-mono text-[11px]">
-                        {d.sended_at ? (
-                          <span className="text-blue-700 font-bold">Sent: {d.sended_at}</span>
-                        ) : (
-                          <span className="text-emerald-700 font-bold">In Store: {d.received_at || 'Present'}</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold ${
-                            d.status_label === 'Sent to Production'
-                              ? 'bg-blue-100 text-blue-800'
-                              : d.status_label === 'Ready to Send'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : d.status_label === 'Held'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-slate-100 text-slate-800'
-                          }`}
-                        >
-                          {d.status_label || 'In Store'}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-center">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleOpenDrawerModal(d);
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-[#0891b2] hover:text-white text-slate-700 text-[11px] font-bold transition-all"
-                        >
-                          Audit Trace
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {paginatedDrawers.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="text-center py-8 text-slate-400 font-medium">
-                        No drawers matching filter criteria.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Pagination Controls */}
-            <div className="flex items-center justify-between pt-4 border-t border-slate-100 text-xs font-bold text-slate-600">
-              <span>
-                Page {currentPage} of {totalPages} ({filteredDrawers.length} items)
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white disabled:opacity-40 hover:bg-slate-50 transition-all cursor-pointer"
-                >
-                  Previous
-                </button>
-                <button
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                  className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white disabled:opacity-40 hover:bg-slate-50 transition-all cursor-pointer"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 3: CURRENT STYLES IN STORE
-           ==================================================================== */}
-      {activeTab === 'tab-styles' && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full space-y-5"
-        >
-          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Production Styles Currently in Store Buffer</h3>
-                <p className="text-xs text-slate-500">Drawer allocation, material split, and ready-to-dispatch readiness</p>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                    <th className="py-3 px-4">Style Name</th>
-                    <th className="py-3 px-4">Order #</th>
-                    <th className="py-3 px-4 text-right">Total Drawers</th>
-                    <th className="py-3 px-4 text-right">Leather Only</th>
-                    <th className="py-3 px-4 text-right">Lining Only</th>
-                    <th className="py-3 px-4 text-right">Both Merged</th>
-                    <th className="py-3 px-4 text-right">Ready to Send</th>
-                    <th className="py-3 px-4">Target Date</th>
-                    <th className="py-3 px-4 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {filteredStylesList.map((st, idx) => {
-                    const sName = st.style || st.style_name || st.name;
-                    const isSelected = filterStyle === sName;
-                    return (
-                      <tr
-                        key={idx}
-                        onClick={() => {
-                          setFilterStyle(sName);
-                          setActiveTab('tab-drawers');
-                          triggerToast(`⚡ Filtered Store to Style: ${sName}`);
-                        }}
-                        className={`hover:bg-cyan-50/70 cursor-pointer transition-all ${
-                          isSelected ? 'bg-cyan-50/90 font-bold' : ''
-                        }`}
-                        title="Click to filter drawers by this style"
-                      >
-                        <td className="py-3.5 px-4 font-bold text-slate-900 flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span>👗</span>
-                            <span>{sName}</span>
-                          </div>
-                          <span className="text-[10px] text-cyan-700 font-bold opacity-0 hover:opacity-100 transition-opacity">View Drawers &rarr;</span>
-                        </td>
-                        <td className="py-3.5 px-4 font-mono text-slate-600">{st.order_number || '—'}</td>
-                        <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">{st.drawers || 0}</td>
-                        <td className="py-3.5 px-4 text-right font-mono text-orange-700 font-bold">{st.leather_drawers || 0}</td>
-                        <td className="py-3.5 px-4 text-right font-mono text-rose-700 font-bold">{st.lining_drawers || 0}</td>
-                        <td className="py-3.5 px-4 text-right font-mono text-cyan-700 font-black">{st.both_drawers || 0}</td>
-                        <td className="py-3.5 px-4 text-right font-mono text-emerald-700 font-bold">{st.ready_to_send || 0}</td>
-                        <td className="py-3.5 px-4 font-semibold text-slate-700">{st.target_date || '—'}</td>
-                        <td className="py-3.5 px-4 text-center">
-                          <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-cyan-100 text-cyan-800">
-                            {st.status || 'Active'}
-                          </span>
-                        </td>
+              {styles.length > 0 ? (
+                <div className="mt-5 overflow-x-auto rounded-2xl border border-[#efe6d6]">
+                  <table className="w-full min-w-[480px] text-sm">
+                    <thead className="bg-[#faf5ec] text-xs text-[#8b7f6e]">
+                      <tr>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold">Order</th>
+                        <th scope="col" className="px-4 py-3 text-left font-semibold">Style</th>
+                        <th scope="col" className="px-4 py-3 text-right font-semibold whitespace-nowrap">In Store</th>
+                        <th scope="col" className="px-4 py-3 text-right font-semibold whitespace-nowrap">Ready to Send</th>
+                        <th scope="col" className="px-4 py-3 text-right font-semibold">Due</th>
                       </tr>
-                    );
-                  })}
-                  {filteredStylesList.length === 0 && (
-                    <tr>
-                      <td colSpan={9} className="text-center py-8 text-slate-400 font-medium">
-                        {filterStyle !== 'all' ? `No drawers found for style "${filterStyle}".` : 'No styles in store buffer.'}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody className="divide-y divide-[#f3ece0]">
+                      {visibleStyles.map((s) => {
+                        const late = s.due && todayKey && s.due < todayKey;
+                        return (
+                          <tr key={s.key}>
+                            <td className="px-4 py-3 font-semibold whitespace-nowrap">{s.order}</td>
+                            <td className="px-4 py-3 text-[#5b5146] uppercase">{s.style}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{s.garments.toLocaleString()}</td>
+                            <td className="px-4 py-3 text-right tabular-nums">{s.ready.toLocaleString()}</td>
+                            <td className={`px-4 py-3 text-right whitespace-nowrap tabular-nums ${late ? 'font-semibold text-[#b8730a]' : ''}`}>
+                              {s.due ? formatShortDate(s.due) : '—'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <EmptyNote>No styles in the store right now.</EmptyNote>
+              )}
+            </section>
+
+            <section className={`${CARD} lg:col-span-5 p-6 flex flex-col min-w-0`}>
+              <div className="flex flex-wrap items-start gap-3">
+                <IconBubble icon={TrendingUp} />
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-lg font-semibold">Last 14 Days</h3>
+                  <p className="text-xs text-[#8b7f6e] mt-0.5">Garments received and sent each day.</p>
+                </div>
+                <div className="flex items-center gap-4 text-xs text-[#8b7f6e] pt-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#f6b73c]" /> Received
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#4caf8a]" /> Sent
+                  </span>
+                </div>
+              </div>
+
+              {anyInChart ? (
+                <div className="relative mt-5 min-h-[240px] w-full flex-1">
+                  {/* At least 240px, taller when the styles beside it are. */}
+                  <div className="absolute inset-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartDays} barGap={2} barCategoryGap="25%" margin={{ top: 8, right: 4, left: -16, bottom: 0 }}>
+                        <CartesianGrid vertical={false} stroke="#f1ebe0" />
+                        <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#8b7f6e' }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 10, fill: '#8b7f6e' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                        <Tooltip cursor={{ fill: 'rgba(245,165,36,0.08)' }} content={<ChartTooltip />} />
+                        <Bar dataKey="Received" fill="#f6b73c" radius={[4, 4, 0, 0]} maxBarSize={14} />
+                        <Bar dataKey="Sent" fill="#4caf8a" radius={[4, 4, 0, 0]} maxBarSize={14} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              ) : (
+                <EmptyNote>No garments received or sent in the last 14 days.</EmptyNote>
+              )}
+            </section>
           </div>
-        </motion.div>
+        </>
       )}
-
-      {/* ====================================================================
-           TAB 4: LEATHER & LINING TRACKING
-           ==================================================================== */}
-      {activeTab === 'tab-materials' && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full space-y-5"
-        >
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* Leather Drawer Card */}
-            <div className="p-5 rounded-2xl bg-orange-50 border border-orange-200">
-              <span className="text-xs font-bold text-orange-800 uppercase tracking-wider">Leather Only Drawers</span>
-              <div className="text-3xl font-black text-orange-950 mt-1">{filteredDrawers.filter((d) => d.material_type === 'LEATHER').length} Drawers</div>
-              <p className="text-xs text-orange-700 mt-2">Drawers containing cut leather pattern pieces awaiting lining pairing</p>
-            </div>
-
-            {/* Lining Drawer Card */}
-            <div className="p-5 rounded-2xl bg-rose-50 border border-rose-200">
-              <span className="text-xs font-bold text-rose-800 uppercase tracking-wider">Lining Only Drawers</span>
-              <div className="text-3xl font-black text-rose-950 mt-1">{filteredDrawers.filter((d) => d.material_type === 'LINING').length} Drawers</div>
-              <p className="text-xs text-rose-700 mt-2">Drawers containing cut lining components waiting for leather matching</p>
-            </div>
-
-            {/* Both Drawer Card */}
-            <div className="p-5 rounded-2xl bg-cyan-50 border border-cyan-200">
-              <span className="text-xs font-bold text-cyan-800 uppercase tracking-wider">Merged (Leather + Lining)</span>
-              <div className="text-3xl font-black text-cyan-950 mt-1">{filteredDrawers.filter((d) => d.material_type === 'LEATHER+LINING').length} Drawers</div>
-              <p className="text-xs text-cyan-700 mt-2">Complete matching kit ready to be dispatched to Stitching Floor</p>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 5: DRAWER HOLD MANAGEMENT
-           ==================================================================== */}
-      {activeTab === 'tab-holds' && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full space-y-5"
-        >
-          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Drawer Hold Management & Reason Tracking</h3>
-                <p className="text-xs text-slate-500">Drawers intentionally paused from production dispatch with detailed hold reasons</p>
-              </div>
-              <button
-                onClick={() => setShowHoldModal(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 transition-all flex items-center gap-1.5"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Put Drawer on Hold</span>
-              </button>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                    <th className="py-3 px-4">Drawer Code</th>
-                    <th className="py-3 px-4">Style</th>
-                    <th className="py-3 px-4">Order #</th>
-                    <th className="py-3 px-4">Material Type</th>
-                    <th className="py-3 px-4">Held By</th>
-                    <th className="py-3 px-4">Hold Reason</th>
-                    <th className="py-3 px-4">Received Date</th>
-                    <th className="py-3 px-4 text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {heldList.map((h, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-all">
-                      <td className="py-3.5 px-4 font-mono font-bold text-amber-800">{h.drawer_code}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{h.style || h.style_name || <NotAvailableBadge label="cleared" />}</td>
-                      <td className="py-3.5 px-4 font-mono text-slate-600">{h.order_number || '—'}</td>
-                      <td className="py-3.5 px-4 font-bold">{h.material_type && h.material_type !== 'NONE' ? h.material_type : '—'}</td>
-                      <td className="py-3.5 px-4 text-slate-800">{h.held_by || <NotAvailableBadge />}</td>
-                      <td className="py-3.5 px-4 font-semibold text-amber-900">{h.hold_reason || h.reason || <NotAvailableBadge />}</td>
-                      <td className="py-3.5 px-4 text-slate-500">{h.received_at ? h.received_at.slice(0, 10) : '—'}</td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800">
-                          {h.status_label || 'Held'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {heldList.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="text-center py-8 text-slate-400 font-medium">
-                        No drawers currently on hold.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           TAB 6: EMPTY DRAWERS & REUSE
-           ==================================================================== */}
-      {activeTab === 'tab-empty' && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="w-full space-y-5"
-        >
-          <div className="w-full bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900">Empty Drawer Inventory Ready for Intake Reuse</h3>
-                <p className="text-xs text-slate-500">Recycled drawers ready to receive newly cut leather or lining pattern pieces</p>
-              </div>
-              <span className="text-xs font-bold text-slate-500">
-                Available Empty Count: <strong className="text-emerald-700">{emptyList.length}</strong>
-              </span>
-            </div>
-            {meta?.unsupported?.empty_drawer_history && (
-              <p className="text-[11px] text-slate-400 font-medium mb-3 -mt-2">{meta.unsupported.empty_drawer_history}</p>
-            )}
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="bg-[#f8fafc] text-slate-600 font-bold uppercase tracking-wider border-y border-slate-200">
-                    <th className="py-3 px-4">Drawer Code</th>
-                    <th className="py-3 px-4">Last Style Occupant</th>
-                    <th className="py-3 px-4">Last Material</th>
-                    <th className="py-3 px-4">Last Sent Date</th>
-                    <th className="py-3 px-4 text-center">Availability</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium">
-                  {emptyList.map((e, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-all">
-                      <td className="py-3.5 px-4 font-mono font-bold text-emerald-800">{e.drawer_code}</td>
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{e.style || <NotAvailableBadge label="cleared on recycle" />}</td>
-                      <td className="py-3.5 px-4 text-slate-600">{e.material_type && e.material_type !== 'NONE' ? e.material_type : <NotAvailableBadge label="cleared on recycle" />}</td>
-                      <td className="py-3.5 px-4 text-slate-500">{e.sended_at || '—'}</td>
-                      <td className="py-3.5 px-4 text-center">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800">
-                          Empty Ready
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                  {emptyList.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="text-center py-8 text-slate-400 font-medium">
-                        No individually-tracked empty drawers in this view — see the summary count above.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </motion.div>
-      )}
-
-      {/* ====================================================================
-           MODAL 1: DRAWER MOVEMENT INSPECTOR
-           ==================================================================== */}
-      <AnimatePresence>
-        {selectedDrawerModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
-              className="bg-white border border-slate-200 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Drawer Movement Audit Inspector</span>
-                  <h3 className="text-base font-mono font-black text-cyan-900">{selectedDrawerModal.drawer_code}</h3>
-                </div>
-                <button
-                  onClick={() => setSelectedDrawerModal(null)}
-                  className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Movement Audit Steps */}
-              <div className="space-y-2 text-xs font-semibold">
-                <div className="p-3 bg-[#f8fafc] rounded-xl border border-slate-200 flex justify-between items-center">
-                  <span>Received in Store:</span>
-                  <span className="font-mono font-bold text-emerald-700">{selectedDrawerModal.received_at || 'Recorded'}</span>
-                </div>
-                <div className="p-3 bg-[#f8fafc] rounded-xl border border-slate-200 flex justify-between items-center">
-                  <span>Dispatched to Floor:</span>
-                  <span className="font-mono font-bold text-blue-700">{selectedDrawerModal.sended_at || 'Pending Dispatch'}</span>
-                </div>
-                <div className="p-3 bg-[#f8fafc] rounded-xl border border-slate-200 flex justify-between items-center">
-                  <span>Associated Piece:</span>
-                  <span className="font-mono font-bold text-slate-900">{selectedDrawerModal.piece_code || '—'}</span>
-                </div>
-                <div className="p-3 bg-[#f8fafc] rounded-xl border border-slate-200 flex justify-between items-center">
-                  <span>Current Status:</span>
-                  <span className="font-bold text-slate-900">{selectedDrawerModal.status_label || '—'}</span>
-                </div>
-              </div>
-
-              {/* Movement History — from GET /dashboard/store/drawers/{id}/movement */}
-              <div>
-                <span className="text-[10px] font-bold text-slate-400 uppercase block mb-1.5">Movement Audit Trail</span>
-                <div className="space-y-1.5 max-h-[220px] overflow-y-auto pr-1">
-                  {(selectedDrawerModal.movement_history || []).map((m, i) => (
-                    <div key={i} className="p-2.5 bg-[#f8fafc] rounded-lg border border-slate-100 flex items-center justify-between text-[11px]">
-                      <span className="font-bold text-slate-800">
-                        {(m.event_type || m.action || m.event || 'EVENT').toString().replace(/_/g, ' ')}
-                      </span>
-                      <span className="font-mono text-slate-500">{m.timestamp || m.created_at || m.at || '—'}</span>
-                    </div>
-                  ))}
-                  {(!selectedDrawerModal.movement_history || selectedDrawerModal.movement_history.length === 0) && (
-                    <p className="text-[11px] text-slate-400 font-medium py-2">No movement history recorded for this drawer yet.</p>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ====================================================================
-           MODAL 2: PUT DRAWER ON HOLD MODAL
-           ==================================================================== */}
-      <AnimatePresence>
-        {showHoldModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.92, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.92, opacity: 0 }}
-              className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2 text-amber-600">
-                  <PauseCircle className="w-5 h-5" />
-                  <h3 className="text-sm font-extrabold text-slate-900">Put Drawer on Store Hold</h3>
-                </div>
-                <button
-                  onClick={() => setShowHoldModal(false)}
-                  className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <form onSubmit={handleHoldDrawerSubmit} className="space-y-3.5 text-xs font-semibold">
-                <div>
-                  <label className="block text-slate-700 mb-1">Select Drawer Code</label>
-                  <select
-                    name="drawerCode"
-                    required
-                    className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                  >
-                    {drawersList.slice(0, 15).map((d, idx) => (
-                      <option key={`store-drw-opt-${d.drawer_code || d.id || idx}-${idx}`} value={d.drawer_code}>
-                        {d.drawer_code} ({d.style} - {d.contents})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 mb-1">Hold Reason</label>
-                  <select
-                    name="reason"
-                    required
-                    className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                  >
-                    <option value="Waiting for matching lining batch">Waiting for matching lining batch</option>
-                    <option value="Awaiting thickness verification on calf patch">Awaiting thickness verification on calf patch</option>
-                    <option value="Production sequence pause for Order priority">Production sequence pause for Order priority</option>
-                    <option value="Stitching line bottleneck pause">Stitching line bottleneck pause</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-700 mb-1">Held By (Authorizing User)</label>
-                  <input
-                    type="text"
-                    name="heldBy"
-                    defaultValue="Store Supervisor"
-                    required
-                    className="w-full bg-[#f8fafc] border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                  />
-                </div>
-
-                <div className="pt-3 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowHoldModal(false)}
-                    className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold"
-                  >
-                    Confirm Store Hold
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
     </div>
-  );
-}
-
-export default function StoreManagerDashboard() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-[400px]">
-          <div className="text-center text-[#0891b2]">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#0891b2] mx-auto mb-3"></div>
-            <p className="font-semibold text-xs tracking-widest uppercase">Loading Store Dashboard...</p>
-          </div>
-        </div>
-      }
-    >
-      <StoreDashboardContent />
-    </Suspense>
   );
 }

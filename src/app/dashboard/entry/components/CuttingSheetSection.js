@@ -1234,10 +1234,12 @@ function BarcodeSticker({ code }) {
       try {
         JsBarcode(svgRef.current, code, {
           format: 'CODE128',
-          width: 1.8,
-          height: 48,
+          width: 2,
+          height: 50,
           displayValue: false,
           margin: 0,
+          background: '#ffffff',
+          lineColor: '#000000',
         });
       } catch (err) {
         console.error('JsBarcode render error:', err);
@@ -1245,7 +1247,8 @@ function BarcodeSticker({ code }) {
     }
   }, [code]);
 
-  return <svg ref={svgRef} className="mx-auto max-w-[280px] h-12" />;
+  // Stretched to fill the label's barcode box (see .label-bars); crispEdges keeps bars sharp on thermal heads
+  return <svg ref={svgRef} preserveAspectRatio="none" shapeRendering="crispEdges" className="block w-full h-full" />;
 }
 
 const isUuidString = (str) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(str || '').trim());
@@ -1337,10 +1340,71 @@ function CuttingBarcodePrintModal({ rowData, stylesList = [], onClose }) {
   return createPortal(
     <div id="cutting-barcode-print-wrapper" className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
       <style>{`
+        /* Physical label: Posiflow SRS20 thermal roll, 50mm wide x 25mm tall */
+        #printable-barcode-ticket {
+          width: 50mm;
+          height: 25mm;
+          box-sizing: border-box;
+          padding: 1.2mm 2mm;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          background: #ffffff;
+          color: #000000;
+          outline: 1px dashed #94a3b8;
+        }
+        /* 42mm leaves a 4mm quiet zone each side for CODE128 */
+        #printable-barcode-ticket .label-bars {
+          width: 42mm;
+          height: 11mm;
+          flex-shrink: 0;
+        }
+        #printable-barcode-ticket .label-code {
+          margin-top: 0.7mm;
+          max-width: 100%;
+          font-size: 9pt;
+          font-weight: 800;
+          line-height: 1;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        #printable-barcode-ticket .label-caption {
+          margin-top: 0.5mm;
+          max-width: 100%;
+          font-size: 6pt;
+          font-weight: 700;
+          line-height: 1.15;
+          text-align: center;
+          text-transform: uppercase;
+          word-break: break-word;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+        /* Enlarges the on-screen preview only; the print is true size */
+        #cutting-barcode-print-wrapper .label-zoom {
+          zoom: 1.7;
+        }
+
         @media print {
           @page {
-            size: auto;
-            margin: 5mm;
+            size: 50mm 25mm;
+            margin: 0;
+          }
+          html, body {
+            width: 50mm !important;
+            height: 25mm !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            background: #ffffff !important;
           }
           body > * {
             display: none !important;
@@ -1350,29 +1414,38 @@ function CuttingBarcodePrintModal({ rowData, stylesList = [], onClose }) {
             position: absolute !important;
             left: 0 !important;
             top: 0 !important;
-            width: 100% !important;
-            height: auto !important;
+            width: 50mm !important;
+            height: 25mm !important;
             background: #ffffff !important;
+            backdrop-filter: none !important;
             margin: 0 !important;
             padding: 0 !important;
+            overflow: hidden !important;
           }
           #cutting-barcode-print-wrapper .print-hide {
             display: none !important;
           }
-          #printable-barcode-ticket {
+          #cutting-barcode-print-wrapper .print-flat {
             display: block !important;
-            border: 1px dashed #64748b !important;
-            border-radius: 12px !important;
-            padding: 14px 16px !important;
-            margin: 10px !important;
-            width: 360px !important;
-            background: #ffffff !important;
+            width: auto !important;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 0 !important;
+            border-radius: 0 !important;
             box-shadow: none !important;
+            background: transparent !important;
+            zoom: 1 !important;
+          }
+          /* A hair under the page height so rounding never spills onto a second (blank) label */
+          #printable-barcode-ticket {
+            height: 24.5mm !important;
+            outline: none !important;
           }
         }
       `}</style>
 
-      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden print:shadow-none print:border-none print:w-full print:p-0">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden print-flat">
         {/* Modal Header (hidden on print) */}
         <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white px-6 py-4 flex items-center justify-between print:hidden print-hide">
           <div className="flex items-center gap-2">
@@ -1388,42 +1461,33 @@ function CuttingBarcodePrintModal({ rowData, stylesList = [], onClose }) {
         </div>
 
         {/* Modal Content / Ticket Preview */}
-        <div className="p-6 space-y-5 text-center">
+        <div className="p-6 space-y-5 text-center print-flat">
           <p className="text-xs text-slate-500 font-medium print:hidden print-hide">
-            Barcode ticket preview for approved cutting row:
+            Label preview (50 × 25 mm) for approved cutting row:
           </p>
 
-          {/* Exact Barcode Ticket Box matching user template */}
-          <div className="flex justify-center">
-            <div
-              id="printable-barcode-ticket"
-              className="border border-dashed border-slate-400 rounded-xl p-4 bg-white text-center w-[360px] max-w-full space-y-2 shadow-2xs"
-            >
-              {isResolving ? (
-                <div className="py-6 flex justify-center items-center gap-2 text-slate-400 text-xs">
-                  <Loader2 className="w-4 h-4 animate-spin text-[#c8834a]" />
-                  <span>Resolving barcode...</span>
-                </div>
-              ) : (
-                <>
-                  {/* SVG Barcode */}
-                  <div className="flex justify-center pt-1">
-                    <BarcodeSticker code={pieceCode} />
+          {/* 50 × 25 mm label — same markup prints at true size */}
+          <div className="flex justify-center print-flat">
+            <div className="label-zoom print-flat">
+              <div id="printable-barcode-ticket">
+                {isResolving ? (
+                  <div className="flex items-center gap-1 text-slate-400 text-[7pt]">
+                    <Loader2 className="w-3 h-3 animate-spin text-[#c8834a]" />
+                    <span>Resolving barcode...</span>
                   </div>
-
-                  {/* Short Code */}
-                  <div className="font-mono text-sm font-black tracking-wider text-slate-900 uppercase">
-                    {pieceCode}
-                  </div>
-
-                  {/* Spec Subtitle Line (Style · Article · Colour · Size) */}
-                  {subtitleStr && (
-                    <div className="text-[10px] font-bold text-slate-700 tracking-tight leading-tight uppercase px-1">
-                      {subtitleStr}
+                ) : (
+                  <>
+                    <div className="label-bars">
+                      <BarcodeSticker code={pieceCode} />
                     </div>
-                  )}
-                </>
-              )}
+
+                    <div className="label-code font-mono">{pieceCode}</div>
+
+                    {/* Style · Article · Colour · Size */}
+                    {subtitleStr && <div className="label-caption">{subtitleStr}</div>}
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
