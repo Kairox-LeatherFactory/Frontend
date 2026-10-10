@@ -39,7 +39,10 @@ export const entryApiSlice = apiSlice.injectEndpoints({
         method: 'POST',
         body: payload,
       }),
-      invalidatesTags: (_result, _error, { clientId }) => [{ type: 'ClientOrders', id: clientId }],
+      invalidatesTags: (_result, _error, { clientId }) => [
+        { type: 'ClientOrders', id: clientId },
+        'Clients',
+      ],
     }),
 
     // --- PRODUCTION ENTRY DATA ---
