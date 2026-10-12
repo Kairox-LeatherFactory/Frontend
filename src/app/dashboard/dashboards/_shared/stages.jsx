@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ChevronRight,
   CircleDot,
+  Factory,
   Flame,
   Layers,
   Loader2,
@@ -83,10 +84,20 @@ export function withFlowQueues(list) {
 // `stage.done`: number, undefined = still loading, null = no count (the
 // reason is in `stage.missing`). `stage.waiting`: number, or null = hidden.
 // The bar only shows unfiltered, where done and waiting share a time frame.
+// `stage.outsideDone`: how many of the done an outside factory did (job
+// work); `stage.outsideOut`: pieces an outside factory still has for it.
 // `stage.selectLabel` overrides the "Show … workers" hint.
 export function StageCard({ stage, selected, onSelect }) {
   // Skipped pieces have moved on, so they fill the bar like done ones.
   const skipped = stage.skipped ?? 0;
+  const outsideDone = stage.outsideDone ?? 0;
+  const outsideOut = stage.outsideOut ?? 0;
+  const outsideText = [
+    outsideDone > 0 && `${outsideDone.toLocaleString()} done`,
+    outsideOut > 0 && `${outsideOut.toLocaleString()} still there`,
+  ]
+    .filter(Boolean)
+    .join(', ');
   const total = (stage.done ?? 0) + (stage.waiting ?? 0) + skipped;
   const donePct = total > 0 ? Math.round((((stage.done ?? 0) + skipped) / total) * 100) : 0;
 
@@ -142,9 +153,32 @@ export function StageCard({ stage, selected, onSelect }) {
           {stage.waitingLabel}
         </span>
       )}
+      {/* Pieces that went past this stage without it being logged here —
+          an outside factory did the work (e.g. line + shell stitching). */}
       {skipped > 0 && (
         <span className="block text-[13px] text-[#8b7f6e]">
-          <span className="font-semibold tabular-nums">{skipped.toLocaleString()}</span> skipped
+          <span className="font-semibold tabular-nums">{skipped.toLocaleString()}</span> done outside
+        </span>
+      )}
+      {/* One short line: a factory icon, then done there · still out there. */}
+      {outsideText && (
+        <span
+          title={`Outside factory: ${outsideText}`}
+          className="flex flex-wrap items-center gap-x-1 text-[12px] text-[#8b7f6e]"
+        >
+          <Factory aria-hidden="true" className="w-3.5 h-3.5 shrink-0" strokeWidth={1.8} />
+          <span className="sr-only">Outside factory: </span>
+          {outsideDone > 0 && (
+            <span className="whitespace-nowrap">
+              <span className="font-semibold tabular-nums">{outsideDone.toLocaleString()}</span> done
+            </span>
+          )}
+          {outsideDone > 0 && outsideOut > 0 && <span aria-hidden="true">·</span>}
+          {outsideOut > 0 && (
+            <span className="whitespace-nowrap">
+              <span className="font-semibold tabular-nums">{outsideOut.toLocaleString()}</span> out
+            </span>
+          )}
         </span>
       )}
 

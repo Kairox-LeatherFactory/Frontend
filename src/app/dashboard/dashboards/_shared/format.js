@@ -94,7 +94,7 @@ export function orderStyleKey(orderNumber, style) {
   return `${String(orderNumber ?? '').trim().toUpperCase()}::${String(style ?? '').trim().toUpperCase()}`;
 }
 
-// No status column — status only sets the row order (late first, then at
+// No status column — status breaks ties in the row order (late first, then at
 // risk) and turns a late / at-risk order's count amber.
 export const ORDER_STATUS = {
   late: { rank: 0, text: 'text-[#b8730a] font-semibold' },
@@ -117,6 +117,39 @@ export function compareOrders(a, b) {
   if (byStatus !== 0) return byStatus;
   if (a.due && b.due) return String(a.due).localeCompare(String(b.due));
   return a.due ? -1 : b.due ? 1 : 0;
+}
+
+// ─── Most recent first ──────────────────────────────────────────────────────
+
+// Newest first by a day (YYYY-MM-DD) or ISO timestamp; '' / none last.
+export function compareNewest(a, b) {
+  return String(b || '').localeCompare(String(a || ''));
+}
+
+// A material lot's key, to match it to cut-log rows: the log carries the
+// lot's article / colour / thickness, not its id.
+export function lotKey(article, colour, thickness) {
+  return [article, colour, thickness].map((v) => String(v ?? '').trim().toUpperCase()).join('::');
+}
+
+export function cutRowLotKey(row) {
+  return lotKey(row?.material_article ?? row?.leather_article, row?.colour, row?.thickness);
+}
+
+export function cutRowOrderStyleKey(row) {
+  return orderStyleKey(row?.order_number, row?.style ?? row?.style_name);
+}
+
+// key → the latest day a cut-log row with that key was cut. The log only
+// has the day, not the time, so cuts on the same day tie.
+export function lastCutDays(logRows, keyOf) {
+  const latest = new Map();
+  (Array.isArray(logRows) ? logRows : []).forEach((r) => {
+    const day = rowDate(r);
+    const key = day ? keyOf(r) : null;
+    if (key && day > (latest.get(key) ?? '')) latest.set(key, day);
+  });
+  return latest;
 }
 
 // ─── Cut log (GET /dashboard/cutting|lining/consumption) ────────────────────

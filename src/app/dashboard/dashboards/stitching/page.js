@@ -8,7 +8,6 @@ import { apiGetStitchingDashboard, apiGetStitchingEmployeeDetail, apiGetDirectMa
 import {
   ORDER_STATUS,
   compareOrders,
-  dayLabel,
   formatShortDate,
   lastDays,
   localDateKey,
@@ -136,7 +135,7 @@ function buildOrderStages(track) {
 // not received yet, received but waiting for their other parts (leather /
 // lining), and complete, ready to send to Line Stitching. Whole factory only —
 // the store state isn't counted per order.
-function StoreCard({ queue, handoff, orderPicked, onClose }) {
+function StoreCard({ queue, handoff, onClose }) {
   const holding = toNum(handoff?.ready_for_store) ?? 0;
   const received = Math.max((toNum(handoff?.in_store) ?? 0) - holding, 0);
   const notReceived = Math.max((queue ?? 0) - holding - received, 0);
@@ -151,9 +150,6 @@ function StoreCard({ queue, handoff, orderPicked, onClose }) {
         <IconBubble icon={Package} />
         <div className="min-w-0">
           <h3 className="text-xl font-semibold">Store</h3>
-          <p className="text-xs text-[#8b7f6e] mt-0.5">
-            The pieces in the store&apos;s queue, and where each of them is{orderPicked ? ', for all orders' : ''}.
-          </p>
         </div>
         <CloseButton onClose={onClose} />
       </div>
@@ -366,9 +362,6 @@ function StageWorkersCard({ stage, source, orderLabel, onClose, onRetry }) {
         </span>
         <div className="min-w-0">
           <h3 className="text-xl font-semibold">{stage.name} Workers</h3>
-          <p className="text-xs text-[#8b7f6e] mt-0.5">
-            Pieces each worker has done at this stage{orderLabel ? ` for order ${orderLabel}` : ''}. Click a worker to see their pieces.
-          </p>
         </div>
         {rows.length > 0 && (
           <span className="rounded-full bg-[#f3eee5] px-3 py-1 text-xs font-semibold text-[#5b5146] tabular-nums">
@@ -564,17 +557,7 @@ export default function StitchingDashboard() {
     });
   }, [line, lineFiltering, lineOrder, lineDate, orderTrack, trend, trendFrom]);
 
-  let lineDayText = '';
-  if (lineDate && now) {
-    const yesterdayKey = localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
-    lineDayText =
-      lineDate === todayKey ? 'today' : lineDate === yesterdayKey ? 'yesterday' : `on ${dayLabel(lineDate, todayKey, yesterdayKey)}`;
-  }
   const lineOrderLabel = lineOrderOption?.label ?? '';
-  let lineSummary = 'Each stage shows how many pieces are done and how many are in the queue.';
-  if (lineOrder && lineDate) lineSummary = `Order ${lineOrderLabel}: pieces each stage finished ${lineDayText}. The queue is as of now.`;
-  else if (lineOrder) lineSummary = `Order ${lineOrderLabel}: pieces done and in the queue at each stage.`;
-  else if (lineDate) lineSummary = `Pieces each stage finished ${lineDayText}. The queue is as of now.`;
 
   const clearLineFilters = () => {
     setLineDate('');
@@ -655,7 +638,6 @@ export default function StitchingDashboard() {
       <StoreCard
         queue={line.find((s) => s.key === 'STORE')?.waiting}
         handoff={data?.store_handoff}
-        orderPicked={Boolean(lineOrder)}
         onClose={() => setSelectedKey(null)}
       />
     );
@@ -745,13 +727,12 @@ export default function StitchingDashboard() {
 
           {/* ─── Stitching line ─── */}
           <section className={`${CARD} p-6`}>
-            <div className="flex flex-wrap items-start gap-x-3 gap-y-4">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-4">
               <IconBubble icon={Zap} />
               <div className="flex-1 min-w-[200px]">
                 <h3 className="text-lg font-semibold">Stitching Line</h3>
-                <p className="text-xs text-[#8b7f6e] mt-0.5">{lineSummary}</p>
               </div>
-              <div className="flex flex-wrap items-center gap-x-5 gap-y-3 pt-1">
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
                 <DateFilterCalendar
                   label="Date"
                   value={lineDate}
@@ -835,11 +816,10 @@ export default function StitchingDashboard() {
               </section>
 
               <section className={`${CARD} lg:col-span-5 p-6 flex flex-col min-w-0`}>
-                <div className="flex flex-wrap items-start gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <IconBubble icon={TrendingUp} />
                   <div className="flex-1 min-w-0">
                     <h3 className="text-lg font-semibold">Last 14 Days</h3>
-                    <p className="text-xs text-[#8b7f6e] mt-0.5">Pieces finished each day.</p>
                   </div>
                 </div>
 

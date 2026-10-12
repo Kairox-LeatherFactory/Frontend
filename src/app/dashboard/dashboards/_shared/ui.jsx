@@ -23,6 +23,11 @@ import { MONTH_NAMES, dayLabel, formatConsumed, formatShortDate, formatToday, lo
 
 export const CARD = 'rounded-[28px] border border-[#f1e6d3] bg-[#fffdf9] shadow-[0_12px_32px_-16px_rgba(160,110,40,0.25)]';
 
+// A table box that scrolls past about five rows instead of growing. Give its
+// thead SCROLL_TABLE_HEAD so the column names stay put while the rows scroll.
+export const SCROLL_TABLE = 'max-h-[290px] overflow-auto';
+export const SCROLL_TABLE_HEAD = 'sticky top-0 z-10';
+
 export function greetingFor(d) {
   const h = d.getHours();
   if (h < 12) return { text: 'Good Morning', Icon: Sun };

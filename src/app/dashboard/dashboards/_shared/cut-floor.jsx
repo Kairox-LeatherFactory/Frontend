@@ -8,15 +8,19 @@ import { ChevronRight, Layers3, Users, X } from 'lucide-react';
 import {
   UNIT_LABELS,
   buildCutWorkerRows,
+  compareNewest,
+  cutRowLotKey,
   formatConsumed,
   formatDcm,
+  lastCutDays,
   localDateKey,
+  lotKey,
   mainUnit,
   rowDate,
   rowOrderKey,
   toNum,
 } from './format';
-import { CARD, DateFilterCalendar, EmptyNote, FilterSelect, IconBubble, PieceList, ShowAllButton } from './ui';
+import { CARD, DateFilterCalendar, EmptyNote, FilterSelect, IconBubble, PieceList, SCROLL_TABLE, SCROLL_TABLE_HEAD, ShowAllButton } from './ui';
 
 const STOCK_PREVIEW_COUNT = 5;
 const CUTTERS_PREVIEW_COUNT = 10;
@@ -49,45 +53,52 @@ function formatStock(value, uom, columnUnit) {
 
 // ─── Material stock ─────────────────────────────────────────────────────────
 
-// One row per lot — those overdrawn or running low first — with the pieces
+// One row per lot — the one cut from most recently first (from `log`, the
+// cut log), then those overdrawn or running low — with the pieces
 // cut from it, and how much is used and left in the lots' usual unit.
 // `usedKey` / `piecesKey`: the lot fields for used material and pieces cut
 // (leather: consumed / pieces_cut; lining: used / pieces_lined).
 // `showAmounts` off drops the Used / Left columns (lining asked for that);
 // a lot's Running low / Overdrawn tag then sits by its name.
+// `scroll` lists every lot in a box that scrolls, instead of five and View All.
 export function StockCard({
   title,
-  description,
   nameLabel,
   lots,
+  log,
   usedKey,
   piecesKey,
   defaultUnit,
   emptyText,
   showType = false,
   showAmounts = true,
+  scroll = false,
   className = '',
 }) {
   const [showAll, setShowAll] = useState(false);
-  const rows = useMemo(
-    () =>
-      (Array.isArray(lots) ? lots : [])
-        .map((lot) => ({ ...lot, status: lotStatus(lot, usedKey) }))
-        .sort(
-          (a, b) =>
-            (a.status?.rank ?? 2) - (b.status?.rank ?? 2) ||
-            String(a.article || '').localeCompare(String(b.article || ''), undefined, { numeric: true }) ||
-            String(a.colour || '').localeCompare(String(b.colour || ''))
-        ),
-    [lots, usedKey]
-  );
+  const rows = useMemo(() => {
+    const lastCut = lastCutDays(log, cutRowLotKey);
+    return (Array.isArray(lots) ? lots : [])
+      .map((lot) => ({
+        ...lot,
+        status: lotStatus(lot, usedKey),
+        lastCut: lastCut.get(lotKey(lot.article, lot.colour, lot.thickness)),
+      }))
+      .sort(
+        (a, b) =>
+          compareNewest(a.lastCut, b.lastCut) ||
+          (a.status?.rank ?? 2) - (b.status?.rank ?? 2) ||
+          String(a.article || '').localeCompare(String(b.article || ''), undefined, { numeric: true }) ||
+          String(a.colour || '').localeCompare(String(b.colour || ''))
+      );
+  }, [lots, log, usedKey]);
   // The unit most lots are in heads the Used / Left columns.
   const columnUnit = useMemo(() => {
     const counts = new Map();
     rows.forEach((lot) => counts.set(unitLabel(lot.uom, defaultUnit), (counts.get(unitLabel(lot.uom, defaultUnit)) || 0) + 1));
     return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? unitLabel(defaultUnit);
   }, [rows, defaultUnit]);
-  const visible = showAll ? rows : rows.slice(0, STOCK_PREVIEW_COUNT);
+  const visible = scroll || showAll ? rows : rows.slice(0, STOCK_PREVIEW_COUNT);
 
   return (
     <section className={`${CARD} p-6 min-w-0 ${className}`}>
@@ -95,15 +106,14 @@ export function StockCard({
         <IconBubble icon={Layers3} />
         <div className="flex-1 min-w-[200px]">
           <h3 className="text-lg font-semibold">{title}</h3>
-          <p className="text-xs text-[#8b7f6e] mt-0.5">{description}</p>
         </div>
-        {rows.length > STOCK_PREVIEW_COUNT && <ShowAllButton showAll={showAll} onToggle={() => setShowAll((v) => !v)} />}
+        {!scroll && rows.length > STOCK_PREVIEW_COUNT && <ShowAllButton showAll={showAll} onToggle={() => setShowAll((v) => !v)} />}
       </div>
 
       {rows.length > 0 ? (
-        <div className="mt-5 overflow-x-auto rounded-2xl border border-[#efe6d6]">
+        <div className={`mt-5 rounded-2xl border border-[#efe6d6] ${scroll ? SCROLL_TABLE : 'overflow-x-auto'}`}>
           <table className={`w-full ${showAmounts ? 'min-w-[640px]' : 'min-w-[480px]'} text-sm`}>
-            <thead className="bg-[#faf5ec] text-xs text-[#8b7f6e]">
+            <thead className={`bg-[#faf5ec] text-xs text-[#8b7f6e] ${scroll ? SCROLL_TABLE_HEAD : ''}`}>
               <tr>
                 <th scope="col" className="px-4 py-3 text-left font-semibold">{nameLabel}</th>
                 {showType && <th scope="col" className="px-4 py-3 text-left font-semibold">Type</th>}
@@ -171,7 +181,7 @@ export function StockCard({
 // material's unit until the log has a measured cut ('dcm' leather, 'm' lining).
 // `showUsed` off drops the material column, here and in the piece list
 // (lining asked for that).
-export function CutLogWorkersCard({ log, title = 'Cutters', description, defaultUnit = 'dcm', className = '', showUsed = true }) {
+export function CutLogWorkersCard({ log, title = 'Cutters', defaultUnit = 'dcm', className = '', showUsed = true }) {
   // The card only renders once data has loaded in the browser, so reading
   // the clock here is safe.
   const [todayKey] = useState(() => localDateKey(new Date()));
@@ -313,7 +323,6 @@ export function CutLogWorkersCard({ log, title = 'Cutters', description, default
         <IconBubble icon={Users} />
         <div className="min-w-0">
           <h3 className="text-lg font-semibold">{title}</h3>
-          <p className="text-xs text-[#8b7f6e] mt-0.5">{description}</p>
         </div>
         {table.workerCount > 0 && (
           <span className="rounded-full bg-[#f3eee5] px-3 py-1 text-xs font-semibold text-[#5b5146] tabular-nums">

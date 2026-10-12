@@ -5,7 +5,7 @@ import { ClipboardList, PackageCheck, PackageOpen, Send, TrendingUp, X } from 'l
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { useAuth } from '@/context/AuthContext';
 import { apiGetStoreDashboard } from '@/lib/api';
-import { formatShortDate, lastDays, localDateKey, localDayOf, rowOrderKey, toNum } from '../_shared/format';
+import { compareNewest, formatShortDate, lastDays, localDateKey, localDayOf, orderStyleKey, rowOrderKey, toNum } from '../_shared/format';
 import {
   CARD,
   ChartTooltip,
@@ -34,7 +34,8 @@ import {
  *      Click a tile to show just those garments in 4.
  *   4. Garments — every garment in the store, with the card's own date
  *      (completed or sent that day) + order filters
- *   5. Styles in store, soonest due first: garments in / ready to send
+ *   5. Styles in store, the one a garment was last received or sent for
+ *      first, then soonest due: garments in / ready to send
  *   6. Last 14 days: garments received and sent each day
  * From GET /api/v1/dashboard/store (garments, current_styles). A garment
  * that has shipped hands its drawer back and leaves this list, so "sent"
@@ -205,7 +206,6 @@ function GarmentsCard({ garments, status, onClearStatus }) {
         <IconBubble icon={PackageOpen} />
         <div className="min-w-0">
           <h3 className="text-lg font-semibold">Garments{statusLabel ? ` · ${statusLabel}` : ''}</h3>
-          <p className="text-xs text-[#8b7f6e] mt-0.5">Every garment in the store and what it has. Complete = all its parts in.</p>
         </div>
         <span className="rounded-full bg-[#f3eee5] px-3 py-1 text-xs font-semibold text-[#5b5146] tabular-nums">
           {rows.length.toLocaleString()} garment{rows.length === 1 ? '' : 's'}
@@ -305,21 +305,37 @@ export default function StoreDashboard() {
   }, [garments]);
   const toggleStatus = (key) => setStatus((current) => (current === key ? '' : key));
 
-  // ── 5. Styles in store, soonest due first ──
-  const styles = useMemo(
-    () =>
-      (Array.isArray(data?.current_styles) ? data.current_styles : [])
-        .map((s, idx) => ({
-          key: `${s.order_id || s.order_number || 'order'}-${s.style_id || s.style || 'style'}-${idx}`,
-          order: String(s.order_number || '—').trim(),
-          style: String(s.style || '—').trim(),
-          garments: toNum(s.garments) ?? 0,
-          ready: toNum(s.ready_to_send) ?? 0,
-          due: s.target_date ? String(s.target_date).slice(0, 10) : null,
-        }))
-        .sort((a, b) => (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0)),
-    [data]
-  );
+  // ── 5. Styles in store: the one a garment was last received or sent for
+  // first, then soonest due ──
+  const styles = useMemo(() => {
+    // Order + style → its garments' latest received / sent time (as UTC ISO,
+    // so the strings sort).
+    const lastMoved = new Map();
+    (Array.isArray(data?.garments) ? data.garments : []).forEach((g) => {
+      const key = orderStyleKey(g.order_number, g.style);
+      [g.received_at, g.sended_at].forEach((at) => {
+        const t = at ? new Date(at) : null;
+        if (!t || Number.isNaN(t.getTime())) return;
+        const iso = t.toISOString();
+        if (iso > (lastMoved.get(key) ?? '')) lastMoved.set(key, iso);
+      });
+    });
+    return (Array.isArray(data?.current_styles) ? data.current_styles : [])
+      .map((s, idx) => ({
+        key: `${s.order_id || s.order_number || 'order'}-${s.style_id || s.style || 'style'}-${idx}`,
+        order: String(s.order_number || '—').trim(),
+        style: String(s.style || '—').trim(),
+        garments: toNum(s.garments) ?? 0,
+        ready: toNum(s.ready_to_send) ?? 0,
+        due: s.target_date ? String(s.target_date).slice(0, 10) : null,
+        lastMoved: lastMoved.get(orderStyleKey(s.order_number, s.style)),
+      }))
+      .sort(
+        (a, b) =>
+          compareNewest(a.lastMoved, b.lastMoved) ||
+          (a.due && b.due ? a.due.localeCompare(b.due) : a.due ? -1 : b.due ? 1 : 0)
+      );
+  }, [data]);
   const visibleStyles = showAllStyles ? styles : styles.slice(0, STYLES_PREVIEW_COUNT);
 
   // ── 6. Last 14 days, every day shown ──
@@ -398,7 +414,6 @@ export default function StoreDashboard() {
               <IconBubble icon={ClipboardList} />
               <div className="min-w-0">
                 <h3 className="text-lg font-semibold">In the Store</h3>
-                <p className="text-xs text-[#8b7f6e] mt-0.5">Garments by what they still need. Click one to see those garments.</p>
               </div>
             </div>
             <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -442,7 +457,6 @@ export default function StoreDashboard() {
                 <IconBubble icon={ClipboardList} />
                 <div className="min-w-0">
                   <h3 className="text-lg font-semibold">Styles in Store</h3>
-                  <p className="text-xs text-[#8b7f6e] mt-0.5">Garments in the store per style, soonest due first.</p>
                 </div>
                 {styles.length > STYLES_PREVIEW_COUNT && (
                   <ShowAllButton showAll={showAllStyles} onToggle={() => setShowAllStyles((v) => !v)} />
@@ -485,13 +499,12 @@ export default function StoreDashboard() {
             </section>
 
             <section className={`${CARD} lg:col-span-5 p-6 flex flex-col min-w-0`}>
-              <div className="flex flex-wrap items-start gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <IconBubble icon={TrendingUp} />
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-semibold">Last 14 Days</h3>
-                  <p className="text-xs text-[#8b7f6e] mt-0.5">Garments received and sent each day.</p>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-[#8b7f6e] pt-1">
+                <div className="flex items-center gap-4 text-xs text-[#8b7f6e]">
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#f6b73c]" /> Received
                   </span>

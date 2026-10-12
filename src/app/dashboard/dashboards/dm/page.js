@@ -10,6 +10,7 @@ import {
   ClipboardList,
   TrendingUp,
   ArrowRight,
+  Factory,
   Loader2,
   X,
 } from 'lucide-react';
@@ -42,12 +43,14 @@ import {
 import {
   ORDER_STATUS,
   buildCutWorkerRows,
+  compareNewest,
   compareOrders,
   countCutPieces,
-  dayLabel,
+  cutRowOrderStyleKey,
   formatConsumed,
   formatDcm,
   formatShortDate,
+  lastCutDays,
   localDateKey,
   localDayOf,
   mainUnit,
@@ -59,7 +62,7 @@ import {
   toNum,
 } from '../_shared/format';
 import { fetchAllPages, inBatches } from '../_shared/paging';
-import { StageGrid, StageIcon, stageName, withFlowQueues } from '../_shared/stages';
+import { StageGrid, StageIcon, isSideStage, stageName, withFlowQueues } from '../_shared/stages';
 import {
   CARD,
   ChartTooltip,
@@ -72,6 +75,8 @@ import {
   LoadFailedAlert,
   PageLoading,
   PieceList,
+  SCROLL_TABLE,
+  SCROLL_TABLE_HEAD,
   useClock,
 } from '../_shared/ui';
 
@@ -84,6 +89,8 @@ import {
  *   2. Workers in today                      (attendance.employees_present)
  *   3. Production line — done / waiting per stage, busiest stage highlighted
  *                                            (pipeline + bottleneck)
+ *      and, unfiltered, what outside factories did there and still have
+ *                                            (jobwork)
  *      with the card's own date + order filters (start on all / all):
  *        Order → every stage's done / waiting for that order, busiest stage
  *                highlighted (direct-manager/orders/{order_id})
@@ -95,7 +102,8 @@ import {
  *                  Fusing … Final Finish    → stitching per-stage daily
  *                                             trend: last 14 days, not by order
  *                  Final Inspection, Package Export → no log
- *   4. Orders, late first                    (order_progress + overall counts)
+ *   4. Orders, most recently cut first, then late first
+ *                                            (order_progress + overall counts)
  *      with leather DCM consumed per order/style (cutting consumption log)
  *   5. Last 14 days, made vs target          (daily_production)
  *   6. Click a stage → its workers (or pieces) replace blocks 4 + 5:
@@ -107,7 +115,11 @@ import {
  *                                   finished there, so the total is the
  *                                   stage's "done"; same date (starts on the
  *                                   line's date, else all dates) + order
- *                                   filters (production event feed)
+ *                                   filters (production event feed); plus an
+ *                                   Outside factory line (pieces it did here)
+ *                                   and, under the table, Done outside: pieces
+ *                                   already at a later stage that were never
+ *                                   logged here (production SKU pieces)
  *        Store                    → its done pieces: sent on (store dashboard,
  *                                   state "sended") + already shipped (order
  *                                   barcodes at the last stage — shipping
@@ -116,6 +128,9 @@ import {
  *                                   line's date, else all dates) + order filters
  *      Click a worker → the pieces they did open under their row (cut log;
  *      event stages: piece codes looked up per SKU on click).
+ *      Under it, if outside factories worked the stage: each job sent out
+ *      for it, latest first — factory, sent / due back, pieces still out /
+ *      back / rejected / missing         (jobwork)
  * From GET /api/v1/dashboard/direct-manager, plus
  * GET /api/v1/dashboard/cutting/consumption (DCM column + Leather Cutting
  * workers). Lining consumption, the event feed, the stitching trend and the
@@ -129,6 +144,8 @@ const ORDERS_PREVIEW_COUNT = 5;
 const WORKERS_PREVIEW_COUNT = 10;
 // Row key of an event stage's outside-factory line (worker keys are ids).
 const OUTSIDE_KEY = 'outside-factory';
+// Row key of an event stage's done-outside line (pieces that went past it).
+const DONE_OUTSIDE_KEY = 'done-outside';
 // How far back the stitching dashboard's per-stage daily trend goes.
 const STITCH_TREND_DAYS = 14;
 
@@ -348,7 +365,7 @@ function buildEventWorkerRows(logRows) {
 // `lineDate` / `lineOrder`: the production line's filters ('' = all).
 // Worker stages list workers — click one for their pieces. The store has no
 // workers, so it lists the pieces it has sent on instead.
-function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose, onRetry, outsideSource }) {
+function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose, onRetry, outsideSource, outsideVendors }) {
   const { token } = useAuth();
   const cardRef = useRef(null);
   const [showAll, setShowAll] = useState(false);
@@ -376,8 +393,9 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
   // Event stages: piece id → code, from pieceCodeCache (undefined = still
   // looking it up, null = couldn't load).
   const [pieceCodes, setPieceCodes] = useState(() => Object.fromEntries(pieceCodeCache));
-  // Event stages: pieces an outside factory did here, and its name(s) —
-  // { pieces, vendors } (undefined = not loaded, null = failed).
+  // Event stages: { pieces, passed } (undefined = not loaded, null = failed)
+  // — pieces an outside factory did here, and pieces done outside that went
+  // past this stage without it being logged. `outsideVendors`: the name(s).
   const [outside, setOutside] = useState(undefined);
   const filtering = dateFilter !== '' || orderFilter !== '';
 
@@ -397,7 +415,7 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
       const key = rowOrderKey(r);
       if (key && !orders.has(key)) orders.set(key, String(r.order_number).trim());
     });
-    (outside?.pieces ?? []).forEach((p) => {
+    [...(outside?.pieces ?? []), ...(outside?.passed ?? [])].forEach((p) => {
       if (p.orderKey && !orders.has(p.orderKey)) orders.set(p.orderKey, p.order);
     });
     if (orderFilter && !orders.has(orderFilter)) orders.set(orderFilter, orderFilter);
@@ -439,38 +457,48 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
     return { bySku, total: all.size };
   }, [isEvents, logRows]);
   const outsideGap = workerDone ? Math.max((stage.done ?? 0) - workerDone.total, 0) : 0;
+  // Pieces that reached a later stage without being done here (the stage
+  // card's "done outside") — an outside factory did the work.
+  const passedCount = isEvents ? (stage.skipped ?? 0) : 0;
 
   // ── LIVE BACKEND CALLS, at an event stage whose workers fall short of its
-  //    "done" — the rest came back from an outside factory:
-  //    GET /api/v1/production/skus/{sku_id}/pieces?operation_id=… — one row
-  //      per SKU in the feed for how many of its pieces are done here, whoever
-  //      did them; then every page of each SKU that's short. A piece done
-  //      here that none of our workers did is the outside factory's.
-  //    GET /api/v1/jobwork — the factories that sent work back at this stage
-  //      (counts only, no pieces, so it only names them).
-  //    Neither says which day a piece came back. ──
+  //    "done" (the rest came back from an outside factory), or whose pieces
+  //    went past it done outside:
+  //    GET /api/v1/production/skus/{sku_id}/pieces?operation_id=… — whether
+  //      each piece is done here, whoever did it, and the stage it's at now.
+  //      Only short: one row per SKU in the feed for how many are done here,
+  //      then every page of each SKU that's short. Gone past: every page of
+  //      every SKU in the feed. A piece done here that none of our workers
+  //      did is the outside factory's; one not done here but already at a
+  //      later stage was done outside.
+  //    It doesn't say which day a piece came back. ──
   const outsideOpId = outsideSource?.operationId ?? null;
-  const outsideStage = outsideSource?.stageCode ?? null;
   const outsideSkus = outsideSource?.skus ?? null;
+  const laterStages = outsideSource?.laterStages ?? null;
   useEffect(() => {
-    if (!token || outsideGap === 0 || !workerDone || !outsideOpId || !outsideSkus) return;
+    if (!token || (outsideGap === 0 && passedCount === 0) || !workerDone || !outsideOpId || !outsideSkus || !laterStages) {
+      return;
+    }
     let isMounted = true;
     async function loadPieces() {
-      const skuIds = [...outsideSkus.keys()];
-      const heads = await inBatches(skuIds, 8, (skuId) =>
-        apiGetSkuPiecesPage(token, skuId, { operationId: outsideOpId, limit: 1 })
-      );
-      const short = skuIds.filter((skuId, i) => (toNum(heads[i]?.done) ?? 0) > (workerDone.bySku.get(skuId)?.size ?? 0));
-      const pages = await inBatches(short, 4, (skuId) =>
+      let skuIds = [...outsideSkus.keys()];
+      if (passedCount === 0) {
+        const heads = await inBatches(skuIds, 8, (skuId) =>
+          apiGetSkuPiecesPage(token, skuId, { operationId: outsideOpId, limit: 1 })
+        );
+        skuIds = skuIds.filter((skuId, i) => (toNum(heads[i]?.done) ?? 0) > (workerDone.bySku.get(skuId)?.size ?? 0));
+      }
+      const pages = await inBatches(skuIds, 4, (skuId) =>
         fetchAllPages((offset, limit) => apiGetSkuPiecesPage(token, skuId, { operationId: outsideOpId, offset, limit }))
       );
       const pieces = [];
-      short.forEach((skuId, i) => {
+      const passed = [];
+      skuIds.forEach((skuId, i) => {
         const sku = outsideSkus.get(skuId);
         const ours = workerDone.bySku.get(skuId);
         pages[i].forEach((p) => {
-          if (!p?.done_at_op || !p.piece_id || ours?.has(p.piece_id)) return;
-          pieces.push({
+          if (!p?.piece_id) return;
+          const piece = {
             pieceId: p.piece_id,
             skuId,
             code: p.code || null,
@@ -480,27 +508,23 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
             style: String(sku?.style || '—').trim(),
             colour: String(sku?.colour || '—').trim(),
             size: String(sku?.size || '').trim(),
-          });
+          };
+          if (p.done_at_op) {
+            if (!ours?.has(p.piece_id)) pieces.push(piece);
+          } else if (
+            laterStages.keys.has(String(p.current_stage || '').toUpperCase()) ||
+            laterStages.names.has(p.current_stage_label)
+          ) {
+            passed.push({ ...piece, stage: p.current_stage_label || stageName(p.current_stage) });
+          }
         });
       });
-      return pieces.sort((a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true }));
+      const byCode = (a, b) => String(a.code).localeCompare(String(b.code), undefined, { numeric: true });
+      return { pieces: pieces.sort(byCode), passed: passed.sort(byCode) };
     }
-    async function loadVendors() {
-      try {
-        const jobs = await apiGetJobWork(token, { limit: 1000 });
-        const names = (Array.isArray(jobs) ? jobs : [])
-          .filter((j) => String(j?.stage || '').toUpperCase() === outsideStage && (toNum(j.pieces_back) ?? 0) > 0)
-          .map((j) => String(j.vendor || '').trim())
-          .filter(Boolean);
-        return [...new Set(names)].sort();
-      } catch (err) {
-        console.warn('Job work fetch failed:', err?.message);
-        return [];
-      }
-    }
-    Promise.all([loadPieces(), loadVendors()])
-      .then(([pieces, vendors]) => {
-        if (isMounted) setOutside({ pieces, vendors });
+    loadPieces()
+      .then((found) => {
+        if (isMounted) setOutside(found);
       })
       .catch((err) => {
         console.warn('Outside factory pieces fetch failed:', err?.message);
@@ -509,7 +533,7 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
     return () => {
       isMounted = false;
     };
-  }, [token, outsideGap, workerDone, outsideOpId, outsideStage, outsideSkus]);
+  }, [token, outsideGap, passedCount, workerDone, outsideOpId, outsideSkus, laterStages]);
 
   // The outside factory's line under the current filters. Its pieces have no
   // date, so a date filter leaves them out. Until they load (or if they
@@ -518,7 +542,12 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
     ? outside.pieces.filter((p) => !dateFilter && (!orderFilter || p.orderKey === orderFilter))
     : null;
   const outsidePieces = !isEvents ? 0 : outsideList ? outsideList.length : filtering ? 0 : outsideGap;
-  const outsideName = outside?.vendors?.length ? outside.vendors.join(', ') : null;
+  // The done-outside line, the same way: no date, so a date filter hides it.
+  const passedList = outside?.passed
+    ? outside.passed.filter((p) => !dateFilter && (!orderFilter || p.orderKey === orderFilter))
+    : null;
+  const passedPieces = !isEvents ? 0 : passedList ? passedList.length : filtering ? 0 : passedCount;
+  const outsideName = outsideVendors?.length ? outsideVendors.join(', ') : null;
 
   // New codes in the shared cache → this card's copy.
   useEffect(() => {
@@ -579,6 +608,20 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
     }
     if (!outsideList) return <p className="py-3 text-sm text-[#a33a33]">Couldn&apos;t load these pieces.</p>;
     return <PieceList caption="Pieces done by an outside factory" pieces={outsideList} />;
+  };
+
+  // What opens under the done-outside line: the pieces and where they are now.
+  const passedPieceList = () => {
+    if (outside === undefined && outsideOpId && outsideSkus) {
+      return (
+        <p className="flex items-center gap-2 py-3 text-sm text-[#8b7f6e]">
+          <Loader2 className="w-4 h-4 animate-spin text-[#e8961a]" />
+          Loading pieces…
+        </p>
+      );
+    }
+    if (!passedList) return <p className="py-3 text-sm text-[#a33a33]">Couldn&apos;t load these pieces.</p>;
+    return <PieceList caption={`Pieces done outside, never logged at ${stage.name}`} pieces={passedList} />;
   };
 
   const noun = isStore ? 'pieces' : 'workers';
@@ -745,13 +788,6 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
     );
   }
 
-  let description = 'Pieces each worker has finished at this stage. Click a worker to see their pieces.';
-  if (isCut) description = 'Pieces each worker has cut, and the material they used. Click a worker to see their pieces.';
-  else if (isStore) {
-    description =
-      'Pieces the store has sent on to the next stage, including ones already shipped. Sent = the day a piece left the store; shipped pieces no longer keep that date.';
-  }
-
   const count = isStore ? rows.length : (table?.workerCount ?? 0);
 
   return (
@@ -764,7 +800,6 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
           <h3 className="text-xl font-semibold">
             {stage.name} {isStore ? 'Pieces' : 'Workers'}
           </h3>
-          <p className="text-xs text-[#8b7f6e] mt-0.5">{description}</p>
         </div>
         {count > 0 && (
           <span className="rounded-full bg-[#f3eee5] px-3 py-1 text-xs font-semibold text-[#5b5146] tabular-nums">
@@ -827,11 +862,150 @@ function StageWorkersCard({ stage, source, logRows, lineDate, lineOrder, onClose
 
       {body}
 
+      {/* Under the table, so its Total stays the stage's "done". */}
+      {passedPieces > 0 && Array.isArray(logRows) && (
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-[#efe6d6]">
+          <table className="w-full text-sm">
+            <tbody>
+              <tr
+                onClick={() => toggleWorker(DONE_OUTSIDE_KEY)}
+                className={`cursor-pointer transition-colors ${
+                  openWorkerKey === DONE_OUTSIDE_KEY ? 'bg-[#fff6df]' : 'hover:bg-[#fffaf1]'
+                }`}
+              >
+                <td className="px-4 py-3 font-semibold">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleWorker(DONE_OUTSIDE_KEY);
+                    }}
+                    aria-expanded={openWorkerKey === DONE_OUTSIDE_KEY}
+                    title={openWorkerKey === DONE_OUTSIDE_KEY ? 'Hide pieces' : 'Show the pieces done outside'}
+                    className="flex flex-wrap items-center gap-x-2 text-left cursor-pointer rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8834a]"
+                  >
+                    <ChevronRight
+                      aria-hidden="true"
+                      className={`w-4 h-4 shrink-0 text-[#a89c8a] transition-transform ${
+                        openWorkerKey === DONE_OUTSIDE_KEY ? 'rotate-90' : ''
+                      }`}
+                    />
+                    Done outside
+                    <span className="text-xs font-normal text-[#8b7f6e]">never logged at {stage.name}</span>
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">{passedPieces.toLocaleString()}</td>
+              </tr>
+              {openWorkerKey === DONE_OUTSIDE_KEY && (
+                <tr>
+                  <td colSpan={2} className="bg-[#fffaf1] px-4 pt-1 pb-4">
+                    {passedPieceList()}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       {isCut && rows.length > 0 && (
         <FootNote className="mt-auto pt-5">
           {table.unitLabel} Consumed = material used for those pieces.
         </FootNote>
       )}
+    </section>
+  );
+}
+
+// ─── Outside factories ──────────────────────────────────────────────────────
+
+// Shown under a clicked stage's card: one row per job sent to an outside
+// factory for that stage (job work), latest sent or returned first — the
+// factory, when it went and is due back, and its pieces: still out there,
+// back done, rejected, missing. Late = past its due-back date with pieces
+// still out. `jobs`: that stage's jobwork rows.
+function OutsideWorkCard({ stageName: name, jobs }) {
+  const rows = useMemo(
+    () =>
+      jobs
+        .map((j, idx) => {
+          const stamps = [j.dispatched_at, j.returned_at]
+            .map((at) => (at ? new Date(at) : null))
+            .filter((t) => t && !Number.isNaN(t.getTime()))
+            .map((t) => t.toISOString())
+            .sort();
+          const out = Math.max(toNum(j.pieces_out) ?? 0, 0);
+          return {
+            key: j.job_id || `job-${idx}`,
+            vendor: String(j.vendor || '—').trim(),
+            sentDay: localDayOf(j.dispatched_at),
+            dueDay: j.expected_back ? String(j.expected_back).slice(0, 10) : '',
+            out,
+            back: Math.max(toNum(j.pieces_back) ?? 0, 0),
+            rejected: Math.max(toNum(j.pieces_rejected) ?? 0, 0),
+            missing: Math.max(toNum(j.pieces_short) ?? 0, 0),
+            late: Boolean(j.overdue) && out > 0,
+            lastMoved: stamps[stamps.length - 1] ?? '',
+          };
+        })
+        .sort((a, b) => compareNewest(a.lastMoved, b.lastMoved)),
+    [jobs]
+  );
+
+  const stillOut = rows.reduce((sum, r) => sum + r.out, 0);
+  const lateJobs = rows.filter((r) => r.late).length;
+
+  return (
+    <section className={`${CARD} p-6 min-w-0`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <IconBubble icon={Factory} />
+        <h3 className="text-xl font-semibold">{name} at Outside Factories</h3>
+        {stillOut > 0 && (
+          <span className="rounded-full bg-[#f3eee5] px-3 py-1 text-xs font-semibold text-[#5b5146] tabular-nums">
+            {stillOut} piece{stillOut === 1 ? '' : 's'} out
+          </span>
+        )}
+        {lateJobs > 0 && (
+          <span className="rounded-full bg-[#fde4e1] px-3 py-1 text-xs font-semibold text-[#d9443f] tabular-nums">
+            {lateJobs} late
+          </span>
+        )}
+      </div>
+      <div className={`mt-5 rounded-2xl border border-[#efe6d6] ${SCROLL_TABLE}`}>
+        <table className="w-full min-w-[640px] text-sm">
+          <thead className={`bg-[#faf5ec] text-xs text-[#8b7f6e] ${SCROLL_TABLE_HEAD}`}>
+            <tr>
+              <th scope="col" className="px-4 py-3 text-left font-semibold">Factory</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold whitespace-nowrap">Sent On</th>
+              <th scope="col" className="px-4 py-3 text-left font-semibold whitespace-nowrap">Due Back</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold whitespace-nowrap">Still Out</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Back</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Rejected</th>
+              <th scope="col" className="px-4 py-3 text-right font-semibold">Missing</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#f3ece0]">
+            {rows.map((r) => (
+              <tr key={r.key}>
+                <td className="px-4 py-3 font-semibold">{r.vendor}</td>
+                <td className="px-4 py-3 text-[#5b5146] whitespace-nowrap">{r.sentDay ? formatShortDate(r.sentDay) : '—'}</td>
+                <td className="px-4 py-3 text-[#5b5146] whitespace-nowrap">
+                  {r.dueDay ? formatShortDate(r.dueDay) : '—'}
+                  {r.late && (
+                    <span className="ml-2 rounded-full bg-[#fde4e1] px-2 py-0.5 text-[11px] font-semibold text-[#d9443f]">Late</span>
+                  )}
+                </td>
+                <td className={`px-4 py-3 text-right tabular-nums ${r.out > 0 ? 'font-semibold text-[#b8730a]' : ''}`}>
+                  {r.out.toLocaleString()}
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums">{r.back.toLocaleString()}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{r.rejected.toLocaleString()}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{r.missing.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
@@ -843,6 +1017,8 @@ export default function DirectManagerDashboard() {
 
   const [data, setData] = useState(null);
   const [consumptionRows, setConsumptionRows] = useState(null);
+  // Work sent to outside factories, one row per dispatch (null = couldn't load).
+  const [jobWork, setJobWork] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(null);
@@ -884,18 +1060,22 @@ export default function DirectManagerDashboard() {
 
   // ── LIVE BACKEND CALLS: GET /api/v1/dashboard/direct-manager
   //    + GET /api/v1/dashboard/cutting/consumption (leather cut log: DCM per
-  //      piece; with unmeasured cuts, so it also counts every piece cut) ──
+  //      piece; with unmeasured cuts, so it also counts every piece cut)
+  //    + GET /api/v1/jobwork (pieces each stage got back from outside
+  //      factories, and the factories' names; counts only, no pieces) ──
   // Loads on mount, on the refresh button (refreshKey), and every 5 minutes.
-  // A failed consumption call only blanks the DCM column, never the page.
+  // A failed consumption call only blanks the DCM column, and a failed job
+  // work call the outside-factory counts, never the page.
   useEffect(() => {
     let isMounted = true;
     async function loadDashboard() {
       if (!token) return;
       try {
         setLoading(true);
-        const [dmRes, consumptionRes] = await Promise.allSettled([
+        const [dmRes, consumptionRes, jobWorkRes] = await Promise.allSettled([
           apiGetDirectManagerDashboard(token),
           apiGetCuttingConsumption(token, { include_unmeasured: true }),
+          apiGetJobWork(token, { limit: 1000 }),
         ]);
         if (!isMounted) return;
         if (dmRes.status === 'rejected') throw dmRes.reason;
@@ -905,6 +1085,10 @@ export default function DirectManagerDashboard() {
         );
         if (consumptionRes.status === 'rejected') {
           console.warn('Cutting consumption fetch failed:', consumptionRes.reason?.message);
+        }
+        setJobWork(jobWorkRes.status === 'fulfilled' && Array.isArray(jobWorkRes.value) ? jobWorkRes.value : null);
+        if (jobWorkRes.status === 'rejected') {
+          console.warn('Job work fetch failed:', jobWorkRes.reason?.message);
         }
         setLoadFailed(false);
         setUpdatedAt(Date.now());
@@ -1136,6 +1320,27 @@ export default function DirectManagerDashboard() {
     return list.map((s) => ({ ...s, stuck: s.key === deepest?.key && s.waiting > 0 }));
   }, [data]);
 
+  // Stage code → { back, out, vendors }: the pieces outside factories sent
+  // back done at that stage (part of its "done"), the pieces they still have
+  // for it, and the factories that sent work back. All dates, whole factory.
+  const outsideByStage = useMemo(() => {
+    const map = new Map();
+    (Array.isArray(jobWork) ? jobWork : []).forEach((j) => {
+      const key = String(j?.stage || '').toUpperCase();
+      if (!key) return;
+      const back = Math.max(toNum(j.pieces_back) ?? 0, 0);
+      const out = Math.max(toNum(j.pieces_out) ?? 0, 0);
+      if (back === 0 && out === 0) return;
+      if (!map.has(key)) map.set(key, { back: 0, out: 0, vendors: new Set() });
+      const entry = map.get(key);
+      entry.back += back;
+      entry.out += out;
+      const vendor = String(j.vendor || '').trim();
+      if (vendor && back > 0) entry.vendors.add(vendor);
+    });
+    return map;
+  }, [jobWork]);
+
   // ── LIVE BACKEND CALLS, when Store is clicked: the pieces that have
   //    already shipped. Store's "done" counts them, but their drawer
   //    recycles once they ship, so the store dashboard no longer lists them.
@@ -1220,9 +1425,17 @@ export default function DirectManagerDashboard() {
   // A date → pieces each stage finished that day, from its own log (no
   // endpoint counts a stage by day); waiting stays the live queue — the
   // order's when one is picked, else the factory's. ──
+  // Job work has no order and no per-piece date, so the outside-factory count
+  // only shows unfiltered.
   const lineStages = useMemo(() => {
     if (!lineFiltering) {
-      return stages.map((s) => ({ ...s, waitingLabel: 'queue', showBar: true }));
+      return stages.map((s) => ({
+        ...s,
+        outsideDone: outsideByStage.get(String(s.key).toUpperCase())?.back ?? 0,
+        outsideOut: outsideByStage.get(String(s.key).toUpperCase())?.out ?? 0,
+        waitingLabel: 'queue',
+        showBar: true,
+      }));
     }
 
     // The order's numbers by stage key, its waiting worked out like the
@@ -1312,19 +1525,7 @@ export default function DirectManagerDashboard() {
       }
       return { ...base, done: null, missing: 'No count by day' };
     });
-  }, [stages, lineFiltering, lineDate, lineOrder, lineOrderTrack, consumptionRows, liningLog, storeLog, stitchDaily, todayKey]);
-
-  const lineOrderLabel = lineOrderOption?.label ?? '';
-  let lineDayText = '';
-  if (lineDate && now) {
-    const yesterdayKey = localDateKey(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
-    lineDayText =
-      lineDate === todayKey ? 'today' : lineDate === yesterdayKey ? 'yesterday' : `on ${dayLabel(lineDate, todayKey, yesterdayKey)}`;
-  }
-  let lineSummary = 'Each stage shows how many pieces are done and how many are in the queue.';
-  if (lineOrder && lineDate) lineSummary = `Order ${lineOrderLabel}: pieces each stage finished ${lineDayText}. The queue is as of now.`;
-  else if (lineOrder) lineSummary = `Order ${lineOrderLabel}: pieces done and in the queue at each stage.`;
-  else if (lineDate) lineSummary = `Pieces each stage finished ${lineDayText}. The queue is as of now.`;
+  }, [stages, outsideByStage, lineFiltering, lineDate, lineOrder, lineOrderTrack, consumptionRows, liningLog, storeLog, stitchDaily, todayKey]);
 
   const clearLineFilters = () => {
     setLineDate('');
@@ -1358,8 +1559,27 @@ export default function DirectManagerDashboard() {
         skus.set(r.sku_id, { order_number: r.order_number, style: r.style, colour: r.colour, size: r.size });
       }
     });
-    return { operationId: op.id, stageCode: String(op.code || key).toUpperCase(), skus };
-  }, [selectedSource, selectedStage, eventFeed, eventOps]);
+    // The line's stages after this one (lining cutting isn't on it), by code
+    // and name: a piece at one of them has gone past this stage.
+    const chain = stages.filter((s) => !isSideStage(s));
+    const at = chain.findIndex((s) => s.key === selectedStage.key);
+    const later = at >= 0 ? chain.slice(at + 1) : [];
+    const laterStages = {
+      keys: new Set(later.map((s) => String(s.key).toUpperCase())),
+      names: new Set(later.map((s) => s.name)),
+    };
+    return { operationId: op.id, skus, laterStages };
+  }, [selectedSource, selectedStage, stages, eventFeed, eventOps]);
+  const outsideVendors = useMemo(() => {
+    const vendors = selectedStage ? outsideByStage.get(String(selectedStage.key).toUpperCase())?.vendors : null;
+    return vendors ? [...vendors].sort() : [];
+  }, [selectedStage, outsideByStage]);
+  // The jobs sent to outside factories for the selected stage.
+  const selectedStageJobs = useMemo(() => {
+    if (!selectedStage || !Array.isArray(jobWork)) return [];
+    const key = String(selectedStage.key).toUpperCase();
+    return jobWork.filter((j) => String(j?.stage || '').toUpperCase() === key);
+  }, [selectedStage, jobWork]);
 
   // ── 4a. Leather DCM consumed per order + style, summed from the cut log.
   // null = unknown (call failed, or rows carry no order number to match on),
@@ -1378,8 +1598,10 @@ export default function DirectManagerDashboard() {
     return map;
   }, [consumptionRows]);
 
-  // ── 4b. Orders — late first, then soonest due date ──
+  // ── 4b. Orders — most recently cut first (from the leather cut log); cut
+  // the same day or never: late first, then soonest due date ──
   const orders = useMemo(() => {
+    const lastCut = lastCutDays(consumptionRows, cutRowOrderStyleKey);
     const rows = (Array.isArray(data?.order_progress) ? data.order_progress : []).map((o, idx) => {
       const qty = toNum(o.total_ordered ?? o.total_quantity) ?? 0;
       return {
@@ -1389,12 +1611,13 @@ export default function DirectManagerDashboard() {
         matchKey: orderStyleKey(o.order_number, o.style_name),
         qty,
         completed: toNum(o.completed) ?? 0,
+        lastCut: lastCut.get(orderStyleKey(o.order_number, o.style_name)),
         due: o.delivery_deadline || null,
         status: orderStatusKey(o),
       };
     });
-    return rows.sort(compareOrders);
-  }, [data]);
+    return rows.sort((a, b) => compareNewest(a.lastCut, b.lastCut) || compareOrders(a, b));
+  }, [data, consumptionRows]);
 
   const runningCount =
     toNum(data?.overall?.orders_in_progress) ?? new Set(orders.map((o) => o.orderNumber)).size;
@@ -1505,14 +1728,13 @@ export default function DirectManagerDashboard() {
 
           {/* ─── Production line ─── */}
           <section className={`${CARD} p-6`}>
-            <div className="flex flex-wrap items-start gap-x-3 gap-y-4">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-4">
               <IconBubble icon={Zap} />
               <div className="flex-1 min-w-[200px]">
                 <h3 className="text-lg font-semibold">Production Line</h3>
-                <p className="text-xs text-[#8b7f6e] mt-0.5">{lineSummary}</p>
               </div>
               {stages.length > 0 && (
-                <div className="flex flex-wrap items-center gap-x-5 gap-y-3 pt-1">
+                <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
                   <DateFilterCalendar
                     label="Date"
                     value={lineDate}
@@ -1553,25 +1775,29 @@ export default function DirectManagerDashboard() {
 
           {/* ─── Selected stage's workers, or Orders + last 14 days ─── */}
           {selectedStage ? (
-            <StageWorkersCard
-              key={selectedStage.key}
-              stage={selectedStage}
-              source={selectedSource}
-              logRows={
-                selectedSource === 'cutting'
-                  ? consumptionRows
-                  : selectedSource === 'lining'
-                    ? liningLog
-                    : selectedSource === 'store'
-                      ? storeCardRows
-                      : selectedEventLog
-              }
-              lineDate={lineDate}
-              lineOrder={lineOrder}
-              onClose={() => setSelectedStageKey(null)}
-              onRetry={retryStageLogs}
-              outsideSource={outsideSource}
-            />
+            <>
+              <StageWorkersCard
+                key={selectedStage.key}
+                stage={selectedStage}
+                source={selectedSource}
+                logRows={
+                  selectedSource === 'cutting'
+                    ? consumptionRows
+                    : selectedSource === 'lining'
+                      ? liningLog
+                      : selectedSource === 'store'
+                        ? storeCardRows
+                        : selectedEventLog
+                }
+                lineDate={lineDate}
+                lineOrder={lineOrder}
+                onClose={() => setSelectedStageKey(null)}
+                onRetry={retryStageLogs}
+                outsideSource={outsideSource}
+                outsideVendors={outsideVendors}
+              />
+              {selectedStageJobs.length > 0 && <OutsideWorkCard stageName={selectedStage.name} jobs={selectedStageJobs} />}
+            </>
           ) : (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             <section className={`${CARD} lg:col-span-7 p-6 flex flex-col min-w-0`}>
@@ -1638,13 +1864,12 @@ export default function DirectManagerDashboard() {
             </section>
 
             <section className={`${CARD} lg:col-span-5 p-6 flex flex-col min-w-0`}>
-              <div className="flex flex-wrap items-start gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <IconBubble icon={TrendingUp} />
                 <div className="flex-1 min-w-0">
                   <h3 className="text-lg font-semibold">Last 14 Days</h3>
-                  <p className="text-xs text-[#8b7f6e] mt-0.5">Pieces made vs target.</p>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-[#8b7f6e] pt-1">
+                <div className="flex items-center gap-4 text-xs text-[#8b7f6e]">
                   <span className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full bg-[#f6b73c]" /> Made
                   </span>

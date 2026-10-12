@@ -7,10 +7,13 @@ import { useAuth } from '@/context/AuthContext';
 import { apiGetCuttingDashboard, apiGetCuttingConsumption } from '@/lib/api';
 import {
   ORDER_STATUS,
+  compareNewest,
   compareOrders,
   countCutPieces,
+  cutRowOrderStyleKey,
   formatDcm,
   formatShortDate,
+  lastCutDays,
   lastDays,
   localDateKey,
   orderStatusKey,
@@ -26,7 +29,8 @@ import {
   IconBubble,
   LoadFailedAlert,
   PageLoading,
-  ShowAllButton,
+  SCROLL_TABLE,
+  SCROLL_TABLE_HEAD,
   useClock,
 } from '../_shared/ui';
 import { WorkersInCard, buildWorkersIn, useTodayAttendance } from '../_shared/workers-in';
@@ -44,12 +48,14 @@ import { CutLogWorkersCard, StockCard } from '../_shared/cut-floor';
  *      not, when they left) or not in yet
  *                                        (attendance/today + the roster's
  *                                         CUTTER designation)
- *   4. Leather stock: each lot, those running low or overdrawn first
+ *   4. Leather stock: each lot, the one cut from most recently first, then
+ *      those running low or overdrawn
  *                                        (leather_lots)
  *   5. Cutters — one line per cutter: pieces cut, DCM used, with the card's
  *      own date (starts on today) + order filters; click a cutter for their
  *      pieces                            (leather cut log)
- *   6. Orders, late first: ordered / cut / left to cut / DCM used, beside
+ *   6. Orders, most recently cut first (then late first): ordered / cut /
+ *      left to cut / DCM used, beside
  *      4; 5 has the full width below, for its piece lists
  *                                        (order_progress + the cut log)
  * From GET /api/v1/dashboard/cutting and GET /api/v1/dashboard/cutting/
@@ -62,7 +68,6 @@ import { CutLogWorkersCard, StockCard } from '../_shared/cut-floor';
 
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 const CLOCK_TICK_MS = 30 * 1000;
-const PREVIEW_COUNT = 5;
 const CHART_DAYS = 14;
 
 // ─── Page ───────────────────────────────────────────────────────────────────
@@ -77,7 +82,6 @@ export default function CuttingDashboard() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [updatedAt, setUpdatedAt] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
-  const [showAllOrders, setShowAllOrders] = useState(false);
   const now = useClock(CLOCK_TICK_MS);
   // Today's check-ins + the roster (useTodayAttendance). It doesn't hold the
   // page up — only its card says if it fails.
@@ -151,8 +155,10 @@ export default function CuttingDashboard() {
   // ── 1. Pieces cut today ──
   const cutToday = todayKey ? countCutPieces(cutByDay.get(todayKey) ?? []) : 0;
 
-  // ── 6. Orders, late first, with what's cut and left to cut ──
+  // ── 6. Orders, most recently cut first (cuts on the same day: late first),
+  // with what's cut and left to cut ──
   const orders = useMemo(() => {
+    const lastCut = lastCutDays(log, cutRowOrderStyleKey);
     const rows = (Array.isArray(data?.order_progress) ? data.order_progress : []).map((o, idx) => {
       const ordered = toNum(o.total_ordered) ?? 0;
       const cut = cutByOrderStyle.get(orderStyleKey(o.order_number, o.style_name));
@@ -164,15 +170,15 @@ export default function CuttingDashboard() {
         cut: cut?.cut ?? 0,
         left: Math.max(ordered - (cut?.cut ?? 0), 0),
         dcm: cut?.dcm ?? null,
+        lastCut: lastCut.get(orderStyleKey(o.order_number, o.style_name)),
         due: o.delivery_deadline || null,
         status: orderStatusKey(o),
       };
     });
-    return rows.sort(compareOrders);
-  }, [data, cutByOrderStyle]);
+    return rows.sort((a, b) => compareNewest(a.lastCut, b.lastCut) || compareOrders(a, b));
+  }, [data, log, cutByOrderStyle]);
   const runningCount = new Set(orders.map((o) => o.orderNumber)).size;
   const lateCount = new Set(orders.filter((o) => o.status === 'late').map((o) => o.orderNumber)).size;
-  const visibleOrders = showAllOrders ? orders : orders.slice(0, PREVIEW_COUNT);
 
   // ── 3. Cutters in today ──
   const cuttersIn = useMemo(
@@ -222,18 +228,16 @@ export default function CuttingDashboard() {
                   <IconBubble icon={Scissors} large />
                   <div className="flex-1 min-w-0">
                     <h3 className="text-lg font-semibold">Pieces Cut Today</h3>
-                    <p className="mt-0.5 text-sm text-[#7a6d5c]">Leather pieces cut so far today.</p>
                   </div>
                   <p className="text-5xl font-semibold tabular-nums">{cutToday.toLocaleString()}</p>
                 </div>
               </section>
 
               <section className={`${CARD} flex-1 p-6 flex flex-col min-w-0`}>
-                <div className="flex flex-wrap items-start gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <IconBubble icon={TrendingUp} />
                   <div className="flex-1 min-w-0">
                     <h3 className="text-lg font-semibold">Last 14 Days</h3>
-                    <p className="text-xs text-[#8b7f6e] mt-0.5">Leather pieces cut each day.</p>
                   </div>
                 </div>
 
@@ -273,13 +277,14 @@ export default function CuttingDashboard() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             <StockCard
               title="Leather Stock"
-              description="Leather received, used for cutting and left, in DCM. Lots that need a look come first."
               nameLabel="Leather"
               lots={data.leather_lots}
+              log={log}
               usedKey="consumed"
               piecesKey="pieces_cut"
               defaultUnit="dcm"
               emptyText="No leather lots received yet."
+              scroll
               className="lg:col-span-7"
             />
             <section className={`${CARD} lg:col-span-5 p-6 flex flex-col min-w-0`}>
@@ -294,15 +299,12 @@ export default function CuttingDashboard() {
                     {lateCount} late
                   </span>
                 )}
-                {orders.length > PREVIEW_COUNT && (
-                  <ShowAllButton showAll={showAllOrders} onToggle={() => setShowAllOrders((v) => !v)} />
-                )}
               </div>
 
               {orders.length > 0 ? (
-                <div className="mt-5 overflow-x-auto rounded-2xl border border-[#efe6d6]">
+                <div className={`mt-5 rounded-2xl border border-[#efe6d6] ${SCROLL_TABLE}`}>
                   <table className="w-full min-w-[560px] text-sm">
-                    <thead className="bg-[#faf5ec] text-xs text-[#8b7f6e]">
+                    <thead className={`bg-[#faf5ec] text-xs text-[#8b7f6e] ${SCROLL_TABLE_HEAD}`}>
                       <tr>
                         <th scope="col" className="px-4 py-3 text-left font-semibold">Order</th>
                         <th scope="col" className="px-4 py-3 text-left font-semibold">Style</th>
@@ -313,7 +315,7 @@ export default function CuttingDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-[#f3ece0]">
-                      {visibleOrders.map((o) => (
+                      {orders.map((o) => (
                         <tr key={o.id}>
                           <td className="px-4 py-3 font-semibold whitespace-nowrap">{o.orderNumber}</td>
                           <td className="px-4 py-3 text-[#5b5146] uppercase">{o.style}</td>
@@ -337,10 +339,7 @@ export default function CuttingDashboard() {
           </div>
 
           {/* ─── Cutters, full width: a cutter's piece list needs the room ─── */}
-          <CutLogWorkersCard
-            log={log}
-            description="Pieces each cutter has cut, and the leather they used. Click a cutter to see their pieces."
-          />
+          <CutLogWorkersCard log={log} />
         </>
       )}
     </div>
