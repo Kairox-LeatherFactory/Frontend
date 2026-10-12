@@ -837,6 +837,7 @@ const CuttingSheetRow = React.memo(({ sNo, row, updateRowInState, stylesList, pr
 
   const [localCells, setLocalCells] = useState({});
   const [loadingCells, setLoadingCells] = useState({});
+  const cellRefs = useRef([]);
   const [rcNo, setRcNo] = useState(row.rc_no || row.rc_number || '');
   const [sizeVal, setSizeVal] = useState(row.size || row.size_name || '');
 
@@ -933,6 +934,19 @@ const CuttingSheetRow = React.memo(({ sNo, row, updateRowInState, stylesList, pr
       setLocalCells(prev => ({ ...prev, [sheetIndex]: existingSheet ? existingSheet.dcm : '' }));
     } finally {
       setLoadingCells(prev => ({ ...prev, [sheetIndex]: false }));
+    }
+  };
+
+  // Enter / ArrowRight commit the cell: moving focus away triggers handleCellBlur (the save)
+  const handleCellKeyDown = (e, sheetIndex) => {
+    if (e.key !== 'Enter' && e.key !== 'ArrowRight') return;
+    e.preventDefault();
+    const next = cellRefs.current[sheetIndex + 1];
+    if (next && !next.disabled) {
+      next.focus();
+      next.select();
+    } else {
+      e.currentTarget.blur();
     }
   };
 
@@ -1167,10 +1181,12 @@ const CuttingSheetRow = React.memo(({ sNo, row, updateRowInState, stylesList, pr
         return (
           <td key={i} className="p-0 border-r border-slate-200 bg-white group-focus-within:bg-transparent relative group/cell">
             <input
+              ref={(el) => { cellRefs.current[i] = el; }}
               type="number"
               step="0.01"
               value={displayValue}
               onChange={(e) => setLocalCells(prev => ({ ...prev, [i]: e.target.value }))}
+              onKeyDown={(e) => handleCellKeyDown(e, i)}
               onBlur={(e) => handleCellBlur(i, e.target.value)}
               disabled={isLocked || isSaving}
               className={`${cellInputClass} w-16 focus:bg-white ${isSaving ? 'opacity-50' : ''}`}
