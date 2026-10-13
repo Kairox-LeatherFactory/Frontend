@@ -105,6 +105,19 @@ export async function apiGetEmployees(token) {
 }
 
 /**
+ * GET /api/v1/attendance/today — everyone who has checked in today.
+ * @returns {Array<{ id, employee_id, name, work_date, check_in_at, check_out_at, is_late, is_short, is_overtime }>}
+ */
+export async function apiGetAttendanceToday(token) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/attendance/today`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch today's attendance (${res.status})`);
+  return res.json();
+}
+
+/**
  * GET /api/v1/attendance/config
  * @returns {{ shift_start, shift_length_hours, late_grace_minutes, timezone, factory_lat, factory_lon, radius_m }}
  */
@@ -140,6 +153,129 @@ export async function apiGetEvents(token) {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`Failed to fetch events (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /api/v1/production/events — one page of the raw event feed, newest
+ * first (one row per piece per stage).
+ * @param {{ start?: string, end?: string, employeeId?: string, skuId?: string, limit?: number, offset?: number }} params
+ * @returns {{ items: Array<{ id, sku_id, operation_id, employee_id, work_date, qty, piece_id }>, total, limit, offset, has_more }}
+ */
+export async function apiGetProductionEventsPage(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.start) qs.set('start', params.start);
+  if (params.end) qs.set('end', params.end);
+  if (params.employeeId) qs.set('employee_id', params.employeeId);
+  if (params.skuId) qs.set('sku_id', params.skuId);
+  if (params.limit) qs.set('limit', params.limit);
+  if (params.offset) qs.set('offset', params.offset);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/events${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch events (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /api/v1/employees — one page of the roster.
+ * @param {{ activeOnly?: boolean, limit?: number, offset?: number }} params
+ *   activeOnly false also returns people who have left (default true).
+ * @returns {{ items: Array<{ id, name, designation }>, total, limit, offset, has_more }}
+ */
+export async function apiGetEmployeesPage(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.activeOnly === false) qs.set('active_only', 'false');
+  if (params.limit) qs.set('limit', params.limit);
+  if (params.offset) qs.set('offset', params.offset);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/employees${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch employees (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /api/v1/production/skus — one page of the SKU picker.
+ * @param {{ orderId?: string, styleId?: string, limit?: number, offset?: number }} params
+ * @returns {{ items: Array<{ sku_id, code, label, order_number, style_name, color_code, color_name, size, qty_ordered }>, total, limit, offset, has_more }}
+ */
+export async function apiGetSkusPage(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.orderId) qs.set('order_id', params.orderId);
+  if (params.styleId) qs.set('style_id', params.styleId);
+  if (params.limit) qs.set('limit', params.limit);
+  if (params.offset) qs.set('offset', params.offset);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/production/skus${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch SKUs (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /api/v1/production/skus/{sku_id}/pieces — one page of a SKU's pieces.
+ * @param {{ operationId?: string, limit?: number, offset?: number }} params
+ *   operationId: also mark each piece done_at_op (an event at that operation,
+ *   whoever did it); `done` then counts the whole SKU's pieces done there.
+ * @returns {{ pieces: Array<{ piece_id, code, seq, current_stage, current_stage_label, done_at_op }>, total, done, pending }}
+ */
+export async function apiGetSkuPiecesPage(token, skuId, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.operationId) qs.set('operation_id', params.operationId);
+  if (params.limit) qs.set('limit', params.limit);
+  if (params.offset) qs.set('offset', params.offset);
+  const qStr = qs.toString();
+  const res = await fetch(
+    `${API_BASE_URL}/api/v1/production/skus/${encodeURIComponent(skuId)}/pieces${qStr ? `?${qStr}` : ''}`,
+    {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  if (!res.ok) throw new Error(`Failed to fetch SKU pieces (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /api/v1/dashboard/store/garments/{piece_id} — one garment by id: its
+ * code, order / style / colour / size, store state and who cut it. Any
+ * piece, in the store or not; a cheap way to turn a piece id into its code.
+ * @returns {{ piece_id, piece_code, seq, state, style, order_number, colour, size }}
+ */
+export async function apiGetStoreGarment(token, pieceId) {
+  const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/store/garments/${encodeURIComponent(pieceId)}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch garment (${res.status})`);
+  return res.json();
+}
+
+/**
+ * GET /api/v1/jobwork — work sent to outside factories, one row per dispatch.
+ * Counts only; it doesn't name the pieces.
+ * @param {{ status?: string, vendorId?: string, limit?: number, offset?: number }} params
+ * @returns {Array<{ job_id, vendor_id, vendor, stage, status, dispatched_at, returned_at, pieces_out, pieces_back, pieces_rejected, pieces_short }>}
+ */
+export async function apiGetJobWork(token, params = {}) {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set('status', params.status);
+  if (params.vendorId) qs.set('vendor_id', params.vendorId);
+  if (params.limit) qs.set('limit', params.limit);
+  if (params.offset) qs.set('offset', params.offset);
+  const qStr = qs.toString();
+  const res = await fetch(`${API_BASE_URL}/api/v1/jobwork${qStr ? `?${qStr}` : ''}`, {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Failed to fetch job work (${res.status})`);
   return res.json();
 }
 
@@ -1775,7 +1911,8 @@ export async function apiGetCuttingEmployeeDetail(token, employeeId) {
 /**
  * GET /api/v1/dashboard/cutting/consumption
  * @param {string} token
- * @param {{ order_id?: string, employee_id?: string, start?: string, end?: string }} params
+ * @param {{ order_id?: string, employee_id?: string, start?: string, end?: string, include_unmeasured?: boolean }} params
+ *   include_unmeasured: also return cuts with no recorded quantity (actual_consumption: null).
  */
 export async function apiGetCuttingConsumption(token, params = {}) {
   const qs = new URLSearchParams();
@@ -1783,6 +1920,7 @@ export async function apiGetCuttingConsumption(token, params = {}) {
   if (params.employee_id) qs.set('employee_id', params.employee_id);
   if (params.start) qs.set('start', params.start);
   if (params.end) qs.set('end', params.end);
+  if (params.include_unmeasured) qs.set('include_unmeasured', 'true');
   const qStr = qs.toString();
   const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/cutting/consumption${qStr ? `?${qStr}` : ''}`, {
     method: 'GET',
@@ -1835,7 +1973,8 @@ export async function apiGetLiningEmployeeDetail(token, employeeId) {
 /**
  * GET /api/v1/dashboard/lining/consumption
  * @param {string} token
- * @param {{ order_id?: string, employee_id?: string, start?: string, end?: string }} params
+ * @param {{ order_id?: string, employee_id?: string, start?: string, end?: string, include_unmeasured?: boolean }} params
+ *   include_unmeasured: also return cuts with no recorded quantity (actual_consumption: null).
  */
 export async function apiGetLiningConsumption(token, params = {}) {
   const qs = new URLSearchParams();
@@ -1843,6 +1982,7 @@ export async function apiGetLiningConsumption(token, params = {}) {
   if (params.employee_id) qs.set('employee_id', params.employee_id);
   if (params.start) qs.set('start', params.start);
   if (params.end) qs.set('end', params.end);
+  if (params.include_unmeasured) qs.set('include_unmeasured', 'true');
   const qStr = qs.toString();
   const res = await fetch(`${API_BASE_URL}/api/v1/dashboard/lining/consumption${qStr ? `?${qStr}` : ''}`, {
     method: 'GET',
