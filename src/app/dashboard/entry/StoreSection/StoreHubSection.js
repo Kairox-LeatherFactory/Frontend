@@ -63,6 +63,9 @@ export default function StoreHubSection({
   const [batchSending, setBatchSending] = useState(false);
   const [storeTotal, setStoreTotal] = useState(0);
   const [lastScan, setLastScan] = useState(null);
+  // piece code -> time it was scanned in this session, so a fresh scan jumps to the top
+  // even if the list response carries no scan timestamp
+  const [recentScans, setRecentScans] = useState({});
 
   const dispatch = useDispatch();
   const [triggerBarcodeResolve] = useLazyBarcodeResolveQuery();
@@ -73,12 +76,16 @@ export default function StoreHubSection({
   const storePieceInput = useSelector((state) => state.storeHub.storePieceInput);
   const storeCurrentScan = useSelector((state) => state.storeHub.storeCurrentScan);
   const storeFilterType = useSelector((state) => state.storeHub.storeFilterType);
-  const storePieceSearch = useSelector((state) => state.storeHub.storeDrawerSearch);
+  const storePieceSearch = useSelector((state) => state.storeHub.storePieceSearch);
   const pieceLookupInput = useSelector((state) => state.storeHub.pieceLookupInput);
 
   const setStorePieceInput = (val) => dispatch(reduxSetStorePieceInput(val));
   const setStoreCurrentScan = (val) => dispatch(reduxSetStoreCurrentScan(val));
-  const setPieceLookupInput = (val) => dispatch(reduxSetPieceLookupInput(val));
+  // Typing filters the table live; clearing the box clears the filter
+  const setPieceLookupInput = (val) => {
+    dispatch(reduxSetPieceLookupInput(val));
+    dispatch(setStoreFilters({ search: val.trim() }));
+  };
   const setStoreFilterType = (val) => dispatch(setStoreFilters({ type: val }));
   const setStorePieceSearch = (val) => dispatch(setStoreFilters({ search: val }));
 
@@ -107,7 +114,7 @@ export default function StoreHubSection({
     if (!token) return;
     setStoreLoading(true);
     try {
-      const res = await triggerListStorePieces({ limit: 50 }).unwrap();
+      const res = await triggerListStorePieces({ limit: 500 }).unwrap();
       const items = res?.pieces || res?.items || (Array.isArray(res) ? res : []);
       setStorePieces(items);
       if (typeof res?.total === "number") setStoreTotal(res.total);
@@ -173,6 +180,14 @@ export default function StoreHubSection({
 
       const res = await storeScan(payload).unwrap();
       setLastScan(res);
+      const scannedAt = Date.now();
+      setRecentScans((prev) => {
+        const next = { ...prev };
+        [pieceVal, res?.piece_code, res?.code, res?.barcode, res?.piece_id, res?.id]
+          .filter(Boolean)
+          .forEach((c) => { next[String(c).toLowerCase()] = scannedAt; });
+        return next;
+      });
       setStoreReceiveStatus("received");
       setSuccessMsg(`Piece scan logged successfully! (${res.store_state || res.state || "OK"})`);
 
@@ -247,18 +262,30 @@ export default function StoreHubSection({
     setStorePieceSearch(val);
   };
 
-  const filteredStorePieces = storePieces.filter((p) => {
-    if (!matchesStoreTab(p, storeFilterType)) {
-      return false;
-    }
-    if (storePieceSearch) {
-      const search = storePieceSearch.toLowerCase();
-      const codeMatches = (p.piece_code || p.code || "").toLowerCase().includes(search);
-      const articleMatches = (p.article || "").toLowerCase().includes(search);
-      return codeMatches || articleMatches;
-    }
-    return true;
-  });
+  // Most recently scanned first: a scan made in this session wins, then the
+  // backend's latest store timestamp; pieces with neither keep the API order
+  const scanTime = (p) => {
+    const local = [p.piece_code, p.code, p.barcode, p.id, p.piece_id]
+      .map((c) => c && recentScans[String(c).toLowerCase()])
+      .find(Boolean);
+    if (local) return local;
+    const stamp = p.last_scan_at || p.last_scanned_at || p.scanned_at || p.store_updated_at
+      || p.updated_at || p.received_at || p.created_at;
+    const t = stamp ? Date.parse(stamp) : NaN;
+    return Number.isNaN(t) ? 0 : t;
+  };
+
+  const search = (storePieceSearch || "").toLowerCase();
+  const filteredStorePieces = storePieces
+    .map((p, i) => ({ p, i, t: scanTime(p) }))
+    .filter(({ p }) => {
+      if (!matchesStoreTab(p, storeFilterType)) return false;
+      if (!search) return true;
+      return [p.piece_code, p.code, p.barcode, p.article, p.style_name, p.colour, p.size]
+        .some((v) => String(v || "").toLowerCase().includes(search));
+    })
+    .sort((a, b) => b.t - a.t || a.i - b.i)
+    .map(({ p }) => p);
 
   return (
     <StoreHubForm
