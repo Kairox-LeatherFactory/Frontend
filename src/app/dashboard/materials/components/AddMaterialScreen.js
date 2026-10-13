@@ -309,6 +309,20 @@ export function AddMaterialScreen({ showToast, onSuccess, onDuplicate }) {
               </div>
             ))}
 
+            {/* Thread size isn't in the spec's required fields, but the lot stores it — sent as `size` in the arrival payload */}
+            {category === 'ACCESSORY' && subtype === 'THREAD' && !spec.required_to_add.includes('size') && (
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">Size (optional)</label>
+                <SelectableFilterCombobox
+                  value={attrs.size ?? ''}
+                  onChange={(val) => setAttrs((p) => ({ ...p, size: val }))}
+                  placeholder="Select or type size…"
+                  options={getAttrOptions('size')}
+                  className="mt-1"
+                />
+              </div>
+            )}
+
             <div>
               <label className="text-xs font-bold text-slate-500 block mb-1">Supplier ID (optional)</label>
               <input

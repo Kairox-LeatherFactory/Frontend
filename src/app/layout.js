@@ -4,6 +4,8 @@ import { AuthProvider } from '@/context/AuthContext';
 import { DataProvider } from '@/context/DataContext';
 import NumberInputWheelGuard from '@/components/NumberInputWheelGuard';
 import ReduxProvider from '@/store/ReduxProvider';
+import BetterStackMonitor from '@/components/BetterStackMonitor';
+import { BetterStackWebVitals } from '@logtail/next/webVitals';
 const lato = Lato({
   subsets: ['latin'],
   weight: ['300', '400', '700', '900'],
@@ -27,6 +29,8 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${lato.variable} ${playfair.variable}`} data-scroll-behavior="smooth">
       <body className="font-sans bg-[#faf6f0] text-[#0f172a] antialiased">
+        <BetterStackWebVitals />
+        <BetterStackMonitor />
         <ReduxProvider>
           <AuthProvider>
             <DataProvider>

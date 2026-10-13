@@ -1337,37 +1337,80 @@ function CuttingBarcodePrintModal({ rowData, stylesList = [], onClose }) {
   return createPortal(
     <div id="cutting-barcode-print-wrapper" className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
       <style>{`
+        /* Thermal label roll: 50x25mm labels; the printer head prints 48mm wide, matching the driver's "48.00mm x 25.00mm" paper so the browser selects it */
         @media print {
           @page {
-            size: auto;
-            margin: 5mm;
+            size: 48mm 25mm;
+            margin: 0;
+          }
+          html, body {
+            width: 48mm !important;
+            height: 25mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
+            background: #ffffff !important;
           }
           body > * {
             display: none !important;
           }
           body > #cutting-barcode-print-wrapper {
             display: block !important;
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            height: auto !important;
+            position: static !important;
+            width: 48mm !important;
+            height: 25mm !important;
             background: #ffffff !important;
+            backdrop-filter: none !important;
+          }
+          #cutting-barcode-print-wrapper,
+          #cutting-barcode-print-wrapper * {
             margin: 0 !important;
             padding: 0 !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
+            max-width: none !important;
           }
           #cutting-barcode-print-wrapper .print-hide {
             display: none !important;
           }
           #printable-barcode-ticket {
-            display: block !important;
-            border: 1px dashed #64748b !important;
-            border-radius: 12px !important;
-            padding: 14px 16px !important;
-            margin: 10px !important;
-            width: 360px !important;
+            display: flex !important;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: center !important;
+            gap: 0.6mm !important;
+            width: 48mm !important;
+            height: 25mm !important;
+            padding: 1.5mm 2mm !important;
+            box-sizing: border-box !important;
+            overflow: hidden !important;
             background: #ffffff !important;
-            box-shadow: none !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+          #printable-barcode-ticket > * {
+            width: 100% !important;
+          }
+          #printable-barcode-ticket svg {
+            display: block !important;
+            width: 42mm !important;
+            height: 10mm !important;
+            margin: 0 auto !important;
+          }
+          #printable-barcode-ticket .ticket-code {
+            font-size: 8pt !important;
+            line-height: 1.1 !important;
+            color: #000000 !important;
+          }
+          #printable-barcode-ticket .ticket-spec {
+            font-size: 5.5pt !important;
+            line-height: 1.15 !important;
+            color: #000000 !important;
+            display: -webkit-box !important;
+            -webkit-line-clamp: 2 !important;
+            -webkit-box-orient: vertical !important;
+            overflow: hidden !important;
           }
         }
       `}</style>
@@ -1412,13 +1455,13 @@ function CuttingBarcodePrintModal({ rowData, stylesList = [], onClose }) {
                   </div>
 
                   {/* Short Code */}
-                  <div className="font-mono text-sm font-black tracking-wider text-slate-900 uppercase">
+                  <div className="ticket-code font-mono text-sm font-black tracking-wider text-slate-900 uppercase">
                     {pieceCode}
                   </div>
 
                   {/* Spec Subtitle Line (Style · Article · Colour · Size) */}
                   {subtitleStr && (
-                    <div className="text-[10px] font-bold text-slate-700 tracking-tight leading-tight uppercase px-1">
+                    <div className="ticket-spec text-[10px] font-bold text-slate-700 tracking-tight leading-tight uppercase px-1">
                       {subtitleStr}
                     </div>
                   )}

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { withBetterStack } from '@logtail/next';
 import nodemailer from 'nodemailer';
 
 
@@ -6,7 +7,7 @@ const SMTP_EMAIL = process.env.SMTP_EMAIL || 'danishahamed2023@gmail.com';
 const SMTP_PASSWORD = (process.env.SMTP_PASSWORD || 'cdtg rssa qgen tkaa').replace(/\s+/g, '');
 const SUPPLIER_EMAIL = 'workspacekaizen@gmail.com'; // Supplier / procurement lead email
 
-export async function POST(req) {
+async function handlePOST(req) {
   try {
     const { pdfBase64, toEmail, subject, text, bomId } = await req.json();
 
@@ -39,3 +40,6 @@ export async function POST(req) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+// Logs each request (status, duration) and anything logged via req.log to Better Stack.
+export const POST = withBetterStack(handlePOST);

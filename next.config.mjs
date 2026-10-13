@@ -1,3 +1,5 @@
+import { withBetterStack } from '@logtail/next';
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   devIndicators: {
@@ -16,4 +18,4 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withBetterStack(nextConfig);
