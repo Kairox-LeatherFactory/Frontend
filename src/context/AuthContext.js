@@ -1,5 +1,7 @@
 'use client';
 import { createContext, useContext, useState, useEffect } from 'react';
+import { useDispatch } from 'react-redux';
+import { setAuthCredentials, logout as reduxLogout } from '@/store/slices/authSlice';
 
 const AuthContext = createContext(null);
 
@@ -39,8 +41,9 @@ export const ROLE_OPERATIONS = {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // null = logged out
   const [token, setToken] = useState(null); // JWT access token from backend
+  const [userName, setUserName] = useState(''); // display name from the login response
   const [isLoaded, setIsLoaded] = useState(false);
-
+const dispatch=useDispatch();
   // Load persisted auth state on client-side mount
   useEffect(() => {
     const storedUser = localStorage.getItem('kairox_user');
@@ -49,25 +52,40 @@ export function AuthProvider({ children }) {
     if (storedUser && storedToken) {
       setUser(storedUser);
       setToken(storedToken);
+      setUserName(localStorage.getItem('kairox_user_name') || '');
+        dispatch(setAuthCredentials({
+          user: storedUser,
+          token: storedToken
+      }));
     }
     setIsLoaded(true);
-  }, []);
+  }, [dispatch]);
 
-  const login = (role, accessToken = null) => {
+  const login = (role, accessToken = null, name = '') => {
     setUser(role);
     localStorage.setItem('kairox_user', role);
+    setUserName(name || '');
+    if (name) localStorage.setItem('kairox_user_name', name);
+    else localStorage.removeItem('kairox_user_name');
 
     if (accessToken) {
       setToken(accessToken);
       localStorage.setItem('kairox_token', accessToken);
+      dispatch(setAuthCredentials({
+          user: role,
+          token: accessToken
+        }));
     }
   };
 
   const logout = () => {
     setUser(null);
     setToken(null);
+    setUserName('');
     localStorage.removeItem('kairox_user');
     localStorage.removeItem('kairox_token');
+    localStorage.removeItem('kairox_user_name');
+    dispatch(reduxLogout());
   };
 
   // Prevent rendering until we've checked localStorage to avoid hydration mismatch
@@ -76,7 +94,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, token, login, logout, ROLES, ROLE_OPERATIONS }}>
+    <AuthContext.Provider value={{ user, userName, token, login, logout, ROLES, ROLE_OPERATIONS }}>
       {children}
     </AuthContext.Provider>
   );

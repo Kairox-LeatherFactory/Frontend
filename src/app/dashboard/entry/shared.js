@@ -5,7 +5,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Camera, X, AlertTriangle, ChevronDown, Zap, ZapOff, Sun } from 'lucide-react';
 
 // Mobile camera barcode scanner — a shared modal used by all three doors
-// (Barcode Gun's SKU/piece scan, Store Hub's drawer/piece scan, and the
+// (Barcode Gun's SKU/piece scan, Store Hub's piece scan, and the
 // shared Worker Verify step). Each caller renders its own instance, gated by
 // its own relevant `cameraScanTarget` value, since the onScan callback needs
 // to reach into that caller's own local state — a single shared instance in
@@ -38,6 +38,17 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
   useEffect(() => {
     let scanner;
     let isStopped = false;
+    let started = false;
+
+    // Mobile devices sometimes never resolve or reject scanner.start() at
+    // all (camera driver hang, permission dialog dismissed without a clear
+    // signal, etc.) — without a timeout the reader box just sits on its
+    // bg-black placeholder forever with no error and no way to retry.
+    const startTimeout = setTimeout(() => {
+      if (started || isStopped) return;
+      setCameraError("Camera didn't respond. Please try again or type the barcode manually.");
+      if (scanner && scanner.isScanning) scanner.stop().catch(() => {});
+    }, 7000);
 
     // getUserMedia is only exposed by the browser on a secure origin
     // (https:// or localhost). Loaded over plain http:// — e.g. a phone
@@ -65,10 +76,14 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
       // and mobile lighting conditions remain bright and sharp.
       const buildConfig = (facingMode) => ({
         fps: 15,
-        qrbox: (viewfinderWidth, viewfinderHeight) => ({
-          width: Math.min(320, Math.floor(viewfinderWidth * 0.88)),
-          height: Math.min(200, Math.floor(viewfinderHeight * 0.65))
-        }),
+        qrbox: (viewfinderWidth, viewfinderHeight) => {
+          const w = Math.floor(viewfinderWidth * 0.88);
+          const h = Math.floor(viewfinderHeight * 0.65);
+          return {
+            width: Math.max(50, Math.min(320, w || 250)),
+            height: Math.max(50, Math.min(200, h || 200))
+          };
+        },
         formatsToSupport: [
           Html5QrcodeSupportedFormats.CODE_128,
           Html5QrcodeSupportedFormats.CODE_39,
@@ -129,8 +144,15 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
         });
       };
 
-      startScanner("environment").catch(() => {
-        startScanner("user").catch((err) => {
+      startScanner("environment").then(() => {
+        started = true;
+        clearTimeout(startTimeout);
+      }).catch(() => {
+        startScanner("user").then(() => {
+          started = true;
+          clearTimeout(startTimeout);
+        }).catch((err) => {
+          clearTimeout(startTimeout);
           console.warn("Camera start warning:", err);
           const msg = String(err?.message || err || '');
           if (msg.includes('NotAllowedError') || msg.includes('Permission denied')) {
@@ -141,12 +163,14 @@ export function CameraScannerModal({ onClose, onScan, title = "Scan Barcode" }) 
         });
       });
     }).catch(err => {
+      clearTimeout(startTimeout);
       console.warn("Error loading html5-qrcode:", err);
       setCameraError("Camera scanner module failed to load.");
     });
 
     return () => {
       isStopped = true;
+      clearTimeout(startTimeout);
       if (trackRef.current && torchOn) {
         trackRef.current.applyConstraints({ advanced: [{ torch: false }] }).catch(() => {});
       }

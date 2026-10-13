@@ -1,6 +1,6 @@
 'use client';
 import { useState, useRef, useEffect } from 'react';
-import { Bot, User, Send, Sparkles, AlertCircle } from 'lucide-react';
+import { Bot, User, Send, AlertCircle } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 
 const MOCK_CHAT_HISTORY = [
@@ -71,16 +71,7 @@ export default function AIChatPage() {
     <div className="flex flex-col h-[calc(100vh-8rem)] max-h-[800px] animate-fade-in max-w-5xl mx-auto">
       
       {/* ─── HEADER ─── */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-3xl font-black tracking-tight flex items-center gap-3" style={{ color: '#2d1f0e' }}>
-            <Sparkles className="w-8 h-8" style={{ color: '#c8834a' }} />
-            AI Operations Assistant
-          </h1>
-          <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>
-            Ask questions about orders, delays, and worker performance.
-          </p>
-        </div>
+      <div className="flex items-center justify-end mb-4">
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full" style={{ background: 'rgba(200,131,74,0.1)', border: '1px solid rgba(200,131,74,0.2)' }}>
           <span className="relative flex h-2.5 w-2.5">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75" style={{ background: '#c8834a' }}></span>

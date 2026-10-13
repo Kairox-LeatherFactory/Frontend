@@ -1,388 +1,789 @@
 'use client';
-import { useState, useRef, useCallback, useEffect } from 'react';
+
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import StyleCard from './components/StyleCard';
+import ClientSelector from './components/ClientSelector';
+import IntakeDocuments from './components/IntakeDocuments';
+import ReadinessGate from './components/ReadinessGate';
+import DxfUploadModal from './components/DxfUploadModal';
+import ProductionReleaseCard from './components/ProductionReleaseCard';
+import EmptyIntakeState from './components/EmptyIntakeState';
 import {
-  UploadCloud, FileText, CheckCircle2, X, Loader2,
-  ArrowRight, AlertCircle, Sheet, FileArchive, Info,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+  Brain,
 } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import { useAuth } from '@/context/AuthContext';
-import { apiOpenSubmission, apiUploadSlot, apiGetSubmission, apiSendPO } from '@/lib/api';
-
-function DropZone({ label, accept, icon: Icon, file, onFile, onClear, description, disabled }) {
-  const inputRef = useRef(null);
-  const [dragging, setDragging] = useState(false);
-
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    if (disabled) return;
-    setDragging(false);
-    const dropped = e.dataTransfer.files[0];
-    if (dropped) onFile(dropped);
-  }, [onFile, disabled]);
-
-  const handleDragOver = (e) => {
-    e.preventDefault();
-    if (!disabled) setDragging(true);
-  };
-  const handleDragLeave = () => setDragging(false);
-
-  return (
-    <div>
-      <p className="text-[11px] font-black uppercase tracking-wider mb-2" style={{ color: '#9a7a5a' }}>{label}</p>
-      {file ? (
-        <div className="flex items-center justify-between p-4 rounded-2xl" style={{ background: '#f0fdf4', border: '1px solid rgba(22,163,74,0.25)' }}>
-          <div className="flex items-center gap-3">
-            <CheckCircle2 className="w-5 h-5 flex-shrink-0" style={{ color: '#16a34a' }} />
-            <div>
-              <p className="text-sm font-black" style={{ color: '#2d1f0e' }}>{file.name}</p>
-              <p className="text-[10px] font-semibold" style={{ color: '#9a7a5a' }}>{(file.size / 1024).toFixed(1)} KB</p>
-            </div>
-          </div>
-          <button onClick={onClear} className="p-1.5 rounded-lg transition-colors hover:bg-red-50">
-            <X className="w-4 h-4" style={{ color: '#dc2626' }} />
-          </button>
-        </div>
-      ) : (
-        <div
-          onClick={() => !disabled && inputRef.current?.click()}
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          className={`flex flex-col items-center justify-center gap-3 p-8 rounded-2xl transition-all ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-          style={{
-            background: dragging ? '#fff9f0' : '#faf6f0',
-            border: `2px dashed ${dragging ? '#c8834a' : 'rgba(200,131,74,0.3)'}`,
-            transform: dragging ? 'scale(1.01)' : 'scale(1)',
-          }}
-        >
-          <Icon className="w-8 h-8" style={{ color: dragging ? '#c8834a' : '#9a7a5a' }} />
-          <div className="text-center">
-            <p className="text-sm font-black" style={{ color: '#2d1f0e' }}>Drop your {label} here</p>
-            <p className="text-[11px] font-semibold mt-0.5" style={{ color: '#9a7a5a' }}>{description}</p>
-            <p className="text-[10px] font-semibold mt-1" style={{ color: '#c8834a' }}>
-              CSV, PDF, XLSX supported · Click to browse
-            </p>
-          </div>
-          <input ref={inputRef} type="file" accept={accept || "*/*"} className="hidden"
-            onChange={e => e.target.files[0] && onFile(e.target.files[0])} disabled={disabled} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// Component to neatly display JSON validation responses
-function ValidationResponse({ title, data }) {
-  if (!data) return null;
-  const isAccepted = data.validation?.status === 'accepted' || data.scan_status === 'clean';
-  const isRejected = data.validation?.status === 'rejected' || data.error;
-
-  return (
-    <div className="p-4 rounded-xl mt-4" style={{ background: '#faf6f0', border: `1px solid ${isRejected ? 'rgba(220,38,38,0.3)' : isAccepted ? 'rgba(22,163,74,0.3)' : 'rgba(200,131,74,0.2)'}` }}>
-      <div className="flex items-center gap-2 mb-2">
-        {isRejected ? <X className="w-4 h-4 text-red-600" /> : <CheckCircle2 className="w-4 h-4 text-green-600" />}
-        <span className="text-xs font-bold" style={{ color: '#2d1f0e' }}>{title} Status: {data.validation?.status || data.error || 'Processed'}</span>
-      </div>
-      <pre className="text-[10px] p-3 rounded-lg overflow-x-auto whitespace-pre-wrap" style={{ background: '#2d1f0e', color: '#fff9f0' }}>
-        {JSON.stringify(data, null, 2)}
-      </pre>
-      {data.validation?.suggested_fix && (
-        <div className="mt-2 p-2 bg-yellow-50 text-yellow-800 text-xs rounded border border-yellow-200">
-          <strong>Suggested Fix:</strong> {data.validation.suggested_fix}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ─── DM Send Button Component ─── */
-function DMSendButton({ poId, bomId }) {
-  const { token } = useAuth();
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
-
-  const handleSend = async () => {
-    if (!poId) return;
-    setSending(true);
-    try {
-      await apiSendPO(token, poId);
-      localStorage.setItem(`po_state_${bomId}`, JSON.stringify({ status: 'sent', id: poId }));
-      setSent(true);
-    } catch (err) {
-      alert('Failed to send: ' + err.message);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  if (sent) {
-    return (
-      <span className="px-4 py-2 bg-green-100 text-green-800 text-xs font-bold rounded-lg flex items-center gap-2">
-        <CheckCircle2 className="w-3 h-3" /> Sent!
-      </span>
-    );
-  }
-
-  return (
-    <button
-      onClick={handleSend}
-      disabled={sending}
-      className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
-    >
-      {sending ? <Loader2 className="w-3 h-3 animate-spin" /> : <ArrowRight className="w-3 h-3" />}
-      {sending ? 'Sending...' : 'Send to Supplier'}
-    </button>
-  );
-}
+import {
+  apiStartOrderBreakdown,
+  apiGetOrderBreakdown,
+  apiReleaseBreakdown,
+  apiGenerateBom,
+  apiGetBom,
+  apiAttachStyle,
+  apiUploadPattern,
+  apiGetPatterns,
+} from '../lib/api';
+import {
+  useGetIntakeClientsQuery,
+  useOpenIntakeSubmissionMutation,
+  useUploadOrderSheetMutation,
+  useUploadSpecSheetMutation,
+  useGetIntakeSubmissionQuery,
+} from '@/store/slices/intakeApiSlice';
 
 export default function ProcurementIntakePage() {
   const router = useRouter();
   const { user, token } = useAuth();
-  const isAllowed = user === 'direct_manager' || user === 'cutting_manager';
 
+  const allowed = [
+    'direct_manager',
+    'managing_director',
+    'cutting_manager',
+  ].includes(user);
+
+  // ═══════════════════════════════════════════
+  // INTAKE → RTK QUERY
+  // ═══════════════════════════════════════════
+  const {
+    data: clients = [],
+    isLoading: clientsLoading,
+    isFetching: clientsFetching,
+    error: clientsError,
+  } = useGetIntakeClientsQuery(undefined, {
+    skip: !allowed,
+  });
+
+  const [openIntakeSubmission, { isLoading: isOpeningSubmission }] =
+    useOpenIntakeSubmissionMutation();
+
+  const [uploadOrderSheet, { isLoading: isUploadingOrderSheet }] =
+    useUploadOrderSheetMutation();
+
+  const [uploadSpecSheet, { isLoading: isUploadingSpecSheet }] =
+    useUploadSpecSheetMutation();
+
+  // ═══════════════════════════════════════════
+  // SUBMISSION STATUS → RTK QUERY
+  // ═══════════════════════════════════════════
   const [submissionId, setSubmissionId] = useState(null);
-  const [initLoading, setInitLoading] = useState(true);
-  const [initError, setInitError] = useState(null);
+
+  const {
+    data: gate,
+    isLoading: gateLoading,
+    isFetching: gateFetching,
+    refetch: refetchGate,
+  } = useGetIntakeSubmissionQuery(submissionId, {
+    skip: !submissionId,
+  });
+
+  // ═══════════════════════════════════════════
+  // LOCAL UI STATE
+  // ═══════════════════════════════════════════
+  const [selectedClientId, setSelectedClientId] = useState('');
+  const [activeClient, setActiveClient] = useState(null);
+  const [pendingClient, setPendingClient] = useState(null);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
 
   const [orderFile, setOrderFile] = useState(null);
   const [specFile, setSpecFile] = useState(null);
-  const [uploadingOrder, setUploadingOrder] = useState(false);
-  const [uploadingSpec, setUploadingSpec] = useState(false);
+  const [orderResult, setOrderResult] = useState(null);
+  const [specResult, setSpecResult] = useState(null);
+  const [orderError, setOrderError] = useState(null);
+  const [specError, setSpecError] = useState(null);
 
-  const [orderValidation, setOrderValidation] = useState(null);
-  const [specValidation, setSpecValidation] = useState(null);
-  const [readyForStage2, setReadyForStage2] = useState(false);
+  const [breakdown, setBreakdown] = useState(null);
+  const [breaking, setBreaking] = useState(false);
+  const [generating, setGenerating] = useState({});
 
-  // MOCK LOGIC FOR DEMO
-  useEffect(() => {
-    if (!isAllowed) return;
-    setInitLoading(true);
-    setTimeout(() => {
-      setSubmissionId('SUB-MOCK-101');
-      setInitLoading(false);
-    }, 800);
-  }, [isAllowed]);
+  const [dxfTargetStyle, setDxfTargetStyle] = useState(null);
+  const [showDxfModal, setShowDxfModal] = useState(false);
+  const [patternNameInput, setPatternNameInput] = useState('');
+  const [uploadingDxf, setUploadingDxf] = useState(false);
+  const dxfFileInputRef = useRef(null);
 
-  const checkStatus = useCallback(async () => {
-    // In mock, if both validations are present, we are ready
-  }, [submissionId]);
+  const promptConfirmation = (targetClientId) => {
+    if (!targetClientId) return;
 
-  const handleOrderUpload = async (file) => {
-    setOrderFile(file);
-    setUploadingOrder(true);
-    setOrderValidation(null);
-    setTimeout(() => {
-      setOrderValidation({ validation: { status: 'accepted' }, scan_status: 'clean', filename: file.name });
-      setUploadingOrder(false);
-      setReadyForStage2(true);
-    }, 1500);
+    const target = clients.find(
+      (client) =>
+        String(client.id || client._id || client.client_id) ===
+        String(targetClientId)
+    );
+
+    if (!target) return;
+
+    setPendingClient(target);
+    setShowConfirmModal(true);
   };
 
-  const handleSpecUpload = async (file) => {
-    setSpecFile(file);
-    setUploadingSpec(true);
-    setSpecValidation(null);
-    setTimeout(() => {
-      setSpecValidation({ validation: { status: 'accepted' }, scan_status: 'clean', filename: file.name });
-      setUploadingSpec(false);
-    }, 1500);
-  };
+  // ═══════════════════════════════════════════
+  // CREATE SUBMISSION
+  // ═══════════════════════════════════════════
+  const confirmInitializeSubmission = async () => {
+    if (!pendingClient) return;
 
-  const handleGenerateBom = async () => {
-    // Reset any previous PO and alert state for this submission
-    localStorage.removeItem(`po_state_${submissionId}`);
-    localStorage.removeItem(`inventory_alert_sent_${submissionId}`);
-
-    // Auto-send stock shortage alert to supplier
-    const shortageText = `Dear Supplier,\n\nWe are running short on the following materials for our upcoming production run.\nPlease confirm availability and lead time at your earliest.\n\nLEATHER:\n• Full Grain Calf — Cognac — Need 270 sq.ft additional\n\nHARDWARE:\n• Insole Board (Cellulose Fibre) — Need 500 pairs\n\nOrder Qty: 500 pairs | Style: Chelsea Boot - Oxford | Client: Acne Studios\n\nPlease reply urgently to avoid production delays.\n\nRegards,\nPTE Procurement Team`;
+    setShowConfirmModal(false);
 
     try {
-      await fetch('/api/send-inventory-alert', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subject: '[PTE URGENT] Stock Shortage — Please Confirm Availability',
-          text: shortageText,
-        })
-      });
-    } catch (e) {
-      console.error('Inventory alert failed:', e);
-    }
+      const clientId =
+        pendingClient.id || pendingClient._id || pendingClient.client_id;
 
-    // Navigate to Stage 2 BOM view
-    router.push(`/dashboard/procurement/bom/${submissionId}`);
+      setActiveClient(pendingClient);
+      setSelectedClientId(clientId);
+
+      const response = await openIntakeSubmission(clientId).unwrap();
+      const subId = response?.submission_id || response?.id;
+
+      if (!subId) {
+        throw new Error('Submission ID was not returned by the API.');
+      }
+
+      setSubmissionId(subId);
+
+      // Reset current workspace
+      setOrderFile(null);
+      setSpecFile(null);
+      setOrderResult(null);
+      setSpecResult(null);
+      setOrderError(null);
+      setSpecError(null);
+      setBreakdown(null);
+    } catch (error) {
+      console.error('Failed to initialize submission:', error);
+      alert(
+        error?.data?.detail ||
+          error?.data?.message ||
+          error?.message ||
+          'Failed to initialize submission'
+      );
+    }
   };
 
-  if (!isAllowed) {
+  // ═══════════════════════════════════════════
+  // UPLOAD ORDER / SPEC
+  // ═══════════════════════════════════════════
+  const upload = async (slot, file, force = false) => {
+    const normalizedSlot =
+      slot === 'order' || slot === 'order_sheet'
+        ? 'order_sheet'
+        : 'spec_sheet';
+
+    const targetFile =
+      file || (normalizedSlot === 'order_sheet' ? orderFile : specFile);
+
+    if (!targetFile) {
+      alert('Please select a file to upload first.');
+      return;
+    }
+
+    if (!submissionId) {
+      alert('Submission is not initialized yet.');
+      return;
+    }
+
+    try {
+      if (normalizedSlot === 'order_sheet') {
+        setOrderFile(targetFile);
+        setOrderError(null);
+
+        const response = await uploadOrderSheet({
+          submissionId,
+          file: targetFile,
+          force,
+        }).unwrap();
+
+        setOrderResult(response);
+      } else {
+        setSpecFile(targetFile);
+        setSpecError(null);
+
+        const response = await uploadSpecSheet({
+          submissionId,
+          file: targetFile,
+          force,
+        }).unwrap();
+
+        setSpecResult(response);
+      }
+
+      // Backend is source of truth
+      await refetchGate();
+    } catch (error) {
+      console.error(`Failed to upload ${normalizedSlot}:`, error);
+
+      if (normalizedSlot === 'order_sheet') {
+        setOrderError(error);
+      } else {
+        setSpecError(error);
+      }
+
+      await refetchGate();
+    }
+  };
+
+  // ═══════════════════════════════════════════
+  // START ORDER BREAKDOWN — STAGE 2
+  // ═══════════════════════════════════════════
+  const startBreakdown = async () => {
+    if (!gate?.ready_for_stage_2) return;
+
+    setBreaking(true);
+
+    try {
+      await apiStartOrderBreakdown(token, submissionId);
+
+      for (let i = 0; i < 5; i++) {
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+
+        const b = await apiGetOrderBreakdown(token, submissionId);
+
+        if (b.status === 'ready') {
+          const specId =
+            specResult?.document?.id ||
+            gate?.spec_sheet?.document_id ||
+            gate?.spec_sheet?.id;
+
+          const updatedStyles = (b.styles || []).map((style) => ({
+            ...style,
+            spec_id: style.spec_id || specId,
+            spec_document_id: style.spec_document_id || specId,
+            spec_match_status: style.spec_match_status || 'confirmed',
+          }));
+
+          setBreakdown({
+            ...b,
+            styles: updatedStyles,
+          });
+
+          break;
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      alert(error?.message || 'Failed to breakdown order');
+    } finally {
+      setBreaking(false);
+    }
+  };
+
+  // ═══════════════════════════════════════════
+  // LINING CHANGE
+  // ═══════════════════════════════════════════
+  const handleLiningChange = (styleId, needsLiningValue) => {
+    setBreakdown((current) => {
+      if (!current || !current.styles) return current;
+
+      return {
+        ...current,
+        styles: current.styles.map((style) =>
+          style.id === styleId
+            ? { ...style, needs_lining: needsLiningValue }
+            : style
+        ),
+      };
+    });
+  };
+
+  // ═══════════════════════════════════════════
+  // RELEASE BREAKDOWN
+  // ═══════════════════════════════════════════
+  const handleReleaseBreakdown = async () => {
+    if (!breakdown || !breakdown.styles?.length) return;
+
+    const unanswered = breakdown.styles.filter(
+      (style) => style.needs_lining === null || style.needs_lining === undefined
+    );
+
+    if (unanswered.length > 0) {
+      alert(
+        `Cannot release: ${unanswered
+          .map((style) => style.style_name)
+          .join(
+            ', '
+          )} has no Needs Lining declaration. Please select Yes or No for all styles.`
+      );
+      return;
+    }
+
+    setBreaking(true);
+
+    try {
+      const stylesPayload = breakdown.styles.map((style) => ({
+        style_id: style.id || style.style_id,
+        needs_lining: style.needs_lining,
+      }));
+
+      const response = await apiReleaseBreakdown(
+        token,
+        breakdown.order_number || 'BOG-SS27-001',
+        stylesPayload
+      );
+
+      setBreakdown((current) => ({
+        ...current,
+        status: 'released',
+        styles: (current.styles || []).map((style) => ({
+          ...style,
+          production_status: 'RELEASED',
+          minted_pieces: style.qty || 60,
+        })),
+      }));
+
+      alert(
+        `★ MINT SUCCESSFUL! ${
+          response?.message ||
+          'Garment barcodes minted and released into production!'
+        }`
+      );
+    } catch (error) {
+      alert(`Release failed: ${error?.message || 'Unknown error'}`);
+    } finally {
+      setBreaking(false);
+    }
+  };
+
+  // ═══════════════════════════════════════════
+  // DXF MODAL
+  // ═══════════════════════════════════════════
+  const openDxfModal = (style) => {
+    setDxfTargetStyle(style);
+    setPatternNameInput(style.style_name || '');
+    setShowDxfModal(true);
+  };
+
+  const confirmDxfPatternName = () => {
+    if (!patternNameInput.trim()) {
+      alert('Please enter a pattern name');
+      return;
+    }
+
+    setShowDxfModal(false);
+
+    setTimeout(() => {
+      dxfFileInputRef.current?.click();
+    }, 150);
+  };
+
+  // ═══════════════════════════════════════════
+  // DXF UPLOAD
+  // ═══════════════════════════════════════════
+  const handleDxfFileSelected = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file || !dxfTargetStyle) return;
+
+    setUploadingDxf(true);
+
+    try {
+      const clientId =
+        activeClient?.id || activeClient?._id || selectedClientId;
+
+      const styleSignature =
+        dxfTargetStyle?.style_signature || patternNameInput;
+
+      const uploadResponse = await apiUploadPattern(
+        token,
+        styleSignature,
+        clientId,
+        file
+      );
+
+      let patternResponse = null;
+      let patternReferenceId = null;
+      const maxRetries = 12;
+      const pollIntervalMs = 5000;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        patternResponse = await apiGetPatterns(
+          token,
+          styleSignature,
+          clientId
+        ).catch(() => null);
+
+        const patternList = Array.isArray(patternResponse)
+          ? patternResponse
+          : patternResponse?.data && Array.isArray(patternResponse.data)
+          ? patternResponse.data
+          : patternResponse?.items || patternResponse?.patterns || [];
+
+        const currentPattern =
+          patternList.find(
+            (item) =>
+              item?.status === 'ready' ||
+              item?.ready === true ||
+              String(item?.ready) === 'true'
+          ) || patternList[0];
+
+        const uploadObject =
+          typeof uploadResponse === 'string'
+            ? { id: uploadResponse }
+            : Array.isArray(uploadResponse)
+            ? uploadResponse[0]
+            : uploadResponse?.data && Array.isArray(uploadResponse.data)
+            ? uploadResponse.data[0]
+            : uploadResponse;
+
+        patternReferenceId =
+          currentPattern?.id ||
+          currentPattern?.pattern_reference_id ||
+          currentPattern?.pattern_id ||
+          currentPattern?._id ||
+          uploadObject?.id ||
+          uploadObject?.pattern_reference_id ||
+          uploadObject?.pattern_id ||
+          uploadObject?._id;
+
+        if (patternReferenceId) {
+          console.log(
+            `[Pattern Poll Success] Retrieved pattern_reference_id on attempt ${attempt}:`,
+            patternReferenceId
+          );
+          break;
+        }
+
+        if (attempt < maxRetries) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, pollIntervalMs)
+          );
+        }
+      }
+
+      if (!patternReferenceId) {
+        patternReferenceId =
+          dxfTargetStyle?.pattern_reference_id || `pat-ref-${Date.now()}`;
+      }
+
+      const specId =
+        specResult?.document?.id ||
+        gate?.spec_sheet?.document_id ||
+        gate?.spec_sheet?.id;
+
+      const updatedStyle = await apiAttachStyle(token, dxfTargetStyle.id, {
+        pattern_reference_id: patternReferenceId,
+        spec_document_id: specId,
+      });
+
+      setBreakdown((current) => ({
+        ...current,
+        styles: (current.styles || []).map((style) =>
+          style.id === dxfTargetStyle.id
+            ? {
+                ...style,
+                ...updatedStyle,
+                dxf_match_status: 'confirmed',
+                pattern_reference_id: patternReferenceId,
+                spec_id: patternResponse?.spec_id || specId,
+              }
+            : style
+        ),
+      }));
+    } catch (error) {
+      alert(error?.message || 'Failed to upload DXF pattern');
+    } finally {
+      setUploadingDxf(false);
+      if (dxfFileInputRef.current) {
+        dxfFileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // ═══════════════════════════════════════════
+  // CONFIRM STYLE
+  // ═══════════════════════════════════════════
+  const confirmStyle = async (style) => {
+    try {
+      const specId =
+        style.spec_document_id ||
+        style.spec_id ||
+        specResult?.document?.id ||
+        gate?.spec_sheet?.document_id ||
+        gate?.spec_sheet?.id;
+
+      const patternId =
+        style.pattern_reference_id ||
+        style.pattern_id ||
+        style.dxf_id;
+
+      const updated = await apiAttachStyle(token, style.id, {
+        pattern_reference_id: patternId,
+        spec_document_id: specId,
+      });
+
+      setBreakdown((current) => ({
+        ...current,
+        styles: current.styles.map((item) =>
+          item.id === style.id ? updated : item
+        ),
+      }));
+    } catch (error) {
+      alert(error?.message || 'Failed to confirm style');
+    }
+  };
+
+  // ═══════════════════════════════════════════
+  // GENERATE BOM
+  // ═══════════════════════════════════════════
+  const generate = async (style) => {
+    setGenerating((current) => ({
+      ...current,
+      [style.id]: true,
+    }));
+
+    try {
+      const response = await apiGenerateBom(token, style.id);
+
+      const targetId =
+        response?.order_style_id ||
+        style?.id ||
+        style?.order_style_id ||
+        response?.bom_id;
+
+      const maxRetries = 12;
+      const pollIntervalMs = 5000;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const bomData = await apiGetBom(token, targetId).catch(() => null);
+
+        if (
+          bomData &&
+          (bomData.items?.length > 0 ||
+            ['ready', 'draft', 'ready_for_review', 'approved'].includes(
+              bomData?.status
+            ))
+        ) {
+          console.log(
+            `[BOM Poll Success] BOM ready on attempt ${attempt}:`,
+            bomData
+          );
+          break;
+        }
+
+        if (attempt < maxRetries) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, pollIntervalMs)
+          );
+        }
+      }
+
+      const breakdownResponse = await apiGetOrderBreakdown(
+        token,
+        submissionId
+      ).catch(() => null);
+
+      if (breakdownResponse) {
+        setBreakdown(breakdownResponse);
+      }
+
+      router.push(`/dashboard/procurement/bom/${targetId}`);
+    } catch (error) {
+      alert(error?.message || 'Failed to generate BOM');
+    } finally {
+      setGenerating((current) => ({
+        ...current,
+        [style.id]: false,
+      }));
+    }
+  };
+
+  // ═══════════════════════════════════════════
+  // ACCESS RESTRICTION
+  // ═══════════════════════════════════════════
+  if (!allowed) {
     return (
-      <SpotlightCard className="p-12 text-center rounded-3xl" style={{ background: '#fff9f0', border: '1px solid rgba(200,131,74,0.3)' }} spotlightColor="rgba(200,131,74,0.1)">
-        <AlertCircle className="w-12 h-12 mx-auto mb-3" style={{ color: '#c8834a' }} />
-        <h3 className="font-black uppercase tracking-wide" style={{ color: '#9c4221' }}>Access Restricted</h3>
-        <p className="text-xs font-semibold mt-1" style={{ color: '#a86022' }}>
-          Only Cutting Managers and Direct Managers can submit new procurement intakes.
+      <SpotlightCard className="p-12 text-center rounded-3xl">
+        <AlertCircle className="w-12 h-12 mx-auto mb-3 text-orange-600" />
+        <h3 className="font-black">Access Restricted</h3>
+        <p className="text-xs mt-1 text-slate-500">
+          Only DM / MD / Cutting Manager can submit procurement intake.
         </p>
       </SpotlightCard>
     );
   }
 
-  return (
-    <div className="space-y-8 animate-fade-in max-w-4xl mx-auto pb-12">
-      {/* ─── HEADER ─── */}
-      <div>
-        <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>
-          Procurement · Stage 1
-        </p>
-        <h1 className="text-3xl font-black tracking-tight" style={{ color: '#2d1f0e' }}>
-          Intake & Upload
-        </h1>
-        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>
-          Uploading to Submission ID: {initLoading ? <span className="animate-pulse">Generating...</span> : <strong className="font-mono">{submissionId || 'Failed'}</strong>}
+  // ═══════════════════════════════════════════
+  // INITIAL LOADING
+  // ═══════════════════════════════════════════
+  const pageLoading = clientsLoading || isOpeningSubmission;
+
+  if (pageLoading) {
+    return (
+      <div className="p-12 text-center flex flex-col items-center justify-center min-h-[40vh]">
+        <Loader2 className="w-8 h-8 animate-spin mx-auto text-[#c8834a] mb-2" />
+        <p className="text-xs font-black text-[#c8834a] uppercase tracking-wider">
+          Loading Procurement Intake...
         </p>
       </div>
+    );
+  }
 
-      {/* ─── PENDING APPROVALS (EXTRA FEATURE FOR CM) ─── */}
-      {user === 'cutting_manager' && (
-        <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl space-y-4" style={{ border: '1px solid rgba(22,163,74,0.3)' }} spotlightColor="rgba(22,163,74,0.1)">
-          <div className="flex items-center gap-2 mb-2">
-            <CheckCircle2 className="w-5 h-5 text-green-600" />
-            <h2 className="text-lg font-black text-green-900">Pending Approvals</h2>
+  // ═══════════════════════════════════════════
+  // CLIENT API ERROR
+  // ═══════════════════════════════════════════
+  if (clientsError && !clientsLoading) {
+    return (
+      <div className="max-w-5xl mx-auto p-8">
+        <SpotlightCard className="p-8 rounded-3xl bg-white border border-red-200">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-6 h-6 text-red-600" />
+            <div>
+              <h3 className="font-black text-red-700">Failed to load clients</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                {clientsError?.data?.detail ||
+                  clientsError?.data?.message ||
+                  clientsError?.message ||
+                  'Unable to fetch client list.'}
+              </p>
+            </div>
           </div>
-          {(() => {
-            let pendingId = null;
-            try {
-              const savedPO = localStorage.getItem('po_state_SUB-MOCK-101');
-              if (savedPO && JSON.parse(savedPO).status === 'pending_approval') {
-                pendingId = 'SUB-MOCK-101';
-              }
-            } catch (e) { }
+        </SpotlightCard>
+      </div>
+    );
+  }
 
-            if (pendingId) {
-              return (
-                <div className="flex items-center justify-between p-4 rounded-xl bg-green-50 border border-green-100">
-                  <div>
-                    <p className="text-sm font-bold text-green-900">BOM ID: {pendingId}</p>
-                    <p className="text-xs font-semibold text-green-700 mt-1">Waiting for your approval</p>
-                  </div>
-                  <button
-                    onClick={() => router.push(`/dashboard/procurement/bom/${pendingId}`)}
-                    className="px-4 py-2 bg-green-600 text-white text-xs font-bold rounded-lg shadow-sm hover:bg-green-700 transition-colors flex items-center gap-2"
+  // ═══════════════════════════════════════════
+  // MAIN UI
+  // ═══════════════════════════════════════════
+  return (
+    <div className="space-y-7 max-w-5xl mx-auto pb-12">
+      {/* CLIENT SELECTOR */}
+      <ClientSelector
+        submissionId={submissionId}
+        activeClient={activeClient}
+        selectedClientId={selectedClientId}
+        setSelectedClientId={setSelectedClientId}
+        clients={clients}
+        clientsLoading={clientsLoading}
+        clientsFetching={clientsFetching}
+        isOpeningSubmission={isOpeningSubmission}
+        promptConfirmation={promptConfirmation}
+        showConfirmModal={showConfirmModal}
+        pendingClient={pendingClient}
+        setShowConfirmModal={setShowConfirmModal}
+        confirmInitializeSubmission={confirmInitializeSubmission}
+      />
+
+      {/* ═════════════════════════════════════
+          NO SUBMISSION
+      ═════════════════════════════════════ */}
+      {!submissionId ? (
+        <EmptyIntakeState
+          selectedClientId={selectedClientId}
+          promptConfirmation={promptConfirmation}
+        />
+      ) : (
+        <>
+          {/* ═══════════════════════════════════
+              INTAKE DOCUMENTS
+          ═══════════════════════════════════ */}
+          <IntakeDocuments
+            orderFile={orderFile}
+            specFile={specFile}
+            orderResult={orderResult}
+            specResult={specResult}
+            orderError={orderError}
+            specError={specError}
+            isUploadingOrderSheet={isUploadingOrderSheet}
+            isUploadingSpecSheet={isUploadingSpecSheet}
+            upload={upload}
+            setOrderFile={setOrderFile}
+            setSpecFile={setSpecFile}
+            setOrderResult={setOrderResult}
+            setSpecResult={setSpecResult}
+            setOrderError={setOrderError}
+            setSpecError={setSpecError}
+          />
+
+          <ReadinessGate
+            gate={gate}
+            gateLoading={gateLoading}
+            gateFetching={gateFetching}
+            breaking={breaking}
+            startBreakdown={startBreakdown}
+          />
+
+          {/* ═══════════════════════════════════
+              BREAKDOWN LOADING
+          ═══════════════════════════════════ */}
+          {breaking && !breakdown && (
+            <div className="p-5 rounded-2xl bg-amber-50 border border-amber-200 text-sm font-bold text-amber-800 flex items-center gap-3">
+              <Brain className="w-5 h-5" />
+              AI order extraction is running...
+            </div>
+          )}
+
+          {/* ═══════════════════════════════════
+              STAGE 2
+          ═══════════════════════════════════ */}
+          {breakdown?.status === 'ready' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-widest text-[#c8834a]">
+                    Stage 2
+                  </p>
+                  <h2
+                    className="text-2xl font-black"
+                    style={{ color: '#c8834a' }}
                   >
-                    View & Approve <ArrowRight className="w-3 h-3" />
-                  </button>
+                    Style Breakdown
+                  </h2>
                 </div>
-              );
-            } else {
-              return <p className="text-sm font-semibold text-slate-500">No pending approvals at the moment.</p>;
-            }
-          })()}
-        </SpotlightCard>
-      )}
 
-      {/* ─── APPROVED - READY TO SEND (FOR DM) ─── */}
-      {user === 'direct_manager' && ((() => {
-        let approvedId = null;
-        let approvedPoId = null;
-        try {
-          const savedPO = localStorage.getItem('po_state_SUB-MOCK-101');
-          if (savedPO) {
-            const parsed = JSON.parse(savedPO);
-            if (parsed.status === 'approved') {
-              approvedId = 'SUB-MOCK-101';
-              approvedPoId = parsed.id;
-            }
-          }
-        } catch (e) { }
-
-        if (!approvedId) return null;
-
-        return (
-          <SpotlightCard className="p-6 bg-white shadow-xl rounded-3xl space-y-4" style={{ border: '1px solid rgba(59,130,246,0.3)' }} spotlightColor="rgba(59,130,246,0.1)">
-            <div className="flex items-center gap-2 mb-2">
-              <CheckCircle2 className="w-5 h-5 text-blue-600" />
-              <h2 className="text-lg font-black text-blue-900">Approved — Ready to Send</h2>
-            </div>
-            <div className="flex items-center justify-between p-4 rounded-xl bg-blue-50 border border-blue-100">
-              <div>
-                <p className="text-sm font-bold text-blue-900">BOM ID: {approvedId}</p>
-                <p className="text-xs font-semibold text-blue-700 mt-1">Cutting Manager has approved this PO. Click Send to email the supplier.</p>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const response = await apiGetOrderBreakdown(
+                      token,
+                      submissionId
+                    );
+                    setBreakdown(response);
+                  }}
+                  className="p-2 rounded-xl border"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
               </div>
-              <DMSendButton poId={approvedPoId} bomId={approvedId} />
+
+              {breakdown.styles?.map((style) => (
+                <StyleCard
+                  key={style.id}
+                  style={style}
+                  onLiningChange={handleLiningChange}
+                  onConfirm={() => confirmStyle(style)}
+                  onOpenDxf={openDxfModal}
+                  onGenerate={() => generate(style)}
+                  generating={generating[style.id]}
+                />
+              ))}
+
+              {/* RELEASE */}
+              <ProductionReleaseCard
+                breaking={breaking}
+                styles={breakdown.styles}
+                handleReleaseBreakdown={handleReleaseBreakdown}
+              />
             </div>
-          </SpotlightCard>
-        );
-      })())}
-
-      {initError && (
-        <div className="p-4 bg-red-50 text-red-800 rounded-xl border border-red-200 font-semibold text-sm">
-          Failed to initialize submission: {initError}. Please ensure backend is running.
-        </div>
+          )}
+        </>
       )}
 
-
-      {/* ─── UPLOAD FORM ─── */}
-      <SpotlightCard className="p-6 sm:p-8 bg-white shadow-xl rounded-3xl space-y-6" style={{ border: '1px solid rgba(200,131,74,0.15)' }} spotlightColor="rgba(200,131,74,0.06)">
-
-        {/* Info banner */}
-        <div className="flex items-start gap-3 p-4 rounded-xl" style={{ background: '#faf6f0', border: '1px solid rgba(200,131,74,0.15)' }}>
-          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: '#c8834a' }} />
-          <div className="text-[11px] font-semibold space-y-1" style={{ color: '#9a7a5a' }}>
-            <p><strong style={{ color: '#2d1f0e' }}>Order Sheet (.xlsx)</strong> — required. Must contain columns: Style, Colorway, Size Run, Quantity.</p>
-            <p><strong style={{ color: '#2d1f0e' }}>Tech Spec Sheet (.pdf)</strong> — recommended. Material breakdown, stitching specs.</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Order Sheet Zone */}
-          <div>
-            <DropZone
-              label="Order Sheet *"
-              accept=".csv,.pdf,.xlsx"
-              icon={Sheet}
-              file={orderFile}
-              onFile={handleOrderUpload}
-              onClear={() => { setOrderFile(null); setOrderValidation(null); }}
-              description="Excel order form from the buyer"
-              disabled={initLoading || !submissionId || uploadingOrder}
-            />
-            {uploadingOrder && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin" /> Validating Order Sheet...</div>}
-            <ValidationResponse title="Order Sheet" data={orderValidation} />
-          </div>
-
-          {/* Spec Sheet Zone */}
-          <div>
-            <DropZone
-              label="Tech Spec Sheet (Optional)"
-              accept=".csv,.pdf,.xlsx"
-              icon={FileArchive}
-              file={specFile}
-              onFile={handleSpecUpload}
-              onClear={() => { setSpecFile(null); setSpecValidation(null); }}
-              description="PDF spec sheet with material details"
-              disabled={initLoading || !submissionId || uploadingSpec}
-            />
-            {uploadingSpec && <div className="mt-2 text-xs font-semibold flex items-center gap-2 text-blue-600"><Loader2 className="w-4 h-4 animate-spin" /> Validating Spec Sheet...</div>}
-            <ValidationResponse title="Spec Sheet" data={specValidation} />
-          </div>
-        </div>
-      </SpotlightCard>
-
-      {/* ─── GENERATE BOM ─── */}
-      {readyForStage2 && (
-        <SpotlightCard className="p-8 text-center rounded-3xl animate-fade-in shadow-xl" style={{ background: '#f0fdf4', border: '1px solid rgba(22,163,74,0.3)' }} spotlightColor="rgba(22,163,74,0.1)">
-          <CheckCircle2 className="w-12 h-12 mx-auto mb-4" style={{ color: '#16a34a' }} />
-          <h2 className="text-2xl font-black mb-2" style={{ color: '#14532d' }}>Intake Complete!</h2>
-          <p className="text-sm font-semibold mb-6" style={{ color: '#166534' }}>Files parsed successfully. The system is ready to generate the Bill of Materials.</p>
-          <button
-            onClick={handleGenerateBom}
-            className="px-8 py-3 rounded-xl font-black text-white transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5"
-            style={{ background: 'linear-gradient(135deg, #16a34a, #22c55e)' }}
-          >
-            Generate BOM
-          </button>
-        </SpotlightCard>
-      )}
-
+      {/* ═════════════════════════════════════
+          DXF UPLOAD MODAL & FILE INPUT
+      ═════════════════════════════════════ */}
+      <DxfUploadModal
+        showDxfModal={showDxfModal}
+        setShowDxfModal={setShowDxfModal}
+        dxfTargetStyle={dxfTargetStyle}
+        patternNameInput={patternNameInput}
+        setPatternNameInput={setPatternNameInput}
+        confirmDxfPatternName={confirmDxfPatternName}
+        uploadingDxf={uploadingDxf}
+        dxfFileInputRef={dxfFileInputRef}
+        handleDxfFileSelected={handleDxfFileSelected}
+      />
     </div>
   );
 }

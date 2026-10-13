@@ -2,9 +2,10 @@ import { Lato, Playfair_Display } from 'next/font/google';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { DataProvider } from '@/context/DataContext';
-import CustomCursor from '@/components/CustomCursor';
 import NumberInputWheelGuard from '@/components/NumberInputWheelGuard';
-
+import ReduxProvider from '@/store/ReduxProvider';
+import BetterStackMonitor from '@/components/BetterStackMonitor';
+import { BetterStackWebVitals } from '@logtail/next/webVitals';
 const lato = Lato({
   subsets: ['latin'],
   weight: ['300', '400', '700', '900'],
@@ -28,13 +29,16 @@ export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${lato.variable} ${playfair.variable}`} data-scroll-behavior="smooth">
       <body className="font-sans bg-[#faf6f0] text-[#0f172a] antialiased">
-        <AuthProvider>
-          <DataProvider>
-            <CustomCursor />
-            <NumberInputWheelGuard />
-            {children}
-          </DataProvider>
-        </AuthProvider>
+        <BetterStackWebVitals />
+        <BetterStackMonitor />
+        <ReduxProvider>
+          <AuthProvider>
+            <DataProvider>
+              <NumberInputWheelGuard />
+              {children}
+            </DataProvider>
+          </AuthProvider>
+        </ReduxProvider>
       </body>
     </html>
   );

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { withBetterStack } from '@logtail/next';
 import nodemailer from 'nodemailer';
 
-export async function POST(req) {
+async function handlePOST(req) {
   try {
     const { toEmail, subject, text } = await req.json();
 
@@ -33,3 +34,6 @@ export async function POST(req) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+// Logs each request (status, duration) and anything logged via req.log to Better Stack.
+export const POST = withBetterStack(handlePOST);

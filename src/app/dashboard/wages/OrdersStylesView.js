@@ -1,0 +1,498 @@
+// wages page piece_rates code
+'use client';
+import { useState,useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  useGetWageOrdersQuery,
+  useLazyGetWageStylesQuery,
+  useLazyGetRateSheetQuery,
+  useLazyGetRateHistoryQuery,
+  useSetWageRateSingleMutation,
+  useSetWageRatesBulkMutation
+} from '@/store/slices/apiSlice';
+
+import { Loader2, Save, History, X, Search, Briefcase, Filter, Warehouse, ChevronRight } from 'lucide-react';
+import SpotlightCard from '@/components/SpotlightCard';
+import { Toast, SearchCombobox } from './shared';
+export default function OrdersStylesView() {
+   const { data: wageOrdersData, isLoading: ordersLoading } = useGetWageOrdersQuery();
+  const orders = useMemo(() => Array.isArray(wageOrdersData) ? wageOrdersData : (wageOrdersData?.items || wageOrdersData?.orders || wageOrdersData?.data || []), [wageOrdersData]);
+
+  const [triggerGetWageStyles, { isLoading: stylesLoading }] = useLazyGetWageStylesQuery();
+  const [triggerGetRateSheet] = useLazyGetRateSheetQuery();
+  const [triggerGetRateHistory] = useLazyGetRateHistoryQuery();
+  const [setWageRateSingleMut] = useSetWageRateSingleMutation();
+  const [setWageRatesBulkMut] = useSetWageRatesBulkMutation();
+
+  const [orderSearch, setOrderSearch] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [styles, setStyles] = useState([]);
+  const [styleSearch, setStyleSearch] = useState('');
+  const [selectedStyle, setSelectedStyle] = useState(null);
+
+  const [rates, setRates] = useState([]);
+  const [historyModal, setHistoryModal] = useState(null);
+  const [savingOps, setSavingOps] = useState({});
+  const [savingAll, setSavingAll] = useState(false);
+  const [toastMsg, setToastMsg] = useState(null);
+  const [toastType, setToastType] = useState('success');
+
+  const showToast = (msg, type = 'success') => {
+    setToastMsg(msg); setToastType(type);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
+  const filteredOrders = useMemo(() => {
+    if (!orderSearch.trim()) return orders;
+    const q = orderSearch.toLowerCase().trim();
+    return orders.filter((o) => String(o.order_number || '').toLowerCase().includes(q));
+  }, [orders, orderSearch]);
+
+  const handleSelectOrder = async (order) => {
+    setSelectedOrder(order);
+    try {
+      const data = await triggerGetWageStyles({ order_number: order.order_number }).unwrap();
+      const list = Array.isArray(data) ? data : (data?.items || data?.styles || data?.data || []);
+      setStyles(list);
+    } catch (e) {
+      console.error('Failed to fetch styles for order:', e);
+      setStyles([]);
+    }
+  };
+
+  const filteredStyles = useMemo(() => {
+    if (!styleSearch.trim()) return styles;
+    const q = styleSearch.toLowerCase().trim();
+    return styles.filter((s) =>
+      String(s.style_code || '').toLowerCase().includes(q) ||
+      String(s.style_name || '').toLowerCase().includes(q)
+    );
+  }, [styles, styleSearch]);
+
+  const handleSelectStyle = async (style) => {
+    setSelectedStyle(style);
+    try {
+      const data = await triggerGetRateSheet(style.style_code).unwrap();
+      const list = Array.isArray(data)
+        ? data
+        : (data?.operations || data?.items || data?.lines || data?.rates || data?.data || []);
+      setRates(list);
+    } catch (e) {
+      console.error('Failed to fetch rate sheet:', e);
+      setRates([]);
+    }
+  };
+
+
+   const handleShowHistory = async (opCode) => {
+    try {
+      const data = await triggerGetRateHistory({ 
+        styleCode: selectedStyle.style_code, 
+        operationCode: opCode 
+      }).unwrap();
+      setHistoryModal(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSaveSingleRate = async (op) => {
+    setSavingOps(prev => ({ ...prev, [op.operation_code]: true }));
+    try {
+      await setWageRateSingleMut({
+        style_code: selectedStyle.style_code,
+        operation_code: op.operation_code,
+        rate: parseFloat(op.rate || 0),
+        effective_from: new Date().toISOString().split('T')[0]
+      }).unwrap();
+      showToast(`${op.label} rate saved!`, 'success');
+    } catch (e) {
+      showToast('Error: ' + (e.message || 'Failed'), 'error');
+    } finally {
+      setSavingOps(prev => ({ ...prev, [op.operation_code]: false }));
+    }
+  };
+
+
+  const handleSaveAllRates = async () => {
+    setSavingAll(true);
+    try {
+      await setWageRatesBulkMut({
+        style_code: selectedStyle.style_code,
+        effective_from: new Date().toISOString().split('T')[0],
+        lines: rates.map(op => ({ operation_code: op.operation_code, rate: parseFloat(op.rate || 0) }))
+      }).unwrap();
+      showToast('All rates saved successfully!', 'success');
+    } catch (e) {
+      showToast('Error: ' + (e.message || 'Failed'), 'error');
+    } finally {
+      setSavingAll(false);
+    }
+  };
+
+
+  // ── LEVEL 3: RATE EDITOR ──
+  if (selectedStyle) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <Toast msg={toastMsg} type={toastType} />
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 md:p-8 rounded-[2rem] shadow-xl border relative overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          <div className="absolute top-0 left-0 w-1.5 h-full" style={{ background: 'linear-gradient(to bottom, #c8834a, #e8a06a)' }}></div>
+          <div>
+            <h2 className="font-black text-3xl" style={{ color: '#2d1f0e' }}>{selectedStyle.style_name}</h2>
+            <div className="flex items-center gap-3 mt-2 text-xs font-bold uppercase tracking-widest flex-wrap" style={{ color: '#c8834a' }}>
+              <span className="bg-[#faf6f0] px-3 py-1 rounded-md border" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>{selectedStyle.style_code}</span>
+              <span>•</span>
+              <span>Master Rate Config</span>
+            </div>
+          </div>
+          <button
+            onClick={() => setSelectedStyle(null)}
+            className="px-6 py-3 bg-[#faf6f0] font-black text-xs uppercase tracking-widest rounded-2xl transition-all border shadow-sm hover:shadow-md hover:bg-white active:scale-95"
+            style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
+          >
+            ← Back to {selectedOrder?.order_number} Styles
+          </button>
+        </div>
+
+        <div className="grid gap-4">
+          {rates.length > 0 ? (
+            rates.map((op, idx) => {
+              const isSaving = savingOps[op.operation_code];
+              return (
+                <div key={op.operation_code} className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border flex flex-col md:flex-row md:items-center gap-6 transition-all hover:shadow-md group" style={{ borderColor: 'rgba(200,131,74,0.1)' }}>
+                  <div className="flex-1">
+                    <h4 className="font-black text-lg flex items-center gap-2" style={{ color: '#2d1f0e' }}>
+                      <div className="w-8 h-8 rounded-full bg-[#faf6f0] flex items-center justify-center text-[10px] text-[#c8834a] border" style={{ borderColor: 'rgba(200,131,74,0.2)' }}>
+                        {(idx + 1).toString().padStart(2, '0')}
+                      </div>
+                      {op.label || op.operation_code}
+                    </h4>
+                    <p className="text-[10px] font-bold text-slate-400 ml-10 mt-1 uppercase tracking-widest">{op.operation_code}</p>
+                  </div>
+
+                  <div className="flex items-center gap-4 w-full md:w-auto">
+                    <div className="relative flex-1 md:w-48 group-focus-within:ring-4 rounded-xl transition-all" style={{ ringColor: 'rgba(200,131,74,0.1)' }}>
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-sm">₹</span>
+                      <input
+                        type="number" step="0.01" min="0"
+                        className="w-full h-14 pl-9 pr-4 bg-slate-50 hover:bg-white font-black text-lg border-2 rounded-xl outline-none transition-all shadow-inner focus:bg-white focus:border-[#c8834a] [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        style={{ color: '#c8834a', borderColor: 'transparent' }}
+                        value={op.rate ?? ''}
+                        onChange={(e) => {
+                          const newRates = [...rates];
+                          newRates[idx] = { ...newRates[idx], rate: e.target.value };
+                          setRates(newRates);
+                        }}
+                        onWheel={(e) => e.target.blur()}
+                        placeholder="0.00"
+                      />
+                    </div>
+
+                    <button
+                      onClick={() => handleSaveSingleRate(op)}
+                      disabled={isSaving}
+                      className="w-14 h-14 rounded-xl font-bold text-white shadow-sm transition-all hover:shadow-lg hover:-translate-y-1 disabled:opacity-50 flex items-center justify-center active:scale-95 shrink-0"
+                      style={{ background: 'linear-gradient(135deg, #c8834a, #e8a06a)' }}
+                      title="Save Rate"
+                    >
+                      {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                    </button>
+                    <button
+                      onClick={() => handleShowHistory(op.operation_code)}
+                      className="w-14 h-14 rounded-xl bg-white shadow-sm border transition-all hover:shadow-md flex items-center justify-center shrink-0"
+                      style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                      title="View Rate History"
+                    >
+                      <History className="w-5 h-5 text-slate-400 hover:text-[#c8834a] transition-colors" />
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="p-12 text-center bg-white/70 backdrop-blur-sm rounded-3xl border border-dashed border-slate-300 space-y-2">
+              <Filter className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+              <h4 className="font-black text-lg text-slate-700">No operations configured for this style</h4>
+              <p className="text-xs font-bold text-slate-400">This style has no registered operations in the rate sheet master yet.</p>
+            </div>
+          )}
+        </div>
+
+        <div className="sticky bottom-6 z-50 flex justify-center mt-8 animate-fade-in-up">
+          <button
+            onClick={handleSaveAllRates}
+            disabled={savingAll || rates.length === 0}
+            className="h-14 px-10 rounded-full font-black text-base text-white shadow-2xl transition-all hover:shadow-emerald-500/20 hover:-translate-y-1 active:scale-95 disabled:opacity-50 flex items-center gap-3 border border-emerald-400/30 backdrop-blur-md"
+            style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
+          >
+            {savingAll ? <><Loader2 className="w-5 h-5 animate-spin" /> Saving Grid...</> : <><Save className="w-5 h-5" /> Commit All Rates</>}
+          </button>
+        </div>
+
+        {historyModal && typeof document !== 'undefined' && createPortal(
+          <div className="fixed inset-0 flex items-center justify-center p-4 z-[99999] bg-slate-900/40 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white rounded-[2rem] w-full max-w-md shadow-2xl animate-scale-up overflow-hidden mx-4">
+              <div className="p-6 sm:p-8 pb-6 border-b" style={{ background: '#faf6f0', borderColor: 'rgba(200,131,74,0.1)' }}>
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h3 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>Audit Trail</h3>
+                    <p className="text-xs font-bold uppercase tracking-widest mt-1" style={{ color: '#c8834a' }}>OP: {historyModal.operation_code}</p>
+                  </div>
+                  <button onClick={() => setHistoryModal(null)} className="p-2 bg-white rounded-full border shadow-sm text-slate-400 hover:text-slate-700 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="p-8 max-h-[60vh] overflow-y-auto bg-slate-50">
+                {historyModal.history.length === 0 ? (
+                  <div className="text-center py-10 opacity-60">
+                    <History className="w-10 h-10 mx-auto mb-3 text-slate-300" />
+                    <p className="text-sm font-bold text-slate-400">No revisions found.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {historyModal.history.map((h, i) => (
+                      <div key={i} className="bg-white p-5 rounded-2xl shadow-sm border flex justify-between items-center" style={{ borderColor: i === 0 ? '#10b981' : 'rgba(200,131,74,0.1)' }}>
+                        <div>
+                          {i === 0 && <span className="block text-[9px] font-black uppercase text-emerald-600 mb-1 tracking-widest">Active Rate</span>}
+                          <p className="text-xs font-bold text-slate-400 mb-0.5">Effective From</p>
+                          <p className="font-black text-sm" style={{ color: '#2d1f0e' }}>{h.effective_from}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-black text-2xl" style={{ color: i === 0 ? '#10b981' : '#c8834a' }}>₹{h.rate}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+      </div>
+    );
+  }
+
+  // ── LEVEL 2: STYLE CARDS (within selected order) ──
+  if (selectedOrder) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-3xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          <div>
+            <h2 className="font-black text-2xl" style={{ color: '#2d1f0e' }}>PO {selectedOrder.order_number}</h2>
+            <p className="text-xs font-bold mt-1" style={{ color: '#9a7a5a' }}>{selectedOrder.styles} styles · {selectedOrder.qty_ordered ?? '—'} pieces ordered</p>
+          </div>
+          <button
+            onClick={() => { setSelectedOrder(null); setStyleSearch(''); }}
+            className="px-6 py-3 bg-[#faf6f0] font-black text-xs uppercase tracking-widest rounded-2xl transition-all border shadow-sm hover:shadow-md hover:bg-white active:scale-95"
+            style={{ color: '#4a3a2a', borderColor: 'rgba(200,131,74,0.2)' }}
+          >
+            ← Back to Orders
+          </button>
+        </div>
+
+        <div className="relative w-full bg-white/80 backdrop-blur-md p-2 rounded-3xl shadow-sm border" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search by Style Code or Name..."
+            value={styleSearch}
+            onChange={(e) => setStyleSearch(e.target.value)}
+            className="w-full h-12 pl-14 pr-4 bg-transparent border-none text-sm font-bold text-slate-800 focus:outline-none placeholder-slate-400"
+          />
+        </div>
+
+        {stylesLoading ? (
+          <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin" style={{ color: '#c8834a' }} /></div>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="font-bold uppercase tracking-wider text-[11px] border-b border-slate-200 text-slate-400 bg-slate-50/50">
+                  <th className="py-3.5 px-6">Style Code</th>
+                  <th className="py-3.5 px-6">Style Name</th>
+                  <th className="py-3.5 px-6">Total Pieces</th>
+                  <th className="py-3.5 px-6">Configuration Status</th>
+                  <th className="py-3.5 px-6">Rated Operations</th>
+                  <th className="py-3.5 px-6 text-right"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filteredStyles.length > 0 ? (
+                  filteredStyles.map((s) => {
+                    const progress = s.total_operations ? (s.rated_operations / s.total_operations) * 100 : 0;
+                    const isComplete = progress === 100;
+                    const totalPieces = s.qty_ordered ?? s.total_pieces ?? s.piece_count ?? s.quantity ?? '—';
+                    return (
+                      <tr
+                        key={s.style_code}
+                        onClick={() => handleSelectStyle(s)}
+                        className="hover:bg-[#faf6f0]/50 transition-colors cursor-pointer group"
+                      >
+                        <td className="py-4 px-6 font-black text-sm text-slate-800 uppercase">
+                          {s.style_code}
+                        </td>
+                        <td className="py-4 px-6 font-bold text-xs text-slate-600">
+                          {s.style_name || '—'}
+                        </td>
+                        <td className="py-4 px-6 font-bold text-xs text-slate-600">
+                          {totalPieces} Pcs
+                        </td>
+                        <td className="py-4 px-6">
+                          <span className={`inline-flex items-center text-[10px] font-black uppercase px-2.5 py-1 rounded-md border ${
+                            isComplete 
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                              : 'bg-amber-50 text-[#a86022] border-amber-200'
+                          }`}>
+                            {isComplete ? 'Complete' : 'Pending Rates'}
+                          </span>
+                        </td>
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-3 w-40">
+                            <div className="h-2 flex-1 bg-slate-100 rounded-full overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-500"
+                                style={{
+                                  width: `${progress}%`,
+                                  background: isComplete ? 'linear-gradient(90deg, #34d399, #10b981)' : 'linear-gradient(90deg, #e8a06a, #c8834a)'
+                                }}
+                              />
+                            </div>
+                            <span className="font-extrabold text-xs text-slate-700">{s.rated_operations}/{s.total_operations}</span>
+                          </div>
+                        </td>
+                        <td className="py-4 px-6 text-right">
+                          <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-0.5 transition-all inline-block" />
+                        </td>
+                      </tr>
+                    );
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan="6" className="py-16 text-center text-slate-400 font-bold">
+                      No styles found matching &quot;{styleSearch}&quot;
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── LEVEL 1: ORDER CARDS (Default View) ──
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-col sm:flex-row items-center gap-3 bg-white/80 backdrop-blur-md p-3 rounded-3xl shadow-sm border relative z-30" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+        <div className="relative flex-1 w-full">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search..."
+            value={orderSearch}
+            onChange={(e) => setOrderSearch(e.target.value)}
+            className="w-full h-12 pl-12 pr-4 bg-transparent border-none text-sm font-bold text-slate-800 focus:outline-none placeholder-slate-400"
+          />
+        </div>
+        <div className="w-full sm:w-80">
+          <SearchCombobox
+            placeholder="Search..."
+            value={selectedOrder?.order_number || ''}
+            options={orders}
+            getKey={(o) => o.order_number}
+            getLabel={(o) => `PO ${o.order_number}`}
+            getSub={(o) => `${o.styles} styles · ${o.qty_ordered ?? '—'} pcs`}
+            onSelect={(o) => {
+              if (o) handleSelectOrder(o);
+            }}
+            loading={ordersLoading}
+            allowClear
+          />
+        </div>
+      </div>
+
+      {ordersLoading ? (
+        <div className="flex flex-col items-center justify-center p-20 opacity-60">
+          <Loader2 className="w-10 h-10 animate-spin text-[#c8834a] mb-4" />
+          <p className="font-bold text-sm tracking-widest uppercase" style={{ color: '#9a7a5a' }}>Loading Orders...</p>
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl shadow-sm border overflow-hidden" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="font-bold uppercase tracking-wider text-[11px] border-b border-slate-200 text-slate-400 bg-slate-50/50">
+                <th className="py-3.5 px-6">Order Number</th>
+                <th className="py-3.5 px-6">Styles</th>
+                <th className="py-3.5 px-6">Total Pieces</th>
+                <th className="py-3.5 px-6">Rates Status</th>
+                <th className="py-3.5 px-6">Priced Progress</th>
+                <th className="py-3.5 px-6 text-right"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredOrders.length > 0 ? (
+                filteredOrders.map((o) => {
+                  const isComplete = o.fully_priced;
+                  const pct = o.styles ? Math.round((o.styles_priced / o.styles) * 100) : 0;
+                  return (
+                    <tr
+                      key={o.order_number}
+                      onClick={() => handleSelectOrder(o)}
+                      className="hover:bg-[#faf6f0]/50 transition-colors cursor-pointer group"
+                    >
+                      <td className="py-4 px-6 font-black text-sm text-slate-800 uppercase">
+                        PO {o.order_number}
+                      </td>
+                      <td className="py-4 px-6 font-bold text-xs text-slate-600">
+                        {o.styles} {o.styles === 1 ? 'Style' : 'Styles'}
+                      </td>
+                      <td className="py-4 px-6 font-bold text-xs text-slate-600">
+                        {o.qty_ordered ?? '—'} Pcs
+                      </td>
+                      <td className="py-4 px-6">
+                        <span className={`inline-flex items-center text-[10px] font-black uppercase px-2.5 py-1 rounded-md border ${
+                          isComplete 
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                            : 'bg-amber-50 text-[#a86022] border-amber-200'
+                        }`}>
+                          {isComplete ? 'Fully Priced' : 'Rates Pending'}
+                        </span>
+                      </td>
+                      <td className="py-4 px-6">
+                        <div className="flex items-center gap-3 w-40">
+                          <div className="h-2 flex-1 bg-slate-100 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-500"
+                              style={{
+                                width: `${pct}%`,
+                                background: isComplete ? 'linear-gradient(90deg, #34d399, #10b981)' : 'linear-gradient(90deg, #e8a06a, #c8834a)'
+                              }}
+                            />
+                          </div>
+                          <span className="font-extrabold text-xs text-slate-700">{o.styles_priced}/{o.styles}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-6 text-right">
+                        <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-[#c8834a] group-hover:translate-x-0.5 transition-all inline-block" />
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan="6" className="py-16 text-center text-slate-400 font-bold">
+                    No orders found matching &quot;{orderSearch}&quot;
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

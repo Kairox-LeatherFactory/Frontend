@@ -110,15 +110,6 @@ export default function SettingsDashboard() {
         </div>
       )}
 
-      {/* ─── HEADER ─── */}
-      <div>
-        <p className="text-xs font-black uppercase tracking-widest mb-1" style={{ color: '#c8834a' }}>Account Management</p>
-        <h1 className="text-3xl font-black tracking-tight flex items-center gap-3" style={{ color: '#2d1f0e' }}>
-          <Shield className="w-8 h-8" style={{ color: '#c8834a' }} /> Security Settings
-        </h1>
-        <p className="font-medium mt-1" style={{ color: '#9a7a5a' }}>Manage your account password and session security.</p>
-      </div>
-
       {/* ─── CURRENT SESSION CARD ─── */}
       <SpotlightCard className="p-5 bg-white rounded-2xl shadow-sm" style={{ border: '1px solid rgba(200,131,74,0.12)' }} spotlightColor="rgba(200,131,74,0.05)">
         <div className="flex items-center gap-4">
