@@ -5,6 +5,7 @@ import entryReducer from './slices/entrySlice'
 import storeHubReducer from './slices/storeHubSlice';
 import manualReducer from './slices/manualSlice';
 import { apiSlice } from './slices/apiSlice';
+import { errorLogger } from './middleware/errorLogger';
 export const store = configureStore({
   reducer: {
     auth: authReducer,
@@ -15,5 +16,5 @@ export const store = configureStore({
      [apiSlice.reducerPath]: apiSlice.reducer // RTK Query API slice
   },
    middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware().concat(apiSlice.middleware),
+    getDefaultMiddleware().concat(apiSlice.middleware, errorLogger),
 });

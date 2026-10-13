@@ -1,5 +1,6 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   X,
   Layers,
@@ -31,15 +32,30 @@ export default function StorePieceMaterialsModal({ isOpen, pieceCode, onClose })
     skip: !isOpen || !pieceCode,
   });
 
-  if (!isOpen || !pieceCode) return null;
+  const open = isOpen && !!pieceCode;
+
+  // Freeze the page behind the popup so scrolling only moves the popup's own content
+  useEffect(() => {
+    if (!open) return;
+    const { overflow } = document.body.style;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = overflow;
+    };
+  }, [open]);
+
+  if (!open) return null;
 
   const materialsData = liveData || {};
   const applies = materialsData?.applies || {};
   const notApplicable = materialsData?.not_applicable || [];
   const issuedLedger = materialsData?.issued || [];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+  // Portal to <body> so an animated/transformed ancestor can't turn "fixed" into "scrolls with the page"
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200 overscroll-contain"
+    >
       <div className="bg-white rounded-3xl shadow-2xl border w-full max-w-4xl overflow-hidden flex flex-col max-h-[92vh]" style={{ borderColor: "rgba(200,131,74,0.3)" }}>
         {/* Header */}
         <div className="p-6 bg-gradient-to-r from-[#2d1f0e] to-[#3d2b1a] text-white flex items-center justify-between shrink-0">
@@ -246,6 +262,7 @@ export default function StorePieceMaterialsModal({ isOpen, pieceCode, onClose })
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
