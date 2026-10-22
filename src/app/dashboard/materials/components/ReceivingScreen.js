@@ -172,7 +172,7 @@ export function ReceivingScreen({ showToast, prefill , onSuccess}) {
 
             <div className="p-6 space-y-6">
                 {/* 1. Lot Details Auto-fetched Card (2x2 read-only so it fits the half-width column) */}
-                <div className="rounded-2xl p-4 border grid grid-cols-1 sm:grid-cols-2 gap-4" style={{ background: '#fdfbf7', borderColor: 'rgba(200,131,74,0.2)' }}>
+                <div className="rounded-2xl p-4 border grid grid-cols-1 sm:grid-cols-3 gap-4" style={{ background: '#fdfbf7', borderColor: 'rgba(200,131,74,0.2)' }}>
                     <div>
                         <div className="flex items-center justify-between gap-2 mb-1">
                             <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">
@@ -208,15 +208,6 @@ export function ReceivingScreen({ showToast, prefill , onSuccess}) {
                         </span>
                         <div className="text-xs font-black text-slate-800 truncate" title={activeColour}>
                             {activeColour || (lotLoading ? 'Loading…' : '—')}
-                        </div>
-                    </div>
-
-                    <div>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
-                            Supplier ID (Read only)
-                        </span>
-                        <div className="font-mono text-xs font-bold text-slate-600 truncate" title={activeSupplier}>
-                            {activeSupplier || (lotLoading ? 'Loading…' : '—')}
                         </div>
                     </div>
                 </div>
