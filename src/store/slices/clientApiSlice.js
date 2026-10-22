@@ -27,6 +27,14 @@ export const entryApiSlice = apiSlice.injectEndpoints({
       invalidatesTags: ['Clients'],
     }),
 
+    deleteClient: builder.mutation({
+      query: (clientId) => ({
+        url: `/api/v1/clients/${encodeURIComponent(clientId)}`,
+        method: 'DELETE',
+      }),
+      invalidatesTags: ['Clients'],
+    }),
+
     getClientOrders: builder.query({
       query: (clientId) => `/api/v1/clients/${encodeURIComponent(clientId)}/orders`,
       transformResponse: (response) => Array.isArray(response) ? response : (response?.items || response?.orders || []),
@@ -84,6 +92,7 @@ export const {
   useGetClientsQuery,
   useCreateClientMutation,
   useUpdateClientMutation,
+  useDeleteClientMutation,
   useGetClientOrdersQuery,
   useAddClientOrderMutation,
   useGetOperationsQuery,

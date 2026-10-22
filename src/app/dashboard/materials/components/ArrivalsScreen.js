@@ -333,11 +333,10 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
       }));
     return [...saved, ...localSheets].map((s, idx) => ({ ...s, sheetNo: idx + 1 }));
   }, [savedSheetsRaw, localSheets, arrival.arrived_at]);
-  // The sheets added on this arrival (approved sheets): IN_STOCK saved sheets plus unsaved local ones —
-  // ALLOCATED / CONSUMED are hidden. Numbered from 1 within this list.
+  // The sheets added on this arrival: CONSUMED (or IN_STOCK) saved sheets plus unsaved local ones
   const listedSheets = useMemo(
     () => sheets
-      .filter((s) => !s.saved || s.status === 'IN_STOCK')
+      .filter((s) => !s.saved || ['CONSUMED', 'IN_STOCK'].includes(String(s.status || '').toUpperCase()))
       .map((s, idx) => ({ ...s, sheetNo: idx + 1 })),
     [sheets]
   );
@@ -905,7 +904,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         <div className="pt-2">
           <div className="flex items-center justify-between text-xs font-black mb-1.5">
             <span className={isMatching ? 'text-emerald-700 flex items-center gap-1' : 'text-slate-600'}>
-              {`${listedSheets.length} in-stock sheets (${totalSheetsDcm} / ${targetDcm || 0} DCM)`}
+              {`${listedSheets.length} sheets (${totalSheetsDcm} / ${targetDcm || 0} DCM)`}
             </span>
             <span className="font-bold text-slate-500 text-[11px]">{progressPercent}%</span>
           </div>

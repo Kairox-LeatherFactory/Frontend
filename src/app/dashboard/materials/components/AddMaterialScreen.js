@@ -1,11 +1,11 @@
 'use client';
 import { useState, useMemo } from 'react';
 import { CheckCircle2, Loader2, PackagePlus, Boxes } from 'lucide-react';
-import { 
-  useGetMaterialSpecQuery, 
-  useGetMaterialLotsQuery, 
-  useLazyGetMaterialLotsQuery, 
-  useCreateMaterialArrivalMutation 
+import {
+  useGetMaterialSpecQuery,
+  useGetMaterialLotsQuery,
+  useLazyGetMaterialLotsQuery,
+  useCreateMaterialArrivalMutation
 } from '@/store/slices/materialApiSlice';
 import { errMsg, SelectableFilterCombobox, CategoryPicker } from './shared';
 
@@ -202,205 +202,205 @@ export function AddMaterialScreen({ showToast, onSuccess, onDuplicate }) {
         <h2 className="text-lg font-black tracking-tight text-slate-900">Add New Material</h2>
       </div>
 
-    <div className="p-6 space-y-6">
-      <div>
-        <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Step 1 — Category</div>
-        <CategoryPicker
-          variant="tiles"
-          category={category}
-          subtype={subtype}
-          onCategory={(c) => {
-            setCategory(c);
-            setSubtype('');
-            setAttrs({});
-            setArticle('');
-            setColour('');
-          }}
-          onSubtype={(s) => {
-            setSubtype(s);
-            setAttrs({});
-            setArticle('');
-            setColour('');
-          }}
-          subtypeRequired={category === 'ACCESSORY'}
-        />
-      </div>
+      <div className="p-6 space-y-6">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400 mb-2">Step 1 — Category</div>
+          <CategoryPicker
+            variant="tiles"
+            category={category}
+            subtype={subtype}
+            onCategory={(c) => {
+              setCategory(c);
+              setSubtype('');
+              setAttrs({});
+              setArticle('');
+              setColour('');
+            }}
+            onSubtype={(s) => {
+              setSubtype(s);
+              setAttrs({});
+              setArticle('');
+              setColour('');
+            }}
+            subtypeRequired={category === 'ACCESSORY'}
+          />
+        </div>
 
-      {!category && (
-        <p className="text-center py-6 text-xs font-semibold text-slate-400">
-          Pick a category above to fill in the material details.
-        </p>
-      )}
+        {!category && (
+          <p className="text-center py-6 text-xs font-semibold text-slate-400">
+            Pick a category above to fill in the material details.
+          </p>
+        )}
 
-      {spec && (
-        <div className="space-y-5 pt-4 border-t" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
-          {availableLots.length > 0 && (
-            <div className="p-3.5 rounded-2xl bg-[#faf6f0] border border-[#c8834a]/25 space-y-1.5">
-              <span className="text-[10px] font-black uppercase tracking-wider text-[#a86022] flex items-center gap-1.5">
-                <Boxes className="w-3.5 h-3.5" /> Quick Autofill from Existing Lot on File
-              </span>
-              <SelectableFilterCombobox
-                placeholder="Choose existing Lot barcode / Material to autofill spec…"
-                value=""
-                onChange={() => {}}
-                onSelectLot={handleQuickPickLot}
-                options={availableLots.map((l) => ({
-                  value: l.lot_id,
-                  label: `${l.barcode} — ${l.article} · ${l.colour}`,
-                  sub: `${l.thickness ? `${l.thickness} · ` : ''}${l.size ? `${l.size} · ` : ''}${l.available} ${l.uom} on hand`,
-                  lot: l,
-                }))}
-                className="bg-white"
-              />
-            </div>
-          )}
-
-          <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Step 2 — Details</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs font-black text-slate-700 block mb-1">Article / Material Name *</label>
-              <SelectableFilterCombobox
-                value={article}
-                onChange={setArticle}
-                placeholder="Select or type material…"
-                options={articleOptions}
-                onSelectLot={handleQuickPickLot}
-                className="mt-1"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-black text-slate-700 block mb-1">Colour *</label>
-              <SelectableFilterCombobox
-                value={colour}
-                // Colours are stored in capitals — uppercase as the user types
-                onChange={(v) => setColour(v.toUpperCase())}
-                placeholder="Select or type colour…"
-                options={colourOptions}
-                className="mt-1"
-              />
-            </div>
-
-            {spec.required_to_add
-              .filter((k) => !(isLeather && k === spec.quantity_field))
-              .map((k) => (
-              <div key={k}>
-                <label className="text-xs font-black text-slate-700 capitalize block mb-1">
-                  {k}{k === spec.quantity_field ? ` (${spec.uom}) *` : ' *'}
-                </label>
-                {k === spec.quantity_field ? (
-                  <input
-                    type="number"
-                    value={attrs[k] ?? ''}
-                    onChange={(e) => setAttrs((p) => ({ ...p, [k]: e.target.value }))}
-                    placeholder={`Enter ${spec.uom} (e.g. 1240)`}
-                    className="w-full h-10 px-3.5 border rounded-xl text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                    style={{ borderColor: 'rgba(200,131,74,0.3)' }}
-                  />
-                ) : (
-                  <SelectableFilterCombobox
-                    value={attrs[k] ?? ''}
-                    onChange={(val) => setAttrs((p) => ({ ...p, [k]: val }))}
-                    placeholder={`Select or type ${k}…`}
-                    options={getAttrOptions(k)}
-                    className="mt-1"
-                  />
-                )}
-              </div>
-            ))}
-
-            {/* Thread size isn't in the spec's required fields, but the lot stores it — sent as `size` in the arrival payload */}
-            {category === 'ACCESSORY' && subtype === 'THREAD' && !spec.required_to_add.includes('size') && (
-              <div>
-                <label className="text-xs font-bold text-slate-500 block mb-1">Size (optional)</label>
+        {spec && (
+          <div className="space-y-5 pt-4 border-t" style={{ borderColor: 'rgba(200,131,74,0.15)' }}>
+            {availableLots.length > 0 && (
+              <div className="p-3.5 rounded-2xl bg-[#faf6f0] border border-[#c8834a]/25 space-y-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#a86022] flex items-center gap-1.5">
+                  <Boxes className="w-3.5 h-3.5" /> Quick Autofill from Existing Lot on File
+                </span>
                 <SelectableFilterCombobox
-                  value={attrs.size ?? ''}
-                  onChange={(val) => setAttrs((p) => ({ ...p, size: val }))}
-                  placeholder="Select or type size…"
-                  options={getAttrOptions('size')}
+                  placeholder="Choose existing Lot barcode / Material to autofill spec…"
+                  value=""
+                  onChange={() => { }}
+                  onSelectLot={handleQuickPickLot}
+                  options={availableLots.map((l) => ({
+                    value: l.lot_id,
+                    label: `${l.barcode} — ${l.article} · ${l.colour}`,
+                    sub: `${l.thickness ? `${l.thickness} · ` : ''}${l.size ? `${l.size} · ` : ''}${l.available} ${l.uom} on hand`,
+                    lot: l,
+                  }))}
+                  className="bg-white"
+                />
+              </div>
+            )}
+
+            <div className="text-[10px] font-black uppercase tracking-wider text-slate-400">Step 2 — Details</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-black text-slate-700 block mb-1">Article / Material Name *</label>
+                <SelectableFilterCombobox
+                  value={article}
+                  onChange={setArticle}
+                  placeholder="Select or type material…"
+                  options={articleOptions}
+                  onSelectLot={handleQuickPickLot}
                   className="mt-1"
                 />
               </div>
+
+              <div>
+                <label className="text-xs font-black text-slate-700 block mb-1">Colour *</label>
+                <SelectableFilterCombobox
+                  value={colour}
+                  // Colours are stored in capitals — uppercase as the user types
+                  onChange={(v) => setColour(v.toUpperCase())}
+                  placeholder="Select or type colour…"
+                  options={colourOptions}
+                  className="mt-1"
+                />
+              </div>
+
+              {spec.required_to_add
+                .filter((k) => !(isLeather && k === spec.quantity_field))
+                .map((k) => (
+                  <div key={k}>
+                    <label className="text-xs font-black text-slate-700 capitalize block mb-1">
+                      {k}{k === spec.quantity_field ? ` (${spec.uom}) *` : ' *'}
+                    </label>
+                    {k === spec.quantity_field ? (
+                      <input
+                        type="number"
+                        value={attrs[k] ?? ''}
+                        onChange={(e) => setAttrs((p) => ({ ...p, [k]: e.target.value }))}
+                        placeholder={`Enter ${spec.uom} (e.g. 1240)`}
+                        className="w-full h-10 px-3.5 border rounded-xl text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                        style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                      />
+                    ) : (
+                      <SelectableFilterCombobox
+                        value={attrs[k] ?? ''}
+                        onChange={(val) => setAttrs((p) => ({ ...p, [k]: val }))}
+                        placeholder={`Select or type ${k}…`}
+                        options={getAttrOptions(k)}
+                        className="mt-1"
+                      />
+                    )}
+                  </div>
+                ))}
+
+              {/* Thread size isn't in the spec's required fields, but the lot stores it — sent as `size` in the arrival payload */}
+              {category === 'ACCESSORY' && subtype === 'THREAD' && !spec.required_to_add.includes('size') && (
+                <div>
+                  <label className="text-xs font-bold text-slate-500 block mb-1">Size (optional)</label>
+                  <SelectableFilterCombobox
+                    value={attrs.size ?? ''}
+                    onChange={(val) => setAttrs((p) => ({ ...p, size: val }))}
+                    placeholder="Select or type size…"
+                    options={getAttrOptions('size')}
+                    className="mt-1"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">Supplier ID (optional)</label>
+                <input
+                  value={supplierId}
+                  onChange={(e) => setSupplierId(e.target.value)}
+                  placeholder="leave blank if unknown"
+                  className="w-full h-10 px-3.5 border rounded-xl text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-500 block mb-1">Supplier Name (optional)</label>
+                <input
+                  value={supplierName}
+                  onChange={(e) => setSupplierName(e.target.value)}
+                  placeholder="e.g. Kanpur Leather Works"
+                  className="w-full h-10 px-3.5 border rounded-xl text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                  style={{ borderColor: 'rgba(200,131,74,0.2)' }}
+                />
+              </div>
+            </div>
+
+            {/* Side-by-side: Total Sheets & Total DCM */}
+            {isLeather && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-black text-slate-700 block mb-1.5">
+                    Total Sheets <span className="font-semibold text-slate-500">(Sheet Count) *</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="1"
+                    placeholder="e.g. 8"
+                    value={totalSheetsCount}
+                    onChange={(e) => setTotalSheetsCount(e.target.value)}
+                    className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                    style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-black text-slate-700 block mb-1.5">
+                    Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="any"
+                    placeholder="e.g. 1000"
+                    value={attrs.dcm ?? ''}
+                    onChange={(e) => setAttrs((p) => ({ ...p, dcm: e.target.value }))}
+                    className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                    style={{ borderColor: 'rgba(200,131,74,0.3)' }}
+                  />
+                </div>
+              </div>
             )}
 
-            <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">Supplier ID (optional)</label>
-              <input
-                value={supplierId}
-                onChange={(e) => setSupplierId(e.target.value)}
-                placeholder="leave blank if unknown"
-                className="w-full h-10 px-3.5 border rounded-xl text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                style={{ borderColor: 'rgba(200,131,74,0.2)' }}
-              />
-            </div>
+            {spec.required_to_add.length === 0 && (
+              <p className="text-[11px] font-bold text-amber-600">This category/subtype combination isn&apos;t configured yet — submit is blocked.</p>
+            )}
 
-            <div>
-              <label className="text-xs font-bold text-slate-500 block mb-1">Supplier Name (optional)</label>
-              <input
-                value={supplierName}
-                onChange={(e) => setSupplierName(e.target.value)}
-                placeholder="e.g. Kanpur Leather Works"
-                className="w-full h-10 px-3.5 border rounded-xl text-xs font-bold bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                style={{ borderColor: 'rgba(200,131,74,0.2)' }}
-              />
-            </div>
+            <button
+              onClick={handleSubmit}
+              disabled={!canSubmit || submitting}
+              className="w-full h-12 rounded-2xl font-black text-xs uppercase tracking-wider text-white disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer shadow-md hover:brightness-105 active:scale-[0.99] transition-all"
+              style={{ background: '#c8834a' }}
+            >
+              {submitting ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <PackagePlus className="w-4 h-4" />
+              )}
+              Create Lot {targetDcm > 0 ? `(${targetDcm} DCM${totalSheetsCount ? ` · ${totalSheetsCount} Sheets` : ''})` : ''}
+            </button>
           </div>
-
-          {/* Side-by-side: Total Sheets & Total DCM */}
-          {isLeather && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-black text-slate-700 block mb-1.5">
-                  Total Sheets <span className="font-semibold text-slate-500">(Sheet Count) *</span>
-                </label>
-                <input
-                  type="number"
-                  step="1"
-                  placeholder="e.g. 8"
-                  value={totalSheetsCount}
-                  onChange={(e) => setTotalSheetsCount(e.target.value)}
-                  className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                  style={{ borderColor: 'rgba(200,131,74,0.3)' }}
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-black text-slate-700 block mb-1.5">
-                  Total DCM <span className="font-semibold text-slate-500">(DCM) *</span>
-                </label>
-                <input
-                  type="number"
-                  step="any"
-                  placeholder="e.g. 1000"
-                  value={attrs.dcm ?? ''}
-                  onChange={(e) => setAttrs((p) => ({ ...p, dcm: e.target.value }))}
-                  className="w-full h-11 px-3.5 border rounded-xl text-sm font-bold text-slate-800 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                  style={{ borderColor: 'rgba(200,131,74,0.3)' }}
-                />
-              </div>
-            </div>
-          )}
-
-          {spec.required_to_add.length === 0 && (
-            <p className="text-[11px] font-bold text-amber-600">This category/subtype combination isn&apos;t configured yet — submit is blocked.</p>
-          )}
-
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit || submitting}
-            className="w-full h-12 rounded-2xl font-black text-xs uppercase tracking-wider text-white disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer shadow-md hover:brightness-105 active:scale-[0.99] transition-all"
-            style={{ background: '#c8834a' }}
-          >
-            {submitting ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <PackagePlus className="w-4 h-4" />
-            )}
-            Create Lot {targetDcm > 0 ? `(${targetDcm} DCM${totalSheetsCount ? ` · ${totalSheetsCount} Sheets` : ''})` : ''}
-          </button>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
     </div>
   );
 }

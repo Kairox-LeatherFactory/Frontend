@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/context/AuthContext';
-import { Building2, Plus, X, Loader2, Search, CheckCircle2, XCircle, PackagePlus } from 'lucide-react';
+import { Building2, Plus, X, Loader2, Search, CheckCircle2, XCircle, PackagePlus, Trash2, AlertTriangle } from 'lucide-react';
 import SpotlightCard from '@/components/SpotlightCard';
 import AnimatedModal from '@/components/AnimatedModal';
 import { staggerContainer, fadeUpItem } from '@/lib/motionVariants';
@@ -11,6 +11,7 @@ import {
   useGetClientsQuery,
   useCreateClientMutation,
   useUpdateClientMutation,
+  useDeleteClientMutation,
   useGetClientOrdersQuery,
   useAddClientOrderMutation,
 } from '@/store/slices/clientApiSlice';
@@ -67,6 +68,7 @@ export default function OrdersTreeBrowser() {
   const { data: clientsData = [], isLoading: apiLoading } = useGetClientsQuery();
   const [createClient] = useCreateClientMutation();
   const [updateClient] = useUpdateClientMutation();
+  const [deleteClient, { isLoading: isDeletingClient }] = useDeleteClientMutation();
   const [addClientOrder, { isLoading: isAddingOrder }] = useAddClientOrderMutation();
   const { user } = useAuth();
   
@@ -107,6 +109,10 @@ export default function OrdersTreeBrowser() {
   const [newOrderNumber, setNewOrderNumber] = useState('');
   const [addOrderError, setAddOrderError] = useState('');
   const [addOrderNumberError, setAddOrderNumberError] = useState('');
+
+  // Modal states — Delete Client
+  const [deleteClientTarget, setDeleteClientTarget] = useState(null);
+  const [deleteClientError, setDeleteClientError] = useState('');
 
   const setField = (key, value) => setClientForm((f) => ({ ...f, [key]: value }));
   const canCreate = clientForm.name.trim() && clientForm.country.trim() && clientForm.order_number.trim();
@@ -189,6 +195,32 @@ export default function OrdersTreeBrowser() {
         setAddOrderNumberError(`Order number "${orderNum}" is already in use.`);
       } else {
         setAddOrderError(apiErrText(err, 'Failed to add order to client.'));
+      }
+    }
+  };
+
+  const closeDeleteClientModal = () => {
+    if (isDeletingClient) return;
+    setDeleteClientTarget(null);
+    setDeleteClientError('');
+  };
+
+  const handleDeleteClientSubmit = async () => {
+    if (!deleteClientTarget?.id) return;
+    setDeleteClientError('');
+
+    try {
+      await deleteClient(deleteClientTarget.id).unwrap();
+      const clientName = deleteClientTarget.name;
+      closeDeleteClientModal();
+      setSuccessMsg(`Client "${clientName}" deleted successfully!`);
+    } catch (err) {
+      if (err?.status === 409) {
+        setDeleteClientError(
+          `Cannot delete "${deleteClientTarget.name}" because orders exist for this client. Please deactivate instead.`
+        );
+      } else {
+        setDeleteClientError(apiErrText(err, 'Failed to delete client.'));
       }
     }
   };
@@ -384,21 +416,35 @@ export default function OrdersTreeBrowser() {
                           <div className="flex justify-between items-center mb-1.5">
                             <span className="text-[9px] font-bold block uppercase tracking-wider" style={{ color: '#9a7a5a' }}>Order Number</span>
                             {user === 'direct_manager' && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setAddOrderClient(client);
-                                  setNewOrderNumber('');
-                                  setAddOrderError('');
-                                  setAddOrderNumberError('');
-                                }}
-                                className="text-[10px] font-black flex items-center gap-1 transition-all active:scale-95 cursor-pointer px-2 py-0.5 rounded-md hover:bg-[#faf6f0]"
-                                style={{ color: '#c8834a', border: '1px solid rgba(200,131,74,0.3)' }}
-                                title={`Add a new order for ${client.name}`}
-                              >
-                                <Plus className="w-3 h-3" /> Add Order
-                              </button>
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAddOrderClient(client);
+                                    setNewOrderNumber('');
+                                    setAddOrderError('');
+                                    setAddOrderNumberError('');
+                                  }}
+                                  className="text-[10px] font-black flex items-center gap-1 transition-all active:scale-95 cursor-pointer px-2 py-0.5 rounded-md hover:bg-[#faf6f0]"
+                                  style={{ color: '#c8834a', border: '1px solid rgba(200,131,74,0.3)' }}
+                                  title={`Add a new order for ${client.name}`}
+                                >
+                                  <Plus className="w-3 h-3" /> Add Order
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setDeleteClientTarget(client);
+                                    setDeleteClientError('');
+                                  }}
+                                  className="text-[10px] font-black flex items-center gap-1 transition-all active:scale-95 cursor-pointer px-2 py-0.5 rounded-md bg-rose-50/50 hover:bg-rose-100 text-rose-600 border border-rose-200"
+                                  title={`Delete ${client.name}`}
+                                >
+                                  <Trash2 className="w-3 h-3 text-rose-500" /> Delete
+                                </button>
+                              </div>
                             )}
                           </div>
                           <ClientOrderNumbers clientId={client.id} />
@@ -674,6 +720,92 @@ export default function OrdersTreeBrowser() {
             </button>
           </div>
         </form>
+      </AnimatedModal>
+
+      {/* ─── DELETE CLIENT CONFIRMATION MODAL ─── */}
+      <AnimatedModal
+        isOpen={!!deleteClientTarget}
+        onClose={closeDeleteClientModal}
+        zIndex={999999}
+        panelClassName="space-y-4"
+        panelStyle={{
+          backgroundColor: '#ffffff',
+          borderRadius: '20px',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.35)',
+          border: '1px solid #e2e8f0',
+          width: '100%',
+          maxWidth: '460px',
+          padding: '24px',
+          pointerEvents: 'auto'
+        }}
+      >
+        <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 shrink-0">
+              <Trash2 className="w-4 h-4" />
+            </div>
+            <h3 className="text-base font-black text-slate-900 leading-tight">
+              Delete Client
+            </h3>
+          </div>
+          <button
+            type="button"
+            onClick={closeDeleteClientModal}
+            disabled={isDeletingClient}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {deleteClientError ? (
+          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              {deleteClientError}
+            </p>
+          </div>
+        ) : (
+          <div className="py-2 space-y-1">
+            <p className="text-sm text-slate-700 leading-relaxed font-semibold">
+              Are you sure you want to delete <strong className="text-slate-950 uppercase font-black">{deleteClientTarget?.name}</strong>?
+            </p>
+            <p className="text-xs text-slate-400 font-medium">
+              This action cannot be undone.
+            </p>
+          </div>
+        )}
+
+        <div className="flex gap-3 pt-3 border-t border-slate-100 relative z-30">
+          <button
+            type="button"
+            onClick={closeDeleteClientModal}
+            disabled={isDeletingClient}
+            className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center disabled:opacity-50 pointer-events-auto"
+          >
+            Cancel
+          </button>
+          {!deleteClientError && (
+            <button
+              type="button"
+              onClick={handleDeleteClientSubmit}
+              disabled={isDeletingClient}
+              className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 pointer-events-auto"
+            >
+              {isDeletingClient ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </AnimatedModal>
 
     </motion.div>
