@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
-import { Search, Loader2, ChevronRight } from 'lucide-react';
-import { useGetMaterialSpecQuery, useGetMaterialLotsQuery, useLazyGetMaterialLotsQuery, useLazyGetMaterialLotQuery }
+import { createPortal } from 'react-dom';
+import { Search, Loader2, ChevronRight, Trash2 } from 'lucide-react';
+import { useGetMaterialSpecQuery, useGetMaterialLotsQuery, useLazyGetMaterialLotsQuery, useLazyGetMaterialLotQuery, useRetireMaterialLotMutation }
  from '@/store/slices/materialApiSlice';
 import { errMsg, SelectableFilterCombobox,CATEGORY_SUBTYPES } from './shared';
 
@@ -10,6 +11,8 @@ export  function LotListScreen({showToast, canEdit, canAdjust, onReceive }) {
   
 const [triggerGetLots] = useLazyGetMaterialLotsQuery(); // For load() list
 const [triggerGetLot] = useLazyGetMaterialLotQuery();   // For openDetail() click
+const [retireMaterialLot, { isLoading: isRetiring }] = useRetireMaterialLotMutation();
+const [retireTargetLot, setRetireTargetLot] = useState(null);
 
     const [category, setCategory] = useState('LEATHER');
   const [subtype, setSubtype] = useState('');
@@ -68,6 +71,18 @@ const availableLots = lotsRes?.lots || [];
      const full = await triggerGetLot(lotId).unwrap();
       setDetailLot(full);
     } catch (e) { showToast(errMsg(e), 'error'); }
+  };
+
+  const handleConfirmRetire = async () => {
+    if (!retireTargetLot?.lot_id) return;
+    try {
+      const res = await retireMaterialLot(retireTargetLot.lot_id).unwrap();
+      showToast(res?.message || `Lot ${retireTargetLot.barcode || ''} retired successfully.`, 'success');
+      setRetireTargetLot(null);
+      load();
+    } catch (e) {
+      showToast(errMsg(e), 'error');
+    }
   };
 
   return (
@@ -149,7 +164,31 @@ const availableLots = lotsRes?.lots || [];
                     </span>
                   )}
                 </td>
-                <td className="p-3.5 text-right"><ChevronRight className="w-4 h-4 text-slate-300 inline" /></td>
+                <td className="p-3.5 text-right" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-end gap-1">
+                    {canAdjust && l.is_active !== false && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRetireTargetLot(l);
+                        }}
+                        title={`Retire ${l.barcode}`}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => openDetail(l.lot_id)}
+                      className="p-1 text-slate-300 hover:text-slate-600 cursor-pointer"
+                      title="View Details"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
               </tr>
             ))}
             {lots.length === 0 && !loading && (
@@ -184,6 +223,60 @@ const availableLots = lotsRes?.lots || [];
             });
           } : null}
           onChanged={() => { load(); openDetail(detailLot.lot_id); }} />
+      )}
+
+      {/* Retire Lot Confirmation Modal */}
+      {retireTargetLot && typeof document !== 'undefined' && createPortal(
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-fade-in" onClick={() => !isRetiring && setRetireTargetLot(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-full max-w-sm p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-500 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-black text-slate-900 leading-tight">Retire Material Lot</h3>
+                <p className="text-[10px] font-mono font-bold text-slate-400 mt-0.5 truncate">{retireTargetLot.barcode} · {retireTargetLot.article}</p>
+              </div>
+            </div>
+
+            <div className="space-y-1 py-1">
+              <p className="text-xs text-slate-700 leading-relaxed font-semibold">
+                Are you sure you want to retire this lot?
+              </p>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Its barcode will be deactivated, but cutting and consumption history will be preserved.
+              </p>
+            </div>
+
+            <div className="flex gap-2.5 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={isRetiring}
+                onClick={() => setRetireTargetLot(null)}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs rounded-xl transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isRetiring}
+                onClick={handleConfirmRetire}
+                className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs rounded-xl transition-all cursor-pointer shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isRetiring ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Retiring...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" /> Retire Lot
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

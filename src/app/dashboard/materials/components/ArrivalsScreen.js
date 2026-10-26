@@ -333,14 +333,22 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
       }));
     return [...saved, ...localSheets].map((s, idx) => ({ ...s, sheetNo: idx + 1 }));
   }, [savedSheetsRaw, localSheets, arrival.arrived_at]);
-  // The sheets added on this arrival (approved sheets): IN_STOCK saved sheets plus unsaved local ones —
-  // ALLOCATED / CONSUMED are hidden. Numbered from 1 within this list.
+  // The sheets added on this arrival: CONSUMED (or IN_STOCK) saved sheets plus unsaved local ones
   const listedSheets = useMemo(
     () => sheets
-      .filter((s) => !s.saved || s.status === 'IN_STOCK')
+      .filter((s) => !s.saved || ['CONSUMED', 'IN_STOCK'].includes(String(s.status || '').toUpperCase()) || !s.status)
       .map((s, idx) => ({ ...s, sheetNo: idx + 1 })),
     [sheets]
   );
+  const [sheetStatusFilter, setSheetStatusFilter] = useState('ALL'); // 'ALL' | 'IN_STOCK' | 'CONSUMED'
+
+  const displayedSheets = useMemo(() => {
+    if (sheetStatusFilter === 'ALL') return listedSheets;
+    return listedSheets.filter((s) => {
+      const st = String(s.status || (s.saved ? 'IN_STOCK' : '')).toUpperCase();
+      return st === sheetStatusFilter;
+    });
+  }, [listedSheets, sheetStatusFilter]);
   const [currentSheetDcm, setCurrentSheetDcm] = useState('');
   // Total Sheets is fixed at the count entered in Add Stock — adding sheets never changes it
   // The arrival response carries it as declared_sheet_count
@@ -752,25 +760,67 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
 
         {/* Grid: Left = Sheet list | Right = Clean Summary Box */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-start pt-2">
-          <div className="md:col-span-7 bg-white rounded-2xl border p-3 shadow-xs space-y-2 max-h-[240px] overflow-y-auto" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
-            {listedSheets.length === 0 ? (
+          <div className="md:col-span-7 bg-white rounded-2xl border p-3 shadow-xs space-y-2 max-h-[280px] overflow-y-auto" style={{ borderColor: 'rgba(200,131,74,0.18)' }}>
+            <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-100">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                Sheets ({listedSheets.length})
+              </span>
+              <div className="flex items-center gap-1">
+                {[
+                  { key: 'ALL', label: 'All' },
+                  { key: 'IN_STOCK', label: 'In Stock' },
+                  { key: 'CONSUMED', label: 'Consumed' },
+                ].map(({ key, label }) => {
+                  const count = key === 'ALL'
+                    ? listedSheets.length
+                    : listedSheets.filter((s) => String(s.status || (s.saved ? 'IN_STOCK' : '')).toUpperCase() === key).length;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setSheetStatusFilter(key)}
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-md transition-all ${
+                        sheetStatusFilter === key
+                          ? 'bg-amber-700 text-white shadow-xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      {label} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {displayedSheets.length === 0 ? (
               <div className="py-7 text-center text-xs font-bold text-slate-400">
-                No sheets entered yet. Enter DCM above and click <span className="text-amber-800 font-black">+ Add</span>.
+                {sheetStatusFilter === 'ALL'
+                  ? <>No sheets entered yet. Enter DCM above and click <span className="text-amber-800 font-black">+ Add</span>.</>
+                  : `No ${sheetStatusFilter === 'IN_STOCK' ? 'in-stock' : 'consumed'} sheets found.`}
               </div>
             ) : (
-              listedSheets.map((sheet) => (
+              displayedSheets.map((sheet) => (
                 <div
                   key={sheet.id || sheet.barcode}
                   className="flex items-center justify-between px-3 py-2.5 rounded-xl border bg-slate-50/50 hover:bg-amber-50/40 transition-all text-xs"
                   style={{ borderColor: 'rgba(200,131,74,0.12)' }}
                 >
-                  <div className="flex items-center gap-2">
-                    <span className="font-black text-slate-700 w-16">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-black text-slate-700 w-16 shrink-0">
                       Sheet {sheet.sheetNo}
                     </span>
-                    <span className="font-mono text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200">
+                    <span className="font-mono text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200 shrink-0">
                       {sheet.barcode}
                     </span>
+                    {sheet.saved && (
+                      <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border shrink-0 ${
+                        String(sheet.status || '').toUpperCase() === 'CONSUMED'
+                          ? 'bg-amber-100 text-amber-800 border-amber-300'
+                          : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      }`}>
+                        {String(sheet.status || '').toUpperCase() === 'CONSUMED' ? 'CONSUMED' : 'IN STOCK'}
+                      </span>
+                    )}
                   </div>
 
                   {editingSheetId === sheet.id ? (
@@ -905,7 +955,7 @@ function ArrivalInspectionDetail({ arrival, onBack, showToast }) {
         <div className="pt-2">
           <div className="flex items-center justify-between text-xs font-black mb-1.5">
             <span className={isMatching ? 'text-emerald-700 flex items-center gap-1' : 'text-slate-600'}>
-              {`${listedSheets.length} in-stock sheets (${totalSheetsDcm} / ${targetDcm || 0} DCM)`}
+              {`${listedSheets.length} sheets (${totalSheetsDcm} / ${targetDcm || 0} DCM)`}
             </span>
             <span className="font-bold text-slate-500 text-[11px]">{progressPercent}%</span>
           </div>
